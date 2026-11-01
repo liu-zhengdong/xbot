@@ -40,7 +40,7 @@ func TestChatTabsJourney(t *testing.T) {
 	mem := srv.Memory("Workspace")
 	for p, text := range map[string]string{
 		mem.Person.Path: "# 关于你\n\n原始文件中的 **用户记忆验收标记**。\n",
-		mem.Bot.Path:    "# 关于这个 Bot\n\n原始文件中的 Bot 记忆验收标记。\n",
+		mem.Bot.Path:    "# memory\n\n## 索引\n工作约定\n\n## 条目\n- (2026-11-01) Bot 记忆验收标记\n- (2026-10-31) 日常说话简短、口语，先给结论\n- (2026-10-30) 先确认声音参考，再保持稳定音色\n",
 	} {
 		if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
 			t.Fatal(err)
@@ -50,8 +50,20 @@ func TestChatTabsJourney(t *testing.T) {
 		}
 	}
 	store := experience.At(bot.Dir(srv.Root, "Workspace"))
-	if _, err := store.Add(experience.Entry{CreatedAt: time.Now(), Summary: "真实经历验收标记", Segment: "来自真实存储的可展开提纲"}); err != nil {
+	base := time.Now().Add(-24 * time.Hour)
+	if _, err := store.Add(experience.Entry{CreatedAt: base, Summary: "真实经历验收标记", Segment: "来自真实存储的可展开提纲"}); err != nil {
 		t.Fatal(err)
+	}
+	for i := 0; i < 45; i++ {
+		if _, err := store.Add(experience.Entry{CreatedAt: base.Add(-time.Duration(i+1) * time.Minute), Summary: fmt.Sprintf("TTS 声音经历 %02d", i), Focus: "稳定的声音", Segment: "用户确认声音参考"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// None of the searchable old entries is present on the initial 40-row page.
+	for i := 0; i < 42; i++ {
+		if _, err := store.Add(experience.Entry{CreatedAt: base.Add(time.Duration(i+1) * time.Minute), Summary: fmt.Sprintf("最近工作进展 %02d", i)}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	u, _ := url.Parse(srv.URL)
 	var cookieName, token string

@@ -23,7 +23,7 @@ const tab=name=>[...document.querySelectorAll('#workspace-tabs [role=tab]')].fin
  thread.scrollTop=100;thread.dispatchEvent(new Event('scroll'));await sleep(100);
  const scroll=thread.scrollTop,reads=historyFixture.requests.length;
  tab('记忆').click();await waitFor(()=>$('.memory-view'),'memory unavailable');
- assert($('.memory-document').textContent.includes('关于你'),'whole memory unavailable');
+ assert($('.memory-document').textContent.includes('关于本 Bot'),'bot memory unavailable');
  tab('轨迹').click();await sleep(100);
  document.querySelector('[data-bot="'+bots[0].name+'"]').click();await sleep(100);
  assert($('#input')===input&&input.textContent==='切换后仍在的草稿','draft or input node lost');
@@ -69,7 +69,7 @@ window.fetch=async(path,opts={})=>{
  const match=route.match(/^\/api\/bots\/([^/]+)$/);
  if(match&&(!opts.method||opts.method==='GET')){
   const data=await response.json(),name=decodeURIComponent(match[1]);
-  data.memory.person.markdown+='\n\n'+(name===bots[0].name?'PRIMARY_ONLY_MARKER':'SECONDARY_ONLY_MARKER');
+  data.memory.bot.markdown+='\n\n'+(name===bots[0].name?'PRIMARY_ONLY_MARKER':'SECONDARY_ONLY_MARKER');
   return json(data);
  }
  return response;

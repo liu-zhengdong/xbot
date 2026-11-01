@@ -10,7 +10,7 @@ const memoryPanelFixture = `
 localStorage.removeItem('xbot-panel-open');localStorage.removeItem('xbot.side');
 const memoryData={
  person:{path:'/data/people/owner/memory/memory.md',markdown:'# 用户记忆\n\n## 索引\n关于语言与习惯\n\n## 常驻\n- (2026-10-30) 使用 **中文** 交流\n- (2026-10-29) 喜欢简洁、直接的说明',empty:false},
- bot:{path:'/data/bots/ada/memory/memory.md',markdown:'# Bot 记忆\n\n## 索引\nXBot 的工作约定\n\n## 常驻\n- (2026-10-30) 提交前运行测试\n- (2026-10-29) 先对齐设计，再开始实现',empty:false},
+ bot:{path:'/data/bots/ada/memory/memory.md',markdown:'# Bot 记忆\n\n## 索引\nXBot 的工作约定\n\n## 常驻\n- (2026-10-30) 提交前运行 **测试**\n- (2026-10-29) 先对齐设计，再开始实现\n- (2026-10-28) 完整正文的第三条约定',empty:false},
  experiences:{items:[{id:43,created_at:'2026-10-30T00:17:00Z',summary:'一起确认记忆面板的展示方式：常驻看整篇，经历按时间排列。',focus:'记忆面板',segment:'用户：常驻是一整份 memory.md。\nBot：按定稿重做面板。'},{id:42,created_at:'2026-10-29T08:30:00Z',summary:'核对桌面和网页的品牌图标，并完成定向回归。'}],next_before:42},
  month_log:{path:'/data/bots/ada/memory/log/2026-10.md',empty:false}
 };
@@ -48,10 +48,15 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<1200;i++){if(fn())return;await sleep
  const shot=new URLSearchParams(location.search).get('shot');
  if(shot==='default'){document.body.dataset.testResult='passed';return}
  const docs=[...document.querySelectorAll('.memory-document')];
- assert(docs.length===2,'need two whole documents');
- assert(docs[0].textContent.includes('关于你')&&docs[1].textContent.includes('关于本 Bot'),'scope order');
- assert(docs[0].querySelector('strong')?.textContent==='中文','Markdown did not use the bubble renderer');
- assert(docs[0].textContent.includes('索引')&&docs[0].textContent.includes('喜欢简洁'),'document lost content');
+ assert(docs.length===1&&docs[0].textContent.includes('关于本 Bot'),'only bot memory should be shown');
+ assert(!$('.memory-view').textContent.includes('关于你'),'person memory still shown');
+ assert(docs[0].querySelector('strong')?.textContent==='测试','Markdown did not use the bubble renderer');
+ assert(!docs[0].querySelector('.memory-markdown').checkVisibility(),'whole document should start collapsed');
+ $('.memory-expand').click();
+ assert(docs[0].querySelector('.memory-markdown').checkVisibility()&&docs[0].textContent.includes('索引')&&docs[0].textContent.includes('第三条约定'),'expansion lost whole document');
+ $('.memory-expand').click();
+ const docBounds=docs[0].getBoundingClientRect(),listBounds=$('.memory-experiences').getBoundingClientRect();
+ assert(listBounds.top>docBounds.bottom&&Math.abs(docBounds.width-listBounds.width)<2,'memory is not one column');
  assert($('.memory-experience time').dateTime===memoryData.experiences.items[0].created_at,'experience lost timestamp');
  assert(!$('.memory-experience').open,'experience starts expanded');
  $('.memory-experience summary').click();assert($('.memory-experience').open&&$('.memory-experience').textContent.includes('用户：常驻'),'segment did not expand');
@@ -65,7 +70,7 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<1200;i++){if(fn())return;await sleep
  assert(!$('.memory-earlier')&&memoryOlderCalls===2,'pagination state lost');
  assert(row===$('.memory-experience')&&row.open,'paging rebuilt the first page');
  assert($('.memory-footer').textContent.includes('打开本月流水'),'footer missing');
- const file=$('.memory-file');assert(file.href.includes('/memory-files/person'),'file does not target person document');
+ const file=$('.memory-file');assert(file.href.includes('/memory-files/bot'),'file does not target bot document');
  memoryData.person.empty=true;memoryData.person.markdown='';memoryData.bot.empty=true;memoryData.bot.markdown='';memoryData.experiences={items:[]};memoryData.month_log.empty=true;
  // Changing tabs uses the latest panel DTO, without a private memory cache.
  document.dispatchEvent(new Event('visibilitychange'));await sleep(250);

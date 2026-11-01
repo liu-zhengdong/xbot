@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -167,8 +168,9 @@ func nullSeq(n int) any {
 }
 
 // Page returns entries in recorded-time order, with id breaking ties. before
-// is the last id on the previous page; zero starts at the newest entry.
-func (s Store) Page(limit int, before int64) ([]Entry, error) {
+// is the last id on the previous page; zero starts at the newest entry. query
+// matches literal substrings in summary, focus or segment, ignoring ASCII case.
+func (s Store) Page(limit int, before int64, query string) ([]Entry, error) {
 	if ok, err := s.exists(); !ok || err != nil {
 		return nil, err
 	}
@@ -180,15 +182,23 @@ func (s Store) Page(limit int, before int64) ([]Entry, error) {
 	// Stored dates are UTC RFC3339Nano. Removing Z keeps a whole second before
 	// its fractional seconds when comparing dates with different precision.
 	order := `rtrim(created_at, 'Z')`
-	query := selectCols
+	statement := selectCols
+	var conditions []string
 	var args []any
+	if query != "" {
+		conditions = append(conditions, `(instr(lower(summary), lower(?)) > 0 OR instr(lower(focus), lower(?)) > 0 OR instr(lower(segment), lower(?)) > 0)`)
+		args = append(args, query, query, query)
+	}
 	if before > 0 {
-		query += ` WHERE (` + order + `, id) < (SELECT ` + order + `, id FROM experiences WHERE id=?)`
+		conditions = append(conditions, `(`+order+`, id) < (SELECT `+order+`, id FROM experiences WHERE id=?)`)
 		args = append(args, before)
 	}
-	query += ` ORDER BY ` + order + ` DESC, id DESC LIMIT ?`
+	if len(conditions) > 0 {
+		statement += ` WHERE ` + strings.Join(conditions, ` AND `)
+	}
+	statement += ` ORDER BY ` + order + ` DESC, id DESC LIMIT ?`
 	args = append(args, limit)
-	rows, err := db.Query(query, args...)
+	rows, err := db.Query(statement, args...)
 	if err != nil {
 		return nil, err
 	}

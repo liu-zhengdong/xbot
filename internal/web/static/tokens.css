@@ -115,7 +115,9 @@ html[data-theme="dark"]{
 :root {
   --workspace-head:88px; --workspace-tabs:60px; --workspace-tab-height:38px;
   --workspace-thread:800px; --workspace-reading:944px; --workspace-gutter:32px;
-  --workspace-memory-left:1.8fr; --workspace-control:34px; --workspace-avatar:36px;
+  --workspace-control:34px; --workspace-avatar:36px;
+  --memory-search-width:280px; --memory-search-height:40px; --memory-row-padding:20px;
+  --memory-detail-gap:14px; --memory-enter-offset:4px;
   --workspace-menu:252px; --workspace-menu-height:60dvh; --workspace-heading:30px; --workspace-space:48px;
   --workspace-focus-width:2px; --workspace-disabled-opacity:.5;
   --workspace-shell-caption:32px; --workspace-mac-caption:28px;
@@ -132,5 +134,5 @@ html[data-theme="dark"] {
   --x-user-link:var(--x-text-link); --x-user-link-bg:var(--x-text-link-bg); --x-user-link-hover:var(--x-text-link-hover);
 }
 @media(min-width:1600px) { :root { --workspace-thread:860px; --workspace-reading:1040px; } }
-@media(max-width:1100px) { :root { --workspace-gutter:24px; --workspace-memory-left:1.5fr; } }
+@media(max-width:1100px) { :root { --workspace-gutter:24px; } }
 @media(max-width:767px) { :root { --workspace-gutter:16px; } }

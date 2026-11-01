@@ -96,7 +96,7 @@ func (s *Server) memoryPanel(b *bot.Bot) (memoryPanel, error) {
 		}
 	}
 	var err error
-	panel.Experiences, err = readExperiencePage(b, 0)
+	panel.Experiences, err = readExperiencePage(b, 0, "")
 	if err != nil {
 		return panel, err
 	}
@@ -109,9 +109,9 @@ func (s *Server) memoryPanel(b *bot.Bot) (memoryPanel, error) {
 	return panel, nil
 }
 
-func readExperiencePage(b *bot.Bot, before int64) (experiencePage, error) {
+func readExperiencePage(b *bot.Bot, before int64, query string) (experiencePage, error) {
 	out := experiencePage{Items: []panelExperience{}}
-	list, err := experience.At(bot.Dir(b.Root, b.Name())).Page(experiencePageSize+1, before)
+	list, err := experience.At(bot.Dir(b.Root, b.Name())).Page(experiencePageSize+1, before, query)
 	if err != nil {
 		return out, err
 	}
@@ -134,6 +134,11 @@ func (s *Server) listExperiences(w http.ResponseWriter, r *http.Request) {
 		writeMissing(w, err)
 		return
 	}
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(query) > 512 {
+		writeErr(w, http.StatusBadRequest, "q exceeds 512 bytes")
+		return
+	}
 	var before int64
 	if raw := r.URL.Query().Get("before"); raw != "" {
 		before, err = strconv.ParseInt(raw, 10, 64)
@@ -142,7 +147,7 @@ func (s *Server) listExperiences(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	page, err := readExperiencePage(b, before)
+	page, err := readExperiencePage(b, before, query)
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return

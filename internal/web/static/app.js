@@ -851,6 +851,7 @@
     chevronLeft: '<path d="m15 18-6-6 6-6"/>',
     chevronDown: '<path d="m6 9 6 6 6-6"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     ellipsis: '<circle class="solid" cx="5" cy="12" r="1.5"/><circle class="solid" cx="12" cy="12" r="1.5"/><circle class="solid" cx="19" cy="12" r="1.5"/>',
     wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
     plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
@@ -6076,97 +6077,176 @@
     return wrap;
   }
 
+  // One request path serves ordinary pagination and searched pages. The view
+  // owns the query generation, so neither polling nor a late reply can reset it.
+  async function loadMemoryExperiences(view, append = false) {
+    const search = view.memorySearch, selection = state.sel;
+    if (!view.isConnected || selection?.id !== view.memoryName) return;
+    const query = search.query, pages = query ? search.pages : view.memoryPages;
+    const request = ++search.request;
+    if (append) pages.paged = true;
+    search.loading = true; search.error = false;
+    libraryView({name:view.memoryName, memory:view.memoryData}, view);
+    const params = new URLSearchParams();
+    if (append) params.set("before", pages.before);
+    if (query) params.set("q", query);
+    try {
+      const page = await api("/api/bots/" + encodeURIComponent(view.memoryName) + "/experiences?" + params);
+      if (state.sel !== selection || !view.isConnected || request !== search.request) return;
+      // A refresh may have removed all ordinary entries while paging was busy.
+      if (query || view.memoryData.experiences?.items?.length) {
+        for (const item of page.items) pages.items.set(item.id, item);
+        pages.before = page.next_before;
+      }
+    } catch (e) {
+      if (state.sel !== selection || !view.isConnected || request !== search.request) return;
+      search.error = true;
+    }
+    if (state.sel !== selection || !view.isConnected || request !== search.request) return;
+    search.loading = false;
+    libraryView({name:view.memoryName, memory:view.memoryData}, view);
+  }
+
+  function appendMemoryMatch(node, text, query) {
+    text = String(text || "");
+    if (!query) { node.textContent = text; return; }
+    const lower = text.toLowerCase(), match = query.toLowerCase();
+    let from = 0, at;
+    while ((at = lower.indexOf(match, from)) >= 0) {
+      node.append(document.createTextNode(text.slice(from, at)), el("mark", "", text.slice(at, at + query.length)));
+      from = at + query.length;
+    }
+    node.append(document.createTextNode(text.slice(from)));
+  }
+
   function libraryView(data, view = el("div", "memory-view")) {
     const memory = data.memory;
-    view.memoryData = memory;
+    view.memoryName = data.name; view.memoryData = memory;
     if (!memory) { view.replaceChildren(el("p", "hint", "正在加载…")); return view; }
+    const search = view.memorySearch || (view.memorySearch = {query:"", request:0, loading:false, error:false});
     let documents = view.querySelector(".memory-documents");
     if (!documents) {
       documents = el("div", "memory-documents");
-      const experiences = el("section", "memory-experiences");
-      const error = el("p", "memory-page-error"); error.hidden = true;
-      experiences.append(el("h3", "memory-heading", "经历"), el("div", "memory-experience-list"), error);
+      const experiences = el("section", "memory-experiences"), head = el("div", "memory-experience-head");
+      const field = el("input", "memory-search-input"); field.type = "search"; field.placeholder = "搜索经历";
+      field.setAttribute("aria-label", "搜索经历"); field.maxLength = 512;
+      const box = el("div", "memory-search"), clear = el("button", "memory-search-clear");
+      clear.type = "button"; clear.setAttribute("aria-label", "清除搜索"); clear.append(icon("x")); clear.hidden = true;
+      box.append(icon("search"), field, clear);
+      const update = () => {
+        clear.hidden = !field.value;
+        const query = field.value.trim();
+        if (query === search.query) return;
+        clearTimeout(search.timer); search.request++;
+        search.query = query; search.error = false; search.loading = !!query;
+        search.pages = {items:new Map(), rows:new Map(), paged:false, before:null};
+        libraryView({name:view.memoryName, memory:view.memoryData}, view);
+        if (query) search.timer = setTimeout(() => loadMemoryExperiences(view), 180);
+      };
+      field.addEventListener("input", ev => { if (!ev.isComposing) update(); });
+      field.addEventListener("compositionend", update);
+      field.addEventListener("keydown", ev => {
+        if (ev.key === "Escape" && !ev.isComposing) { ev.preventDefault(); ev.stopPropagation(); field.value = ""; update(); }
+      });
+      clear.addEventListener("click", () => { field.value = ""; update(); field.focus(); });
+      head.append(el("h3", "memory-heading", "经历"), box);
+      const status = el("p", "memory-search-status"); status.setAttribute("role", "status"); status.hidden = true;
+      const error = el("div", "memory-page-error"); error.hidden = true;
+      const retry = el("button", "memory-retry", "重试"); retry.type = "button";
+      retry.addEventListener("click", () => loadMemoryExperiences(view, !!(search.query ? search.pages : view.memoryPages).before));
+      error.append(el("span"), retry);
+      experiences.append(head, status, el("div", "memory-experience-list"), error);
       view.replaceChildren(documents, experiences, el("footer", "memory-footer"));
     }
-    for (const [kind, label] of [["person", "关于你"], ["bot", "关于本 Bot"]]) {
-      const doc = memory[kind];
-      let section = documents.querySelector('[data-memory="' + kind + '"]');
-      if (!section) { section = el("section", "memory-document"); section.dataset.memory = kind; documents.append(section); }
-      const key = JSON.stringify(doc || null);
-      if (section.memoryKey === key) continue;
-      section.memoryKey = key;
-      const head = el("div", "memory-document-head"); head.append(el("h4", "", label));
-      if (doc && !doc.empty) head.append(memoryFileLink(data.name, kind, "打开文件", doc.path));
+    const doc = memory.bot;
+    let section = documents.querySelector(".memory-document");
+    if (!section) { section = el("section", "memory-document"); section.dataset.memory = "bot"; documents.append(section); }
+    const docKey = JSON.stringify(doc || null);
+    if (section.memoryKey !== docKey) {
+      section.memoryKey = docKey;
+      const expanded = section.querySelector(".memory-expand")?.getAttribute("aria-expanded") === "true";
+      const head = el("div", "memory-document-head"); head.append(el("h4", "", "关于本 Bot"));
+      if (doc && !doc.empty) head.append(memoryFileLink(data.name, "bot", "打开文件", doc.path));
       section.replaceChildren(head);
       if (!doc || doc.empty) section.append(el("p", "hint memory-empty", "还没有常驻记忆"));
-      else { const body = el("div", "prose memory-markdown"); appendMarkdown(body, doc.markdown); section.append(body); }
+      else {
+        const body = el("div", "prose memory-markdown"), preview = el("div", "prose memory-preview");
+        appendMarkdown(body, doc.markdown);
+        const entries = doc.markdown.split("\n").filter(line => /^- \(\d{4}-\d{2}-\d{2}\)/.test(line));
+        appendMarkdown(preview, entries.slice(0, 2).join("\n") || doc.markdown);
+        const toggle = el("button", "memory-expand"); toggle.type = "button";
+        const label = el("span"); toggle.append(label, icon("chevron"));
+        const expand = value => {
+          body.hidden = !value; preview.hidden = value;
+          toggle.setAttribute("aria-expanded", String(value)); label.textContent = value ? "收起" : "展开全部";
+        };
+        toggle.addEventListener("click", () => expand(body.hidden)); expand(expanded);
+        section.append(preview, body, toggle);
+      }
     }
-    // Retain all already-read experiences once paging starts. New first-page
-    // entries can push a previous first-page entry beyond the server window.
-    const pages = view.memoryPages || (view.memoryPages = {items:new Map(), paged:false, before:null});
+    // Ordinary pages keep their nodes and cursor while search is active.
+    const normal = view.memoryPages || (view.memoryPages = {items:new Map(), rows:new Map(), paged:false, before:null});
     const first = memory.experiences || {items:[]};
-    if (!first.items.length) { pages.items.clear(); pages.paged = false; }
-    if (!pages.paged) { pages.items.clear(); pages.before = first.next_before; }
-    for (const item of first.items) pages.items.set(item.id || item.created_at, item);
-    const items = new Map(pages.items);
+    if (!first.items.length) { normal.items.clear(); normal.paged = false; }
+    if (!normal.paged) { normal.items.clear(); normal.before = first.next_before; }
+    for (const item of first.items) normal.items.set(item.id, item);
+    const pages = search.query ? search.pages : normal;
     const rows = view.querySelector(".memory-experience-list");
-    const prior = new Map([...rows.querySelectorAll(".memory-experience")].map(row => [row.dataset.experience, row]));
-    let next = rows.firstElementChild;
-    for (const item of [...items.values()].sort((a,b) => b.created_at.localeCompare(a.created_at) || (b.id || 0) - (a.id || 0))) {
-      const id = String(item.id || item.created_at);
-      const row = prior.get(id) || el("details", "memory-experience"); prior.delete(id);
+    rows.setAttribute("aria-busy", String(search.loading));
+    const live = new Set(); let next = rows.firstElementChild;
+    for (const item of [...pages.items.values()].sort((a,b) => b.created_at.localeCompare(a.created_at) || b.id - a.id)) {
+      const id = String(item.id);
+      const row = pages.rows.get(id) || el("details", "memory-experience"); pages.rows.set(id, row); live.add(row);
       row.dataset.experience = id;
-      const key = JSON.stringify(item);
+      const key = JSON.stringify([item, search.query]);
       if (row.memoryKey !== key) {
         row.memoryKey = key;
-        const head = el("summary");
-        const at = new Date(item.created_at);
+        const head = el("summary"), at = new Date(item.created_at);
         const time = el("time", "", Number.isNaN(at.getTime()) ? item.created_at : at.toLocaleString([], {year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", hour12:false}));
         time.dateTime = item.created_at;
-        head.append(time, el("span", "memory-summary", item.summary || ""), icon("chevron"));
-        row.replaceChildren(head);
-        if (item.focus) row.append(el("p", "memory-focus", item.focus));
-        if (item.segment) row.append(el("p", "memory-segment", item.segment));
+        const summary = el("span", "memory-summary"); appendMemoryMatch(summary, item.summary, search.query);
+        head.append(time, summary, icon("chevron")); row.replaceChildren(head);
+        for (const [key, label] of [["focus", "关注点"], ["segment", "对话提纲"]]) {
+          if (!item[key]) continue;
+          const block = el("div", "memory-detail"), text = el("p", "memory-" + key);
+          appendMemoryMatch(text, item[key], search.query); block.append(el("span", "memory-detail-label", label), text); row.append(block);
+        }
       }
       if (row !== next) rows.insertBefore(row, next);
       next = row.nextElementSibling;
     }
-    for (const row of prior.values()) row.remove();
-    const empty = rows.querySelector(".memory-empty");
-    if (items.size) empty?.remove();
-    else if (!empty) rows.append(el("p", "hint memory-empty", "还没有经历"));
-    const experiences = view.querySelector(".memory-experiences"), error = view.querySelector(".memory-page-error");
-    let earlier = experiences.querySelector(".memory-earlier");
-    if (!pages.before) { earlier?.remove(); error.hidden = true; }
-    else if (!earlier) {
-      earlier = el("button", "memory-earlier", "更早的经历"); earlier.type = "button";
-      earlier.addEventListener("click", async () => {
-        const selection = state.sel;
-        earlier.disabled = true; error.hidden = true;
-        // The in-flight page starts before the current first-page boundary.
-        // Keep that boundary row even if a poll shifts the first page now.
-        pages.paged = true;
-        try {
-          const page = await api("/api/bots/" + encodeURIComponent(data.name) + "/experiences?before=" + pages.before);
-          if (state.sel !== selection || !view.isConnected || !view.memoryData?.experiences?.items?.length) return;
-          for (const item of page.items) pages.items.set(item.id || item.created_at, item);
-          pages.paged = true; pages.before = page.next_before;
-          libraryView({name:data.name, memory:view.memoryData}, view);
-        } catch (e) {
-          if (state.sel !== selection || !view.isConnected) return;
-          error.textContent = "经历加载失败，请重试"; error.hidden = false;
-        } finally { earlier.disabled = false; }
-      });
-      experiences.insertBefore(earlier, error);
+    for (const node of [...rows.children]) if (!live.has(node)) node.remove();
+    for (const id of pages.rows.keys()) if (!pages.items.has(Number(id))) pages.rows.delete(id);
+    if (!pages.items.size && !search.loading && !search.error) {
+      const empty = el("div", "memory-empty", search.query ? "没有找到相关经历" : "还没有经历");
+      if (search.query) {
+        const clear = el("button", "memory-retry", "清除搜索"); clear.type = "button";
+        clear.addEventListener("click", () => view.querySelector(".memory-search-clear").click()); empty.append(clear);
+      }
+      rows.append(empty);
     }
-    const footer = view.querySelector(".memory-footer");
-    const logKey = JSON.stringify(memory.month_log || null);
+    const status = view.querySelector(".memory-search-status"); status.hidden = !search.query;
+    const statusText = search.loading ? "正在搜索…" : search.error ? "" : "找到 " + pages.items.size + " 条经历" + (pages.before ? "，还有更多" : "");
+    if (status.textContent !== statusText) status.textContent = statusText;
+    const experiences = view.querySelector(".memory-experiences"), error = view.querySelector(".memory-page-error");
+    error.hidden = !search.error; error.querySelector("span").textContent = search.query ? "经历搜索失败，请重试" : "经历加载失败，请重试";
+    let earlier = experiences.querySelector(".memory-earlier");
+    if (!pages.before) earlier?.remove();
+    else {
+      if (!earlier) {
+        earlier = el("button", "memory-earlier", "更早的经历"); earlier.type = "button";
+        earlier.append(icon("chevron")); earlier.addEventListener("click", () => loadMemoryExperiences(view, true));
+        experiences.insertBefore(earlier, error);
+      }
+      earlier.disabled = search.loading;
+    }
+    const footer = view.querySelector(".memory-footer"), logKey = JSON.stringify(memory.month_log || null);
     if (footer.memoryKey !== logKey) {
       footer.memoryKey = logKey;
       if (memory.month_log && !memory.month_log.empty) {
         const link = memoryFileLink(data.name, "month-log", "打开本月流水", memory.month_log.path);
         link.classList.add("memory-log"); footer.replaceChildren(link);
-      } else footer.replaceChildren(el("span", "", "本月还没有流水"));
+      } else footer.replaceChildren();
     }
     return view;
   }
