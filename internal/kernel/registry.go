@@ -133,9 +133,6 @@ var kernelTools = []struct {
 	{"peers", always, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{messageBotTool{k}, listGroupsTool{k}, groupHistoryTool{k}, createGroupTool{k}, postGroupTool{k}, forkBotTool{k}}
 	}, nil},
-	{"bots", func(k *Kernel, _ []link.Link) bool { return k.isPrimary() }, func(k *Kernel) []tools.Tool {
-		return []tools.Tool{pinBotTool{k}, setPrimaryTool{k}}
-	}, nil},
 	{"links", always, func(k *Kernel) []tools.Tool { return []tools.Tool{linksTool{k}, kernelManualTool{}} }, nil},
 	{"system", func(k *Kernel, _ []link.Link) bool { return k.Restart != nil }, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{restartTool{k}}

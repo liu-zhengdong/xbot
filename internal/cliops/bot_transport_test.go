@@ -11,6 +11,113 @@ import (
 	"testing"
 )
 
+func TestBotControlTransportTypedQueriesAndPartial(t *testing.T) {
+	root := t.TempDir()
+	calls := 0
+	source, err := Start(root, Handlers{Bots: &BotHandlers{
+		Pin: func(ctx context.Context, input BotPin) (BotPinReply, error) {
+			calls++
+			if input.Name != "literal / Bot +&?" || input.Pinned || SourceCallID(ctx) != "" {
+				t.Errorf("pin input=%+v call=%q", input, SourceCallID(ctx))
+			}
+			return BotPinReply{Name: input.Name, Pinned: input.Pinned, Stage: "config"}, errors.New("save failed")
+		},
+		Primary: func(ctx context.Context, name string) (BotPrimaryReply, error) {
+			calls++
+			if name != "literal / Bot +&?" || SourceCallID(ctx) != "" {
+				t.Errorf("primary name=%q call=%q", name, SourceCallID(ctx))
+			}
+			return BotPrimaryReply{Name: name, Primary: name, Applied: true, Stage: "pin"}, errors.New("pin failed")
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	pin, err := CallBotPin(context.Background(), source.Endpoint, root, BotPin{Name: "literal / Bot +&?", Pinned: false})
+	if err == nil || err.Error() != "save failed" || pin.Pinned || pin.Applied || pin.Stage != "config" || pin.Error != err.Error() {
+		t.Fatalf("pin=%+v error=%v", pin, err)
+	}
+	primary, err := CallBotPrimary(context.Background(), source.Endpoint, root, "literal / Bot +&?")
+	if err == nil || err.Error() != "pin failed" || !primary.Applied || primary.Primary != "literal / Bot +&?" || primary.Stage != "pin" || primary.Error != err.Error() {
+		t.Fatalf("primary=%+v error=%v", primary, err)
+	}
+	if calls != 2 {
+		t.Fatalf("calls=%d want two without retry", calls)
+	}
+}
+
+func TestBotControlTransportQueryShapeAndGuards(t *testing.T) {
+	calls := 0
+	handlers := &BotHandlers{
+		Pin: func(_ context.Context, input BotPin) (BotPinReply, error) {
+			calls++
+			return BotPinReply{Name: input.Name, Pinned: input.Pinned, Applied: true, Stage: "complete"}, nil
+		},
+		Primary: func(_ context.Context, name string) (BotPrimaryReply, error) {
+			calls++
+			return BotPrimaryReply{Name: name, Primary: name, Applied: true, Stage: "complete"}, nil
+		},
+	}
+	for _, path := range []string{
+		"pin", "pin?name=a", "pin?name=a&pinned=", "pin?name=a&pinned=0", "pin?name=a&pinned=1", "pin?name=a&pinned=TRUE", "pin?name=a&pinned=False",
+		"pin?name=a&pinned=false&pinned=false", "pin?name=a&name=b&pinned=true", "pin?name=&pinned=false", "pin?name=a&pinned=true&extra=x",
+		"pin?name=%zz&pinned=true", "pin?name=a;pinned=true", "primary", "primary?name=", "primary?name=a&name=a", "primary?name=a&pinned=true",
+		"pin?name=" + strings.Repeat("a", BotMaxRequest) + "&pinned=true",
+	} {
+		w := httptest.NewRecorder()
+		serveBot(w, httptest.NewRequest(http.MethodPut, "/v1/bot/"+path, nil), handlers)
+		if w.Code != http.StatusBadRequest || calls != 0 {
+			t.Fatalf("path prefix=%q status=%d calls=%d", path[:min(len(path), 100)], w.Code, calls)
+		}
+	}
+	for _, action := range []string{"pin", "primary"} {
+		w := httptest.NewRecorder()
+		serveBot(w, httptest.NewRequest(http.MethodGet, "/v1/bot/"+action+"?name=a&pinned=true", nil), handlers)
+		if w.Code != http.StatusMethodNotAllowed || calls != 0 {
+			t.Fatalf("%s status=%d calls=%d", action, w.Code, calls)
+		}
+	}
+	for _, value := range []string{"true", "false"} {
+		w := httptest.NewRecorder()
+		serveBot(w, httptest.NewRequest(http.MethodPut, "/v1/bot/pin?name=a&pinned="+value, nil), handlers)
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"pinned":`+value) {
+			t.Fatalf("literal %s status=%d body=%s", value, w.Code, w.Body.String())
+		}
+	}
+	root := t.TempDir()
+	canonical, err := CanonicalRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := Start(root, Handlers{Bots: handlers})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	client := LocalHTTPClient(0)
+	defer client.CloseIdleConnections()
+	for _, action := range []string{"pin?name=a&pinned=false", "primary?name=a"} {
+		for _, tc := range []struct{ header, value string }{{"X-XBot-Root", "other-root"}, {"Origin", "http://localhost"}, {"Sec-Fetch-Site", "same-origin"}, {"Host", "localhost:1234"}} {
+			req, _ := http.NewRequest(http.MethodPut, source.Endpoint+"/v1/bot/"+action, nil)
+			req.Header.Set("X-XBot-Root", canonical)
+			if tc.header == "Host" {
+				req.Host = tc.value
+			} else {
+				req.Header.Set(tc.header, tc.value)
+			}
+			response, err := client.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response.Body.Close()
+			if response.StatusCode < 400 || calls != 2 {
+				t.Fatalf("guard=%s action=%s status=%d calls=%d", tc.header, action, response.StatusCode, calls)
+			}
+		}
+	}
+}
+
 func TestBotTransportTypedRoutesAndPartial(t *testing.T) {
 	root := t.TempDir()
 	calls := 0
