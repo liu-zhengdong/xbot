@@ -5542,7 +5542,7 @@
       const key = JSON.stringify(group);
       if (body.renderKey !== key) {
         const members = section("成员"); members.append(el("p", "", (group.members || []).map(niceName).join("、") || "没有成员"));
-        body.replaceChildren(workspaceHeading("群组资料"), members); body.renderKey = key;
+        body.replaceChildren(members); body.renderKey = key;
       }
       return;
     }
@@ -5554,7 +5554,6 @@
     const key = JSON.stringify(state.tab === "library" ? data.memory : state.tab === "trace" ? [state.traceMessages, state.traceOpen, state.traceOut, state.traceThink] : state.tab === "context" ? [state.ctxSnap, state.ctxStep, state.ctxMenu, state.ctxOpen, state.ctxRaw] : state.tab === "inbox" ? state.inboxData : [data, modelHits(data), state.ctxSnap?.ceiling, state.ctxSnap?.target]);
     if (body.renderKey === key || taskSelected(body)) return;
     body.renderKey = key;
-    const label = TABS.find(([id]) => id === state.tab)?.[1] || "Bot 资料";
     let content;
     if (state.tab === "library") content = libraryView(data);
     else if (state.tab === "computer") content = computerView(data);
@@ -5562,10 +5561,9 @@
     else if (state.tab === "context") content = contextView(data);
     else if (state.tab === "inbox") content = inboxView();
     else content = detailsView(data);
-    body.replaceChildren(workspaceHeading(label), content);
+    body.replaceChildren(content);
     queuePathLayout();
   }
-  function workspaceHeading(label) { const head = el("div", "workspace-view-heading"); head.append(el("h2", "", label)); return head; }
   function workspaceError(label, retry) {
     const view = el("div", "workspace-error"); view.setAttribute("role", "status");
     const button = el("button", "secondary", "重试"); button.type = "button";

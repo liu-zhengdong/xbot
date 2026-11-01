@@ -38,7 +38,7 @@ const cfg=JSON.parse(fs.readFileSync(0,'utf8'));
   const search=p.getByRole('searchbox',{name:'搜索经历',exact:true});
   await search.fill('真实经历验收标记');
   await p.getByText('真实经历验收标记',{exact:true}).click();
-  await p.getByText('来自真实存储的可展开提纲',{exact:true}).waitFor();
+  await p.locator('.memory-turn-text').filter({hasText:'来自真实存储的可展开提纲'}).waitFor();
   await shot('memory-old-search');
   await search.fill('tTs');
   await p.waitForFunction(()=>document.querySelector('.memory-experience-list').getAttribute('aria-busy')==='false'&&document.querySelectorAll('.memory-experience').length===40);
