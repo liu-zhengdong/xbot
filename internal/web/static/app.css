@@ -2707,7 +2707,7 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setpage{line-height:normal;display:flex;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(820px,calc(100vw - 40px));height:min(680px,80vh);background:var(--x-card);border-radius:18px;box-shadow:var(--x-shadow-pop);z-index:41;flex-direction:column;overflow:hidden}
 
 .setbody{flex:1;display:flex;min-height:0;overflow:hidden}
-/* Each scrolling box carries its own corner, so the .setpage clip never cuts its scrollbar. */
+/* Navigation scrolls independently when the window is too short for its items. */
 .setnav{width:168px;flex:none;background:var(--x-panel);padding:14px 10px 16px;overflow:auto;border-radius:18px 0 0 18px}
 .setnav button{display:flex;align-items:center;gap:9px;height:36px;padding:0 10px;border-radius:9px;font-size:13.5px;color:var(--x-muted);cursor:pointer}
 .setnav button:hover{background:var(--x-fill-2);color:var(--x-text)}
@@ -2716,7 +2716,12 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setnav button .ic{color:inherit;opacity:.9;flex:none}
 .setmain{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;position:relative;background:var(--x-card);overflow:hidden;border-radius:0 18px 18px 0}
 .setclose{position:absolute;top:14px;right:14px;z-index:2;width:32px;height:32px}
-.setcnt{flex:1;min-width:0;overflow:auto;padding:18px 28px 36px;padding-right:48px;border-radius:0 18px 18px 0}
+.setcnt{flex:1;min-width:0;min-height:0;overflow:auto;margin:calc(var(--x-s5) + var(--x-s2)) var(--x-s4) var(--x-s4) 0;padding:0 calc(var(--x-s9) + var(--x-s2)) var(--x-s9) calc(var(--x-s7) + var(--x-s3))}
+/* Keep page headings in view; the scroll track belongs to the inset content,
+   never to the modal's rounded outer edge or its close-button lane. */
+@media(min-width:641px){
+.setcnt .setpane>h2,.setpane .sethd:first-child,.setpane .web-search-settings>h2,.setpane .provider-title{position:sticky;top:0;z-index:1;background:var(--x-card);margin-top:0}
+}
 .setpane{display:none;max-width:100%}
 .setpane:not([hidden]){display:block}
 .setpane>h2{font-size:18px;font-weight:650;margin:4px 0 20px;letter-spacing:-.01em}
@@ -2806,7 +2811,7 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setnav button:active{background:var(--x-fill-2)}
 .setnav button .ic{box-sizing:content-box;padding:6px;border-radius:8px;background:var(--x-card);color:var(--x-muted)}
 .setnav button:after{content:"";margin-left:auto;flex:none;width:16px;height:16px;background:var(--x-faint);-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center/16px no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center/16px no-repeat}
-.setcnt{padding:var(--x-s3) var(--x-s6) var(--x-s9)}
+.setcnt{margin:0;padding:var(--x-s3) var(--x-s6) var(--x-s9)}
 /* The bar names the page and the back button leaves it, so the in-page title and back link would only repeat them. */
 #setpage .setpane>h2,#setpage .skills-settings .sethd,#setpage .web-search-settings>h2,#setpage .provider-title,#setpage .setdev .sethd>h2,#setpage .skills-settings .setback{display:none}
 }

@@ -1,5 +1,12 @@
 # XBot 里程碑与进度
 
+## 2026-11-01 设置内容区滚动（feature/settings-content-scroll）
+
+- S 档。沿用设置双栏壳，右栏 `.setcnt` 内缩独立滚动，滚动条不再贴弹层外缘；主标题行吸顶，侧栏和关闭按钮不随内容滚动。各设置页共用规则，窄屏保留原固定顶栏，没有新增动效或应用页特判。
+- `go test -count=1 ./internal/web` 通过（90.005s）。新增真实 headless-shell 行为回归覆盖连接应用、通用长页：内容滚动 300px，侧栏/关闭按钮/标题位置偏移 <1px，滚动区上下右均内缩。旧 CSS 上先红（apps 标题随滚动移动），修复后绿。
+- 1440×900、DPR2 浅深色前后与滚后截图在 `~/.xbot-build/ui-shots/settings-content-scroll/{before,after}/`，已本机自检，数据为 scripted 应用目录；未独立设计评审或用户日用验收。仅 CSS 改动，无新增请求/事件处理；未测持续帧率或生产 p95。
+- 按用户范围只跑相关 web 包一次，不跑全仓或三遍。Not run: 全仓测试、go vet、Linux/Windows、独立复审、用户日用、生产性能专项。本条级别：分支浏览器行为通过；按用户后续授权合本地 main、重启 8788，不 push。
+
 ## 2026-11-01 保险库全局单库、Bot 共享（feature/vault-global-shared，本地分支）
 
 - L 档，在 6bd6c31f 上改装配缝，不重做皮。唯一产品入口 `vault.OpenGlobal(root)` 不接收 Bot 名；本地和 vaultd 各按既有后端选择使用固定产品 namespace，OAuth namespace 不动。设置 `/api/secrets` 的 metadata DTO 永无 Value；连接应用 NeedsSecret（含 Context7/MCP 环境键）、CLI、出站 HTTP、LOCAL_SUDO askpass 都接同源。CLI 暂留存在性校验的 Bot 参数，但语义全局，帮助明确说明。
