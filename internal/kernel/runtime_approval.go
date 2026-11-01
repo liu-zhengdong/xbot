@@ -49,10 +49,9 @@ func (k *Kernel) reviewIdentity(ctx context.Context) (bool, string) {
 	return t.turnTrusted, k.memoryPersonOf(t)
 }
 
-// runtimeApprovalSource resolves the original real Shell call, never a current
-// turn or disk record. It returns a card context with that call's frozen policy
-// metadata and original owner's dynamic branch, and releases no caller locks.
-func (k *Kernel) runtimeApprovalSource(ctx context.Context) (context.Context, func(), error) {
+// runtimeSourceCall resolves the original real Shell call with its prepared,
+// frozen turn context. It never looks up a current turn or a disk record.
+func (k *Kernel) runtimeSourceCall(ctx context.Context) (context.Context, func(), error) {
 	unavailable := errors.New("source approval context unavailable")
 	id := cliops.SourceCallID(ctx)
 	if id == "" {
@@ -80,6 +79,17 @@ func (k *Kernel) runtimeApprovalSource(ctx context.Context) (context.Context, fu
 		cleanup()
 		return nil, nil, err
 	}
+	return callCtx, cleanup, nil
+}
+
+// runtimeApprovalSource preserves the original owner's dynamic branch for cards
+// while retaining the real Shell call's frozen policy metadata.
+func (k *Kernel) runtimeApprovalSource(ctx context.Context) (context.Context, func(), error) {
+	callCtx, cleanup, err := k.runtimeSourceCall(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	source := callCtx.Value(routineCallSourceKey{}).(routineCallSource)
 	owner := source.owner
 	if source.child {
 		owner = nil

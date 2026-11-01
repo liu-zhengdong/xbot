@@ -63,4 +63,5 @@ type Handlers struct {
 	Skills        *SkillHandlers
 	Routines      *RoutineHandlers
 	Bots          *BotHandlers
+	ChatGroups    *ChatGroupHandlers
 }
