@@ -1,5 +1,14 @@
 # XBot 里程碑与进度
 
+## 2026-11-01 profile 完整 CLI 与原运行态连续（feature 候选，独立验收中）
+
+- L 档，沿同份 CLI dev 补完整 profile 合同并获 reviewer24 结构通过，[ADR0048](adr/0048-complete-runtime-profile-entry.md) Accepted。产品 `5ed71e5a` 接组合 name/description/timezone/avatar_seed、fresh config/实际 partial 与既有 Resources/Jobs/exec/host；`94f34c67` 修原 Shell cwd marker 和已提交事实/通知丢失；`748ea940` 接原始头像传输、cold scope/恢复、Timer/code 当前路径、主源短 IO 和 profile 模型门退旧；`0feadf1c` 收有限媒体/提醒/experience/history/skills/reference/compact 路径、cold cwd 持久化、无缓存 Web peer partial 与相对 Git repo 兼容。未新建 UUID/别名、资源/任务账、缓存框架或全局 Local 准入，未迁其它平台族业务。
+- 实现方定向证据复用：Bot 新组合六项 .687s、头像四项 .646s；cmd Name/partial 两项 .698s、头像三项 .820s；cliops partial race1.696s、头像三项 race1.799s 与 vet。exec 新移动组 race4.247s、受影响准入/closing 四项1.235s、cold/boundary1.215s；安全 cold interrupt 新单项 .131s。Web 新组合/partial/大头像三项 race1.555s、reserved-group4.395s，JS 两文件语法检查通过。只编译失败的跨写面窗口不计业务执行，也未因此重复旧绿组。
+- 缺陷定位：独立 `5ed71e5a` RenameEntry 真失败于旧 marker 路径 stderr，`94f34c67` 的 FD trap 回归 race4.195s 后独立 validation `48e6c44b` ONLY RenameEntry PASS1.69s/package2.674s；严格 JSON/API 新名断言保留，该 SHA 证据封存。坏 moved Inbox 仍保 commit facts/notice 的新回归 race1.277s；先 rename 后 Restore 的 P2 与 safe recovery race1.743s，父信已绿结果复用。新 scope fixture 最初缺独立 checkout 边界，按实际仓库内 TMPDIR 建 `.git` 后仍精确断言新 project Resource，未改生产上溯策略。
+- 其余新增定向：原 source persona/rules/通知/trace race1.729s；保留旧 K 的本地路径一组 race2.051s、Kernel vet；cold foreground cwd .597s、无缓存 Web peer partial .789s。Timer emit 里同步 rename 后提交/CRUD race1.662s；code 旧 Link 与 flock 等候 race4.288s、执行 cwd/预构造 Shell4.334s、实际 Repo env 受改用例1.781s。24 增量发现相对本地 Repo 因新 cmd.Dir 错找，真实 git 定位先红 .763s，最小兼容修后 race1.699s，保原 Repo 值和远端 locator。退旧模型门、peer partial、原 Persona/door 定向通过，review .568s；混合测试保有效业务。
+- 一次 atlas audit 退出 0、无断链，31 项非致命提示（size1/stale9/dev4/unabsorbed3/unmapped14；stale 含 4 个新切片后待刷新戳的当前节点），不为清提示扩修；最终独立增量审计后再更新相关 verified。实现方未运行全仓或重复已绿矩阵。
+- 当前级别：完整产品候选在 feature，局部 unit/race 通过、RenameEntry 精确版本独立端到端通过。`0feadf1c` 已交剩余 Atomic/Resources/Avatar/Browser 四项独立验收与 24 最终增量静态，尚不宣称它们通过。独立测试只由 0d 维护，实现方未改其期望。Not run：全仓/完整矩阵、普通 profile/seed/MCP 已绿组重复、真模型/外部服务、跨平台、日用/专项性能；未合 main、push、发版或更改运行实例。当前 atlas/API 已同步，路线与其它平台族仍未完成。
+
 ## 2026-11-01 MCP 2b 实例 CLI 与旧模型入口退役（已合入本地 main，所测端到端通过）
 
 - L档，在main16101e7e上沿已定CLI路线落具体合同29668efc；24窄结构PASS后 [ADR0047](adr/0047-mcp-cli-domain-entry.md) Accepted，替代0035的MCP模型门部分，0046进程owner/通知/Jobs/sourcelease保持。产品7c5d5766退Kernel旧注册/schema并接领域产物，16be6d78接argv/双HTTP/早分流/core只读/probe和移除Link adapter/aliases。未新增通用action bus、会话/任务账、权限UI或完整rename。
