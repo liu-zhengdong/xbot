@@ -4,6 +4,7 @@ go 1.27.1
 
 require (
 	github.com/egoist/mygo v0.5.5
+	github.com/google/uuid v1.6.0
 	golang.org/x/sys v0.22.0
 	golang.org/x/text v0.43.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -13,7 +14,6 @@ require (
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect

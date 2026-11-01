@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/provider/, internal/providerauth/, internal/config/, prompts/, internal/eval/, evals/]
-verified: 2026-10-31 @ feature/custom-provider (API/config + binary/Chrome scripted); 2026-10-30 @ feature/opencode-go-vendor (vendor HTTP/scripted + Chrome tests); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome); 2026-10-31 @ feature/rate-limit-end-or-switch (selector HTTP + real binary scripted)
+verified: 2026-10-31 @ fix/opencode-go-session (provider regression + real binary scripted); 2026-10-31 @ feature/custom-provider (API/config + binary/Chrome scripted); 2026-10-30 @ feature/opencode-go-vendor (vendor HTTP/scripted + Chrome tests); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome); 2026-10-31 @ feature/rate-limit-end-or-switch (selector HTTP + real binary scripted)
 ---
 # 模型供应商与主动性评测
 
@@ -20,7 +20,7 @@ verified: 2026-10-31 @ feature/custom-provider (API/config + binary/Chrome scrip
 
 ## 怎么运转
 
-- **OpenCode Go** 是内置密钥供应商（`opencode-go`），复用 `config.Vendors` 的登记、保存密钥、实时模型同步和 Bot 绑定；Chat Completions 端点为 `https://opencode.ai/zen/go/v1`，Bearer 密钥只以环境变量名 `OPENCODE_API_KEY` 登记。订阅后从 Console 复制 API key，不提供 OAuth 登录。少量种子仅供起步，详情以实时 `/models` 为准；不包含 Zen 按量或 Messages 第二品牌。
+- **OpenCode Go** 是内置密钥供应商（`opencode-go`），复用 `config.Vendors` 的登记、保存密钥、实时模型同步和 Bot 绑定；Chat Completions 端点为 `https://opencode.ai/zen/go/v1`，Bearer 密钥只以环境变量名 `OPENCODE_API_KEY` 登记。订阅后从 Console 复制 API key，不提供 OAuth 登录。少量种子仅供起步，详情以实时 `/models` 为准；不包含 Zen 按量或 Messages 第二品牌。`provider.New` 为每个客户端生成独立 UUID，发往官方 host `opencode.ai` 的 `/zen/go/v1/chat/completions` 或 `/inference/go/openai/v1/chat/completions` 时携带 `x-opencode-session`；同一客户端的重试、工具步骤及多轮/辅助调用复用标识，其他端点不附带该头。标识仅在客户端生命周期内稳定，重建客户端（如重启或重绑）会换新，不持久化到 Bot。回归见 `internal/provider/opencode_go_test.go`，真实 serve/API/工具续轮与双 Bot 隔离见 `e2e/smoke/opencode_go_test.go`（仅本地 scripted HTTP 代理）。
 
 - **请求 debug**：创建 `~/.xbot/provider-debug.enabled` 普通文件开启，删除即关闭；三种协议每次 HTTP 尝试前热检查，无需重启或重编译，缺省不写盘。开启后把发送的已编码 body 原样写入 `~/.xbot/provider-debug/<UTC时间>-<协议>-<随机后缀>.json`，不重新编码、截断或脱敏；含原始密钥、未 redact（若密钥在 body 中即原样保留），不额外采集 header。新目录 0700、文件 0600，独占随机文件名防覆盖；写入失败只报错日志，不阻断 Chat。开关按本机用户共享，不随 `--root` 改变；关闭不删除已存文件。Chat Completions / Messages 的文件可直接 `rqv <file>` 查看，Responses 保留自身原生 JSON，不转换成其他协议。
 

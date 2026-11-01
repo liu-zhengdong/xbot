@@ -18,6 +18,12 @@
 - B/UI：时间分隔测试仍放入已不进 chat 的定时原始记录，改测送达回复；供应商测试把内部配置名当展示名，fixture 补显式 custom/display_name，仍测原型属性名与迟到响应；人设卡删旧工具栏结构断言，保留导入/搜索/保存/删除行为。按仓库规则删除查 JS/HTML/CSS 文本的 paste_ui_test，已有图片 HTTP 行为守护保留，新增当前 chat 重载图片 ID 回归。不改界面资源。
 - 基线归档独立运行逐条重现上述 15 个顶层失败（`/tmp/xbot-fix-baseline.log`）；修复后四包整包 `go test -count=3 ./internal/kernel ./internal/memory ./internal/web ./internal/work` 通过，分别 169.346s / 0.769s / 433.687s / 0.778s。最终 `go test -count=1 ./...` 全绿（`/tmp/xbot-fix-full.log`，web 146.111s、e2e 72.307s）；gofmt 无输出、全仓 go vet、git diff --check 通过。atlas audit 退出 0，保留既有链接、陈旧和设计索引告警，未扩修。
 - 级别：本地分支自动化回归全绿，未合入、未宣称用户日用或整体旅程验收。以上为测试耗时，非生产性能数字。Not run: 真模型、Linux CI、用户日用、交互 p95/IPC/后台减速性能专项。
+## 2026-10-31 OpenCode Go 缺少会话头（feature/opencode-go-session）
+
+- S 档：`provider.New` 为客户端生成独立 UUID，Completions 在官方 `opencode.ai` 的 `/zen/go/v1` 与 `/inference/go/openai/v1` 请求上发送 `x-opencode-session`，普通重试、工具续步、多轮及共用客户端的辅助调用复用标识；其他端点不加头。客户端重建后换新标识，不宣称 Bot 跨重启持久会话。UUID 依赖原已存在，仅改为直接依赖。
+- 新单元回归在旧实现实际返回 HTTP 400 / MissingSessionID，修复后通过；两个端点、尾斜杠、502 重试、后续轮次、独立客户端与非目标 host/path 均覆盖。provider 整包最终三遍绿（12.093s）；新增真实 serve / registry 绑定 / API / SSE / `send_message_to_user` 续轮 / 双 Bot 隔离冒烟三遍绿（3.978s），9 次 scripted 回复约 78–180ms；不是生产模型延迟指标。上游全部为本地模拟代理，无真实模型调用。独立只读代码复核无阻塞/重大问题。
+- gofmt、diff check、全仓 vet 通过；atlas audit 退出 0，仍有仓库原有 stale/broken link/unmapped 告警。全仓测试完整跑完未绿：kernel 长轮/记忆守护、memory 月容量、work shell 描述，以及 web CLI 清理/时间分隔/供应商/配对/审批/粘图/人设/提问等；与本日既有基线记录同组，未扩修或放宽期望。日志 `/tmp/xbot-opencode-go-{all,vet,provider,atlas}.log`；已有归档基线 `/tmp/rate-limit-base-all.log` 可对照。完整 smoke 跑完（255.967s）仍未绿：六条基础旅程的空正文/无 delta 失败与 `/tmp/rate-limit-base-smoke.log` 同组；另有 busy、Responses 与 thinking 断言失败，未逐条重新归因；本次 `TestOpenCodeGoBinary` 未失败。日志 `/tmp/xbot-opencode-go-smoke.log`。
+- 已重编并重启本机桌面开发实例 `http://127.0.0.1:8788/`（pid 69461，23:11:03 构建），真实 `/api/session` 返回 authed=true、version=dev、tip=2a5f3044。级别：本次专项端到端通过并在本机生效；全仓守护未全绿，尚未提交，不宣称整体旅程或用户日用通过。Not run: 真模型、Linux CI、生产 p95/IPC/后台性能专项、主人日用。
 
 ## 2026-10-31 永远放行、无工具权限卡（feature/always-allow-no-permission-cards，本地分支）
 
@@ -25,6 +31,7 @@
 - 两条回归先在旧实现实际红（保护路径出卡、live on 重开卡），新实现专项三遍通过（kernel 0.845s、cmd/xbot 0.735s，测试总耗时而非交互 p95）；cmd/xbot 整包三遍通过（16.491s）。gofmt、diff check、全仓 go vet 通过；atlas audit 跑过，仍有已有链接/陈旧/设计索引告警。
 - 全仓一遍与改动包三遍已尝试但未全绿：kernel 长轮/overflow/记忆日志失败，memory 月日志、work description、web CLI/时间分隔/供应商失败；90s 包级超时涉及 e2e/kernel/tools/web。未逐条重新归因，不扩修。日志 `/tmp/always-allow-{full,repeat}-final.log`。
 - 级别：本地分支专项回归通过，未合 main、未发布、未重启；不宣称端到端或用户日用通过。Not run: 真二进制/浏览器联合旅程、真模型、Linux CI、用户日用、交互 p95/IPC/后台性能专项；全仓及 kernel 整包三遍未完整通过。
+
 ## 2026-10-31 限流等待上限与一次备用（feature/rate-limit-end-or-switch）
 
 - M 档，仅 Provider 共用重试、供应商配置与启动 selector 装配。`config.ModelSelector → RateLimitSelector → FixedSelector` 为唯一装配 seam；每次唤醒累计额度等待默认 180 秒，可用 providers.json 的 `rate_limit_wait_seconds` 配置。三协议读取 Retry-After/reset 建议，长等立即以 `ErrRateLimitWait` 结束；显式 `fallback: {provider, model}` 最多切一次，后续工具步保持备用、共享剩余等待预算；无备用不声称换模。普通 5xx/超时维持两次短重试，已有输出不重试/切换。不碰 UI、主列窗口、控机、公式、AGENTS/CLAUDE、发版脚本或 lock。

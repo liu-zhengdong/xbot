@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -32,6 +34,8 @@ func New(m Endpoint) (Provider, error) {
 		return nil, fmt.Errorf("provider: OAuth requires the local vault transport; remote runners are not supported")
 	}
 	c := Client{BaseURL: m.BaseURL, APIKey: m.APIKey, Model: m.Model, Thinking: m.Thinking, ReasoningEffort: m.ReasoningEffort, HTTPClient: m.HTTPClient}
+	// Keep Go routing/cache affinity across retries and subsequent tool steps.
+	c.sessionID = uuid.NewString()
 	switch m.Protocol {
 	case "", ChatCompletions:
 		return &c, nil

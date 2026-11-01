@@ -41,6 +41,8 @@ type Client struct {
 	Thinking string
 	// ReasoningEffort defaults to low; supported configured levels are low/high/max.
 	ReasoningEffort string
+	// sessionID is created by New and shared by this client's HTTP attempts.
+	sessionID string
 }
 
 const (
@@ -505,6 +507,10 @@ func (c *Client) chatOnce(ctx context.Context, req Request, onDelta func(string)
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "text/event-stream")
 	httpReq.Header.Set("User-Agent", "xbot/m1")
+	if strings.EqualFold(httpReq.URL.Hostname(), "opencode.ai") &&
+		(httpReq.URL.Path == "/zen/go/v1/chat/completions" || httpReq.URL.Path == "/inference/go/openai/v1/chat/completions") {
+		httpReq.Header.Set("x-opencode-session", c.sessionID)
+	}
 
 	dumpRequest(ChatCompletions, raw)
 	resp, err := c.http().Do(httpReq)
