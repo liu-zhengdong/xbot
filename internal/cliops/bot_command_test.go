@@ -2,6 +2,56 @@ package cliops
 
 import "testing"
 
+func TestBotControlParserForms(t *testing.T) {
+	for _, tc := range []struct {
+		args          []string
+		name          string
+		offline, help bool
+	}{
+		{[]string{"pin", "ada"}, "", true, false},
+		{[]string{"unpin", "ada"}, "", true, false},
+		{[]string{"primary"}, "", true, false},
+		{[]string{"primary", "set", "ada"}, "", true, false},
+		{[]string{"pin", "ada", "--self", "--json"}, "ada", false, false},
+		{[]string{"unpin", "--self", "ada"}, "ada", false, false},
+		{[]string{"primary", "set", "ada", "--self"}, "ada", false, false},
+		{[]string{"pin", "--self", "--", "--help"}, "--help", false, false},
+		{[]string{"unpin", "--self", "--", "--self"}, "--self", false, false},
+		{[]string{"primary", "--self", "set", "--", "--help"}, "--help", false, false},
+		{[]string{"pin", "--", "--self"}, "", true, false},
+		{[]string{"primary", "--", "set", "--help"}, "", true, false},
+		{[]string{"pin", "--help"}, "", false, true},
+		{[]string{"unpin", "-h"}, "", false, true},
+		{[]string{"primary", "--help"}, "", false, true},
+	} {
+		c, err := ParseBotRuntime(tc.args)
+		if err != nil || c.Name != tc.name || c.Offline != tc.offline || c.Help != tc.help {
+			t.Errorf("%q: command=%+v error=%v", tc.args, c, err)
+		}
+	}
+}
+
+func TestBotControlParserRejects(t *testing.T) {
+	for _, args := range [][]string{
+		{"pin"}, {"pin", "a", "b"}, {"unpin"}, {"unpin", "a", "b"},
+		{"primary", "set"}, {"primary", "get"}, {"primary", "set", "a", "b"},
+		{"pin", "--self"}, {"unpin", "--self"}, {"primary", "--self"},
+		{"primary", "a", "--self"}, {"primary", "set", "--self"},
+		{"pin", "a", "--json"}, {"primary", "set", "a", "--json"},
+		{"pin", "a", "--unknown"}, {"pin", "a", "--self", "--unknown"},
+		{"pin", "a", "--self", "--self"}, {"unpin", "a", "--self", "--json", "--json"},
+		{"primary", "--help", "-h"}, {"pin", "a", "--self=true"},
+		{"unpin", "a", "--self", "--json=false"}, {"pin", "a", "--persona", "--self"},
+		{"primary", "set", "a", "--self", "--steps=1"}, {"pin", "a", "--help=x"},
+		{"primary", "--", "--help"},
+	} {
+		c, err := ParseBotRuntime(args)
+		if err == nil || c.Offline {
+			t.Errorf("invalid %q: command=%+v error=%v", args, c, err)
+		}
+	}
+}
+
 func TestBotRuntimeParserOfflineArity(t *testing.T) {
 	for _, args := range [][]string{
 		{"list"}, {"list", "ignored"}, {"delete", "ada"}, {"new", "ada"},

@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
-verified: 2026-11-02 @ 519bb8aa
+verified: 2026-11-02 @ cc46ba7c
 ---
 # 安全：保险箱与权限表
 
@@ -115,6 +115,7 @@ WantedBy=multi-user.target
 - **permissions on 时只确认四类**：对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改；另外触及保险箱/密钥路径的 `shell`/文件工具总是确认。Bot之间的 `message_bot`/`post_group`、写计划文件、写技能、编码任务为normal。routine纯排期不额外加审批，承载它的原Shell仍受自身机器gate/分类，非空命令另沿原ctx审查。
 - **例程前置命令同表审核**：四旧模型门及Known策略项已退，排期沿当前source CLI；同typed请求解码保末位null语义，update省字段仍审保留命令、空串清除。非空命令在所有Timer/route/Jobs锁外用原source reviewPrecheck，按process cwd及既有machine/protected/untrusted-memory/Shell表。原live Job保实际prepared ctx与wrapped approver，main审冻结身份、卡片跟原owner fork，child用明确untrusted/no-person与自己的subApprover，不借最新父turn。nested审批只向原Shell args附规范请求/effective命令，现grant与deniedBefore同键，argsfile A→B不吃A，原执行raw不变；autoID审后生、无HTTP随机nonce，不发不可调用旧工具grant。缺/旧/foreign/completed原call非空命令拒且定义不写；普通无命令CRUD不强制bridge。owner HTTP仍原临时Permissive专缝，不能拿来冒source审批。触发live gate另读，仅allow执行，ask/off/错静默skip并Commit，详见 [原调用连接](kernel.md#例程实例与原调用审批)及 [ADR0051](../adr/0051-routine-runtime-cli.md)。
 - **Bot删除原审批**：四等价模型门/Known已退，strict明确沿原Delete类别恒需确认，不查已退名而降Normal；production permissive不增卡/不强普通操作原ctx。仅strict Delete取原live Local/running/未finished同listener ctx/原wrapped Shell approver，main原owner动态fork卡与冻结policy、child原回调保留，missing/completed/foreign/noapprover在Pause/删除前拒。nested只附canonical delete/目标给原Shell args，grant/denied同键，目标A→B不吃A；routine共用primitive且need=false仍查deniedBefore，真实Run args不改、不向旧delete_bot发grant。批准后重验primary/可见性再走原host保护；原Host limited owned join/removed事实见 [内核](kernel.md#bot-发现与管理实例入口)。
+- **置顶/主身份Normal语义保持**：pin/unpin与primary set的source CLI每次核当前primary/self或VisibleBots本地目标，原两Normal动作不加许可卡、CallID或审批桥，不能误套SelfEdit/Delete。退两native/Known后也不能省source资格；B既有endpoint下一写fresh获得，A原endpoint下一写fresh失去，后pin错但pointer已写成同样生效，不把receipt当永久grant。原Shell gate独立，research只control help、所有写和离线primary解释器前拒。见 [ADR0053](../adr/0053-bot-pin-primary-runtime-cli.md)。
 - **机器开关在核心里**：对本机工具（`shell`、`read_file`、`write_file`、`edit_file`、`view_image`、桌面、浏览器）统一在核心的 review 路径处理：`off` 直接拒绝；`ask` 每次都要确认；`allow` 按下面的表走。`browser_stop` 不在此列，`off` 时仍可用来关掉进程。`web_fetch` 和 `web_search` 不碰本机文件，不走这道开关。`shell` 的 `keys:true` 也要确认。
 - **HTTP**：`http_request` 只在注入 `{{secret:名字}}`（URL、请求头或正文任意一处），或者方法不是 `GET`/`HEAD` 时确认。
 - **shell**：删除命令（`rm`、`rmdir`、`unlink`、`shred`、`find -delete`、`git clean` 等）和真正离开 XBot 的发送（`curl`/`wget` 上传或 POST/PUT、`mail`/`sendmail`、`nc`、发往远端的 `scp`/`rsync`、Python 的 `requests.post` 等）确认。
@@ -131,7 +132,7 @@ WantedBy=multi-user.target
 | 类别 | 工具 | 确认条件 |
 |---|---|---|
 | `readonly` | `tools`（代理门的 search/describe）、`kernel_manual`、`read_file`、`web_fetch`、`web_search`、`view_image`、`shell_output`、`shell_status`、`list_secrets`、`list_groups`、`get_group_message_history`、`recall`、`recall_history`、`expand`、`read_subagent`、`expand_subagent`、`code_show`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不（`read_file` 或 `view_image` 触及保险箱/密钥路径时确认） |
-| `normal` | `generate_image`（复用全局 OAuth 的生图代理）、`send_message_to_user`、`compact`、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`shell_cancel`、`ask_user`、`todo`、`pin_bot`、`set_primary`、`create_group`、`message_bot`、`post_group`、`fork_bot`、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
+| `normal` | `generate_image`（复用全局 OAuth 的生图代理）、`send_message_to_user`、`compact`、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`shell_cancel`、`ask_user`、`todo`、`create_group`、`message_bot`、`post_group`、`fork_bot`、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
 | `delete` | strict Bot CLI delete、`delete_file`、`remove_file`、`secret_rm`、`delete_link`、`remove_mcp` 等名称明确的删除工具 | 总是 |
 | `external_send` | `telegram_send`、`lark_send`、`send_email`、`send_webhook`、其余 `mcp_*`（按前缀规则，没标 `readOnlyHint` 的），以及 `links` 的 `install`/`remove` | 总是（`links` 只在 install/remove） |
 | `http` | `http_request` | 注入 `{{secret:}}` 或方法非 `GET`/`HEAD` |

@@ -97,6 +97,28 @@ func FormatBotCreate(reply BotCreateReply) string {
 	return text
 }
 
+// FormatBotPin includes the final newline; server budgets and CLI output share it.
+func FormatBotPin(reply BotPinReply) string {
+	text := fmt.Sprintf("name: %s\npinned: %t\napplied: %t\nstage: %s\n", reply.Name, reply.Pinned, reply.Applied, reply.Stage)
+	if reply.Error != "" {
+		text += fmt.Sprintf("error: %s\n", reply.Error)
+	}
+	return text
+}
+
+// FormatBotPrimary reports the committed pointer, including partial failures.
+func FormatBotPrimary(reply BotPrimaryReply) string {
+	text := fmt.Sprintf("name: %s\n", reply.Name)
+	if reply.Primary != "" {
+		text += fmt.Sprintf("primary: %s\n", reply.Primary)
+	}
+	text += fmt.Sprintf("applied: %t\nstage: %s\n", reply.Applied, reply.Stage)
+	if reply.Error != "" {
+		text += fmt.Sprintf("error: %s\n", reply.Error)
+	}
+	return text
+}
+
 func FormatBotDelete(reply BotDeleteReply) string {
 	text := fmt.Sprintf("name: %s\nremoved: %t\nstage: %s\n", reply.Name, reply.Removed, reply.Stage)
 	if reply.Error != "" {

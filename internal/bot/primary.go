@@ -133,6 +133,17 @@ func EnsurePrimary(root string, seed Seed) (*Bot, bool, error) {
 	return b, created, nil
 }
 
+// PrimaryCommitError reports whether the primary pointer was written before a
+// failure. It does not describe other initialization or migration writes.
+type PrimaryCommitError struct {
+	Applied bool
+	Stage   string
+	Err     error
+}
+
+func (e *PrimaryCommitError) Error() string { return e.Err.Error() }
+func (e *PrimaryCommitError) Unwrap() error { return e.Err }
+
 // SetPrimary transfers the role. The new primary is pinned.
 func SetPrimary(root, name string) error {
 	return fsutil.WithLock(primaryLock(root), func() error {
@@ -142,23 +153,26 @@ func SetPrimary(root, name string) error {
 
 func setPrimaryLocked(root, name string) error {
 	if !ValidName(name) {
-		return fmt.Errorf("bot: invalid name %q", name)
+		return &PrimaryCommitError{Stage: "validation", Err: fmt.Errorf("bot: invalid name %q", name)}
 	}
 	b, err := Load(root, name)
 	if err != nil {
-		return err
+		return &PrimaryCommitError{Stage: "target", Err: err}
 	}
 	raw, err := fsutil.Marshal(primaryFile{Name: name})
 	if err != nil {
-		return err
+		return &PrimaryCommitError{Stage: "primary", Err: err}
 	}
 	if err := fsutil.WriteAtomic(primaryPath(root), raw, 0600); err != nil {
-		return err
+		return &PrimaryCommitError{Stage: "primary", Err: err}
 	}
 	if b.Config().Pinned {
 		return nil
 	}
-	return b.SetPinned(true)
+	if err := b.SetPinned(true); err != nil {
+		return &PrimaryCommitError{Applied: true, Stage: "pin", Err: err}
+	}
+	return nil
 }
 
 // CheckDelete checks the existing protection rules without retaining the primary

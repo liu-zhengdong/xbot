@@ -18,15 +18,16 @@ type BotCommand struct {
 func ParseBotRuntime(argv []string) (BotCommand, error) {
 	var c BotCommand
 	if len(argv) == 0 {
-		return c, errors.New("bot: expected list, info, new or delete")
+		return c, errors.New("bot: expected list, info, new, delete, pin, unpin or primary")
 	}
 	c.Action = argv[0]
 	switch c.Action {
-	case "list", "info", "new", "delete":
+	case "list", "info", "new", "delete", "pin", "unpin", "primary":
 	default:
 		return c, fmt.Errorf("bot: unknown command %q", c.Action)
 	}
-	c.Offline = c.Action != "info"
+	control := c.Action == "pin" || c.Action == "unpin" || c.Action == "primary"
+	c.Offline = c.Action != "info" && !control
 	// Identify runtime syntax with the original new flag arities. A value or a
 	// positional after -- may literally be --self or --help.
 	for i := 1; i < len(argv); i++ {
@@ -120,6 +121,20 @@ func ParseBotRuntime(argv []string) (BotCommand, error) {
 	if c.Help {
 		return c, nil
 	}
+	if control && !c.Self && !c.JSON {
+		switch c.Action {
+		case "pin", "unpin":
+			if len(pos) != 1 || pos[0] == "" {
+				return c, fmt.Errorf("bot %s: expected one Bot name", c.Action)
+			}
+		case "primary":
+			if len(pos) != 0 && (len(pos) != 2 || pos[0] != "set" || pos[1] == "") {
+				return c, errors.New("bot primary: expected no arguments or set NAME")
+			}
+		}
+		c.Offline = true
+		return c, nil
+	}
 	if !c.Self {
 		return c, errors.New("bot: runtime commands require --self from an active XBot shell")
 	}
@@ -135,7 +150,12 @@ func ParseBotRuntime(argv []string) (BotCommand, error) {
 		if len(pos) == 1 {
 			c.Name = pos[0]
 		}
-	case "new", "delete":
+	case "primary":
+		if len(pos) != 2 || pos[0] != "set" || pos[1] == "" {
+			return c, errors.New("bot primary: runtime requires set NAME")
+		}
+		c.Name = pos[1]
+	case "new", "delete", "pin", "unpin":
 		if len(pos) != 1 || pos[0] == "" {
 			return c, fmt.Errorf("bot %s: expected one Bot name", c.Action)
 		}

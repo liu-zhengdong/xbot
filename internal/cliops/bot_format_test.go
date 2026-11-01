@@ -53,6 +53,30 @@ func TestBotFormatInfoExactTypedFields(t *testing.T) {
 	}
 }
 
+func TestBotControlFormatReceipts(t *testing.T) {
+	pin := BotPinReply{Name: "ada", Pinned: false, Applied: false, Stage: "config", Error: "save failed"}
+	if got := FormatBotPin(pin); got != "name: ada\npinned: false\napplied: false\nstage: config\nerror: save failed\n" {
+		t.Fatalf("pin=%q", got)
+	}
+	raw, _ := json.Marshal(pin)
+	if string(raw) != `{"name":"ada","pinned":false,"applied":false,"stage":"config","error":"save failed"}` {
+		t.Fatalf("pin JSON=%s", raw)
+	}
+	primary := BotPrimaryReply{Name: "ada", Primary: "ada", Applied: true, Stage: "pin", Error: "pin failed"}
+	if got := FormatBotPrimary(primary); got != "name: ada\nprimary: ada\napplied: true\nstage: pin\nerror: pin failed\n" {
+		t.Fatalf("primary=%q", got)
+	}
+	raw, _ = json.Marshal(primary)
+	if string(raw) != `{"name":"ada","primary":"ada","applied":true,"stage":"pin","error":"pin failed"}` {
+		t.Fatalf("primary JSON=%s", raw)
+	}
+	uncommitted := BotPrimaryReply{Name: "ada", Stage: "primary"}
+	raw, _ = json.Marshal(uncommitted)
+	if string(raw) != `{"name":"ada","applied":false,"stage":"primary"}` || FormatBotPrimary(uncommitted) != "name: ada\napplied: false\nstage: primary\n" {
+		t.Fatalf("uncommitted JSON=%s human=%q", raw, FormatBotPrimary(uncommitted))
+	}
+}
+
 func TestBotFormatWriteReceipts(t *testing.T) {
 	if got := FormatBotCreate(BotCreateReply{Name: "ada", Applied: true, Stage: "persona", Error: "too large"}); got != "name: ada\napplied: true\nstage: persona\nerror: too large\n" {
 		t.Fatalf("create=%q", got)

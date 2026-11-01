@@ -97,6 +97,52 @@ func serveBot(w http.ResponseWriter, r *http.Request, handlers *BotHandlers) {
 			value.Error = err.Error()
 		}
 		reply, problem = value, err
+	case "pin", "primary":
+		action := strings.TrimPrefix(r.URL.Path, "/v1/bot/")
+		if r.Method != http.MethodPut {
+			fail(http.StatusMethodNotAllowed, "bot: "+action+" requires PUT")
+			return
+		}
+		if len(r.URL.RawQuery) > BotMaxRequest {
+			fail(http.StatusBadRequest, "bot: request exceeds 1 MiB")
+			return
+		}
+		query, err := url.ParseQuery(r.URL.RawQuery)
+		if err != nil || len(query["name"]) != 1 || query.Get("name") == "" {
+			fail(http.StatusBadRequest, "bot: name requires one value")
+			return
+		}
+		for key := range query {
+			if key != "name" && !(action == "pin" && key == "pinned") {
+				fail(http.StatusBadRequest, "bot: unknown query field "+key)
+				return
+			}
+		}
+		if action == "pin" {
+			if len(query["pinned"]) != 1 || (query.Get("pinned") != "true" && query.Get("pinned") != "false") {
+				fail(http.StatusBadRequest, "bot: pinned requires one literal true or false")
+				return
+			}
+			if handlers.Pin == nil {
+				fail(http.StatusNotFound, "bot: pin unavailable")
+				return
+			}
+			value, err := handlers.Pin(ctx, BotPin{Name: query.Get("name"), Pinned: query.Get("pinned") == "true"})
+			if err != nil {
+				value.Error = err.Error()
+			}
+			reply, problem = value, err
+		} else {
+			if handlers.Primary == nil {
+				fail(http.StatusNotFound, "bot: primary unavailable")
+				return
+			}
+			value, err := handlers.Primary(ctx, query.Get("name"))
+			if err != nil {
+				value.Error = err.Error()
+			}
+			reply, problem = value, err
+		}
 	default:
 		fail(http.StatusNotFound, "bot: unknown action")
 		return
@@ -169,6 +215,25 @@ func CallBotCreate(ctx context.Context, endpoint, root string, input BotCreate) 
 func CallBotDelete(ctx context.Context, endpoint, root, callID, name string) (BotDeleteReply, error) {
 	var result BotDeleteReply
 	err := callBot(ctx, endpoint, root, callID, http.MethodDelete, "delete?name="+url.QueryEscape(name), nil, &result)
+	if result.Error != "" {
+		err = errors.New(result.Error)
+	}
+	return result, err
+}
+
+func CallBotPin(ctx context.Context, endpoint, root string, input BotPin) (BotPinReply, error) {
+	var result BotPinReply
+	query := url.Values{"name": {input.Name}, "pinned": {strconv.FormatBool(input.Pinned)}}
+	err := callBot(ctx, endpoint, root, "", http.MethodPut, "pin?"+query.Encode(), nil, &result)
+	if result.Error != "" {
+		err = errors.New(result.Error)
+	}
+	return result, err
+}
+
+func CallBotPrimary(ctx context.Context, endpoint, root, name string) (BotPrimaryReply, error) {
+	var result BotPrimaryReply
+	err := callBot(ctx, endpoint, root, "", http.MethodPut, "primary?name="+url.QueryEscape(name), nil, &result)
 	if result.Error != "" {
 		err = errors.New(result.Error)
 	}
