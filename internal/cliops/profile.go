@@ -174,6 +174,13 @@ func Start(root string, handlers Handlers) (*Server, error) {
 	mux.HandleFunc("/v1/routine/", func(w http.ResponseWriter, r *http.Request) {
 		serveRoutine(w, r, handlers.Routines)
 	})
+	mux.HandleFunc("/v1/bot/fork", func(w http.ResponseWriter, r *http.Request) {
+		var fork func(context.Context, BotFork) (BotForkReply, error)
+		if handlers.Bots != nil {
+			fork = handlers.Bots.Fork
+		}
+		serveBotFork(w, r, fork)
+	})
 	mux.HandleFunc("/v1/bot/", func(w http.ResponseWriter, r *http.Request) {
 		serveBot(w, r, handlers.Bots)
 	})

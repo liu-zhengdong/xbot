@@ -1,14 +1,14 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0057 Bot 交接派生沿原 source Fork 进入 CLI
 
 ## 问题与调用方
 
-message_bot已TRUE main98fba5e8，本刀仅迁fork_bot{name,role,group?}，不是bg_插话分支管理。[母dev](../dev/cli-platform-entry.md#批-bot-fork具体合同待单次窄核)给出具体接口与验收。0057先glob空后建Proposed，产品/测试尚未改。选独立 `"$XBOT_BIN" bot-fork NAME --self (--role TEXT|--role-file FILE|-) [--group NAME] [--json]` 与离线help，旧有效offline `fork SRC NAME --role TEXT [--group NAME]` 完全保留，不引混合arity/flag值dispatcher，不接owner message-SSE/externalAgent send。
+message_bot已TRUE main98fba5e8，本刀仅迁fork_bot{name,role,group?}，不是bg_插话分支管理。[母dev](../dev/cli-platform-entry.md#批-bot-fork具体合同pass实施中)给出具体接口与验收。0057先glob空后建Proposed，产品/测试尚未改。选独立 `"$XBOT_BIN" bot-fork NAME --self (--role TEXT|--role-file FILE|-) [--group NAME] [--json]` 与离线help，旧有效offline `fork SRC NAME --role TEXT [--group NAME]` 完全保留，不引混合arity/flag值dispatcher，不接owner message-SSE/externalAgent send。
 
 ## 两种实际结构
 

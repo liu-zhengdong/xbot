@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork具体合同待单次窄核，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork合同fecc单次SHAPE PASS，正在实施，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -603,9 +603,9 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 
 本母路线继续保fork/其它尚未迁native与Event/Link入站装配；不因单聊已迁就删其它Emitter/Messenger/SendPolicy/DeliverDraft。下一刀bot-fork以真实main98fba5e8为基线按下节另定具体合同，结构通过前不开实现；owner message-SSE/externalAgent send仍用户独立设计边界。
 
-## 批 bot-fork：具体合同待单次窄核
+## 批 bot-fork：具体合同PASS，实施中
 
-L档，仅迁fork_bot{name,role,group?}持久新Bot交接派生，不是bg_插话分支管理。基线TRUE main98fba5e8，0057先glob空后新建 [Proposed ADR0057](../adr/0057-bot-fork-runtime-cli.md)。当前ONLY具体合同，不产品/测试/先猜caller红；旧Message6/Group5/Persona4/control4/Bot5/profile5/routine6/skills/MCP与原三审批证据封存不重，旧fork mixed上刀只迁message不冒本刀已验。
+L档，仅迁fork_bot{name,role,group?}持久新Bot交接派生，不是bg_插话分支管理。基线TRUE main98fba5e8，0057先glob空后新建 [Proposed ADR0057](../adr/0057-bot-fork-runtime-cli.md)。fecc具体合同已reviewer24 SINGLE ACTUAL CONCRETE SHAPE PASS，[0057](../adr/0057-bot-fork-runtime-cli.md) Accepted；purebd9587dc/fecc/fullvalidation69968a75真实NativeShell entry unknown command红.93s/package2.134s封。先compiled非空LLMsource链交独立一次，再同cutlatepartial/currentRename/退唯一native，不等首反馈停；旧Message6/Group5/Persona4/control4/Bot5/profile5/routine6/skills/MCP与原三审批证据封存不重，旧fork mixed上刀只迁message不冒本刀已验。
 
 ### 实际caller、现接口与两种结构
 

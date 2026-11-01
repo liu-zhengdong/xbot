@@ -116,6 +116,7 @@ func (k *Kernel) BotHandlers() *cliops.BotHandlers {
 		})
 	}
 	return &cliops.BotHandlers{
+		Fork:    k.botForkRuntime,
 		Persona: k.personaBotRuntime,
 		Pin:     k.pinBotRuntime,
 		Primary: k.primaryBotRuntime,
