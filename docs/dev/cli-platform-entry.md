@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过，父集成待收，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall具体合同待单次窄核，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -609,11 +609,63 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 
 本刀仅退fork_bot与确已空的peers工具注册组，保Link/Event其它职责、oldnative历史与bg_插话分支修复；原Memory/Compactor/ctx resolver、oldoffline/WebFork与OwnerSSE边界不扩。source997冻结，父已收最终docs与纯独立commits集成本地main，复用原七有效phase未重已绿首链、六后项或旧族。其余native/platform/EventLink沿未完成路线继续，下一族仅以下经历record/search具体合同，未开代码。
 
-## 批 experience：经历两操作已提炼，待父集成
+## 批 experience：经历两操作已提炼并合maind632e7a3
 
-仅经历record/search两门；三项所测独立端到端及全部必要SHAPE/增量静态通过，父集成待收、未main/未主人日用。协议已提炼 [API](../API.md#经历记录与检索运行时-cli)、[内核](../atlas/kernel.md#经历记录与检索实例入口)、[记忆](../atlas/memory.md)，[ADR0058](../adr/0058-experience-runtime-cli.md) Accepted；精确source/validation phase、私夹具失败因果与作者证据留 [MILESTONES](../MILESTONES.md)，不在母路线复抄参数/原cap/partial字段。
+仅经历record/search两门；三项所测独立端到端及全部必要SHAPE/增量静态通过，已合maind632e7a372b0418de592e89c4b51dd5045596782、未主人日用。协议已提炼 [API](../API.md#经历记录与检索运行时-cli)、[内核](../atlas/kernel.md#经历记录与检索实例入口)、[记忆](../atlas/memory.md)，[ADR0058](../adr/0058-experience-runtime-cli.md) Accepted；精确source/validation phase、私夹具失败因果与作者证据留 [MILESTONES](../MILESTONES.md)，不在母路线复抄参数/原cap/partial字段。
 
-原Record/Search/SQLite、操作时range/Env/Web/detail与忽略ctx语义保持，不强CallID/owner-personproject资格、不新MemorySession/SQL进度事务框架。仅两wrapper/Known/index/guide退，memory组recall、context四工具及Link/Event装配仍后刀；source815冻，e506仅必要liveblurb一行，父收doc与pure独立commits后整合，不重三已绿或旧族。下一Recall必须等TRUE Experience main后才另定具体合同，不在此预写0059/开第二代码面。
+原Record/Search/SQLite、操作时range/Env/Web/detail与忽略ctx语义保持，不强CallID/owner-personproject资格、不新MemorySession/SQL进度事务框架。仅两wrapper/Known/index/guide退，memory组recall、context四工具及Link/Event装配仍后刀；source815冻，e506仅必要liveblurb一行，父已收doc与pure独立commits整合，复用原三有效phase未重三已绿或旧族。下一Recall仅下方具体合同，未开代码。
+
+## 批 memory-recall：具体合同待单次窄核
+
+L档，TRUE Experience maind632e7a3后仅迁recall一个能力；0059先glob空后建 [Proposed ADR0059](../adr/0059-memory-recall-runtime-cli.md)。当前only两docs，不code/test/猜入口红。Experience3/Fork7/Message6/Group5/Persona-control-Bot-profile-routine-skillsMCP/三旧审批有效证据封，不重整旧Memory/Context/文件守护，不借本刀改person/projectscope或新服务。
+
+### Caller与实际两种形状
+
+```sh
+"$XBOT_BIN" memory-recall --self [--query TEXT|--query-file FILE|-] [--scope bot|person] [--since YYYY-MM-DD] [--json]
+cat FILE | "$XBOT_BIN" memory-recall --self --query-file - [--scope bot|person] [--since YYYY-MM-DD] [--json]
+"$XBOT_BIN" memory-recall --help
+```
+
+cmd实际grep无旧recall入口，memory-recall独立noun不破现CLI/OwnerSSE；eval同名是场景名但其driver实际产recall，另见消费节不删case。纯ParseMemoryRecallRuntime(args不含noun)→{Query,QueryFile,Scope,Since,Self,JSON,Help}：query/query-file至多一、query可以未给/空保原NoTokensNoMatches，不加非空领域前提；无位置/alias、重复未知flag/双input/缺self拒，按arity消费literal --help/--，help离线，早Root/default/legacy分流。scope/since原字串不Trim/casefold；query文件或stdin raw max+1与最终escaped typedJSON各≤1MiB，原无独立querycap不加一层。source仅原endpoint/规范Root，XBOT_BOT诊断，失败不Load新K。
+
+A离线globalMemory.Store.Recall只有结构化事实Recall/无人物原ctx，不等原递归全文行BM25。B单个现Handlers.Recall direct callback→原Kernel/原runtimeSourceCall preparedctx→私有唯一扫描器，选B；不自建RecallHandlers单服务/MemoryService/PersonSelectorCache/源登记ctx表/授权框架。与上一经历忽略ctx不同，本刀确需原人物上下文：同listener live Local/running/unfinished Shell CallID+明确非nil frozen turnKey，按原runtimeSourceCall返回prepared逐值保。禁止runtimeApprovalSource owner重绑（child会nil并导致turnFor退latest）、HTTPctx/curTurn/primary或approver/card前提；Readonly/Confirmfalse/原always-allow保持。
+
+### 单callback协议、完整语义回包
+
+```go
+type MemoryRecall struct { Query string `json:"query"`; Scope string `json:"scope,omitempty"`; Since string `json:"since,omitempty"` }
+type MemoryRecallReply struct { Text string `json:"text,omitempty"`; File string `json:"file,omitempty"`; Access string `json:"access,omitempty"`; Bytes int64 `json:"bytes,omitempty"`; Error string `json:"error,omitempty"` }
+// ADD to existing cliops.Handlers ONLY:
+// Recall func(context.Context,MemoryRecall)(MemoryRecallReply,error) = k.memoryRecallRuntime
+reply, err := cliops.CallMemoryRecall(ctx,endpoint,root,originalCallID,cliops.MemoryRecall{Query:"launch code",Scope:"bot"})
+// same Kernel, not another MemoryStore service:
+// k.recall(prepared,recallInput{Query:in.Query,Scope:in.Scope,Since:in.Since})
+```
+
+POST `/v1/memory/recall` 单对象{query,scope?,since?}，单对象unknown/nonobject/query/EOF拒，query字串缺省空遵原Run（原schema必填不借新typed加领域非空许可）。原loopback/Host/browser/root guard，request1M/HTTP64K，required CallID只作原执行上下文关联不许可新owner/person范围。不增加SourceCallID helper变更；若原resolver0改，旧三exact审批群证据复用不跑。
+
+原Run无selfRedact/无total-outputcap，原Agent外层RedactMaxResult在新source回包处以原k.redactor/held-resources/secret scrub脱敏后保完整Text，不先缩成32K原文或byte200。无typedHitRows/Count从string反解析。共享准确纯FormatMemoryRecall与JSON含NL各≤Shell32KiB，必要时既有work.WriteResult当前workspace0600/≤20MiB保存完整该20hitText JSON、File/Access=local/Bytes实际；先预检32hex文件名metadata两格式，短currentIO以当前root/name取workspace，不外取旧名迟写。完整指的是原20hit投影，不是4MiB扫描全文件导出，不裁records/抬cap/新artifact服务；FS错非0无假File，CLI先print事实再错误退出。无额外Web行、Env/Inbox/waker/MemoryOwnReceipt/假toolpair或ordinaryNote。
+
+### 原人物/目录语义与rename接缝
+
+READ actual recall.go1-192/Recall FS两test137、memoryPersonOf757/ownerPerson770、turnFor261、runtimeSourceCall54/approval85、withCurrentIO30、fsutil.flock42、breaker245/DirectXBotArgs7、publicmock106/154、evalScript170/recall_result_test29/grade39、manualMemory8。原recallTool.Run仅就近提 `recallInput{Query,Scope,Since}` +私有 `k.recall(ctx,in)` 唯一扫描主体；原wrapper首candidate薄适配，末整壳退，不另造导入MemoryStore.Recall或同步两份scanner。
+
+原scope只精确""/bot/person，空scope按bot再person共同2000files/4MiB预算，bot用尽则person不扫，非默认bot；query只BM25正文行非path/scope。since原time.ParseInLocation YYYY-MM-DD/time.Local（进程zone，不profilezone），memory.md原dated条目/log/*.md按行日期，自由文件按mtime。人物由原MemoryPersonOf(frozenTurn)：KindBot/GroupFIRST返回空；SourceSubagent或turnSender sa_前缀用父BOT首非空Owner；其它turnSender；trusted不是人物资格。真实Local child marker只是policy，不等于KindBot/Subagent或人物空/首Owner，实际prepared字段观察后按原helper期望。保原parentOwner分支、不改全局selector；不加--person名字/project等任意范围。
+
+原canonical Root EvalSymlinks、scopeDir祖先resolved==dir、跳symlink/.bak/非regular、scope .lock、WalkDir顺序/打开后Lstat与SameFile inode核、.md/.txt、去空/头/暂无行均保。原最多2000files/全4MiB/每文件256KiB；只global文件字节cap置incomplete，不以单file截断设不完整。BM25所有hit取前20，各正文200 Unicode RUNES加…（非200bytes），path:line/scope/剩余N与incomplete/no matches原完整词法排名保。
+
+必须封真实rename接缝：原currentName取path→EvalScopeDir→fsutil.Lock的MkdirAll之间可能改名，后会重建旧BotDir。本刀在一次现currentIO回调内，直接currentb.Root/Name完成这次所有currentBot文件访问及原scope锁/Walk读取，不再nested currentName/currentStore-helper；PersonDir本身不随Botrename搬。原MemoryPersonOf用冻结turn/原parentOwner，BM25与format可读完后route外；无模型网络。原ctx取消仅Walk callback/锁等非即时，不新deadline/cancellableLock/rareCAS/rename事务或新全局锁机制；按现refIO边界保护本地boundedFS读取。
+
+### 实际消费者与怎样算对
+
+无WebRecall结果parser/Environment或新Inbox消费，命中后现read_file读取原文件/完整artifact。必须同步manualMemory、live NameMemory（defaultbot是写默认，不改成空recall默认）、standingrules等实际旧名提示。breaker原looseCall召回较宽循环阈值要承接真实规范Shell调用：复用DirectXBotArgs用literal `"$XBOT_BIN"`目标及本parser匹配self/help，在旧looseShell截首命令前识别，不靠Contains词；仅阈值、不改权限或给所有平台新宽限，旧native历史键兼容留。字段中的literalhelp不被当新授权。
+
+PUBLIC mockopenai RECALL_PERSON一个native producer与sawRecall进度门、eval/scripts memory-recall真实driver是必要窄迁：实际sh→规范memory-recall query/scope（人格ctx仍真source），进度识别该调用不任意Shell。eval/recall_result_test与grade原要求实际工具结果同时含路径与真实violet正文，不能只改ToolUse("recall")为anyShell；该闭合场景识别规范CLI调用及其配对result（保持query/scope与真正文/path要求），必要时在该case就近判定，旧native历史读取兼容、不添general capabilityEvent registry/改场景名/整wholeeval。先核这些文件无他owner修改再迁。旧检索Folder/Isolation budgets、current路径/MemoryPrompt/Organs/registry/links实际失效依赖按原业务窄迁到唯一scanner或真实source，不能挂过期断言。
+
+SINGLE实际SHAPE后才0d固定最窄真实caller入口红；首compiled EARLY真实owner输入/人物目录+Bot自由与dated文件→实际NativeShell live source prepared人物→原scanner→完整path:line正文→read_file全文，不假Kernelctx/手写Owner行/新prod flags。Scope空UNION/bot/person/人物KindBotGroup无person、time.Local since/自由mtime/原命中20-200runes和剩余/4MiB-2000caps、控制中文/深路径输出双32K必要artifact/完整redaction，另真实KindBot Inbox/noPerson同cut继续。首不借经历NoCallID门/空Owner默认制造假上下文。
+
+作者ctx单位：u1/u2另latest轮次不改变原source人物、真实Localchild按实际prepared而非reviewpolicyPerson推断、SA首Owner/KindBotGroup优先、nilapprover、missing/finished/foreign/nonShell/cancel与缺frozen拒；这些不冒独立。真实scopeLock阻塞扫描并取得current route后，profile rename按现IO顺序等待、释放后完整扫描/移动与artifact归当前workspace、旧BOTS+WORK不复活；无测试专用setter/网络持锁/CAS。既有两个dateFS锁/symlink/inode/budget最小affected once，publicmock/eval仅actual新caller相关case一次，其它旧族封。只退recall wrapper/Known/index与memory工具注册组iff确空，不删Link/Event/Memory器官/4KiB文件守卫/context四门/detail。当前only两docs，产品/编译/业务/audit/0059Accepted/入口红均未run，Root4USERdocs/ownerSSE/guard/main/push日用不动。
 
 ## 还没做的
 
@@ -621,7 +673,7 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 - 批 0 的后续实际操作及入站依赖清单、尚未迁族的 research 业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已提炼 atlas，固定五项独立所测端到端按各自精确版本通过，证据见 MILESTONES；原 chat loop 下一输入/Timer handle 及其 recover、回放、通知实际消费者也已以局部红绿和 reviewer24 至 `63762ae5` 连续增量 PASS 收口，已合入本地 main，尚未日用；合并时与主线持久选择的交叠补单项真实浏览器红绿，不重跑固定五项。已通过的普通字段、avatar_seed、MCP 和本刀五项不重复整批验收，母路线其它族继续在本 dev 中推进。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
-- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search三项所测端到端通过待父集成，连接器及剩余目录管理等平台能力继续逐族迁移。
+- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search已合maind632e7a3；memory-recall仅上述具体合同，连接器及剩余目录管理等平台能力继续逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。
 - 各批独立冒烟、相关旅程回归、性能与上下文收益测量、主人日用验收。
