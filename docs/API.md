@@ -200,6 +200,52 @@ handoff 在 source 的短 current IO 内冻结 State migrate、未覆盖行的 p
 
 短回执不回显职责/摘要全文、不另存正文 artifact。准确共享 `FormatBotFork` 与整 JSON 含 newline 各须≤原 Shell 32 KiB，HTTP 硬限 64 KiB；显示问题保实际创建/确认/不确定记忆/群事实。CLI 先输出 partial 回执再非 0，保留回执，勿盲重跑。research 仅同窄 lexer/parser 识别的 bot-fork help，dev/general 沿原 source Shell。`fork_bot` wrapper/Known/schema/index 与已空的 peers 工具注册组已退，其余 Link/Event 导线、旧 native 调用记录和后台 ForkKindStart/End 修复保持；无专用 fork 历史 parser。旧离线/Web `Fork` 仍是错误时空结果的薄兼容 adapter，不提供本运行时 typed partial。见 [内核](atlas/kernel.md#bot-交接派生与原-source-模型链)、[多 Bot](atlas/multibot.md#bot-交接派生)及 [ADR0057](adr/0057-bot-fork-runtime-cli.md)。
 
+## 经历记录与检索运行时 CLI
+
+```sh
+"$XBOT_BIN" experience record --self (--summary TEXT|--summary-file FILE|-) [--focus TEXT|--focus-file FILE|-] [--from N] [--to N] [--json]
+"$XBOT_BIN" experience search --self [--query TEXT|--query-file FILE|-] [--limit N] [--json]
+"$XBOT_BIN" experience --help
+"$XBOT_BIN" experience record --help
+"$XBOT_BIN" experience search --help
+```
+
+`record` 的 summary/summary-file 恰一，focus/focus-file 至多一，两组可任意搭配；`search` 的 query/query-file 至多一。`-` 表示 stdin，一次最多供一个字段。纯 `ParseExperienceRuntime` 按 flag arity 消费值，值中的字面 `--help`、`--` 不当帮助或分隔符；没有位置参数、别名或 `-h`，拒绝未知/重复 flag、错误整数语法和多字段 stdin。noun 与 action 的 help 均可离线使用；main 在 resolveRoot/default/legacy 初始化前分流。每份 raw 输入以 max+1 读取，连同最终转义 typed JSON 请求各限 1 MiB，不先截断再 trim；原 Shell 命令仍限 16 KiB，大输入用文件或 stdin。
+
+self 由原 source 的 `XBOT_ENDPOINT`、规范 `XBOT_ROOT` 与 Resources ref 识别，显式 `--root` 必须相同；旧 `XBOT_BOT` 仅诊断，改名后仍沿同 endpoint。缺 endpoint、root 冲突或运行失败明确非 0。所有 source Bot（含非 primary）均可用，不附加主人、person 或 project scope 资格。两原语忽略调用 context，不要求 `XBOT_CALL_ID`，客户端也不发送关联 header；缺失或过期 CallID 不改变领域许可，header 不是身份或授权。Normal record 不调用 approval intent、不加确认卡、不要求 approver，承载 Shell 的原 gate 独立。research 只允许同窄 POSIX lexer/parser 识别的 help 和 `experience search --self`，record 在解释器前拒绝；dev/general 沿原 source Shell。
+
+原 `Handlers.Experiences` 挂两个 typed callback，直接调用同 Kernel 的 `RecordExperience` / `SearchExperiences`；不新建 Kernel、MemorySession 服务、source registry 或事务框架。原 loopback listener 提供两个 POST：
+
+| 路由 | JSON DTO |
+|---|---|
+| `/v1/experience/record` | `cliops.ExperienceRecord{summary,focus?,from?,to?}` |
+| `/v1/experience/search` | `cliops.ExperienceSearch{query?,limit?}` |
+
+两路均只收单 JSON 对象，拒 query、未知字段、非对象与 EOF 前尾随内容；复用原 loopback/Host/browser/root guard，请求最多 1 MiB，HTTP 回包硬限 64 KiB。DTO 的 summary/focus/query 为 string，from/to/limit 为 int；文件路径、scope、CallID 不进入 DTO。
+
+summary 沿原领域 `TrimSpace` 后非空且≤2 KiB；focus 只 trim，没有独立领域 cap。query 保原输入，仅以 trim 后是否为空选择最新列表分支，非空原文送 BM25，不复制 Web 的 512 字节查询限制。limit 省略、≤0 或>8 均取原默认 8，CLI 接受任何语法有效的 int 后交原方法处理。
+
+from/to=0 使用操作当时的 transcript：to 取 currentCount，from 在截至 to 的最近 200 行里倒找最新非 Internal、非 ForkMark 的 RoleUser，找不到取 to；空 transcript 可 0/0。不限定新的 Owner origin，也不用 prepared turn 的 seq。显式整数仍沿原范围检查，保留旧负 to 宽容和 SQLite nullSeq 的≤0→NULL 语义。segment 由该范围前 200 行生成，每行正文截 160 字节、合计约 600 字节，跳 Internal/ForkMark/Tool result；保事件围栏内正文及 `user:` / `assistant:` / `[tools: names]` 词法，不调模型。
+
+记录回执为 `cliops.ExperienceRecordReply`：
+
+| JSON 字段 | 含义 |
+|---|---|
+| `id?` | 原返回 Entry 的实际 ID，0 省略 |
+| `from` / `to` | 原返回 Entry 的实际范围，含 0，始终输出 |
+| `recorded` | 必需字段，Go 为 `*bool`；仅原方法返回 nil 时为 true，任何 error 为 null（未确认） |
+| `error?` | 有界脱敏错误 |
+
+即使原方法出错也保留其返回 Entry 的实际 ID/range；`recorded:null` 不证明数据库或行没有副作用。原 Store.Add 只有一次 INSERT，再取 LastInsertId，后一步出错前可能已插入。回执不回显 summary/focus/segment，不增加 stage、stat/错误字符串猜提交、StoreWithResult、去重、回滚或自动重试。
+
+检索回执为 `cliops.ExperienceSearchReply{text?,file?,access?,bytes?,error?}`，没有 rows/count。text 是原 `SearchExperiences` 的完整语义输出：空 query 按最新 ID 列表，非空在最近 2000 条的 summary/focus/segment 上 BM25，最多 8 条；原本地时间、seq 与 detail 提示保持。原 `presentHistory` 先脱敏再按 6 KiB 裁切，无匹配仍为 `no matching experiences`。它不是原始 Entry 或 Web 全库字面分页；产物也不会补回原 6 KiB 已裁掉的记录。
+
+source 与 CLI 共用准确 `FormatExperienceRecord` / `FormatExperienceSearch`，整 JSON 含 newline 与实际 human 输出分别须≤原 Shell 32 KiB。6 KiB 文本含 HTML/控制字符时，JSON 转义可超过 32 KiB，即使 human 仍能放下。任一格式超限，沿原 `work.WriteResult` 将完整该语义 Text 回包 JSON 含 newline 写入当前 source 工作区的 `results/<32hex>.json`（0600，最多 20 MiB），省略 inline text，回 `file/access:"local"/bytes`，bytes 为实际文件字节数。写前按 32hex 文件名长度预留 metadata，检查引用的 JSONNL 和 human 两格式；失败非 0、不返回虚假 file，不截 records 或提高 Shell cap。
+
+callback 持原 operations lease，不外套 currentIO 调用内部已持 route 的 Record/Search；只有产物实际写入在短 currentIO 里取当前 source name/root 和重基后的原 WorkDir，未配置时取当前 Bot 默认工作区，不拿旧目录迟写。领域错误沿原 `k.redactor()` 脱敏，检索结果继续遮盖 held secrets 与 Resources secret；仅显示 error 可缩短，保留实际 ACK/产物事实。CLI 先输出收到的事实回执再非 0，客户端不展开产物、不代理/重定向或自动重试。
+
+SQLite 七列、原 Web 字段与全库字面分页、提纲阅读投影和原始 segment 展示保持；缺库读取经 exists 不建库，已有库 reader 的原 open 仍可能 CREATE TABLE IF NOT EXISTS/WAL，不能承诺全 root 零写。下一自然环境采样仍报 experience count/latest ID+200 字节摘要，读错保已发布值；不额外 Inbox/waker、MemoryOwnReceipt、假 native ToolCall 配对或普通事实账。`detail` 仍是原 context 工具，按 raw seq 或 experience ID+0 起下标读真正完整 blob（64 KiB），不是新 CLI 子命令。两旧 `experience_record` / `experience_search` wrapper、Known、schema、index 与执行指引已退，历史 native 字面记录保持；memory 组仍有 recall，Context 四工具和原 Link.Tools 空壳保留。存储与消费者见 [记忆](atlas/memory.md#怎么运转)，运行装配见 [内核](atlas/kernel.md#经历记录与检索实例入口)。
+
 ## Bot 列表与创建
 
 `GET /api/bots` 返回当前 owner 的 Bot。顺序是置顶在前，组内按名字。主 Bot 会被 `SetPrimary` 置顶，所以通常排在置顶组里。

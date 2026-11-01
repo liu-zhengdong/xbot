@@ -30,7 +30,7 @@ const (
 
 // ExperienceRule nudges the bot to keep its own log of what happened. It is a
 // standing rule, not a per-message reminder.
-const ExperienceRule = "一段工作或对话告一段落时（做了决定、修好了问题、学到了东西、用户有了反应），调用 experience_record，用一两句话记下发生了什么，像给同事留张便条；闲聊不记。之后用 experience_search 找回；detail 能读出一条 transcript 消息的全文。"
+const ExperienceRule = "一段工作或对话告一段落时（做了决定、修好了问题、学到了东西、用户有了反应），用 Shell 中 XBOT_BIN 的 experience record --self --summary TEXT，以一两句话记下发生了什么，像给同事留张便条；闲聊不记。之后用 experience search --self --query TEXT 找回，大结果读完整 file；detail 仍能读一条 transcript 消息的全文。"
 
 func (k *Kernel) withExperienceIO(fn func(experience.Store) error) error {
 	return k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
@@ -268,65 +268,6 @@ func (k *Kernel) Detail(seq int, experienceID int64) (string, error) {
 		body += "\n" + blob
 	}
 	return k.presentHistory(body, k.currentName(), false, detailCap), nil
-}
-
-type experienceRecordTool struct{ k *Kernel }
-
-func (experienceRecordTool) Name() string { return "experience_record" }
-func (experienceRecordTool) Description() string {
-	return "Record an experience: a sentence or two on what just happened (a decision, a fix, a lesson, how the owner reacted). The kernel stamps the time and anchors it to the transcript, by default from the latest owner message to now. Pass from/to to anchor another range."
-}
-func (experienceRecordTool) Parameters() any {
-	return schema(map[string]any{
-		"summary": stringProp("what happened, in a sentence or two"),
-		"focus":   stringProp("optional topic or project this is about"),
-		"from":    intProp("optional first transcript sequence number"),
-		"to":      intProp("optional last transcript sequence number"),
-	}, []string{"summary"})
-}
-func (experienceRecordTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
-func (t experienceRecordTool) Run(_ context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		Summary string `json:"summary"`
-		Focus   string `json:"focus"`
-		From    int    `json:"from"`
-		To      int    `json:"to"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	e, err := t.k.RecordExperience(in.Summary, in.Focus, in.From, in.To)
-	if err != nil {
-		return "", err
-	}
-	if e.To == 0 {
-		return fmt.Sprintf("recorded experience #%d", e.ID), nil
-	}
-	return fmt.Sprintf("recorded experience #%d (seq %d-%d)", e.ID, e.From, e.To), nil
-}
-
-type experienceSearchTool struct{ k *Kernel }
-
-func (experienceSearchTool) Name() string { return "experience_search" }
-func (experienceSearchTool) Description() string {
-	return "Search recorded experiences. Each hit gives its summary and a short outline of the transcript it covers, without tool output. Omit query for the newest. Use detail to read one message in full."
-}
-func (experienceSearchTool) Parameters() any {
-	return schema(map[string]any{
-		"query": stringProp("optional keywords; omit to list the newest"),
-		"limit": intProp("optional, at most 8"),
-	}, nil)
-}
-func (experienceSearchTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
-func (t experienceSearchTool) Run(_ context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		Query string `json:"query"`
-		Limit int    `json:"limit"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	return t.k.SearchExperiences(in.Query, in.Limit)
 }
 
 type detailTool struct{ k *Kernel }

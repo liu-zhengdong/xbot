@@ -190,6 +190,12 @@ func Start(root string, handlers Handlers) (*Server, error) {
 	mux.HandleFunc("/v1/peer/message", func(w http.ResponseWriter, r *http.Request) {
 		servePeerMessage(w, r, handlers.PeerMessage)
 	})
+	mux.HandleFunc("/v1/experience/record", func(w http.ResponseWriter, r *http.Request) {
+		serveExperienceRecord(w, r, handlers.Experiences)
+	})
+	mux.HandleFunc("/v1/experience/search", func(w http.ResponseWriter, r *http.Request) {
+		serveExperienceSearch(w, r, handlers.Experiences)
+	})
 	guarded := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fail := func(code int, message string) {
 			w.Header().Set("Content-Type", "application/json")

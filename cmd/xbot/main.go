@@ -30,6 +30,9 @@ Usage:
   xbot [--root DIR] bot-fork NAME --self (--role TEXT | --role-file FILE|-) [--group NAME] [--json]
   xbot [--root DIR] delete <name>
   xbot [--root DIR] list
+  xbot experience --help
+  xbot [--root DIR] experience record --self (--summary TEXT | --summary-file FILE|-) [--focus TEXT | --focus-file FILE|-] [--from N] [--to N] [--json]
+  xbot [--root DIR] experience search --self [--query TEXT | --query-file FILE|-] [--limit N] [--json]
   xbot peer-message --help
   xbot [--root DIR] peer-message TARGET --self (--text TEXT | --file FILE|-) [--json]
   xbot chat-group --help
@@ -197,6 +200,9 @@ func run(argv []string) error {
 	}
 	if err != nil {
 		return err
+	}
+	if len(rest) > 0 && rest[0] == "experience" {
+		return cmdExperienceRuntime(root, len(argv) > len(rest), rest[1:])
 	}
 	if len(rest) > 0 && rest[0] == "bot-fork" {
 		return cmdBotForkRuntime(root, len(argv) > len(rest), rest[1:])
