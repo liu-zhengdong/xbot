@@ -402,6 +402,9 @@ func (b *Bot) readAvatar() (cfg Config, data []byte, mime string, err error) {
 		if err := json.Unmarshal(raw, &cfg); err != nil {
 			return err
 		}
+		if cfg.Name == "" {
+			cfg.Name = b.Name()
+		}
 		if cfg.Avatar == "" {
 			cfg.Avatar = AvatarGenerated
 		}

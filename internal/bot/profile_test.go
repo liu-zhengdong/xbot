@@ -252,6 +252,7 @@ func TestOldConfigWithoutAvatar(t *testing.T) {
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		t.Fatal(err)
 	}
+	delete(cfg, "name")
 	delete(cfg, "avatar")
 	delete(cfg, "avatar_seed")
 	raw, err = json.Marshal(cfg)
@@ -267,6 +268,19 @@ func TestOldConfigWithoutAvatar(t *testing.T) {
 	}
 	if av, seed := b.AvatarState(); av != AvatarGenerated || seed != "ada" {
 		t.Fatalf("old config %q %q", av, seed)
+	}
+	tpl, err := ExportTemplate(b)
+	if err != nil || tpl.Name != "ada" || tpl.AvatarSeed != "ada" {
+		t.Fatalf("old config export lost directory identity: %+v %v", tpl, err)
+	}
+	var generatedFor string
+	restore := SetGenerateAvatar(func(name, description string) ([]byte, error) {
+		generatedFor = name
+		return []byte("portrait"), nil
+	})
+	defer restore()
+	if _, _, ok, err := b.AvatarBytes(); err != nil || !ok || generatedFor != "ada" {
+		t.Fatalf("old config generator lost directory identity: %q %v %v", generatedFor, ok, err)
 	}
 	// Its face came from the old name, so a rename must keep that seed.
 	if err := Rename(root, "ada", "ada2"); err != nil {
