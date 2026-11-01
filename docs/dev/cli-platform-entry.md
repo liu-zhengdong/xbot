@@ -415,7 +415,7 @@ profileOperation仍source operations.mu；短route普通更新，改名释放rou
 
 workspace/allowedRoots、scope/命令Prepare+Finalize、父任务cwd从当前r读；只对旧Bot或work前缀内路径用filepath.Rel重基，外部cwd/repo保留。沿原scope/cwd锁在实际读写点重基，不新登记表；文件工具Root、本地进程Start取当前路径短段，Wait/模型/工具循环不持route。source listener lease、调用输出归属、Event ID与Jobs原表不换。
 
-liveTurns只从old bot.Dir找原value且Resources同一才rekey至new；登记key保turn/interject状态。closeInterject用保存key+CompareAndDelete同value，不凭已改k.Bot猜key，rekey/close同interject互斥。全部host/mover锁释放后publish，沿现表真实liveTurn刷新普通profile快照再走原Sink；不拿另一K.operations成环。`kernel.ProfileNotice{Name,PreviousName string}` 是通知值，Kernel/Sink.OnProfile改 `func(ProfileNotice)`，web.replyStream.profile接同值并JSON为name/previous_name；已变化的partial失败也发布。
+liveTurns只从old bot.Dir找原value且Resources同一才rekey至new；登记key保turn/interject状态。closeInterject用保存key+CompareAndDelete同value，不凭已改k.Bot猜key，rekey/close同interject互斥。rekey固定在整段MoveResources/code/exec/Jobs返回（route/storage/owners全部释放）后、publish前；可仍留host锁封名索引，不能在physical的route.Lock内取inter.mu，close用保存key+CompareAndDelete且不复活closed turn，chat/name-only/cold共用该末段。全部host/mover锁释放后publish，沿现表真实liveTurn刷新普通profile快照再走原Sink；不拿另一K.operations成环。`kernel.ProfileNotice{Name,PreviousName string}` 是通知值，Kernel/Sink.OnProfile改 `func(ProfileNotice)`，web.replyStream.profile接同值并JSON为name/previous_name；已变化的partial失败也发布。
 
 ### accepted Local、短存储与冷续
 

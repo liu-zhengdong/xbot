@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-01
 ---
 # 0048 profile 族经当前实例完整更新，原流与任务跟随改名
@@ -30,4 +30,4 @@ A保真实组合语义；B把rename剥成独立动作虽省接口，但削弱旧
 
 ## 怎样算对
 
-最窄真实Shell组合改名后原endpoint第二show/MCP和下一步append认新名；冲突/非法组合零改；大于64KiB有效头像、1MiB边界与clear不经JSON图像；活Local gate跨move父信/结算和冷原ID续聊落新目录，原Job/code/timer/hold不断；浏览器previous_name就地改名保原流与草稿。普通profile/seed及2a既有证据复用，只验新增组合和连续性；独立用例仍由验证方维护。当前是待24核具体新增锁/IO接口的实施合同，不是产品完成记录。
+最窄真实Shell组合改名后原endpoint第二show/MCP和下一步append认新名；冲突/非法组合零改；大于64KiB有效头像、1MiB边界与clear不经JSON图像；活Local gate跨move父信/结算和冷原ID续聊落新目录，原Job/code/timer/hold不断；浏览器previous_name就地改名保原流与草稿。普通profile/seed及2a既有证据复用，只验新增组合和连续性；独立用例仍由验证方维护。24对de01d5bb+8a2d382f新增结构复核通过，唯一rekey锁位澄清已纳入合同：整段MoveResources/code/exec/Jobs返回、route/storage/owners全释放后，publish前按同value与保存key迁移，不复活closed turn；chat/name-only/cold同末段。现获授权实施，不是产品完成记录。
