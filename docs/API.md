@@ -141,7 +141,28 @@ Post原Normal无新确认卡，却须原XBOT_CALL_ID/X-XBot-Call-ID所指actual 
 
 Post短回{id,message_id?,appended,posted_members:[],failed_member?,stage,error?}。stage为validation/rate/transcript/recipient_load/recipient_open/recipient_post/complete；仅原AppendJSONL返回nil才appended:true/message_id=实际群行ID，仅每次原Inbox.Post成功才加入posted_members。原member顺序、skip sender、首次错即停保持，late错误可以群记录已成+B已收/C失败，CLI先输出真实回执再非0，勿盲重试；不rollback群/rate或造重试/签收账。posted只指Inbox已接受，不代表handled/已醒；appended:false不声称全root无写/原rate没消耗或无JSONL尾半行。旧PostGroup(error)仅薄兼容入口至同一PostGroupWithResult writer，owner Web原KindPerson路径亦保。
 
-ListReply{groups?,count,file?,access?,bytes?,error?}与HistoryReply{group?,messages?,untrusted,count,file?,access?,bytes?,error?}按准确共享formatter预算：整JSON+newline与human任一超原Shell32KiB，就把完整脱敏JSON（所选records不截，20MiB cap）写source当前Resources工作区原results文件，省inline数组，回file/access:"local"/真实bytes/count；小引用两格式也fit。两个写ACK同准确双32KiB，显示错误也保created/appended/posted事实，不回正文artifact。Bus/fanout在source route外，artifact实际IO才短持current route，改名沿原RenameMember/当前路径，不复活旧目录。Bus本身无waker，原serve/proc忙时吸收/Inbox waker保持，不承诺所有生产者即时wake。四原模型wrapper/Known/schema/index退役，peers仍有message_bot/fork_bot，其它native/Link导线保；research仅同窄lexer/parser的list/history/help，写在解释器前拒，dev/general原Shell可用。见 [ADR0055](adr/0055-chat-groups-runtime-cli.md)与 [内核](atlas/kernel.md#成员聊天群与原消息链)。
+ListReply{groups?,count,file?,access?,bytes?,error?}与HistoryReply{group?,messages?,untrusted,count,file?,access?,bytes?,error?}按准确共享formatter预算：整JSON+newline与human任一超原Shell32KiB，就把完整脱敏JSON（所选records不截，20MiB cap）写source当前Resources工作区原results文件，省inline数组，回file/access:"local"/真实bytes/count；小引用两格式也fit。两个写ACK同准确双32KiB，显示错误也保created/appended/posted事实，不回正文artifact。Bus/fanout在source route外，artifact实际IO才短持current route，改名沿原RenameMember/当前路径，不复活旧目录。Bus本身无waker，原serve/proc忙时吸收/Inbox waker保持，不承诺所有生产者即时wake。四原模型wrapper/Known/schema/index退役，peers仅余fork_bot，其它native/Link导线保；research仅同窄lexer/parser的list/history/help，写在解释器前拒，dev/general原Shell可用。见 [ADR0055](adr/0055-chat-groups-runtime-cli.md)与 [内核](atlas/kernel.md#成员聊天群与原消息链)。
+
+## Bot 单聊运行时 CLI
+
+```sh
+"$XBOT_BIN" peer-message TARGET --self --text TEXT [--json]
+"$XBOT_BIN" peer-message TARGET --self --file FILE [--json]
+cat FILE | "$XBOT_BIN" peer-message TARGET --self --file - [--json]
+"$XBOT_BIN" peer-message --help
+```
+
+TARGET 是本地 Bot 或 `bot@设备`。纯 `ParsePeerMessageRuntime` 按 flag arity 消费值，`--` 后只取位置参数；恰一目标、text/file 二选一，拒重复/未知 flag 与缺 self，字面值 `--help` 不冒充帮助。help 离线；main 在 root/default/legacy 初始化前分流。self 取原 endpoint/规范 XBOT_ROOT，XBOT_BOT 仅诊断；缺 endpoint、root 冲突或运行失败不回落磁盘、不新建 Kernel。完整 8 KiB 正文可用 file/stdin 避开 Shell 16 KiB 命令限制；raw 输入 max+1 读取与最终转义 JSON 请求各限 1 MiB，不先截正文再 trim。本入口独立于主人 `message` 的 HTTP/SSE 与外部 Agent `send`。
+
+`POST /v1/peer/message` 只接单 JSON 对象 `{bot,text}`，拒 query、未知字段、非对象及尾随 JSON，沿原 loopback/Host/browser/root guard。`XBOT_CALL_ID`／`X-XBot-Call-ID` 必须关联同 listener 的实际 Local/running/未 finished Shell prepared context；缺失、过期、foreign、nonShell 或无冻结 turn 在 rate/投递前拒绝。Normal 发送不加确认卡，也不要求 approver 函数；承载 Shell 的原 gate 独立。sender chain/hops 显式取原 prepared `turnKey` 冻结值，空 chain 为 `ch_CURRENT_SOURCE_NAME`，hops+1，保 Bot 身份与原时钟；不用审批重绑后的 turn 或 latestTurn。
+
+本地沿唯一 `Bus.MessageWithResult`：目标排 self，双方须至少有一个非空 owner 交集，正文 trim 后 1..8 KiB、hops≤3、from→to 每分钟 8 次。远端沿唯一 `remote.SendWithResult`：精确 ByName 配对设备，未 unpair、允许 Bot 消息、有 XKey 且 source Owners 含设备 Person；不要求目录缓存先发现目标 Bot。正文 trim/脱敏后重验，原 JSON 明文与完整信封 JSON（含加密后的 base64 层）各受 64 KiB cap，和 8 KiB 正文、原 rate 限制共同适用；控制字节转义膨胀仍可在 envelope 阶段拒绝。原签名、加密、独立 remote-out rate、Receive 与持久重试保持。旧 `Bus.Message(error)`／`remote.Send(bool,error)` 只是同 writer 的薄兼容入口。
+
+短回执为 `PeerMessageReply{bot?,route,posted,event_id?,envelope_id?,gateway?,gateway_status?,queued,stage,recorded?,record_seq?,error?}`。route 为 local/remote；`posted:true/event_id` 仅表示原本地 Inbox.Post 返回 nil，非已处理。远端 envelope_id 来自实际建成的信封；gateway 为 `not_attempted|accepted|http_error|unknown`，accepted 仅 HTTP 2xx 且响应体读成功，gateway_status 仅来自 typed HTTPError 的实际状态码，均非对端签收。仅原 retryable 错误才排同一 ENV/ID，原 atomic enqueue 成功才 queued:true；该事实表示源端持久待重试、24 小时过期。响应丢失或排队失败仍可能已被网关接受，rate 也可能已消耗，不能据非 0 退出推断未发送。
+
+stage 按实际位置报告：本地 validation/rate/recipient_load/recipient_open/recipient_post/complete；远端 validation/identity/envelope/rate/gateway/queue/complete，源记录失败为 record。REMOTE 尝试得到实际发送/排队结果后，原 source transcript 追加一次完整冻结请求与结果的普通内部事实，见 [Bot 私聊](#bot-私聊)。只有 AppendSeq 成功才 `recorded:true/record_seq`；记录错为 `recorded:false`、error/非 0，保留原 gateway/queued/envelope 事实，不回滚或重发。本地无需这条源记录。
+
+回执不回显正文、不另存正文 artifact。共享准确 `FormatPeerMessage` 校验整 JSON 含 newline 与实际 human 输出各≤Shell 32 KiB，HTTP 硬限 64 KiB；显示超限仍保发送/排队/记录事实。失败时 CLI 先输出真实回执再非 0，不自动重发或回滚。research 仅放行同窄 lexer/parser 识别的 help；dev/general 用原 source Shell。`message_bot` 的执行 wrapper、Known、schema、index 已退，peers 仅余 `fork_bot`，其它 Link/Event 导线保持。现状核对：2026-11-02；决定见 [ADR0056](adr/0056-peer-message-runtime-cli.md)。
 
 ## Bot 列表与创建
 
@@ -191,7 +212,7 @@ ListReply{groups?,count,file?,access?,bytes?,error?}与HistoryReply{group?,messa
 
 `POST /api/bots/{name}/fork`，body `{"name":"reviewer","role":"Review pull requests.","group":"ship"}`。`name` 和 `role` 必填。`group` 可省略；有名字时新建一个两边都在的群。
 
-这不是拷贝。源 Bot 写一份交接，成为新 Bot 的 bot 记忆；person 记忆本来就共享，不复制。新 Bot 的 persona 是 `role`，transcript 是空的，provider 绑定继承。两边互相记一条，细节用 `message_bot` 问，不能读源 transcript。源 Bot 正忙时 409 `bot is busy`。成功 200 `{"name":"reviewer","group_id":"g_........"}`，没建群时 `group_id` 是空字符串。
+这不是拷贝。源 Bot 写一份交接，成为新 Bot 的 bot 记忆；person 记忆本来就共享，不复制。新 Bot 的 persona 是 `role`，transcript 是空的，provider 绑定继承。两边互相记一条，细节用 `"$XBOT_BIN" peer-message TARGET --self --text TEXT` 问，不能读源 transcript。源 Bot 正忙时 409 `bot is busy`。成功 200 `{"name":"reviewer","group_id":"g_........"}`，没建群时 `group_id` 是空字符串。
 
 ## 档案、头像、模板
 
@@ -323,7 +344,7 @@ ListReply{groups?,count,file?,access?,bytes?,error?}与HistoryReply{group?,messa
 - `event: done`，`data: {"text":"这一轮拼起来的正文","reply_to":2}`。`reply_to` 省略表示这条回复没有指向某一条用户消息。整段回复去掉空白后正好是 `SILENT` 时不发 `delta`，`text` 是空字符串。工具调用之前流出来的字只是状态，可以出现在 `delta` 里，但不会留在 `done.text`。界面用 `done.text` 作为这轮的最终回复，不要把工具调用前的 `delta` 拼进那条回复。模型用来标记引用的 `reply_to:` 行不会出现在 `delta` 或 `done.text` 里。
 - `event: error`，`data: {"error":"..."}`
 
-`POST /api/bots/{name}/approvals/{id}`，body `{"allow":true}` 或 `{"allow":false}`。未登录 401。不是这个 owner 的 Bot，或没有这张待确认的卡，是 404 `no such approval`。已经答过是 409。超过等待时间是 410 `approval expired`。成功 200 `{"status":"ok"}`。默认等 30 分钟（`Server.ApprovalWait` 同时配置权限卡和提问卡）；显示卡片的那次请求断开后，这张卡仍可以用这个接口决定。到时没有回答，按允许执行原调用并继续；transcript 卡追加 `state="auto_approved"` 和 `notice="30 分钟没人确认，已按允许执行"`。挂起的调用沿用一次性放行与决定唤醒恢复。超时后再点权限卡仍返回 410。进程重启时，上一个进程留下的待确认卡追加 `no_decision:restart`。**默认不发权限卡**（[ADR 0019](adr/0019-no-permission-cards-by-default.md)，`xbot permissions on` 打开）：只有 `links` 的 install/remove 和触到保险箱或密钥还发卡；机器开关按 `allow` 算，外部事件开的一轮碰记忆也不发卡。资料改名、普通字段与头像更新经当前实例 profile 领域入口，不再走旧模型工具审批或工具结果刷新分支；实际变更沿 `profile` SSE 提示。打开之后，哪些工具发卡只看内核里那一张权限表，工具自己从不决定：只有对外发送（连接器、`links` 的 install/remove、未知/MCP 工具）、删除、注入 `{{secret:}}` 或非 `GET`/`HEAD` 的 `http_request`、职责自改与 persona/profile 文件自改（persona self CLI显式SelfEdit，以及 `write_file`/`edit_file` 写自己的 persona/profile 文件）发卡。Bot之间的 `message_bot`/chat-group post、写技能、编码任务不额外发卡。routine纯排期不另加确认，承载它的原Shell仍按机器gate/分类，非空precheck另沿原callctx审核。本机工具（`shell`、`read_file`、`write_file`、`edit_file`、桌面、浏览器）再按机器开关：`allow` 按表，`ask` 每次发卡，`off` 直接拒绝；`browser_stop` 在 `off` 下仍可确认。这条链路上根本没有确认人时，工具结果是 `not run: no approver available on this link`，不会写成用户拒绝。用户明确拒绝才是 `denied by user`。
+`POST /api/bots/{name}/approvals/{id}`，body `{"allow":true}` 或 `{"allow":false}`。未登录 401。不是这个 owner 的 Bot，或没有这张待确认的卡，是 404 `no such approval`。已经答过是 409。超过等待时间是 410 `approval expired`。成功 200 `{"status":"ok"}`。默认等 30 分钟（`Server.ApprovalWait` 同时配置权限卡和提问卡）；显示卡片的那次请求断开后，这张卡仍可以用这个接口决定。到时没有回答，按允许执行原调用并继续；transcript 卡追加 `state="auto_approved"` 和 `notice="30 分钟没人确认，已按允许执行"`。挂起的调用沿用一次性放行与决定唤醒恢复。超时后再点权限卡仍返回 410。进程重启时，上一个进程留下的待确认卡追加 `no_decision:restart`。**默认不发权限卡**（[ADR 0019](adr/0019-no-permission-cards-by-default.md)，`xbot permissions on` 打开）：只有 `links` 的 install/remove 和触到保险箱或密钥还发卡；机器开关按 `allow` 算，外部事件开的一轮碰记忆也不发卡。资料改名、普通字段与头像更新经当前实例 profile 领域入口，不再走旧模型工具审批或工具结果刷新分支；实际变更沿 `profile` SSE 提示。打开之后，哪些工具发卡只看内核里那一张权限表，工具自己从不决定：只有对外发送（连接器、`links` 的 install/remove、未知/MCP 工具）、删除、注入 `{{secret:}}` 或非 `GET`/`HEAD` 的 `http_request`、职责自改与 persona/profile 文件自改（persona self CLI显式SelfEdit，以及 `write_file`/`edit_file` 写自己的 persona/profile 文件）发卡。Bot之间的 peer-message/chat-group post 保持 Normal、不额外发卡，承载它们的原 Shell gate 独立；写技能、编码任务不额外发卡。routine纯排期不另加确认，承载它的原Shell仍按机器gate/分类，非空precheck另沿原callctx审核。本机工具（`shell`、`read_file`、`write_file`、`edit_file`、桌面、浏览器）再按机器开关：`allow` 按表，`ask` 每次发卡，`off` 直接拒绝；`browser_stop` 在 `off` 下仍可确认。这条链路上根本没有确认人时，工具结果是 `not run: no approver available on this link`，不会写成用户拒绝。用户明确拒绝才是 `denied by user`。
 
 `POST /api/bots/{name}/questions/{id}`，body `{"choice":"选项的完整字符串"}`。未登录 401；不是当前 owner 的 Bot 或没有这张卡 404；choice 不在 options 内 400；已手动选择过 409；成功 200 `{"status":"ok"}`。超时自动推荐后再点选仍返回 200，把选择当作一条新用户消息处理。直接发普通消息走原 messages 接口，并结束未答提问卡的计时。
 
@@ -602,17 +623,17 @@ write 的 title 沿原单行化并安全写frontmatter；scope省略/空白为�
 
 `GET /api/bots/{name}/peers/{peer}/messages?limit=N&before=<to>:<seq>`
 
-`{peer}` 也可以写成 `bot@设备`（设备是配对表里的设备名），用来读本机 Bot 跟另一台已配对设备上同名用户的 Bot 的来往：收到的部分来自本机 Bot 自己的 transcript 里 `bot:bot@设备` 事件，发出的部分是它给这个地址调 `message_bot` 的那几行和对应工具结果，退回的通知记为 `kind: "bounce"`。另一半不在本机，看不到。
+`{peer}` 也可以写成 `bot@设备`（设备是配对表里的精确设备名），只读本机这一半：收到的取本机 transcript 的 `bot:bot@设备` 事件；新 peer-message 发出的取源 transcript 普通内部事实，旧 `message_bot` 调用/配对工具结果仍兼容读取；退回通知为 `kind:"bounce"`。远端历史只核 owned 本机 Bot 与设备 ByName 存在，已标 unpaired 的设备仍可读，不套发送时的 Person/XKey/NoBotMessaging 门。
 
-只读。返回这两个 Bot 之间已经写进 transcript 的私聊，时间从旧到新。调用者必须同时是两边的 owner。不是 owner、Bot 不存在，或者 `{name}` 和 `{peer}` 是同一个名字，都是 404 `{"error":"not found"}`。未登录 401。
+新远端事实为 OriginInternal、RoleUser、空 EventID，正文精确为 `<peer_message_outgoing>\n` + JSON 对象 + `\n</peer_message_outgoing>`。payload 含完整冻结请求 `bot/text`、gateway/gateway_status、queued、envelope_id、call_id 与 error；经过原 source scrub，file/stdin 不事后重读。`recordTurn` 显式取 prepared `callTurnKey` 的实际 execution owner，记录跟随其动态 branch 和当前 Resources 路径；sender chain/hops 另取冻结 tuple。reader 只采此 origin/role/空 EventID 与精确格式，行 ID 为稳定 `peer_message_<seq>`。全文转义后可超过 CLI 32 KiB，仍受普通 entry 1 MiB 上限，不塞短回执；记录错误不回滚发送或排队。没有伪 ToolCall、新 Entry/Job 字段、独立私聊账或 Inbox/Event/wake。
 
-每条消息只存在收件 Bot 的 transcript 里，这个接口不另存一份。它读的就是搜索、导出和 `recall_history` 能看见的那几行。群消息不在这里。发送方 transcript 里的 `message_bot` 工具调用也不在这里。还留在收件箱、收件 Bot 还没写进 transcript 的，先不出现。用户跟某个 Bot 的聊天窗口不改：对方 Bot 发来的内容仍是一行淡提示。
+只读，时间从旧到新。未登录 401；本地线程要求调用者同时拥有两个 Bot，不是 owner、Bot 不存在或同名返回 404 `{"error":"not found"}`。本地 `Conversation` 仍只读双方收件事件，发送方工具调用不计；留在 Inbox 尚未写入 transcript 的消息先不出现。远端 `RemoteConversation` 另读上述源事实与旧 native 历史。两者均不另存会话，群消息不在这里；用户聊天窗口中 Bot 来信仍是一行淡提示。
 
 `limit` 缺省 50，最大 200。小于 1、大于 200，或不是整数，400 `{"error":"bad limit"}`。
 
 `before` 可选，是排他游标。取客户端已经拿到的最旧一条的 `to` 和 `seq`，写成 `bob:3` 这种 `<收件人>:<seq>`。返回严格排在这条前面的最多 `limit` 条，仍然从旧到新。没有这条消息时 400 `{"error":"bad before"}`。两个 transcript 各自编号，同一个数字可能落在两边，所以游标带上收件人。只写一个数字时，仅当整段线程里恰好一条消息是这个 seq 才接受，否则同样 400。
 
-`seq` 是这条消息在收件 Bot transcript 里的序号，和 `GET /api/bots/{to}/transcript` 的 `seq` 相同。`id` 是写进 transcript 时的事件 id。`from` 是发送的 Bot，`to` 是收件的 Bot。`text` 是发出去的正文，外面的 `<untrusted_event>` 已经去掉。`ts` 是这条 transcript 记录的时间，UTC。`from_bot`/`from_device`/`to_bot`/`to_device` 是拆开的 `from`/`to`，客户端不用自己解析 `bot@设备`；本机的 Bot 没有设备，`from_device`/`to_device` 省掉，设备取配对表里的 Label，没设就是设备名。跨设备的行 `from`/`to` 仍是完整地址，`kind` 只在不普通时出现（退回是 `"bounce"`），`status` 只在发出的行出现：`sent`、`queued`（网关连不上，排队重试）或 `failed`；还没拿到工具结果的算 `sent`。跨设备的 `seq` 是本机 transcript 的序号，游标 `<to>:<seq>` 照样适用。
+本地行的 `seq` 是收件 Bot transcript 序号，和 `GET /api/bots/{to}/transcript` 相同，`id` 为事件 id。`from` 是发送 Bot，`to` 是收件 Bot。收件事件的 `text` 去掉外层 `<untrusted_event>`；远端新 outgoing 的 `text` 是完整冻结请求经源脱敏的正文，保请求值，不冒充 trim/脱敏后的最终 wire。`ts` 是这条 transcript 记录的时间，UTC。`from_bot`/`from_device`/`to_bot`/`to_device` 是拆开的 `from`/`to`，客户端不用自己解析 `bot@设备`；本机的 Bot 没有设备，`from_device`/`to_device` 省掉，设备取配对表里的 Label，没设就是设备名。跨设备的行 `from`/`to` 仍是完整地址，`kind` 只在不普通时出现（退回是 `"bounce"`）。`status` 只在发出的行出现：新事实优先按 queued:true 为 `queued`，否则 gateway accepted 为 `sent`、unknown 为 `unknown`，其余为 `failed`；sent 仅网关接受。旧 native 历史仍按工具结果读 sent/queued/failed，缺结果默认 sent。queued 保留发送当时事实，不因后来 flush 改旧行；incoming/bounce 保持原路径。跨设备的 `seq` 是本机 transcript 序号，游标 `<to>:<seq>` 照样适用。
 
 ```json
 {"messages":[{

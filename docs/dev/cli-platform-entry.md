@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message本地与远端合同5cdc单次SHAPE PASS，正在实施，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过，父集成待收，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -597,97 +597,11 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 
 单聊message_bot（含bot@device/remoteoutbox≤24h）和fork及其它平台继续按新具体切片推进，仍有native消费者；不借群切片删Link.Tools/Emitter/Messenger/SendPolicy/DeliverDraft，Event/入站Link装配待逐族等价后独立切。用户root四dirtydocs/owner-SSE设计只读避冲突，guard步骤/日用边界保。
 
-## 批 peer-message：本地与配对设备单聊（具体合同PASS，实施中）
+## 批 peer-message：单聊切片已提炼，待父集成
 
-L档，基线TRUE main8caacdca0a4e59eff083e0f6136c0c29dfd916f0；只迁message_bot{bot,text}原LOCAL与bot@device两个分支，[ADR0056](../adr/0056-peer-message-runtime-cli.md) glob空后Proposed。5cdc具体合同已reviewer24 SINGLE ACTUAL CONCRETE SHAPE PASS，[0056](../adr/0056-peer-message-runtime-cli.md)已Accepted；先compiled LOCAL交独立一次，再同cut接Remote/普通source fact与退唯一native。原pure46d4786f/5cdc/validation0a4fd926真实NativeShell unknown command peer-message红.96s/package2.220s封不重。原群5/persona4/control4/Bot5/profile5/routine6/skills/MCP证据封存不重；fork与其它native/Link.Tools/Emitter/Messenger/SendPolicy/DeliverDraft后切，Event/入站Link装配不借刀拆。
+5cdc具体合同单次SHAPE PASS、[ADR0056](../adr/0056-peer-message-runtime-cli.md) Accepted；首40fcf22d LOCAL、完整8472a2a5 REMOTE与唯一message_bot退门的能力已提炼 [API](../API.md#bot-单聊运行时-cli)、[多Bot](../atlas/multibot.md)、[网关](../atlas/gateway.md)，不在母dev保第二份协议/状态说明。六项所测独立端到端为40f首LOCAL与847后五项的精确phase，合同/首/末全部必要静态通过，证据见 [MILESTONES](../MILESTONES.md)；待父集成本地main，未主人日用。
 
-### Caller与选定结构
-
-```sh
-"$XBOT_BIN" peer-message TARGET --self --text TEXT [--json]
-"$XBOT_BIN" peer-message TARGET --self --file FILE [--json]
-cat FILE | "$XBOT_BIN" peer-message TARGET --self --file - [--json]
-"$XBOT_BIN" peer-message --help
-```
-
-新peer-message独立namespace，无message/send/remote-send别名；owner message→本机会话HTTP/SSE和外Agent send→events是用户另设计，只读核原27行避冲突，不冒人或外Agent身份。纯ParsePeerMessageRuntime(args不含noun)→PeerMessageCommand{Bot,Text,TextFile,Self,JSON,Help}；恰一TARGET，text/file恰一、literal flag值按arity消费、--后纯位置、重复/未知flag/坏arity/缺self在外边界拒，help离线。main在resolveRoot/default/legacy初始化前分流；self仅原endpoint/规范ROOT，XBOT_BOT诊断，runtime不可达不离线Load/newK。完整8KiB可用file/stdin避原Shell16KiB命令/转义膨胀；raw max+1和最终escaped JSON各≤1MiB，不先截8K再trim/重复领域验证。
-
-A走owner HTTP messages/SendOwnerChat、离线Load/newK或另拼RemoteHTTP：改变真实BotKind/成员范围/链和配对-加密-队列，淘汰。B原listener typed PeerMessage callback→同source currentResources→原Bus/Remote writer，沿已存在runtimeSourceCall显式原prepared冻结turnKey，选择B；不造现不存在的remoteSender/policyPerson/receiveScope named生产注入wrapper，不加ctx/Job授权表/通用发送服务。接受网络后可能unknown与原持久重试，换来不伪造签收/跨端事务；接受post必须原CallID，换来不能新链绕跳限；接受原Bus/Remote不额外waker，换来不扩所有生产者即时唤醒。
-
-### 真实来源、规则与提交点
-
-| 原来源 | 本刀维持 |
-|---|---|
-| peers.messageBotTool Normal/Confirmfalse | TARGET先TrimSpace，含@走Remote否则LOCAL；原source prepared冻结chain空ch_CURRENTNAME/hops+1/current clock/KindBot，无approvalIntent/新卡，原Shell gate独立。原ctx无approve函数仍正常，missingfinishedforeignnonShell/noFrozen在rate/IO前拒，不用approval rebind后的turnFor/latestTurn；actual child同原tuple。 |
-| peer.Bus.Message152-204 | local self/空target/hops1..3、trim正文1..8KiB；from实际存在、VisibleBots本地非空owner交集/shared允许、foreign-orphan拒；from→to默认8/min先persist peer-rate，再LoadTarget/OpenInbox/Post。只有Post nil才posted，原EventID/source bot:FROM/senderFROM/KindBot/Untrusted/chain/hops/time保持；后错可能耗rate，false不冒全root没写。无privateDM账/第二Event/wake。 |
-| remote.Send25-85/Config.ByName145 | bot@DEVICE精确ByName配对、非unpaired/NoBotMessaging=false/XKey非空、source Owners含d.Person；不要求remote目录缓存先有targetBot。原text/hops校验、RedactText后再校验、Identity/每封临时X25519+HKDF/AESGCM密文与Ed25519签名、remote-out:FROM→ADDR独立rate/15s GatewayClient.Send保。 |
-| gateway.Client.request107-132 | nil只HTTP2xx+response成功读完（不要求Send响应JSON），不是对端Inbox已收/已读；HTTPError有真实StatusCode，非HTTP transport/response异常未知是否网关已接受。响应read丢失后不能以err称未发送。 |
-| remote.retryable/enqueue37-77 | 只有transport/response错、HTTP5xx含507/429/408入原同ENV/ID outbox；永久400等不排。锁下限256项/8MiB，WriteAtomic0600成功才queued=true,nil；enqueue错保之前gateway unknown，不能stat/err串推全未发/重建env探测/rollback rate。 |
-| outbox.flush80-158/run200 | 网络不持queue锁；原Next+5s/10s请求/同ID指数退避cap10min/每pass首次retryable错停后续发送但继续expiry；24h/后来NoBotMessaging/永久拒时原source ordinary remote-undelivered Inbox再移项，Post/Remove错不冒终结。queued持久事实不是recipient交付。 |
-| receive99-214/ADR0010/0021 | paired签名/安装/version/time/size/decrypt/unpair与NoBotMessaging、text-hop/独立remote-in rate/target-owner门保；稳定remote_FROMINSTALL_ENVID/7d4096seen/replay不重投、存储错不ACK，拒绝或静默丢也可ACK。KindBot/Untrusted/Neutralize，接收time是Receive时而非Sendtime，不新增wake/账/claim已读。 |
-
-### 选定typed协议草图
-
-```go
-type PeerMessage struct { Bot string `json:"bot"`; Text string `json:"text"` }
-type PeerMessageReply struct {
-    Bot string `json:"bot,omitempty"` // trimmed display target; unvalidated/oversized error display may omit
-    Route string `json:"route"`      // local | remote
-    Posted bool `json:"posted"`      // local original Inbox.Post nil only
-    EventID string `json:"event_id,omitempty"`
-    EnvelopeID string `json:"envelope_id,omitempty"` // actual original env built, not delivery proof
-    Gateway string `json:"gateway,omitempty"` // remote: not_attempted | accepted | http_error | unknown
-    GatewayStatus int `json:"gateway_status,omitempty"` // typed HTTPError only, no guessing2xx status
-    Queued bool `json:"queued"`      // only original enqueue atomic nil
-    Stage string `json:"stage"`
-    Recorded *bool `json:"recorded,omitempty"` // REMOTE attempted: original source transcript fact append acknowledged
-    RecordSeq int `json:"record_seq,omitempty"` // actual AppendSeq only, no second ID table
-    Error string `json:"error,omitempty"`
-}
-// ADD field to existing cliops.Handlers: PeerMessage func(context.Context,PeerMessage)(PeerMessageReply,error)
-// originalKernel.peerMessageRuntime -> original operations listener; one action, no empty new handler framework
-reply, err := cliops.CallPeerMessage(ctx, endpoint, root, callID, cliops.PeerMessage{Bot:"B@Laptop",Text:"body"})
-```
-
-POST `/v1/peer/message`严格单对象{bot,text}/未知字段-非对象-尾对象拒，same loopback/Host/browser/root guards、request1MiB/HTTP64KiB；原可选XBOT_CALL_ID header在此动作必须解析到实际live Local/running/同listener Shell prepared context。source operations lease覆盖动作，解码body冻结；currentName/root短route快照，原source tuple从prepared.Value(turnKey)显式取不fallback，Bus/Remote/network在route/host/Job锁外，ordinarycurrentIO只写本source短存储，不跨源CAS/rare锁框架。
-
-原Bus.Message(error)薄adapter→唯一MessageWithResult同原参数返回MessageResult{EventID,Posted,Stage}，validation/rate/recipient_load/recipient_open/recipient_post/complete真实位置，EventID仅Post nil取原ev.ID。原remote.Send(bool,error)薄adapter→唯一SendWithResult同原参数返回SendResult{EnvelopeID,Gateway,GatewayStatus,Queued,Stage}，validation/identity/envelope/rate/gateway/queue/complete：原env成功构造后才ID，调用Client前not_attempted，nil才accepted，typedHTTPError才http_error+status，其他err为unknown；仅retryable尝试原enqueue、nil才Queuedtrue并nilerr（保legacy语义），enqueue错Gateway层级不丢。Stage只实际进度，不whole-root事务。Formatter PeerMessage与CLI预算共纯FormatPeerMessage，整JSON+newline/准确human各≤原Shell32KiB；CLI先印真实facts再非0，queued成功exit0但非对端已读。显示预算错保Posted/EventID/EnvelopeID/Gateway/status/Queued真实事实，可去展示Bot/缩Error，不回正文或造通用artifact；不为任意人为redactor膨胀开矩阵/框架。
-
-### 远端outgoing原消费者的选定普通事实
-
-已READ peer.RemoteConversation不只是旧史：remote_thread.go22-25/78-106从source transcript每条message_bot args{bot,text}+配对ToolResult生成远端outgoing；sent/queued/failed三status，缺result历史默认sent，新unknown不能这样假定。Web真实caller peerMessages48-95（无另一个peerMessagesRemote函数）按owned source+现ByName设备查历史，直接公开Text/Kind/Status/Seq-ID；unpaired设备仍可读历史，不能把SendPolicy/Xkey读门加上去。LOCAL Conversation只从双方recipient实际事件读，sender原无第二账。file/stdin不能事后读文件/猜Shell，短ACK不能塞8KiB最坏控制转义>32K全文。
-
-两实际形状：A把全文塞原Shell ToolResult、改RunrawToolArgs或新perJobmetadata聚合，需要新协议/损实际调用/超输出预算，淘汰；B原append-only SOURCE transcript普通事实+精确reader，选B。**新增的只是下面专属有界普通消息格式，不假称已有hook/metadata字段**。仅真实SourceCall且形成REMOTE尝试后、原SendWithResult/原queue已拿到actual result+err，追加ONE现OriginInternal+RoleUser Message，EventID空、不经Inbox/不waker，完整冻结请求text（与旧args.Text语义同，非事后重读/冒最终wire完全同）+trim target经原secret/redactor/source scrub，不截body；text按JSON字符串编码、只是不可信消息数据，不当作指令。
-
-```go
-// Proposed new bounded ordinary-message payload in internal/peer, shared writer and RemoteConversation reader.
-type RemoteOutgoingFact struct {
-    Bot string `json:"bot"`; Text string `json:"text"`
-    Gateway string `json:"gateway"`; GatewayStatus int `json:"gateway_status,omitempty"`
-    Queued bool `json:"queued"`; EnvelopeID string `json:"envelope_id,omitempty"`
-    Error string `json:"error,omitempty"`; CallID string `json:"call_id"`
-}
-// Message.Text exact format: <peer_message_outgoing>\n + one JSON object + \n</peer_message_outgoing>
-// prepared is runtimeSourceCall's ORIGINAL Job context, not approval-rebound context.
-execution, ok := prepared.Value(callTurnKey{}).(*turn) // actual original execution owner pointer
-// Reject absent execution identity before a remote send; never curTurn/turnFor fallback.
-seq, recordErr := k.recordTurn(execution, provider.Message{Role:provider.RoleUser, Internal:true,
-    Content:provider.TextContent(factText)})
-```
-
-chain/hops仍从prepared.turnKey **frozen** tuple取，record分支则显式prepared.callTurnKey **actual execution owner** 动态branch（原turn转后台仍跟原branch），不能frozen.branch/latestTurn/approval child-nil替代。actual Local child也沿runToolCall.Prepare75设置的真实execution pointer，不宣原child工具结果自动在source；本note明确写current sourceStore。原recordTurn→scrubEntry→appendCurrentSeq/AppendSeq复用，record自己持短currentIO，不在已持route回调里再调recordTurn；nilResources现withCurrentIO直接fn(k.Bot,k.Inbox)不新开Inbox，网络/原Send在route外。无Entry新字段/Job协议/伪旧nativecall/unpaired RoleTool/额外Event/环境键/新DMledger。
-
-RemoteConversation新分支只信OriginInternal+RoleUser+EventID空及精确tag/单JSON对象格式，按fact.Bot精确匹配addr、原seq派生稳定ID `peer_message_<seq>`（同Shell多次发送各独立seq，无新随机id表）、Time用原Entry.Time，保完整Text。queued=true优先queued；未queued gateway accepted→sent、unknown→unknown、http_error/not_attempted→failed；不把unknown默认sent。原native pairedhistory（包括旧pending默认sent）、incoming/bounce路径兼容不改；旧queued不会因flush倒改sent，新queued同样保当时事实，后bounce独立普通KindBounce，不改旧行。app原气泡textContent布局不动，unknown只诚实数据状态，不新UI旅程。
-
-记录范围含真实源REMOTE的普通policy/crypto/HTTP/queue失败与not_attempted，均完整冻结body/真实typed状态；缺CallID不伪一次已对话动作。有效8KiB最坏JSON入普通transcript entry远低1MiB而不吃CLI32K；node1MiB单entry边界按实际序列化有界检查，原外部raw-invalid超长仍原1MiB请求+原writer领域拒，不为记录截正文/制造发送或事务。only AppendSeq nil才recorded=true/record_seq真实seq；实际record错误recorded=false、保Gateway/Queued/Envelope等发送事实并error非0/Stage=record，不rollback/重建信封/让用户盲重试。无跨remote+source transcript崩溃事务承诺；LOCAL无此consumer不扩source事实。
-
-### 怎样算对与剩余
-
-- 具体合同（含上面真实consumer）单次SHAPE后0d固定最窄caller红。先首compiled LOCAL真NativeShell→原prepared→typed→Inbox/真实消费链一次，继续Remote/退一门不等首反馈停；同owner/shared候选、非primary/stale诊断不冒名、self/foreign/orphan/empty/8193/hop4/9th原rate拒、8KiBUTF8 file/stdin/trim、metadataKindBot-Untrusted-source-chainhops/不拷memory/currentrename/短ACK/原坏Inbox完整NL晚失败。missing/finished/foreign/nonShell/noFrozen拒在本次rate/投递前，actual child与anotherturn/无approver Normal取真实ctx UNIT，不冒独立prod。
-- Remote单位用现private pairTransport替进程http.DefaultClient→真实gateway.Handler，真实Identity/XIdentity/Register/Send/Poll/Receive验签加密，503507429408可queue、400不queue、bodyreadlost但gateway已存+enqueuefault的unknown、原rate/outboxcap/24h/off/permanent退信/同ENV重试/duplicate/seen/目标-owner拒，最小实际受影响选择一次，不所有旧remote整族矩阵。未知状态不推发送零副作用、失败不重建ENV确认或造ack账；旧签名调用者保持。
-- 合法独立远端最窄可用现公开Config路径，不默认跳Remote：smoke.Start无prelaunchhook，先pristine Start(空Gateway/0Devices/noInvitePair原Run IDLE不外网)→API建真实Source/Receiver和Owner→Stop；先起专用loopback gateway.Server.Handler+fixture token，先现SetGateway显式URL再真实publicIdentity/XIdentity/inviteJoin签HMAC配对/Restart FIRSTremote-active，不rawJSON伪身份/device先写空gateway。Receiver可先Stop，让Sender首次发送不依目录缓存，再Receiver Restart真正Receive；真实Signature/Envelope双验证、稳定remote_ID/Receive时间不冒Send时间。父DefaultClient替换罩不到child，不加生产flags/注入client层。
-- 原真实本地TCP gatewayHandler可在A→B box `/v1/send`真实accept后故意Content-Length大于Body让childReadAll失败，以原outbox同ENV重试/seen不重投验真实queued与unknown层级，其他RegisterPollAckdir照原handler；该fault是privatefixture不新producer。已有shortcode Run+httptestTCP先例。若某子层实际做不到按层明示NOT RUN+真实单位，不能以UNIT冒独立/默称local-only完整/默认Gateway外网/真模型。新远端outgoing FILE/STDIN在原文件已改/删仍从普通source fact恢复FULL脱敏body，8KiB控制字节最坏转义>32K时短ACK仍fit、fact无截，sent/queued/failed/unknown/同Shell多attempt seq与旧native pending/queued/incoming/bounce兼容均实际验；Owner伪同tag无OriginInternal不采。用原realprepared callTurnKey实际owner移bg branch和冻结tuple对照、actualchild不落最新turn；record真实FS失败发生在已确认gateway接受或enqueue成功后，recorded=false/error非0但发送facts保持/no自动重发/currentroute不复活旧path。新record不破原tool-call配对，reader不用原文件/blob(普通RoleUser不spill)或通用Shell猜；所测部分不冒全远端生产者已处理。
-- research仅peer-message help，literal --help作为text/target不得冒help写入；dev/general原sourceShell能写。仅退message_bot wrapper/Known/schema/index/指引、peers仍fork，其它原native/Link导线保。只迁过期author mixed司机断言，保有效业务；独立owned由0d维护。root4USERdocs/ownerSSE设计只读、guard/main/push/release/日用不动；本轮不产品/编译/测试/atlas现状审计。
+本母路线继续保fork/其它尚未迁native与Event/Link入站装配；不因单聊已迁就删其它Emitter/Messenger/SendPolicy/DeliverDraft。下一刀须以真实main集成后另定具体合同，不预写0057或开fork实现；owner message-SSE/externalAgent send仍用户独立设计边界。
 
 ## 还没做的
 
@@ -695,7 +609,7 @@ RemoteConversation新分支只信OriginInternal+RoleUser+EventID空及精确tag/
 - 批 0 的后续实际操作及入站依赖清单、尚未迁族的 research 业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已提炼 atlas，固定五项独立所测端到端按各自精确版本通过，证据见 MILESTONES；原 chat loop 下一输入/Timer handle 及其 recover、回放、通知实际消费者也已以局部红绿和 reviewer24 至 `63762ae5` 连续增量 PASS 收口，已合入本地 main，尚未日用；合并时与主线持久选择的交叠补单项真实浏览器红绿，不重跑固定五项。已通过的普通字段、avatar_seed、MCP 和本刀五项不重复整批验收，母路线其它族继续在本 dev 中推进。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
-- skills read/write与routine已提炼现状，Bot剩余管理动作/群/连接器及剩余目录管理等平台能力继续逐族迁移。
+- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message本轮待父集成。fork/连接器及剩余目录管理等平台能力继续逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。
 - 各批独立冒烟、相关旅程回归、性能与上下文收益测量、主人日用验收。

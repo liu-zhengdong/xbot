@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
-verified: 2026-11-02 @ 2bedef4b
+verified: 2026-11-02 @ 8472a2a5 (peer-message source identity, Normal routing and retired native policy)
 ---
 # 安全：保险箱与权限表
 
@@ -112,12 +112,13 @@ WantedBy=multi-user.target
 生产路径只保留审查入口和分类，不出工具许可卡；`links` 填 key 输入例外。下列确认规则属于严格测试/评测模式：执行前审查动作本身，看工具名和参数，不看模型怎么说。要确认的走已有的确认卡。
 
 - **一张表定权限**：确认只经过这一张表；工具自己从不确认。内核里有一份显式的权限表，按工具名给出类别，`http`、`shell`、`self_edit` 再按参数判定。工具自己的 `Confirm` 只负责生成确认卡上的摘要，返回值一律不参与决定；模型改不了这个判断。
-- **permissions on 时只确认四类**：对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改；另外触及保险箱/密钥路径的 `shell`/文件工具总是确认。Bot之间的 `message_bot`/chat-group post、写计划文件、写技能、编码任务为normal。routine纯排期不额外加审批，承载它的原Shell仍受自身机器gate/分类，非空命令另沿原ctx审查。
+- **permissions on 时只确认四类**：对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改；另外触及保险箱/密钥路径的 `shell`/文件工具总是确认。Bot之间的 peer-message/chat-group post、写计划文件、写技能、编码任务保持Normal；CLI承载Shell的原gate独立。routine纯排期不额外加审批，承载它的原Shell仍受自身机器gate/分类，非空命令另沿原ctx审查。
 - **例程前置命令同表审核**：四旧模型门及Known策略项已退，排期沿当前source CLI；同typed请求解码保末位null语义，update省字段仍审保留命令、空串清除。非空命令在所有Timer/route/Jobs锁外用原source reviewPrecheck，按process cwd及既有machine/protected/untrusted-memory/Shell表。原live Job保实际prepared ctx与wrapped approver，main审冻结身份、卡片跟原owner fork，child用明确untrusted/no-person与自己的subApprover，不借最新父turn。nested审批只向原Shell args附规范请求/effective命令，现grant与deniedBefore同键，argsfile A→B不吃A，原执行raw不变；autoID审后生、无HTTP随机nonce，不发不可调用旧工具grant。缺/旧/foreign/completed原call非空命令拒且定义不写；普通无命令CRUD不强制bridge。owner HTTP仍原临时Permissive专缝，不能拿来冒source审批。触发live gate另读，仅allow执行，ask/off/错静默skip并Commit，详见 [原调用连接](kernel.md#例程实例与原调用审批)及 [ADR0051](../adr/0051-routine-runtime-cli.md)。
 - **Bot删除原审批**：四等价模型门/Known已退，strict明确沿原Delete类别恒需确认，不查已退名而降Normal；production permissive不增卡/不强普通操作原ctx。仅strict Delete取原live Local/running/未finished同listener ctx/原wrapped Shell approver，main原owner动态fork卡与冻结policy、child原回调保留，missing/completed/foreign/noapprover在Pause/删除前拒。nested只附canonical delete/目标给原Shell args，grant/denied同键，目标A→B不吃A；routine共用primitive且need=false仍查deniedBefore，真实Run args不改、不向旧delete_bot发grant。批准后重验primary/可见性再走原host保护；原Host limited owned join/removed事实见 [内核](kernel.md#bot-发现与管理实例入口)。
 - **置顶/主身份Normal语义保持**：pin/unpin与primary set的source CLI每次核当前primary/self或VisibleBots本地目标，原两Normal动作不加许可卡、CallID或审批桥，不能误套SelfEdit/Delete。退两native/Known后也不能省source资格；B既有endpoint下一写fresh获得，A原endpoint下一写fresh失去，后pin错但pointer已写成同样生效，不把receipt当永久grant。原Shell gate独立，research只control help、所有写和离线primary解释器前拒。见 [ADR0053](../adr/0053-bot-pin-primary-runtime-cli.md)。
 - **职责自改仍SelfEdit**：全Bot self的persona set CLI仅替原bot_propose_persona，strict显式need=true而非查已退Known/Unknown降Normal或借Delete；Permissive不加卡/不强ctx。strict沿原actual live Local/running同listener ctx/Shell wrapped approver/providerID/mutex/冻结policy、原owner动态fork卡/actualchild，不借ownerHTTP临时Permissive。锁外问后同currentref单原WritePersona，附加intent仅set+有效完整文本SHA256 64hex+bytecount，body冻结、原Shellargs/Runraw保，原deniedBefore/grant/park同canonical、文件A→B不吃A。无原ctx/finished/foreign/noapprover写前拒；测试为actual-context单位，非生产strict E2E。退空bot_profile组/schema/Known，保raw file SelfEdit与历史卡片，不改卡/记忆/版本账或发管理wake；见 [ADR0054](../adr/0054-self-persona-runtime-cli.md)。
 - **群发送Normal仍保原链**：四群native/Known/schema退而chat-group member CLI沿原Bus；List/History/Create不强CallID，Post不调用approveIntent/不加卡，却只取actual live同listener Shell prepared冻结tuple（nil approver函数可用），不能审批ctx owner/child重绑后fallback到另一turn。原chain/hops+1/KindBot/时钟和8KiB/hops3/8次每分钟保，missing/finished/foreign/nonShell/noFrozen在rate/append前拒；无身份/Job/许可新表。actual Append/各Inbox.Post成功才计appended/posted，latepartial非0不冒全未写或重试回滚；原Shell机器gate独立，research只list/history/help。见 [ADR0055](../adr/0055-chat-groups-runtime-cli.md)与 [内核](kernel.md#成员聊天群与原消息链)。
+- **单聊Normal与真实来源**：peer-message的LOCAL/REMOTE沿同source loopback/Host/browser/root guard，必须原live Local/running同listener Shell prepared context，不加approvalIntent或确认卡，nil approver函数可用；原Shell gate独立。chain/hops显式取冻结turnKey，远端普通source事实记录显式取callTurnKey实际owner动态branch，不能借latestTurn/审批重绑身份。保本地非空owner交集、自发/跳数/频率限制及远端精确配对、Person-owner/XKey/互发开关；历史读取保持原owned本机+ByName边界，不套发送门。完整冻结正文经原scrub，不进CLI回执，记录失败保已知发送/queue事实、非0且不重发。message_bot wrapper/Known/schema/index已退；research只同窄parser识别的help，text/target字面--help不构成许可。见 [ADR0056](../adr/0056-peer-message-runtime-cli.md)及 [单聊消息链](kernel.md#bot-单聊与远端源记录)。
 - **机器开关在核心里**：对本机工具（`shell`、`read_file`、`write_file`、`edit_file`、`view_image`、桌面、浏览器）统一在核心的 review 路径处理：`off` 直接拒绝；`ask` 每次都要确认；`allow` 按下面的表走。`browser_stop` 不在此列，`off` 时仍可用来关掉进程。`web_fetch` 和 `web_search` 不碰本机文件，不走这道开关。`shell` 的 `keys:true` 也要确认。
 - **HTTP**：`http_request` 只在注入 `{{secret:名字}}`（URL、请求头或正文任意一处），或者方法不是 `GET`/`HEAD` 时确认。
 - **shell**：删除命令（`rm`、`rmdir`、`unlink`、`shred`、`find -delete`、`git clean` 等）和真正离开 XBot 的发送（`curl`/`wget` 上传或 POST/PUT、`mail`/`sendmail`、`nc`、发往远端的 `scp`/`rsync`、Python 的 `requests.post` 等）确认。
@@ -134,7 +135,7 @@ WantedBy=multi-user.target
 | 类别 | 工具 | 确认条件 |
 |---|---|---|
 | `readonly` | `tools`（代理门的 search/describe）、`kernel_manual`、`read_file`、`web_fetch`、`web_search`、`view_image`、`shell_output`、`shell_status`、`list_secrets`、chat-group list/history CLI、`recall`、`recall_history`、`expand`、`read_subagent`、`expand_subagent`、`code_show`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不（`read_file` 或 `view_image` 触及保险箱/密钥路径时确认） |
-| `normal` | `generate_image`（复用全局 OAuth 的生图代理）、`send_message_to_user`、`compact`、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`shell_cancel`、`ask_user`、`todo`、chat-group create/post CLI、`message_bot`、`fork_bot`、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
+| `normal` | `generate_image`（复用全局 OAuth 的生图代理）、`send_message_to_user`、`compact`、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`shell_cancel`、`ask_user`、`todo`、chat-group create/post CLI、`fork_bot`、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
 | `delete` | strict Bot CLI delete、`delete_file`、`remove_file`、`secret_rm`、`delete_link`、`remove_mcp` 等名称明确的删除工具 | 总是 |
 | `external_send` | `telegram_send`、`lark_send`、`send_email`、`send_webhook`、其余 `mcp_*`（按前缀规则，没标 `readOnlyHint` 的），以及 `links` 的 `install`/`remove` | 总是（`links` 只在 install/remove） |
 | `http` | `http_request` | 注入 `{{secret:}}` 或方法非 `GET`/`HEAD` |
