@@ -161,6 +161,8 @@
 
 `memory.experiences.items` 来自当前 Bot 的经历库，按 `created_at` 新到旧、相同时间按 id 递减，首屏最多 40 条；`focus` / `segment` 可省略，`created_at` 为 RFC3339 时间。`next_before` 存在时，`GET /api/bots/{name}/experiences?before=<next_before>` 取下一页，响应同 `experiences`；末页不再给游标。读取空库不创建数据库。
 
+同一接口支持 `q`：`GET /api/bots/{name}/experiences?q=TTS` 在当前 Bot 整个经历库的 `summary` / `focus` / `segment` 做字面子串搜索，英文忽略大小写，`%` / `_` 不作通配符；q trim 后最多 512 字节，超出返回 400。空查询沿普通列表；带 `before` 时保留相同 q 继续取匹配项，排序、每页 40 条和响应结构不变，空结果为 `{"items":[]}`。搜索沿登录与 Bot 所有权检查，不使用模型侧 BM25 的最近 2000 条范围。页面隐藏 person 文档只影响展示，详情 DTO 与原文件接口仍保留。
+
 `GET /api/bots/{name}/memory-files/{kind}` 在浏览器以 `text/plain` 打开原文件；`POST /api/bots/{name}/memory-files/{kind}/open` 仅桌面端可用，通过系统默认应用打开。`kind` 只收 `person`、`bot`、`month-log`，不能指定任意路径；两者沿用登录与 Bot 所有权检查，缺文件返回 404。
 
 `agents[].notable` 是已实际发生的「值得留意」清单（无条目时为空或省略）：`[{"kind":"global_install","text":"全局安装了 ripgrep","objects":["ripgrep"]}]`。`kind` 固定为 `global_install`、`write_outside`、`external_message`、`delete`；按删除、外发、工作区外写入、全局安装排序，同一类每个任务合成一项。`text` 是不带句号的短句，超过两个对象只列前两个并写总数；`objects` 保留完整对象列表，放在任务详情。`calls` 是成功调用数，外发短句用它写消息数量；`unit` 是对象计数单位。`incomplete:true` 表示部分调用没有可靠对象字段，或对象明细达到单任务 64 KiB 上限，此时不声称完整数量。交回 Bot 的报告用同一份清单生成一句摘要：统一以「值得留意：」开头、句号结尾；一项直接写该项，多项写首项及其余项数，并提示详见任务。卡片行本身不加句号。普通工作区内读写不会产生条目。

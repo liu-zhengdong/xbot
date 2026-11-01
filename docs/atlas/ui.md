@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-01 @ 45f1542 (workspace tabs; full Go suite, web count=3, real-serve journey count=3; legacy guard smoke baseline failures recorded)
+verified: 2026-11-01 @ 16f9ab0c (single-column memory; HTTP/Chrome regressions and real-serve search/pagination journey)
 
 ---
 # 网页界面
@@ -13,7 +13,7 @@ verified: 2026-11-01 @ 45f1542 (workspace tabs; full Go suite, web count=3, real
 
 对话中的 Bot 往来与 CLI Event 共用可点击的来源行装配缝，按来源种类和身份合并连续事件。Bot 行打开既有往来视图；CLI 行以发送者为 Notionists 头像种子，点击展开该组原文，不把发送者登记为 Bot。`aside` 也走 `addSourceEvent`：灰字「查看心里话」，`setTip` 悬停全文，点击展开纯文本抽屉；连续同 identity 可合并计数，不是 bot 气泡，不绑定回复菜单，也不进侧栏预览或引用摘要。
 
-主视图「记忆」由 `GET /api/bots/{name}` 的 `memory` DTO 装配：宽屏左侧竖叠「关于你」「关于本 Bot」、右侧展示经历，窄屏顺排，直接展示各自 `memory.md` 整篇原文，复用气泡 Markdown 渲染和打开文件入口；主数据不经 Recall 拆卡。经历来自当前 Bot 的 `experience.sqlite`，带时间、按记录时间新到旧，点开关注点与提纲；首屏 40 条，`GET /api/bots/{name}/experiences?before=…` 加载更早内容。流水只在页脚给「打开本月流水」入口或空状态，不进主列表。浏览器打开只读原文件，桌面交给默认应用；不提供面板编辑器。守护为 `memory_panel_test.go` 的整篇与带时间数据装配回归、`memory_panel_browser_test.go` 的浏览器行为。
+主视图「记忆」由 `GET /api/bots/{name}` 的 `memory` DTO 装配：桌面与窄屏均为单栏，上方「关于本 Bot」、下方经历；不显示「关于你」，person 的存储及模型注入不变。常驻预览前两条带日期条目（手机一条），「展开全部」读取原文的完整 Markdown 投影；复用气泡渲染和打开文件入口，不经 Recall 拆卡。经历来自当前 Bot 的 `experience.sqlite`，带时间、新到旧，点开关注点与提纲；首屏 40 条，可加载更早内容。标题旁「搜索经历」通过 `GET /api/bots/{name}/experiences?q=…&before=…` 搜整个库的摘要、关注点、提纲；字面包含、英文忽略大小写，沿相同顺序分页，命中用中性底突出。输入法选词期间不查询，快速换词或切 Bot 丢弃旧回包；轮询保留输入、焦点与展开态，清除恢复已加载的普通列表。失败保留查询并可重试，无匹配单独提示。页脚只在本月有流水时给打开入口，不进主列表。浏览器打开只读原文件，桌面交给默认应用；不提供编辑器。守护为 `memory_panel_test.go`、`memory_panel_search_test.go` 的数据与搜索回归，`memory_panel_browser_test.go`、`memory_search_browser_test.go` 的 Chrome 行为，以及真实 serve 的 `TestChatTabsJourney`。
 
 主视图的收件箱位于上下文右侧：只读展示该 Bot 的入站叫醒事件，按时间新到旧，可展开摘要；待处理数量弱显，窄屏顶部标签横滚。数据来自 `GET /api/bots/{name}/inbox`，Webhook 和文件监听来源按前缀识别，摘要展示事件正文而非外壳，routine 只取标签内正文；与聊天和全局通知分开。
 
