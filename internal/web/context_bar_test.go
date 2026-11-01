@@ -76,10 +76,10 @@ const hide=name=>{
  $('#ctxbar button').click();
  await waitFor(()=>tab('上下文')?.getAttribute('aria-selected')==='true'&&$('#panel').checkVisibility(),'context navigation failed to reveal its hidden tab');
  assert(!$('#thread').checkVisibility()&&!$('#ctxbar').checkVisibility(),'context left chat or context bar visible');
- tab('聊天').click();hide('任务');
+ tab('聊天').click();hide('子代理');
  $('#work-status button').click();
- await waitFor(()=>tab('任务')?.getAttribute('aria-selected')==='true'&&$('.task-view')?.checkVisibility(),'busy navigation failed to reveal its hidden tab');
- assert($('.task-view').textContent.includes('间接入口任务'),'task destination lost running record');
+ await waitFor(()=>tab('子代理')?.getAttribute('aria-selected')==='true'&&document.getElementById(tab('子代理').getAttribute('aria-controls'))?.checkVisibility(),'busy navigation failed to reveal its hidden child tab');
+ assert(document.getElementById(tab('子代理').getAttribute('aria-controls')).innerText.includes('间接入口任务'),'child destination lost running record');
  assert(testErrors.length===0,testErrors.join('; '));document.body.dataset.testResult='passed';
 })().catch(e=>document.body.dataset.testResult='failed: '+e.message);
 `)
