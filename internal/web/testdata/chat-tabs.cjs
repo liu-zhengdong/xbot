@@ -82,8 +82,10 @@ const cfg=JSON.parse(fs.readFileSync(0,'utf8'));
   timings.sort((a,b)=>a-b);
   console.log(JSON.stringify({theme,tabSwitchP95Ms:Math.round(timings[9]),samples:timings.length}));
   await p.getByRole('tab',{name:'轨迹',exact:true}).click();
-  const traceRow=p.locator('.trace-row').first();
-  if(await traceRow.count()){await traceRow.click();await shot('trace-expanded')}
+  const traceRow=p.locator('button.trace-event-row[data-event-key]').first();
+  await traceRow.waitFor();await traceRow.click();
+   await p.getByRole('complementary',{name:'记录详情',exact:true}).waitFor();await shot('trace-detail');
+   await p.getByRole('button',{name:'关闭详情',exact:true}).click();
   for(const name of ['任务','上下文','收件箱']){
    await p.getByRole('tab',{name,exact:true}).click();await shot(name);
   }

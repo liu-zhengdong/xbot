@@ -149,10 +149,7 @@ window.fetch=async(path,opts={})=>{
 };
 `
 
-const todoBrowserDriver = `
-const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-const waitFor=async(fn,msg)=>{for(let i=0;i<1200;i++){if(fn())return;await sleep(10)}throw Error(msg)};
+const todoBrowserDriver = traceExplorerSetup + `
 (async()=>{
  const preview=()=>$('#roster .item[data-bot="'+bots[0].name+'"] .preview');
  await waitFor(()=>!$('#shell').hidden&&preview()&&!$('.thread-loading-cover'),'app did not boot');
@@ -170,24 +167,30 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<1200;i++){if(fn())return;await sleep
  $('#stp .x').click();
  await waitFor(()=>$('#workspace-tabs [role=tab]'),'panel did not open');
  [...document.querySelectorAll('#workspace-tabs [role=tab]')].find(n=>n.textContent==='轨迹').click();
- await waitFor(()=>document.querySelectorAll('.trace-row').length===6,'trace missing calls');
+ await waitFor(()=>traceRows().filter(n=>n.textContent.includes('待办')).length===6,'trace missing todo events');
  if(shot==='default'){document.body.dataset.testResult='passed';return}
- const rows=[...document.querySelectorAll('.trace-row')];rows.forEach(n=>n.click());
- if(shot){document.body.dataset.testResult='passed';return}
- const calls=[...document.querySelectorAll('.trace-call')];
- const shown=n=>{const copy=n.cloneNode(true);copy.querySelectorAll('details').forEach(d=>d.remove());return copy.textContent};
- assert(calls.length===6,'missing expanded calls');
- assert(shown(calls[0]).includes('进度 0/3')&&!shown(calls[0]).includes('已完成 0/'),'new list reads as completed');
- assert(shown(calls[1]).includes('进度 1/3'),'partial list reads as completed');
- for(const it of todoItems)assert(shown(calls[1]).includes(it.content),'saved item absent');
- assert(shown(calls[2]).includes('已完成 3/3'),'completed receipt lost after active list archived');
- assert(shown(calls[3]).includes('来源重复'),'drop reason missing');
- assert(!shown(calls[4]).includes('不应显示为已保存'),'failed input presented as saved');
- assert(!shown(calls[5]).includes('还没写入'),'pending input presented as saved');
- for(const c of calls)assert(!/in_progress|\bpending\b|\btodo\b/.test(shown(c)),'raw status leaked');
- const raw=calls[0].querySelector('details');assert(raw&&!raw.open,'raw call must start folded');raw.querySelector('summary').click();
- assert(raw.open&&raw.textContent.includes('in_progress'),'raw evidence unavailable in trace');
- assert(!$('#thread').textContent.includes('in_progress')&&!$('#thread .trace-call'),'tool body entered conversation');
+ const calls=traceRows().filter(n=>n.textContent.includes('待办'));
+ const previews=[];
+ for(const row of calls){
+  await traceOpen(row);await traceTab('概述');
+  previews.push(traceDetail().innerText);
+  if(shot){document.body.dataset.testResult='passed';return}
+  await traceClose();
+ }
+ assert(previews[0].includes('进度 0/3')&&!previews[0].includes('已完成 0/'),'new list reads as completed');
+ assert(previews[1].includes('进度 1/3'),'partial list reads as completed');
+ for(const it of todoItems)assert(previews[1].includes(it.content),'saved item absent');
+ assert(previews[2].includes('已完成 3/3'),'completed receipt lost after active list archived');
+ assert(previews[3].includes('来源重复'),'drop reason missing');
+ assert(!previews[4].includes('不应显示为已保存'),'failed input presented as saved');
+ assert(!previews[5].includes('还没写入'),'pending input presented as saved');
+ for(const text of previews)assert(!/in_progress|\bpending\b/.test(text),'raw status leaked into human progress');
+ await traceOpen(calls[1]);await traceTab('原始内容');
+ assert(traceDetail().textContent.includes('in_progress')&&traceDetail().textContent.includes('查第二处'),'raw call unavailable in trace');
+ await traceClose();await traceOpen(calls[4]);await traceTab('原始内容');
+ assert(traceDetail().textContent.includes('write failed')&&traceDetail().textContent.includes('不应显示为已保存'),'failed proposal lost raw evidence');
+ await traceClose();
+ assert(!$('#thread').textContent.includes('in_progress')&&!$('#thread .trace-explorer'),'tool body entered conversation');
  todoStatus.state='idle';todoStatus.todo='待办：还有 2 项';
  await waitFor(()=>preview().textContent===todoStatus.todo,'idle pending summary lost');
  todoStatus.todo='';todoStatus.last_message='已汇总三处';
