@@ -72,8 +72,11 @@ func cliChatGroupPostRun(t *testing.T, srv *Server, model *mcpRuntimeModel, sour
 	model.add(cue, mcpRuntimeTool("sh", map[string]string{"description": "Exercise actual source chat-group creation and prepared Shell post", "command": command}))
 	cliSkillSend(t, srv, source, cue)
 	results := model.results(cue)
-	if len(results) != 1 || results[0] == "" || len(commandOutput(results[0])) > 32<<10 {
-		t.Fatal("actual source chat-group operation did not return one bounded Shell result")
+	if len(results) != 1 {
+		t.Fatalf("actual source chat-group cue=%s result_count=%d want1", cue, len(results))
+	}
+	if results[0] == "" || len(commandOutput(results[0])) > 32<<10 {
+		t.Fatalf("actual source chat-group cue=%s empty=%t output_bytes=%d limit32768", cue, results[0] == "", len(commandOutput(results[0])))
 	}
 	return results[0]
 }
@@ -168,7 +171,7 @@ func TestCLIChatGroupRuntimeCreatePostActualSource(t *testing.T) {
 	var created cliChatGroupCreateReply
 	// Create has no original-turn requirement. Repeated self/peer member values
 	// exercise the actual Bus auto-self, deduplication and sorted local members.
-	cliBotDecode(t, run("CLI_CHAT_POST_CREATE", `env -u XBOT_CALL_ID "$XBOT_BIN" chat-group create ' Actual source room ' --self --member `+c+` --member `+b+` --member `+source+` --member `+b+` --json`), &created)
+	cliBotDecode(t, run("CLI_CHAT_CREATED_ROOT", `env -u XBOT_CALL_ID "$XBOT_BIN" chat-group create ' Actual source room ' --self --member `+c+` --member `+b+` --member `+source+` --member `+b+` --json`), &created)
 	if !created.Created || created.Group == nil || created.Error != "" {
 		t.Fatal("actual nonprimary source did not create its member group without Call-ID")
 	}
