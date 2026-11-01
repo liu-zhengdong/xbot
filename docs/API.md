@@ -104,7 +104,7 @@ Create/Delete每次复核当前source primary。Create复制source全部Owners/L
 
 生产permissive不增卡、不强普通Delete原callctx；strict固定Delete恒需确认，不查已退delete_bot Known掉成Normal。只strict时经原Jobs现存Local/running/未finished+同listener的原ctx，用原wrapped Shell approver/原providerID/mutex，main冻结policy+原owner动态fork卡/child原回调保持。missing/completed/foreign/noapprover在Pause前拒。approval-only原Shell args附canonical `_xbot_bot:{action:"delete",name:TARGET}`，现grant/deniedBefore同键，目标A→B不吃A，Run raw不改，无随机nonce/新确认工具或表；原回调后重验primary/可见性。
 
-读HTTP硬限64KiB；完整JSON含newline与同准确FormatBotList/Info生成的人读都须≤现Shell32KiB，任一超限则当前source Resources工作区现results写完整脱敏JSON（20MiB结果限），回 `{count,file,access:"local",bytes}`，inline数组省略；两种引用也fit，bytes=实际文件。Create/Delete小回执同双32KiB；客户端先输出真实partial再非0，无proxy/redirect/自动retry，不截数组/remote/状态伪成功。四旧模型门/schema/index/Known已退，research仅list/info/help；fork/role/groups/messages仍原入口，persona见下文自身职责CLI。决定见 [ADR0052](adr/0052-bot-runtime-cli.md)。
+读HTTP硬限64KiB；完整JSON含newline与同准确FormatBotList/Info生成的人读都须≤现Shell32KiB，任一超限则当前source Resources工作区现results写完整脱敏JSON（20MiB结果限），回 `{count,file,access:"local",bytes}`，inline数组省略；两种引用也fit，bytes=实际文件。Create/Delete小回执同双32KiB；客户端先输出真实partial再非0，无proxy/redirect/自动retry，不截数组/remote/状态伪成功。四旧模型门/schema/index/Known已退，research仅list/info/help；role预算仍原离线配置；交接派生、单聊与成员群分别沿独立CLI，persona见下文自身职责CLI。决定见 [ADR0052](adr/0052-bot-runtime-cli.md)。
 
 置顶和主身份也使用平面source CLI：`"$XBOT_BIN" pin NAME --self [--json]`、`unpin NAME --self [--json]`、`primary set NAME --self [--json]`。同ParseBotRuntime在root/default/legacy初始化前识别，help离线；没有runtime primary查询。无self原pin/unpin恰一参数、primary零参数ensureSeed打印或set NAME恰二参数保持，不因环境有endpoint变runtime。self选source；每次用Resources当前名fresh比root Primary、目标self或原VisibleBots本地owner交集，排foreign/orphan/remote，不能拿XBOT_BOT或publish资格缓存授权。B原已存在endpoint在转交后下一写即可有权；A原endpoint仍A并下一写失权，不新建K/ref/session或wake。
 
@@ -141,7 +141,7 @@ Post原Normal无新确认卡，却须原XBOT_CALL_ID/X-XBot-Call-ID所指actual 
 
 Post短回{id,message_id?,appended,posted_members:[],failed_member?,stage,error?}。stage为validation/rate/transcript/recipient_load/recipient_open/recipient_post/complete；仅原AppendJSONL返回nil才appended:true/message_id=实际群行ID，仅每次原Inbox.Post成功才加入posted_members。原member顺序、skip sender、首次错即停保持，late错误可以群记录已成+B已收/C失败，CLI先输出真实回执再非0，勿盲重试；不rollback群/rate或造重试/签收账。posted只指Inbox已接受，不代表handled/已醒；appended:false不声称全root无写/原rate没消耗或无JSONL尾半行。旧PostGroup(error)仅薄兼容入口至同一PostGroupWithResult writer，owner Web原KindPerson路径亦保。
 
-ListReply{groups?,count,file?,access?,bytes?,error?}与HistoryReply{group?,messages?,untrusted,count,file?,access?,bytes?,error?}按准确共享formatter预算：整JSON+newline与human任一超原Shell32KiB，就把完整脱敏JSON（所选records不截，20MiB cap）写source当前Resources工作区原results文件，省inline数组，回file/access:"local"/真实bytes/count；小引用两格式也fit。两个写ACK同准确双32KiB，显示错误也保created/appended/posted事实，不回正文artifact。Bus/fanout在source route外，artifact实际IO才短持current route，改名沿原RenameMember/当前路径，不复活旧目录。Bus本身无waker，原serve/proc忙时吸收/Inbox waker保持，不承诺所有生产者即时wake。四原模型wrapper/Known/schema/index退役，peers仅余fork_bot，其它native/Link导线保；research仅同窄lexer/parser的list/history/help，写在解释器前拒，dev/general原Shell可用。见 [ADR0055](adr/0055-chat-groups-runtime-cli.md)与 [内核](atlas/kernel.md#成员聊天群与原消息链)。
+ListReply{groups?,count,file?,access?,bytes?,error?}与HistoryReply{group?,messages?,untrusted,count,file?,access?,bytes?,error?}按准确共享formatter预算：整JSON+newline与human任一超原Shell32KiB，就把完整脱敏JSON（所选records不截，20MiB cap）写source当前Resources工作区原results文件，省inline数组，回file/access:"local"/真实bytes/count；小引用两格式也fit。两个写ACK同准确双32KiB，显示错误也保created/appended/posted事实，不回正文artifact。Bus/fanout在source route外，artifact实际IO才短持current route，改名沿原RenameMember/当前路径，不复活旧目录。Bus本身无waker，原serve/proc忙时吸收/Inbox waker保持，不承诺所有生产者即时wake。四原模型wrapper/Known/schema/index退役，peers工具组已空并退役，其它native/Link导线保；research仅同窄lexer/parser的list/history/help，写在解释器前拒，dev/general原Shell可用。见 [ADR0055](adr/0055-chat-groups-runtime-cli.md)与 [内核](atlas/kernel.md#成员聊天群与原消息链)。
 
 ## Bot 单聊运行时 CLI
 
@@ -162,7 +162,43 @@ TARGET 是本地 Bot 或 `bot@设备`。纯 `ParsePeerMessageRuntime` 按 flag a
 
 stage 按实际位置报告：本地 validation/rate/recipient_load/recipient_open/recipient_post/complete；远端 validation/identity/envelope/rate/gateway/queue/complete，源记录失败为 record。REMOTE 尝试得到实际发送/排队结果后，原 source transcript 追加一次完整冻结请求与结果的普通内部事实，见 [Bot 私聊](#bot-私聊)。只有 AppendSeq 成功才 `recorded:true/record_seq`；记录错为 `recorded:false`、error/非 0，保留原 gateway/queued/envelope 事实，不回滚或重发。本地无需这条源记录。
 
-回执不回显正文、不另存正文 artifact。共享准确 `FormatPeerMessage` 校验整 JSON 含 newline 与实际 human 输出各≤Shell 32 KiB，HTTP 硬限 64 KiB；显示超限仍保发送/排队/记录事实。失败时 CLI 先输出真实回执再非 0，不自动重发或回滚。research 仅放行同窄 lexer/parser 识别的 help；dev/general 用原 source Shell。`message_bot` 的执行 wrapper、Known、schema、index 已退，peers 仅余 `fork_bot`，其它 Link/Event 导线保持。现状核对：2026-11-02；决定见 [ADR0056](adr/0056-peer-message-runtime-cli.md)。
+回执不回显正文、不另存正文 artifact。共享准确 `FormatPeerMessage` 校验整 JSON 含 newline 与实际 human 输出各≤Shell 32 KiB，HTTP 硬限 64 KiB；显示超限仍保发送/排队/记录事实。失败时 CLI 先输出真实回执再非 0，不自动重发或回滚。research 仅放行同窄 lexer/parser 识别的 help；dev/general 用原 source Shell。`message_bot` 的执行 wrapper、Known、schema、index 已退，peers 工具组已空并退役，其它 Link/Event 导线保持。现状核对：2026-11-02；决定见 [ADR0056](adr/0056-peer-message-runtime-cli.md)。
+
+## Bot 交接派生运行时 CLI
+
+```sh
+"$XBOT_BIN" bot-fork NAME --self --role TEXT [--group NAME] [--json]
+"$XBOT_BIN" bot-fork NAME --self --role-file FILE [--group NAME] [--json]
+cat FILE | "$XBOT_BIN" bot-fork NAME --self --role-file - [--group NAME] [--json]
+"$XBOT_BIN" bot-fork --help
+```
+
+所有 source Bot（含非 primary）都可为明确职责派生一个持久新 Bot。`role` 是 child 的完整职责/persona 及交接 focus，trim 后 1..8192 字节；与配置的运行档位 `config.Role` 不同，child 有效默认 chat/45 分钟，不继承 source 的 dev 预算。NAME trim 后须合法、非 self、未存在；source 要有 Owners 和 Memory；可选 group trim 后最多 48 字节，禁正反斜杠与换行。
+
+纯 `ParseBotForkRuntime` 按 flag arity 消费值，支持 `--` 后的位置参数；恰一 NAME、role/role-file 二选一，重复/未知 flag、坏 arity 或缺 self 拒绝，参数值中的字面 `--help` 不冒充帮助。help 离线；main 在 resolveRoot/default/legacy 初始化前分流。self 由原 endpoint/规范 XBOT_ROOT 识别，显式 root 必须相同，旧 XBOT_BOT 仅诊断；缺 endpoint、root 错或运行失败明确非 0。原有效离线 `fork SRC NAME --role TEXT [--group NAME]` 保持独立。file/stdin 可传完整 8192 字节职责，避开原 Shell 16 KiB 命令上限；raw max+1 读取及最终转义 typed JSON 请求各限 1 MiB，不先截职责再 trim。
+
+原 `BotHandlers.Fork` 在同 listener 提供 `POST /v1/bot/fork`，仅接单对象 `{name,role,group?}`，拒 query、未知字段、非对象和尾随 JSON，复用 loopback/Host/browser/root guard。`XBOT_CALL_ID`／`X-XBot-Call-ID` 必须关联该 listener 实际 Local/running/未 finished Shell prepared context，且有冻结 turn；missing/finished/foreign/nonShell/无冻结 turn 在领域调用前拒绝。Normal 派生不调用 approval intent、不加确认卡、不要求 approver 函数，承载 Shell 的原 gate 独立。沿原 prepared ctx 传取消、用 `turnSeqOf(prepared)` 记压缩用量，实际 seq=0 仍保 0，不找 latestTurn；复用 source Kernel/Memory/Compactor。
+
+回执为 `cliops.BotForkReply`，JSON 字段如下；`created`、`handoff_parts`、`handoff_total`、`stage` 总是输出，其余空值省略。
+
+| 字段 | 含义 |
+|---|---|
+| `name` | 实际目标名，显示前脱敏 |
+| `created` | 仅原 Create 返回 nil 或 typed `CreateCommitError.Applied`；确认原 config 提交，不代表初始化齐全 |
+| `create_stage` | 仅原 typed CreateCommitError 的实际阶段：default_binding/config/state/persona；Create 成功时省略 |
+| `confirmed` | 封闭集合 owners/binding/rules/handoff/child_note/source_note/group；仅各原调用返回 nil 才加入 |
+| `handoff_parts` / `handoff_total` | 前者仅逐次原 Remember 返回 nil 的确认数；后者为实际 OneLine 后按 960 字节切分的总数 |
+| `uncertain_memory` | 当前返回错误的 Remember 尝试 `{bot,key}`；Markdown 可能已经写成 |
+| `group_id` | 仅原 CreateGroup 返回 nil 时的实际 ID |
+| `stage` / `error` | 实际停止位置及可选脱敏错误 |
+
+stage 为 validation/handoff/create/owners/binding/rules_read/rules/handoff_memory/child_note/source_note/group/complete。确认只描述这次调用的 nil ACK，不保证之后正文仍在或未确认阶段没有字节写入。原 Remember 先 atomic 写 Markdown，再写 index，随后 noteSync；index/sync 错误可能发生在 Markdown 已成之后。交接摘要最多 8 KiB，而原 profile 容量只有 4 KiB，故 child 已创建且部分 960 字节事实已确认后，仍可能真实遇到 ErrProfileFull；此时保留 created、confirmed、parts/total 与当前 uncertain_memory。无回滚、自动重试、stat/错误字符串猜提交或容量提升；created:false 也不承诺原默认配置准备、迁移和用量记录全无写入。
+
+handoff 在 source 的短 current IO 内冻结 State migrate、未覆盖行的 projected 历史、ScopeBot/Profile facts 和非空数据分支读取的 source persona。原 Focused compactor 优先、Compact fallback，模型调用在 route/host/Jobs 锁外；`compact.LLM` 调原 Provider.Chat 且不带 tools，HTTP 是否流式沿供应商现有行为。无 projected turns 且无 Bot facts 才走原空源 fallback；该 fallback 保原样，模型摘要则 trim、拒空、按 Unicode 边界 clip 至 8 KiB，再 OneLine/split960。直接 Recall 只读 Bot scope、person store 共享不复制；projected 历史本身仍可带人物内容，不新增历史过滤或人物绝不进模型的保证。
+
+原写序为 handoff → Create → Owners → Provider/Model/ContextLimit binding → source MigrateRules/读规则 → child rules → child handoff 分块 → child `fork-source` → source `fork-NAME` → 可选 source+child 群 metadata。Owners 保 pre-LLM 时点，Links/三项 binding 在 LLM 后沿当前 source fresh 读取。child 目标固定、认识事实作者取后写时当前 source；source note 在一次短 current IO 内以当前 b.Name 同作 BotName/WrittenBy 直接 Remember；源 rules 用原 current helper，group 前取当前名再锁外调用 Bus。改名不重建旧目录，不加嵌套 current helper、CAS 或跨模型快照服务。真实消费者是 child persona/rules/binding/记忆组装、Web 记忆面板、下一正常 wake 及可选群 metadata；不复制 transcript/summary blocks、person 文件、hooks 或预算，不启动 child、投 Inbox 或唤醒。
+
+短回执不回显职责/摘要全文、不另存正文 artifact。准确共享 `FormatBotFork` 与整 JSON 含 newline 各须≤原 Shell 32 KiB，HTTP 硬限 64 KiB；显示问题保实际创建/确认/不确定记忆/群事实。CLI 先输出 partial 回执再非 0，保留回执，勿盲重跑。research 仅同窄 lexer/parser 识别的 bot-fork help，dev/general 沿原 source Shell。`fork_bot` wrapper/Known/schema/index 与已空的 peers 工具注册组已退，其余 Link/Event 导线、旧 native 调用记录和后台 ForkKindStart/End 修复保持；无专用 fork 历史 parser。旧离线/Web `Fork` 仍是错误时空结果的薄兼容 adapter，不提供本运行时 typed partial。见 [内核](atlas/kernel.md#bot-交接派生与原-source-模型链)、[多 Bot](atlas/multibot.md#bot-交接派生)及 [ADR0057](adr/0057-bot-fork-runtime-cli.md)。
 
 ## Bot 列表与创建
 
@@ -212,7 +248,7 @@ stage 按实际位置报告：本地 validation/rate/recipient_load/recipient_op
 
 `POST /api/bots/{name}/fork`，body `{"name":"reviewer","role":"Review pull requests.","group":"ship"}`。`name` 和 `role` 必填。`group` 可省略；有名字时新建一个两边都在的群。
 
-这不是拷贝。源 Bot 写一份交接，成为新 Bot 的 bot 记忆；person 记忆本来就共享，不复制。新 Bot 的 persona 是 `role`，transcript 是空的，provider 绑定继承。两边互相记一条，细节用 `"$XBOT_BIN" peer-message TARGET --self --text TEXT` 问，不能读源 transcript。源 Bot 正忙时 409 `bot is busy`。成功 200 `{"name":"reviewer","group_id":"g_........"}`，没建群时 `group_id` 是空字符串。
+模型侧交接派生使用 [bot-fork 运行时 CLI](#bot-交接派生运行时-cli)，原 fork_bot 已退役；本 owner HTTP 路由仍沿原登录/owned、busy gate 与错误时空结果的 Fork adapter，不提供新 typed partial 回执。这不是拷贝。源 Bot 写一份交接，成为新 Bot 的 bot 记忆；person 记忆本来就共享，不复制。新 Bot 的 persona 是 `role`，transcript 是空的，provider 绑定继承。两边互相记一条，细节用 `"$XBOT_BIN" peer-message TARGET --self --text TEXT` 问，不能读源 transcript。源 Bot 正忙时 409 `bot is busy`。成功 200 `{"name":"reviewer","group_id":"g_........"}`，没建群时 `group_id` 是空字符串。
 
 ## 档案、头像、模板
 

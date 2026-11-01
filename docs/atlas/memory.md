@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/memory/, internal/person/, internal/experience/]
-verified: 2026-11-01 @ 16f9ab0c (whole-store literal search with chronological pagination); 2026-10-31 @ feature/memory-reminder (ErrProfileFull / no truncation); 2026-10-28 @ 342cc208 + 共享工作空间回修
+verified: 2026-11-02 @ 997baf85 (bot-fork scoped Remember acknowledgements, Markdown/index uncertainty and profile capacity)
 ---
 # 身份与记忆
 
@@ -27,6 +27,7 @@ verified: 2026-11-01 @ 16f9ab0c (whole-store literal search with chronological p
 - **人的记忆只在本机**：人的身份和人的记忆是每台安装自己的存储（`people/<id>/identity.jsonl`、`people/<id>/memory/sync.jsonl`），不在机器之间同步；跨节点同步已于 2026-10-18 随旧的「节点」一起退役（[ADR 0012](../adr/0012-retire-node.md)）。这些日志是本机的事实记录，往模型里注入时仍然只当数据。
 - **容量劝导与轻量沉淀**：走内核已有提醒 Register 缝，门槛/冷却与行为测试见 [内核：记忆提醒](kernel.md#怎么运转)，不另造容量账或自省模型轮；原 `ErrProfileFull` 与超限不落盘、不截断的后盾不变。
 - **常驻上限**：每个范围的 profile 约 4 KiB；默认键事实注入为 `- text`，自定义键保留 `- key: text`，person 范围追加 ` via X`；写入和迁移按 memory.md 的实际渲染字节数加每个自定义键的 `len(Key)+2` 计量，文件格式不变。Bot 快照和人物环境资料分别沿原 4 KiB 预算。写超了就报错，要求合并事实、忘掉过时的、或把细节挪到日志层，不静默截断。只拦会让文件变大的写：已经超限的文件（上限之前写的，或同步合并进来的）照样能删减条目，一条一条整理；日志层同样只拦变大的写。同步合并不受 profile 上限挡，免得整次合并卡死。注入只有越界才裁，并注明该整理。
+- **Bot 交接派生的内部 Remember**：`bot-fork --self` 沿原 source Memory 实例，将交接 OneLine/split960 后逐条写 child 的 ScopeBot/TierProfile（handoff、handoff-2…），再写 child fork-source、source fork-NAME；person store 直接共享、不复制。handoff 输入直接 Recall 仅源 Bot profile，但 projected 历史仍可有人物内容，不承诺人物绝不进交接模型。child 目标固定/作者取后写时当前 source，源认识事实在一次短 current IO 内以当前 b.Name 同作 BotName/WrittenBy 直接 Remember，不先取旧名再迟写；不嵌套 current helper或加全局记忆协议。原 saveTier 先 atomic Markdown，再 atomic index，随后 noteSync，任意 error 不能断言正文没写。fork短回执的 handoff_parts 仅原 Remember nil ACK、total为实际960切分数，当前失败以 uncertain_memory{bot,key} 指明结果未知；ACK不是当前正文必仍在的承诺。原8KiB交接摘要可超过4KiB profile，真实 child与若干parts已成后仍会遇到容量晚错，不暗剪摘要、抬cap或回滚/重试。handoff/认识事实由child下一wake记忆组装及Web记忆面板直接消费；无复制transcript/blocks或专用fork历史parser。完整回执见 [API](../API.md#bot-交接派生运行时-cli)，源模型与改名写点见 [内核](kernel.md#bot-交接派生与原-source-模型链)。
 - **注入：快照加差异**（记忆 v2 批 1，已落地）：
   - 写入规则在 `<memory>` 块里紧随 `MemoryRule` 注入，不依赖已保存的 `rules.md`；渲染版本 3 使旧 Bot 下一次唤醒重新拍快照。
   - 渲染版本变化时重建 Bot 快照，不把格式升级当记忆变化。会话开始及自动压缩后，把 Bot profile 加最近 8 条 Bot 日志拍成一份 State 快照，固定作为第二条消息；人物资料不进入它。换发送者不会换前缀。

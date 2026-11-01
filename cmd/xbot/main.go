@@ -26,6 +26,8 @@ const usageText = `XBot is a personal bot. One bot has one continuous conversati
 Usage:
   xbot [--root DIR] new <name> [--persona TEXT] [--provider NAME] [--model NAME]
   xbot [--root DIR] fork <src> <name> --role TEXT [--group NAME]
+  xbot bot-fork --help
+  xbot [--root DIR] bot-fork NAME --self (--role TEXT | --role-file FILE|-) [--group NAME] [--json]
   xbot [--root DIR] delete <name>
   xbot [--root DIR] list
   xbot peer-message --help
@@ -195,6 +197,9 @@ func run(argv []string) error {
 	}
 	if err != nil {
 		return err
+	}
+	if len(rest) > 0 && rest[0] == "bot-fork" {
+		return cmdBotForkRuntime(root, len(argv) > len(rest), rest[1:])
 	}
 	if len(rest) > 0 && rest[0] == "peer-message" {
 		return cmdPeerMessageRuntime(root, len(argv) > len(rest), rest[1:])

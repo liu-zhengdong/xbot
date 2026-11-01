@@ -16,6 +16,7 @@ type BotHandlers struct {
 	Pin     func(context.Context, BotPin) (BotPinReply, error)
 	Primary func(context.Context, string) (BotPrimaryReply, error)
 	Persona func(context.Context, BotPersona) (BotPersonaReply, error)
+	Fork    func(context.Context, BotFork) (BotForkReply, error)
 }
 
 type BotInfoQuery struct {

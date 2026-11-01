@@ -127,9 +127,6 @@ var kernelTools = []struct {
 	{"context", always, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{compactTool{k}, historyTool{k}, expandTool{k}, detailTool{k}}
 	}, nil},
-	{"peers", always, func(k *Kernel) []tools.Tool {
-		return []tools.Tool{forkBotTool{k}}
-	}, nil},
 	{"links", always, func(k *Kernel) []tools.Tool { return []tools.Tool{linksTool{k}, kernelManualTool{}} }, nil},
 	{"system", func(k *Kernel, _ []link.Link) bool { return k.Restart != nil }, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{restartTool{k}}
