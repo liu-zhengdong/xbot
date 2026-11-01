@@ -60,9 +60,16 @@ func TestRuntimeProfileRefreshesOtherLiveHandleBeforeNextRequest(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("live round did not reach gate")
 	}
-	desc, tz := "changed by earlier pass", "Pacific/Honolulu"
-	if _, err := cliops.Call(ctx, operationEndpoint(old), b.Root, &cliops.Update{Description: &desc, Timezone: &tz}); err != nil {
+	desc, tz, seed := "changed by earlier pass", "Pacific/Honolulu", "live-avatar#3"
+	value, err := cliops.Call(ctx, operationEndpoint(old), b.Root, &cliops.Update{Description: &desc, Timezone: &tz, AvatarSeed: &seed})
+	if err != nil {
 		t.Fatal(err)
+	}
+	if value.Avatar != bot.AvatarGenerated || value.AvatarSeed != seed {
+		t.Fatalf("runtime omitted avatar metadata: %+v", value)
+	}
+	if mode, got := current.AvatarState(); mode != bot.AvatarGenerated || got != seed {
+		t.Fatalf("other live handle missed avatar state: %s %s", mode, got)
 	}
 	select {
 	case name := <-notified:

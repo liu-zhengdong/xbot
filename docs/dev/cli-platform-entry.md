@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**普通资料首刀已合入本地 main、端到端通过；后续批次未实施**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**普通资料首刀已合入本地 main；avatar_seed 切片结构审计 PASS、实现与自有回归通过，待独立真入口收口；其余批次未实施**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -135,7 +135,7 @@ Agent → Shell → xbot CLI ─┐
 
 **两种结构**：A（选用）把头像元数据纳入已有 profileState，四个真实写口共用私有、有类型的 profile 保存函数；配置/上传文件使用原 config 文件锁协调，调用链仍是 CLI/网页/旧工具 → Bot 领域操作 → 原资源文件。B：另建 avatar service/mutex/缓存，保存后再同步 profile。B 多一份锁与头像状态，跨两 loaded handles 仍需文件锁，还会让 Agent 抄到两套写法，因此淘汰；不加通用 mutator/action 框架。
 
-**拟议形状**：`ProfileUpdate` 增 `AvatarSeed *string`，`cliops.Update` 同名 JSON 字段，`Profile` 增 avatar/seed；profileState 的构造、copyTo、set、RefreshProfile 覆盖这两个字段。`ApplyProfile(u)`、`SetAvatarSeed(seed)`、`SetAvatar(data,mime)`、`ClearAvatar()` 共用私有 `applyProfile(u ProfileUpdate, avatar avatarEdit)`，avatarEdit 是 keep/upload/clear/pinLegacySeed 的小枚举及上传 bytes/MIME/seed；pinLegacySeed 仅供既有离线 Rename 将空 seed 钉为原名字，保持 fresh avatar 模式（legacy custom 仍是 custom），不作为新 runtime 参数。只表达现有真实写意图，没有任意回调、dirty flags 或通用字段 map。SetAvatarSeed 委托 ApplyProfile；网页 PATCH 和旧模型工具把 seed/简介/时区合成一次 ApplyProfile，name/persona 仍沿旧语义，不冒称与它们整次原子。现有离线 `Rename` 在原 primary 锁内、移动目录前，以 loaded 原 Bot 调 `applyProfile({}, avatarEdit{kind:pinLegacySeed, seed:from})`；helper 在 config 文件锁内仅当 fresh seed 为空时钉原名字，保留 fresh avatar（包括 legacy custom）。随后原目录/Name/Jobs 改名路径照旧，删掉原直接 b.cfg.AvatarSeed 赋值；即使后续改名失败，这一步也只将原本按旧名字显示的空 seed 规范为同一旧名字，不改变显示模式。不新增保存头、dirty flags 或异步 rename 协议。
+**拟议形状**：`ProfileUpdate` 增 `AvatarSeed *string`，`cliops.Update` 同名 JSON 字段，`Profile` 增 avatar/seed；profileState 的构造、copyTo、set、RefreshProfile 覆盖这两个字段。`ApplyProfile(u)`、`SetAvatarSeed(seed)`、`SetAvatar(data,mime)`、`ClearAvatar()` 共用私有 `applyProfile(u ProfileUpdate, avatar avatarEdit)`，avatarEdit 是 keep/upload/clear/pinLegacySeed 的小枚举及上传 bytes（MIME 沿既有 SniffImage 判定）/seed；pinLegacySeed 仅供既有离线 Rename 将空 seed 钉为原名字，保持 fresh avatar 模式（legacy custom 仍是 custom），不作为新 runtime 参数。只表达现有真实写意图，没有任意回调、dirty flags 或通用字段 map。SetAvatarSeed 委托 ApplyProfile；网页 PATCH 和旧模型工具把 seed/简介/时区合成一次 ApplyProfile，name/persona 仍沿旧语义，不冒称与它们整次原子。现有离线 `Rename` 在原 primary 锁内、移动目录前，以 loaded 原 Bot 调 `applyProfile({}, avatarEdit{kind:pinLegacySeed, seed:from})`；helper 在 config 文件锁内仅当 fresh seed 为空时钉原名字，保留 fresh avatar（包括 legacy custom）。随后原目录/Name/Jobs 改名路径照旧，删掉原直接 b.cfg.AvatarSeed 赋值；即使后续改名失败，这一步也只将原本按旧名字显示的空 seed 规范为同一旧名字，不改变显示模式。不新增保存头、dirty flags 或异步 rename 协议。
 
 **锁、发布与文件顺序**：所有字段和上传字节先完整校验，再拿 profileState.mu → config.json.lock，锁内读 fresh config、合并显式字段。seed 写 generated+新 seed；clear 写 generated 并保留 filelock 内 fresh seed（不能从过时 handle 的 AvatarState 复制 seed）；upload 写 custom 并保留 fresh seed。普通 SaveConfig 从磁盘保留最新 avatar/seed，不能让旧对象 SetPinned 等设置回滚头像。只有配置元数据保存成功才发布快照；seed/clear 在保存后、仍持上述原资源锁时 best-effort 清除旧 upload/MIME，避免删掉并发新上传；清理失败不伪报未保存。上传文件与 MIME 在同一资源锁中原子各自写入，元数据成功后才发布 custom；接受三文件不是崩溃事务，不加日志。失败不发布新快照。
 
@@ -195,7 +195,7 @@ Agent → Shell → xbot CLI ─┐
 
 - 主人日用验收尚未开始。普通资料首刀的独立审计、真入口验证与合入已完成；后续不重复该刀设计审批，按新切片复核实际增量。
 - 批 0 的后续实际操作及入站依赖清单、research 按业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
-- profile 的头像/改名完整运行时 CLI 与组合更新；在真正覆盖前保留旧工具和原头像即时刷新，未整族移除。
+- avatar_seed 切片的独立真入口/代码审计收口与合入；头像上传/clear、改名完整运行时 CLI 与其组合仍未覆盖，保留完整旧工具和原即时刷新，未整族移除。
 - MCP 管理、发现、调用、通知、生命周期与慢调用的 CLI 通路。
 - 技能/例程/Bot/群/连接器等平台能力逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。

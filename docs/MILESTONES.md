@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-11-01 CLI profile 第二刀：生成头像 seed
+
+- L 档，沿已授权路线在同份 dev 补调用用法、两种结构、真实写口与读缝；独立结构审计在加入 legacy Rename 空 seed 钉脸和旧 custom 句柄 fresh 判定后 PASS，才改产品。实现 `f5b6702e`：`profile set --self --avatar-seed SEED [--description/--timezone] --json`，回执与 show 加 avatar/seed，不传图片。沿首刀当前实例身份、原 Kernel、Sink、任务寿命和 UI；不改视觉、Event/Inbox、权限默认放行、persona，不新增组件/事件/任务表。
+- profile 快照覆盖头像元数据；生成、上传、clear 与 legacy pin 通过私有 typed 写缝、原 profile→config 锁、fresh merge 保存。无关旧句柄 SaveConfig 保留磁盘最新头像；clear 保最新 seed。全部先校验，失败不发布或清旧图；生成元数据成功后锁内 best-effort 清理，失败不伪报未保存，不承诺上传三文件崩溃原子。AvatarBytes/ExportTemplate 共享锁内 fresh metadata 判 custom 与读取，generated 不服务遗留 custom 文件；可选 generator 锁外调用。
+- 自有旧红：旧 B SetPinned 回滚 A 新 seed，旧 handle clear 覆回旧 seed，旧 custom handle 服务 generated 后遗留图，同对象头像读写 race，web 非法组合先改头像。窄 bot/kernel/web/CLI 头像、模板、旧改名与 profile 回归已绿（0.394/3.638/0.519/0.521s）；新增保存失败保旧快照/图、cleanup 失败仍报告已保存与跨 live 头像元数据检查通过。必要定向 race：bot 4.317s、kernel 4.582s，相关五包 vet、格式与 diff 检查通过。atlas audit 退出 0、无断链，30 项既有非致命提示（size 1、stale 8、dev 4、unabsorbed 3、unmapped 14），未扩修。
+- 独立方持有新的 `cli_profile_avatar_*` 测试；旧版真实 chat 已取得 `flag not defined: -avatar-seed` 红。修复版真入口/浏览器结果由独立方收口，实现方不修改期望、不重复 E2E。当前级别：实现分支定向回归通过、待独立真入口与代码审计，未合 main/未日用。
+- 保留完整旧 profile 工具与即时刷新（改名及其组合未等价）；旧 `profile avatar <name> --file/--clear` 在 endpoint 存在时拒绝，help 标明仅无 endpoint 离线，尚无 runtime 上传/clear。Not run：全仓/三遍、真模型、Linux/Windows、生产性能、日用；runtime 改名、上传协议、research/runner 与 MCP 后续批次未实施。未 push/发版或改日用运行实例。
+
 ## 2026-11-01 记忆页单栏与经历搜索
 
 - M 档，按用户确认原型实现：隐藏「关于你」，「关于本 Bot」预览前两条、手机一条，可展开完整 Markdown；经历在下方单栏，搜索框直接可见。流水为空时不占页脚。

@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-01 @ b1bd9c9b (merged memory/search and runtime profile; real-browser streaming refresh passed)
+verified: 2026-11-01 @ f5b6702e (avatar profile API combination tests; prior merged memory/search and streaming browser checks retained)
 
 ---
 # 网页界面
@@ -100,7 +100,7 @@ Composer 的 mic 在发送钮左侧：点按进入录音条，「发送」提交
 Bot 菜单「查看生成的图片」保留为可选工作区定位功能，打开现有模态框展示服务端工作区路径并可复制；桌面有真实 OpenPath 回调时才显示「打开目录」，复用 open-workdir。接口仍固定路径并校验 Bot 所有权，不分发图片、不新增产物账本。
 ### 资料即时刷新
 
-普通资料 CLI 保存成功后，当前轮次的 `profile` SSE 提示触发原 Bot 列表与资料接口并行读取，更新侧栏和已有资料缓存；流未结束也可打开编辑资料看到新简介，自然短轮也不只依赖收尾。状态提示不解析 Shell 输出、不写 Inbox、不改变布局。选择和资料请求 generation 阻止迟到结果覆盖新 Bot 或较新的资料；已打开的编辑表单保留草稿，不被刷新替换。
+普通资料或生成头像 seed 的 CLI 保存成功后，当前轮次的 `profile` SSE 提示触发原 Bot 列表与资料接口并行读取，更新侧栏和已有资料缓存；流未结束也可打开编辑资料看到新简介，生成头像 seed 同样刷新侧栏和顶栏，自然短轮也不只依赖收尾。状态提示不解析 Shell 输出、不写 Inbox、不改变布局。选择和资料请求 generation 阻止迟到结果覆盖新 Bot 或较新的资料；已打开的编辑表单保留草稿，不被刷新替换。
 
 `bot_update_profile` 的原工具结果即时刷新分支仍保留，头像字段参与侧栏缓存签名；当前仍选中原 Bot 且不在往来视图时同步重绘顶栏。两种刷新都不等待流式结束，慢请求不阻塞正文，读取失败不打断回复。
 ### 网页搜索设置
