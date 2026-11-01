@@ -356,7 +356,12 @@ func TestCLIBotRuntimeListInfoProjectionCurrentRoute(t *testing.T) {
 	}
 	for _, old := range []string{filepath.Join(srv.Root, "work", original), filepath.Join(srv.Root, "bots", original)} {
 		if _, err := os.Stat(old); !os.IsNotExist(err) {
-			t.Fatal("projection revived or retained an old source directory after rename")
+			entries, readErr := os.ReadDir(old)
+			var names []string
+			for _, entry := range entries[:min(len(entries), 8)] {
+				names = append(names, entry.Name())
+			}
+			t.Fatalf("old source directory remains: kind=%s stat=%v read=%v entries=%q", filepath.Base(filepath.Dir(old)), err, readErr, names)
 		}
 	}
 }
