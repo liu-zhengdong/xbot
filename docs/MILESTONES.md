@@ -17,7 +17,7 @@
 - 真二进制、HTTP、磁盘账本及 Chrome 的 `TestTraceExplorerJourney`（14.94s）与 `TestChatTabsJourney`（11.54s）通过；实际读回系统剪贴板，执行搜索／筛选、三种总览模式、四页签、轮询追加、before 历史、390px Escape／关闭返回和切 Bot。第三方仅为 scripted 模型，未用真供应商。定向 vet、JS 语法与 diff 检查通过。
 - 主管与独立视觉复审对照用户定稿原型，正式桌面浅／深色和手机详情三张 DPR2 截图 PASS，无截图实证 findings；手机列表行高和未截图状态不冒称目视验证。证据、日志和评审位于 `~/.xbot-build/trace-explorer-20261101/validation/`。级别：端到端通过，待用户日用。Not run: 全仓、真实模型、无关旅程、Windows／原生窗口与专项性能测试；本次只改 Web 轨迹投影和静态资源。
 
-## 2026-11-01 MCP 2a 产品分片（独立端到端与增量静态通过，待整合）
+## 2026-11-01 MCP 2a 运行态底座（本地 main 已整合，所测端到端通过）
 
 - 整体具体结构经24 PASS，`76f6df46` 在原编号上标 Accepted，整合为避让 continuation 决定迁到 [ADR 0046](adr/0046-process-owned-mcp-sessions.md)，仅本刀 owner 决定；0035 MCP schema 退役留2b。产品 `3f8e076d` owner/通知/冻结凭据，`b08afda9` HTTP/stdio取消/完整Raw/陈旧spec拒绝与Ref暂停，`c799d8ae` 逐call脱敏/Jobs准入，`aaa66c49` 共享原Jobs/sourcelease/rename-delete与真实入口接线。
 - `3f8e076d` 独立Owner真入口 PASS（validation `69e78b70`，仅21093183+9e5f3d99独立文件），1.53s/package2.675s；24对同SHA增量静态PASS。热新增在web/describe/status前收到note并启动真实轮；三Bot共3次init（旧10），Worker web/note/web计数1/2/3同session、Other独立1，untrusted Inbox单事件。
@@ -26,7 +26,9 @@
 - `704f584d` 独立Reconcile复验（validation `2d59185f`）一次PASS10.96s/package12.022s：非法spec保有效会话、热换unknown不retry/单event、真实secret定向变更/删除/恢复均过；24对 `aaa66c49..704f584d` 定向修复静态PASS，无剩余2a阻塞。Owner/Calls保留上面的精确SHA，不重跑15.5s。
 - `58b2d81c` 仅导出原dirMu保护的 Directory() getter，供协调方整合新main continuation restore的实际Jobs.Dir读口；Dir兼容保留、不共享Local executor。tools仅编译通过0.708s，没有为getter另写测试或重跑旅程；本分支未拉main continuation。
 - 自有绿证据：owner/adapter5项race；取消/Raw/stale/pause11项race（半帧新fixture预读场景纠正后仅重跑该项）；tools定向race1.920s；kernel6项race2.862s含原lease红翻绿、跨K同表cancel/单完成/源mask；mutation7项race kernel1.235s/web1.339s；9项受影响旧rename/Jobs/delete/endpoint通过。最终cmd/web/pipe/e2e编译通过(.749/.899/.893/.894s)，所有job已收。相关一次绿即停，不以全仓测试代替实际入口。
-- 级别：feature产品已提交、本地unit/race及上述真实入口通过；修复后的独立Reconcile/增量静态已通过，待协调方整合，未合main/未日用。Not run：全仓/三遍、机械19项重复、Avatar/browser旅程重复、真实模型/服务与跨平台；未push/发版/改运行实例。2b runtime MCP CLI/完整产物与旧adapter/schema退役未做。
+- 本地 main 合入 `66ef3022`，保留同期可继续子代理与专属 Tab；合并后仅将新增 Kernel fixture 接资源参数、restore 读目录接 Directory()。组合 Kernel 的实际子模型搜索/vision、MCP 跨 route schema 回退、续聊与父信通过（0.896s），Web 完成态继续与绕前台 gate 控制通过（0.935s），CLI 编译通过（0.757s），smoke 只编译。独立三个测试提交依次取为 `458c6179`、`ab6860bb`、`97c32bb5`，未取验证分支产品镜像。相关新日志在 `~/.xbot-build/ui-shots/cli-platform-mcp/integration-*-7efc0dc1-eda8616c.log`，不改独立报告的历史 SHA 归属。
+- 合入工作区 atlas audit 退出0、无断链，40项非致命提示（size1、stale5、dev5、unabsorbed3、unmapped26，含现有未提交设计与临时文件）；未为清提示扩修。
+- 级别：2a 已合入本地 main、所测端到端与增量静态通过，未日用。Not run：全仓/三遍、机械19项重复、15.5秒独立组重复、Avatar/无关浏览器旅程、真实模型/服务与跨平台；未push/发版/改运行实例。2b runtime MCP CLI/完整产物与旧adapter/schema退役未做。
 
 ## 2026-11-01 MCP 2a 设计与独立 core 机械子步
 

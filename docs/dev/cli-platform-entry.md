@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**普通资料与 avatar_seed 切片已合入本地 main、所测真入口通过；改名、MCP 与其余平台批次继续实施**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**普通资料、avatar_seed 与 MCP 2a 运行态底座已合入本地 main、所测真入口通过；MCP CLI、完整改名与其余平台批次继续实施**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -145,7 +145,7 @@ Agent → Shell → xbot CLI ─┐
 
 **变更与检查**：预期只改 `cmd/xbot/{main,cmd_bot}.go`、`internal/cliops/profile.go`、`internal/kernel/{operations,profile}.go`、`internal/bot/{bot,profile}.go`、`internal/web/profile_api.go` 与自有针对性单测；沿既有前端代码通知，不重写 UI。先跑自有旧句柄回滚/组合非法/并发读写红回归，审计 PASS 后实现；通过后仅跑受影响 profile/头像/模板/CLI/web 组合检查与必要 race，独立真入口由验证方跑，不全仓/三遍/真实模型。ADR 0043 的入口/生命周期决定继续有效，本刀不改变它或提前移出工具族；改名、上传 runtime 协议、research/runner、MCP 均不纳入。
 
-## 批 2a：MCP core 与进程资源 owner（2026-11-01，产品与独立端到端/增量静态通过，待整合）
+## 批 2a：MCP core 与进程资源 owner（2026-11-01，已合入本地 main，所测端到端/增量静态通过）
 
 **切片与对照**：2a 只做 core/真实会话 owner、通知 reconcile、原 Jobs 共享和源调用责任；短暂保留只借用的旧模型 adapter 供观察。2b 真 CLI 通过后同刀退 MCP adapter/装配/schema，不提前写 CLI 大接口或文件产物协议。沿已完成 164 metadata/44 相关全文与其余主题筛查，只查新冲突：ADR 0021 消息/环境、0035 剩余工具门、0043 source endpoint、0044 sender 继续有效；新所有权决定见 ADR 0046。不重新做全候选审查，不改旧 Accepted 正文。
 
@@ -229,7 +229,7 @@ func (c *client) cancelHint(id json.RawMessage) {
 - Prepare/Finalize/原 turn/replyGen/sender/trust/cwd 闭包继续属 source call，不换成当前 owner K。默认 Resources.DeliverToolDone 复用 Jobs.Deliver→原稳定 shelljob_ID Event→当前 Inbox，所有锁外 wake。request.OnDone 覆盖默认的现有单选保持；exec fallback/forwardExec 用同一 Deliver，不发第二完成 Event。Deliver 实际持 metaMu，故短路由顺序为 Jobs.metaMu→route→Inbox；MCP note 为 route→Inbox。
 - 实际运行写口 web/mcp、apps/custom、apps/{id} DELETE、globalSecrets 与 kernel links 成功后立即 reconcile；旧离线 cmd 配置及外部文件由现 Pass 读取，2b 尚未新增 runtime MCP CLI。snapshotLinks 只读 cached spec；Pass/API、Handle 和显式 load 在资源锁外 reconcile。runtime 摘要/search/load/adapter 统一沿 Manager 保留的有效 spec，不绕过它读坏配置；仅 saved/configured 不冒称 ready。现 Bot MCP API 是 GET/POST/DELETE，同 spec POST 409，无 PUT/update；DEL+POST 仅称移除/新增。真正外部原子替换 mcp.json 沿现 serve pass 频率 reconcile，无新 watcher；独立 fixture 可沿现 --interval 100ms。GET apps/runtime 只看当前 Manager 状态，不拿另一 spec 旧错误作新配置结果。
 
-**实际装配签名（产品已落并验收，待整合）**：`Kernel.Resources *BotResources`；`web.Server.NewResources func(*bot.Bot)(*kernel.BotResources,error)`，`NewKernel func(*bot.Bot,*kernel.BotResources)(*kernel.Kernel,error)`；原缓存只一张 entry map，`ResourcesFor(b)` 复用同 entry，Pass 的 factory 先取它再 `newServeKernel(root,b,resources,restart)`。chat 直接构造同类型，不建 map/web。Resources 构造完成 Jobs.Load/一次默认投递，再注入 openKernel，后者才 RecoverTasks；binding cached/临时构造同传此指针。默认 Jobs 不捕获第一 K 的 Redact/Forms/OnDone；源 call 仍自己的闭包。MCP ReadConfig 在装配过滤原 retired catalog 项，core 不 import link 猜目录规则。Runtime rename/delete 通过 source K 的窄 host callbacks 进入同 Server entry 接缝；chat 仅当前资源闭包，未持资源的其它 Bot 无需造 K/client/table。
+**实际装配签名（已整合并通过相关组合检查）**：`Kernel.Resources *BotResources`；`web.Server.NewResources func(*bot.Bot)(*kernel.BotResources,error)`，`NewKernel func(*bot.Bot,*kernel.BotResources)(*kernel.Kernel,error)`；原缓存只一张 entry map，`ResourcesFor(b)` 复用同 entry，Pass 的 factory 先取它再 `newServeKernel(root,b,resources,restart)`。chat 直接构造同类型，不建 map/web。Resources 构造完成 Jobs.Load/一次默认投递，再注入 openKernel，后者才 RecoverTasks；binding cached/临时构造同传此指针。默认 Jobs 不捕获第一 K 的 Redact/Forms/OnDone；源 call 仍自己的闭包。MCP ReadConfig 在装配过滤原 retired catalog 项，core 不 import link 猜目录规则。Runtime rename/delete 通过 source K 的窄 host callbacks 进入同 Server entry 接缝；chat 仅当前资源闭包，未持资源的其它 Bot 无需造 K/client/table。
 
 ### 已定：source listener lease
 
@@ -325,7 +325,7 @@ Jobs 准入至少区分 open/临时 paused/宿主永久 closed，仅表达资源
 - 主人日用验收尚未开始。普通资料首刀的独立审计、真入口验证与合入已完成；后续不重复该刀设计审批，按新切片复核实际增量。
 - 批 0 的后续实际操作及入站依赖清单、research 按业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - 头像上传/clear、改名完整运行时 CLI 与其组合仍未覆盖，保留完整旧工具和原即时刷新，未整族移除。avatar_seed 的独立真入口、兼容增量审核与合入已完成，不重复该刀验收。
-- 2a 的进程 MCP owner/通知、共享 Jobs/source lease、取消及新增资源 rename-delete 已独立端到端和增量静态通过、待整合；现状见 atlas。2b 的 MCP 管理/发现/调用 runtime CLI、完整结果产物与旧 adapter/schema 退役仍未做。
+- 2b 的 MCP 管理/发现/调用 runtime CLI、完整结果产物与旧 adapter/schema 退役。已完成的 2a 运行态底座不重复设计审批与既有验收；后续只按实际增量核对，现状见 atlas。
 - 技能/例程/Bot/群/连接器等平台能力逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。

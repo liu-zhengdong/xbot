@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
-verified: 2026-11-01 @ 704f584d (MCP source masking and credentials; prior continuation, vault and review evidence retained)
+verified: 2026-11-01 @ 97c32bb5 (MCP masking/credential phase evidence and continuation checks retained)
 ---
 # 安全：保险箱与权限表
 

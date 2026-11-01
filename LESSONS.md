@@ -94,6 +94,9 @@
 
 - **新增 fresh 读取时，消费到的字段要延续已有 Loader 的归一化。** 原因：头像读取直接解磁盘 config，遗漏 Load 对缺 name 使用目录名的既有回退，使受支持旧 Bot 的模板名字、seed 和生成器输入变空。复用归一化规则，不扩大到未使用字段。守护：`TestOldConfigWithoutAvatar` 的缺 name、模板与生成器断言在 `0053145b` 红、`3816c3bb` 定向 race 绿，并保留改名不换脸检查。Seen 1×（2026-11-01）。
 
+- **执行入口、发现和环境摘要必须读取同一个运行态有效配置。** 原因：Manager 保留了可用 MCP 会话，installed 摘要却重新读非法磁盘配置，导致模型轮次在调用前失败。守护：`TestMCPRuntimeReconcile` 在 `aaa66c49` 真入口红，`704f584d` 统一 mcpSpecs 后该项绿；离线配置仍按文件语义读取。Seen 1×（2026-11-01）。
+- **长期路由 handle 不能充当完整 Bot 配置快照。** 原因：换绑清缓存后，唤醒先构造新 Provider，又用长期旧 handle 覆盖 Bot，使 prompt/vision 与 Provider 不一致。守护：`TestResourceCurrentRouteKeepsFreshBindingAfterWakeRecheck` 在旧实现命中旧绑定，`704f584d` 在短 route 内 fresh Load 后定向 race 绿。Seen 1×（2026-11-01）。
+
 ## 界面交互
 
 - **新增前端模块必须接真实Server资源路由，组件夹具成功不能替代真入口。** 原因：子代理模块已嵌入并被index引用，组件fixture直接载入脚本因此通过；真实serve没有/subagents.js与/subagents.css路由，Tab选中后create undefined且空白。修复复用现有s.static，不新增第二资源来源。守护：`TestContinuableSubagentBinary` 用真实二进制+Chrome读原孩子工具结果并发反馈，`62dfada8` 诊断命中、`113c8a2f` 补路由后配合完成态可见控件驱动于 `2595697f` 转绿；只修夹具定位或补静态文件文字断言不能守住本缺口。Seen 1×（2026-11-01）。

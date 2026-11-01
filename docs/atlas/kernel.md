@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/, internal/cliops/]
-verified: 2026-11-01 @ 704f584d (MCP shared runtime; continuable child ownership and route behavior retained)
+verified: 2026-11-01 @ 97c32bb5 (merged MCP runtime and child continuation/route/schema checks; exact phase E2E evidence retained)
 ---
 # 内核：Link、Event、收件箱
 
