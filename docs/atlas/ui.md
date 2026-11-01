@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-01 @ 458dcc94 + desktop-a11y (device authorization row; prior evidence retained)
+verified: 2026-11-01 @ cc521eb3 (device authorization row; prior evidence retained)
 
 ---
 # 网页界面
@@ -70,7 +70,11 @@ Composer 的 mic 在发送钮左侧：点按进入录音条，「发送」提交
 桌面设置壳与侧栏不随右栏内容滚动；`.setcnt` 是内缩的独立滚动区，滚动条与模态右缘、上下圆角留出间距。各页主标题行吸顶，关闭按钮仍由 `.setmain` 固定定位；通用、连接应用和同族长页共用规则，不按应用页特判。窄屏沿用固定顶栏与独立内容滚动。
 
 账号菜单的「设置」打开居中浮层，左侧依次是通用、账号、权限、保险库、网页搜索、技能、人设卡、图片生成、设备、连接应用、模型与供应商、关于，对话保留在遮罩后面。主题用浅色/深色/跟随系统下拉框；跟随系统会响应系统明暗变化。权限总开关与 CLI 共用 `permissions.json`，缺文件默认关，运行中的 Bot 也读取同一开关。设备列表嵌在浮层内，远端对话与配对完成后的「查看设备」都进入这一页；设备标题行只有「+ 添加设备」入口，页面没有加入入口和底部动作条；配对、改名等弹窗复用原设备模块。连接应用是应用商店：顶栏「已连接 N 个」、搜索、分类芯片、推荐与分区卡网格，全部走不带 Bot 名的 `/api/apps`（添加、移除、自定义应用），装的是用户全局，与侧栏选中的 Bot 无关；商店卡标盒 48px、图形 30px，品牌使用品牌形标；网格同行等高，说明最多两行截断，末行单卡仍占一格，密钥范围说明完整显示。Google 三家只展示「即将支持」，文件系统、Webhook、文件监听、技能不在这一栏；电脑操作、浏览器、网页抓取是原生能力，`/api/apps` 目录本身不含它们（`StoreApps` 不列原生器官，`fetch` 目录行 `hidden`），前端不再另滤，「已连接 N 个」只数外接，分类芯片没有「本机」，推荐是 Playwright 与 Context7。要密钥的商店条目在设置内复用 nestcard 输入密钥（标签取列表的 `fields`），不关设置或代发聊天；提交失败保留输入，成功后才关闭并提示「已添加到你的应用」。所有添加都要服务端真调通才标已装，无密钥卡失败时错误留在卡上。手机推送开关挪到「通用」。关于的版本行左侧是标签、右侧是服务端版本与构建短号；点击版本串复制完整展示内容并短显「已复制」，头区只有标和「XBot」，不复读短号。通用、权限、关于的行，技能、人设卡、已连接清单（行间无分隔线），设备「这台电脑」行，图片生成的开关行和未登录引导都透明跟页，不套 `--x-fill-1` 灰壳；商店卡和已配对设备卡保留卡面。短号来自 `/api/session.tip`。
-### 本机电脑操作\n\n「设备 → 这台电脑」下的电脑操作行透明跟页，显示 Mac 无障碍授权状态；未授权给系统设置短引导，Windows 给登录桌面与完整性限制说明。按钮「重新检查」只读 `/api/devices/desktop`，缺组件给安装方法、失败不冒充可用；离页丢弃迟到响应，不新建权限卡或系统弹窗。后端与动作共用同一个官方 CLI，合同见 [机器与设备](machines.md)。行为守护为 `desktop_browser_test.go`、`desktop_test.go`；DPR 2 实际本机浅色截图由主 Agent 自检，未独立视觉评审。\n\n### 主人头像
+### 本机电脑操作
+
+「设备 → 这台电脑」下的电脑操作行透明跟页，显示 Mac 无障碍授权状态；未授权给系统设置短引导，Windows 给登录桌面与完整性限制说明。按钮「重新检查」只读 `/api/devices/desktop`，缺组件给安装方法、失败不冒充可用；离页丢弃迟到响应，不新建权限卡或系统弹窗。后端与动作共用同一个官方 CLI，合同见 [机器与设备](machines.md)。行为守护为 `desktop_browser_test.go`、`desktop_test.go`；DPR 2 实际本机浅色截图由主 Agent 自检，未独立视觉评审。
+
+### 主人头像
 
 设置「通用」的「我的头像」提供预览、「换一张」及有自定义图时的「清除」。整机唯一图片在数据根 `owner-avatar`；`/api/session.owner_avatar_url` 和 `GET/POST/DELETE /api/owner/avatar` 共用此文件，没有 localStorage 图片副本。上传沿 Bot 现有 PNG/JPEG/GIF/WebP、1 MiB 和 multipart 范式（均不另做压缩），类型按字节嗅探、原子落盘；成功后设置预览与侧栏「我」同时使用 URL，清除回 `owner_name` 线稿。认证、同源、缓存契约见 [API](../API.md#主人头像)。接口与脚本化浏览器守护在 `owner_avatar_test.go`、`owner_avatar_browser_test.go`；真实二进制走查脚本为 `internal/web/testdata/owner-avatar.cjs`。
 ### 保险库设置
