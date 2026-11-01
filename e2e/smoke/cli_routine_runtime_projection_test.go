@@ -5,6 +5,7 @@ package smoke
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -135,5 +136,97 @@ func TestCLIRoutineRuntimeLargeListCurrentRoute(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(srv.Root, "work", original)); !os.IsNotExist(err) {
 		t.Fatal("routine list revived or retained the previous workspace")
+	}
+}
+
+// Human-readable formatting can expand a valid inline JSON reply beyond the
+// actual Shell budget. Exercise that consumer separately from --json projection.
+func TestCLIRoutineRuntimePlainListBudget(t *testing.T) {
+	cliSkillIsolation(t)
+	model := newMCPRuntimeModel(t)
+	srv := Start(t, &Stub{srv: model.server})
+	const worker, count = "RoutinePlainWorker", 290
+	srv.CreateBot(worker, "Independent normal model consumer of a complete plain routine list.")
+	dir := filepath.Join(srv.Root, "bots", worker, "routines")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second).Format(time.RFC3339)
+	// Persist legal disabled once definitions, without Timer/API hooks or any
+	// scheduler work. Short omitted optionals are exactly the expansion trigger.
+	for i := 0; i < count; i++ {
+		id := fmt.Sprintf("p%03d", i)
+		raw, _ := json.Marshal(map[string]any{"id": id, "name": "", "prompt": "p", "at": at, "zone": "UTC", "enabled": false})
+		if err := os.WriteFile(filepath.Join(dir, id+".json"), append(raw, '\n'), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const cue = "CLI_ROUTINE_PLAIN_LIST_CONSUMER_BUDGET"
+	model.add(cue,
+		mcpRuntimeTool("sh", map[string]string{"description": "Verify the compact actual routine list still fits inline", "command": `"$XBOT_BIN" routine list --self --json`}),
+		mcpRuntimeTool("sh", map[string]string{"description": "Read the same complete human routine list through normal Shell output", "command": `"$XBOT_BIN" routine list --self`}),
+	)
+	cliSkillSend(t, srv, worker, cue)
+	results := model.results(cue)
+	var compact cliRoutineListReply
+	cliRoutineDecode(t, results[0], &compact)
+	if compact.Count != count || compact.File != "" || compact.Routines == nil || len(*compact.Routines) != count || len(commandOutput(results[0])) >= 32<<10 {
+		t.Fatal("plain expansion fixture did not retain an actual complete inline JSON reply below32KiB")
+	}
+	t.Logf("actual compact JSON=%d bytes, routines=%d", len(commandOutput(results[0])), compact.Count)
+	if !strings.HasPrefix(results[1], "exit 0\n") {
+		t.Fatalf("actual plain list did not succeed: %.256q", results[1])
+	}
+	plain := commandOutput(results[1])
+	if len(plain) > 32<<10 || !strings.Contains(plain, fmt.Sprintf("count: %d", count)) || !strings.Contains(plain, "access: local") {
+		t.Fatalf("successful plain model list is clipped or lost its complete local reference (output bytes=%d)", len(plain))
+	}
+	file := ""
+	for _, token := range strings.Fields(plain) {
+		if strings.HasPrefix(token, "results/") {
+			file = token
+			break
+		}
+	}
+	rel := filepath.Clean(filepath.FromSlash(file))
+	if file == "" || filepath.IsAbs(rel) || !strings.HasPrefix(rel, "results"+string(filepath.Separator)) {
+		t.Fatal("plain list has no actual current-workspace results reference")
+	}
+	artifact, err := os.ReadFile(filepath.Join(srv.Root, "work", worker, rel))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(artifact) > 20<<20 || !strings.Contains(plain, fmt.Sprintf("bytes: %d", len(artifact))) {
+		t.Fatal("plain list reference lost the actual complete artifact bytes")
+	}
+	var all []cliRoutineView
+	if bytes.HasPrefix(bytes.TrimSpace(artifact), []byte("[")) {
+		if err := json.Unmarshal(artifact, &all); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		var full cliRoutineListReply
+		if err := json.Unmarshal(artifact, &full); err != nil {
+			t.Fatal(err)
+		}
+		if full.Routines == nil || full.Count != count || full.Error != "" {
+			t.Fatal("plain list artifact lacks the complete list")
+		}
+		all = *full.Routines
+	}
+	if len(all) != count {
+		t.Fatalf("plain list full artifact contains%d routines", len(all))
+	}
+	seen := map[string]bool{}
+	for _, routine := range all {
+		if routine.ID == "" || seen[routine.ID] || routine.Name != "" || routine.Prompt != "p" || routine.Enabled || routine.At != at || routine.Zone != "UTC" || routine.Cron != "" || routine.Precheck != "" || routine.LastSlot != "" || len(routine.Skills) != 0 {
+			t.Fatal("plain list artifact truncated, duplicated or changed a real definition")
+		}
+		seen[routine.ID] = true
+	}
+	for i := 0; i < count; i++ {
+		if !seen[fmt.Sprintf("p%03d", i)] {
+			t.Fatal("plain list artifact lost an actual routine identity")
+		}
 	}
 }
