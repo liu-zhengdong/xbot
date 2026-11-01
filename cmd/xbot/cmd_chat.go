@@ -104,6 +104,7 @@ func cmdChat(root string, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer k.Close()
 	k.StartEmitters(ctx)
 	seen, err := b.Count()
 	if err != nil {

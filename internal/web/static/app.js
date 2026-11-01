@@ -7407,6 +7407,15 @@
     return prose;
   }
 
+  async function refreshSavedProfile(selection) {
+    await refreshLists();
+    if (state.sel !== selection || selection.type !== "bot" || state.peer) return;
+    setHeader(selection.id);
+    // Refresh the saved details used when Edit Profile next opens. An already
+    // open editing form owns its draft and is not replaced by this read.
+    await loadPanel();
+  }
+
   async function readSSE(res, selection, prose, onQueued, onLive) {
     const reader = res.body.getReader();
     const dec = new TextDecoder();
@@ -7451,6 +7460,8 @@
           prose = liveBubble();
           onLive(prose);
           threadStick.changed();
+        } else if (event === "profile" && payload.name === selection.id) {
+          refreshSavedProfile(selection).catch(() => {});
         } else if (event === "result" && payload.name === "bot_update_profile") {
           // The result arrives after persistence. Refresh faces even while the
           // streaming poll is paused, without holding up incoming text. The

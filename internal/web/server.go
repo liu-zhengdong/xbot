@@ -1261,7 +1261,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	send := func(event string, v any) { sendEvent(w, event, v) }
 	gate.Lock()
 	later(gate.Unlock)
-	k.Bot = b
+	k.UseBot(b)
 	if box != nil {
 		later(func() { _ = box.Ack(ev.ID) })
 		if absorbed, text, bg, failed := s.absorbedReply(b, box, ev.ID, text); absorbed {
@@ -1285,6 +1285,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	sendLocked := rs.send
 	k.OnPart = rs.part
 	k.OnDelta, k.OnTool, k.OnResult = rs.delta, rs.tool, rs.result
+	k.OnProfile = rs.profile
 	prevApprove := k.Approve
 	k.Approve = s.webApprove(b, k, sendLocked)
 	// The turn runs on its own context: leaving the page cancels it, unless a
@@ -1302,6 +1303,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	later(func() {
 		k.Approve = prevApprove
 		k.OnPart = nil
+		k.OnProfile = nil
 		k.OnDelta, k.OnTool, k.OnResult, k.OnHandoff = nil, nil, nil, nil
 		stopWatch()
 		cancelRun()
@@ -1348,7 +1350,7 @@ func (s *Server) interject(w http.ResponseWriter, r *http.Request, b *bot.Bot, e
 	handoff := make(chan struct{})
 	var once sync.Once
 	sink := &kernel.Sink{
-		OnPart: rs.part, OnDelta: rs.delta, OnTool: rs.tool, OnResult: rs.result,
+		OnPart: rs.part, OnDelta: rs.delta, OnTool: rs.tool, OnResult: rs.result, OnProfile: rs.profile,
 		OnHandoff: func() { once.Do(func() { close(handoff) }) },
 		Done:      make(chan kernel.Outcome, 1),
 	}
@@ -1431,6 +1433,8 @@ func (rs *replyStream) result(name, output string) {
 	}
 	rs.send("result", payload)
 }
+
+func (rs *replyStream) profile(name string) { rs.send("profile", map[string]string{"name": name}) }
 
 func (rs *replyStream) reply() string {
 	rs.mu.Lock()
@@ -1551,7 +1555,7 @@ func (s *Server) control(w http.ResponseWriter, r *http.Request, kind string) {
 		// behind the foreground holding the gate.
 		gate.Lock()
 		defer gate.Unlock()
-		k.Bot = b
+		k.UseBot(b)
 	}
 	msg, err := k.ControlSubagent(r.Context(), r.PathValue("id"), kind, in.Text)
 	if err != nil {
@@ -1758,7 +1762,7 @@ func (s *Server) wakeBot(b *bot.Bot) {
 		}
 		gate.Lock()
 		defer gate.Unlock()
-		k.Bot = b
+		k.UseBot(b)
 		_ = proc.Drain(context.Background(), k)
 	}()
 }

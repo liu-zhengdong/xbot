@@ -83,9 +83,62 @@ type ProfileUpdate struct {
 	BackgroundMaxTime *int
 }
 
+// profileState contains only fields changed by ApplyProfile. The base Config
+// remains untouched, so asynchronous profile changes do not write Name or
+// other configuration a running turn reads without this lock.
+type profileState struct {
+	mu                          sync.RWMutex
+	description, timezone, role string
+	backgroundMaxTime           int
+}
+
+func newProfileState(cfg Config) *profileState {
+	return &profileState{description: cfg.Description, timezone: cfg.Timezone, role: cfg.Role, backgroundMaxTime: cfg.BackgroundMaxTime}
+}
+
+func (p *profileState) copyTo(cfg *Config) {
+	cfg.Description, cfg.Timezone = p.description, p.timezone
+	cfg.Role, cfg.BackgroundMaxTime = p.role, p.backgroundMaxTime
+}
+
+func (p *profileState) set(cfg Config) {
+	p.description, p.timezone = cfg.Description, cfg.Timezone
+	p.role, p.backgroundMaxTime = cfg.Role, cfg.BackgroundMaxTime
+}
+
+// ProfileValues is a stable snapshot of the display fields changed while a
+// conversation is running, without reading unrelated mutable configuration.
+func (b *Bot) ProfileValues() (description, timezone string) {
+	if b.profile == nil {
+		return b.cfg.Description, b.cfg.Timezone
+	}
+	b.profile.mu.RLock()
+	defer b.profile.mu.RUnlock()
+	return b.profile.description, b.profile.timezone
+}
+
+// RefreshProfile reads the ordinary fields saved by another API/CLI handle.
+// config.json is atomically replaced by writers; no conversation lock is used.
+func (b *Bot) RefreshProfile() error {
+	b.profile.mu.Lock()
+	defer b.profile.mu.Unlock()
+	raw, err := os.ReadFile(filepath.Join(b.dir(), "config.json"))
+	if err != nil {
+		return err
+	}
+	var cfg Config
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return err
+	}
+	b.profile.set(cfg)
+	return nil
+}
+
 // ApplyProfile validates and stores a partial profile update.
 func (b *Bot) ApplyProfile(u ProfileUpdate) error {
-	cfg := b.cfg
+	// Validate supplied values, then merge into the fresh file. Do not read a
+	// full in-memory Config while a different setting may be saved.
+	var cfg Config
 	if u.Description != nil {
 		d, err := limitText(*u.Description, 160)
 		if err != nil {
@@ -121,8 +174,40 @@ func (b *Bot) ApplyProfile(u ProfileUpdate) error {
 		}
 		cfg.BackgroundMaxTime = v
 	}
-	b.cfg = cfg
-	return b.SaveConfig()
+	b.profile.mu.Lock()
+	defer b.profile.mu.Unlock()
+	path := filepath.Join(b.dir(), "config.json")
+	return fsutil.WithLock(path+".lock", func() error {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		var fresh Config
+		if err := json.Unmarshal(raw, &fresh); err != nil {
+			return err
+		}
+		if u.Description != nil {
+			fresh.Description = cfg.Description
+		}
+		if u.Timezone != nil {
+			fresh.Timezone = cfg.Timezone
+		}
+		if u.Role != nil {
+			fresh.Role = cfg.Role
+		}
+		if u.BackgroundMaxTime != nil {
+			fresh.BackgroundMaxTime = cfg.BackgroundMaxTime
+		}
+		raw, err = fsutil.Marshal(fresh)
+		if err != nil {
+			return err
+		}
+		if err := fsutil.WriteAtomic(path, raw, 0600); err != nil {
+			return err
+		}
+		b.profile.set(fresh)
+		return nil
+	})
 }
 
 // checkRange validates one working-limit override. A value of 0 means "use the
@@ -137,7 +222,8 @@ func checkRange(name string, v, lo, hi int) error {
 // ProfileText describes display metadata for the environment fingerprint only.
 // An empty profile returns an empty fingerprint input.
 func (b *Bot) ProfileText() string {
-	if d := flat(b.cfg.Description); d != "" {
+	description, _ := b.ProfileValues()
+	if d := flat(description); d != "" {
 		return "About: " + d
 	}
 	return ""
@@ -254,7 +340,7 @@ func (b *Bot) AvatarBytes() (data []byte, mime string, ok bool, err error) {
 		}
 		return data, mime, true, nil
 	}
-	data, err = callGenerator(b.Name(), b.cfg.Description)
+	data, err = callGenerator(b.Name(), b.Config().Description)
 	if err != nil || len(data) == 0 {
 		return nil, "", false, err
 	}
@@ -318,9 +404,9 @@ func ExportTemplate(b *Bot) (Template, error) {
 	}
 	tpl := Template{
 		Name:        b.Name(),
-		Description: b.cfg.Description,
+		Description: b.Config().Description,
 		Persona:     persona,
-		Timezone:    b.cfg.Timezone,
+		Timezone:    b.Config().Timezone,
 	}
 	_, tpl.AvatarSeed = b.AvatarState()
 	if b.cfg.Avatar == AvatarCustom {

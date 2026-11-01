@@ -163,8 +163,19 @@ func run(argv []string) error {
 	if errors.Is(err, errUsage) && defaultCommand != "" {
 		err = nil // a double-clicked desktop build runs defaultCommand
 	}
+	if errors.Is(err, errHelp) {
+		fmt.Print(usageText)
+		return nil
+	}
 	if err != nil {
 		return err
+	}
+	if len(rest) > 0 && rest[0] == "profile" {
+		for _, arg := range rest[1:] {
+			if arg == "--help" || arg == "-h" {
+				return cmdProfile("", rest[1:])
+			}
+		}
 	}
 	// The embedded reference needs no data root, credentials, or running service.
 	if len(rest) > 0 && rest[0] == "manual" {
@@ -173,6 +184,9 @@ func run(argv []string) error {
 	root, err = resolveRoot(root)
 	if err != nil {
 		return err
+	}
+	if len(rest) > 0 && rest[0] == "profile" {
+		return cmdProfile(root, rest[1:])
 	}
 	if len(rest) > 0 && rest[0] == "send" {
 		return cmdSend(rest[1:], os.Stdin, os.Stdout)
@@ -314,6 +328,9 @@ func defaultRoot() (string, error) {
 // resolveRoot makes --root absolute before any bot directory is derived from it.
 // A relative root otherwise makes subagent directories relative, and spawn rejects them.
 func resolveRoot(root string) (string, error) {
+	if strings.TrimSpace(root) == "" {
+		root = os.Getenv("XBOT_ROOT")
+	}
 	if strings.TrimSpace(root) == "" {
 		var err error
 		root, err = defaultRoot()

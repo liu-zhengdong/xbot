@@ -64,11 +64,12 @@ func (s *Server) postCLIEvent(w http.ResponseWriter, r *http.Request) {
 	startStream(w)
 	sendEvent(w, "accepted", map[string]string{"id": ev.ID})
 	rs := &replyStream{w: w}
-	k.Bot = b
+	k.UseBot(b)
 	k.OnPart = rs.part
 	k.OnDelta = rs.delta
 	k.OnTool = rs.tool
 	k.OnResult = rs.result
+	k.OnProfile = rs.profile
 	var findings []string
 	k.OnFinding = func(text string) { findings = append(findings, text) }
 	prevApprove := k.Approve
@@ -78,6 +79,7 @@ func (s *Server) postCLIEvent(w http.ResponseWriter, r *http.Request) {
 		k.OnDelta = nil
 		k.OnTool = nil
 		k.OnResult = nil
+		k.OnProfile = nil
 		k.OnFinding = nil
 		k.Approve = prevApprove
 		rs.close()

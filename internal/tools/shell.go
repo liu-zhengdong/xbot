@@ -45,11 +45,12 @@ type Shell struct {
 	// startDir and afterDir persist the working directory for one execution
 	// context. Nil leaves every call in Dir. The mutex covers the func fields
 	// and markerDir; Run copies them before it starts the process.
-	sessMu    sync.Mutex
-	startDir  func(context.Context) (dir, notice string)
-	afterDir  func(context.Context, string) (kept, notice string)
-	markerDir string
-	localSudo func() (vault.Backend, error)
+	sessMu      sync.Mutex
+	startDir    func(context.Context) (dir, notice string)
+	afterDir    func(context.Context, string) (kept, notice string)
+	markerDir   string
+	localSudo   func() (vault.Backend, error)
+	environment func([]string) []string
 }
 
 // BindSession installs the working directory for this shell. start reports
@@ -401,13 +402,23 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	return out, nil
 }
 
+// BindEnvironment installs the caller identity at the final process boundary.
+func (s *Shell) BindEnvironment(fn func([]string) []string) {
+	s.sessMu.Lock()
+	s.environment = fn
+	s.sessMu.Unlock()
+}
+
 func (s *Shell) commandEnv(passKeys bool) []string {
+	s.sessMu.Lock()
+	environment := s.environment
+	s.sessMu.Unlock()
 	blocked := s.blockedKeys()
 	extra := map[string]string{}
 	if passKeys {
 		extra = heldFor(blocked)
 	}
-	if s.Dir == "" && s.Shared == "" && len(extra) == 0 && (passKeys || len(blocked) == 0) {
+	if environment == nil && s.Dir == "" && s.Shared == "" && len(extra) == 0 && (passKeys || len(blocked) == 0) {
 		return nil
 	}
 	env := append([]string{}, os.Environ()...)
@@ -421,6 +432,9 @@ func (s *Shell) commandEnv(passKeys bool) []string {
 	}
 	if s.Shared != "" {
 		env = append(env, "XBOT_SHARED="+s.Shared)
+	}
+	if environment != nil {
+		env = environment(env)
 	}
 	return env
 }

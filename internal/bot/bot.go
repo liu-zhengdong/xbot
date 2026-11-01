@@ -213,6 +213,9 @@ func hasInternalPrefix(content string) bool {
 type Bot struct {
 	Root string
 	cfg  Config
+	// profile is a pointer so copying a newly loaded Bot does not copy a lock.
+	// Its fields can change while a turn reads its configuration.
+	profile *profileState
 	// cardSet means SetPersonaCard changed the binding. Other saves keep the
 	// binding on disk, so a bot loaded earlier cannot undo a newer pick.
 	cardSet   bool
@@ -245,7 +248,7 @@ func Create(root, name, persona string, links []string) (*Bot, error) {
 		AvatarSeed: name,
 		Created:    time.Now().UTC(),
 	}
-	b := &Bot{Root: root, cfg: cfg}
+	b := &Bot{Root: root, cfg: cfg, profile: newProfileState(cfg)}
 	if err := b.SaveConfig(); err != nil {
 		return nil, err
 	}
@@ -277,7 +280,7 @@ func Load(root, name string) (*Bot, error) {
 	if cfg.Name == "" {
 		cfg.Name = name
 	}
-	b := &Bot{Root: root, cfg: cfg}
+	b := &Bot{Root: root, cfg: cfg, profile: newProfileState(cfg)}
 	if err := b.migrateStyle(raw); err != nil {
 		return nil, err
 	}
@@ -320,7 +323,15 @@ func Dir(root, name string) string {
 
 func (b *Bot) Name() string { return b.cfg.Name }
 
-func (b *Bot) Config() Config { return b.cfg }
+func (b *Bot) Config() Config {
+	cfg := b.cfg
+	if b.profile != nil {
+		b.profile.mu.RLock()
+		b.profile.copyTo(&cfg)
+		b.profile.mu.RUnlock()
+	}
+	return cfg
+}
 
 func (b *Bot) dir() string { return Dir(b.Root, b.cfg.Name) }
 
@@ -337,11 +348,28 @@ func (b *Bot) saveConfig() error {
 	if !b.cardSet {
 		b.cfg.PersonaCard = b.boundCard()
 	}
-	raw, err := fsutil.Marshal(b.cfg)
+	// The base's ordinary fields are immutable after load. Do not take the
+	// profile lock while holding the file lock (ApplyProfile takes the reverse).
+	cfg := b.cfg
+	// Other settings may be saved by a handle loaded before a profile edit.
+	// Ordinary profile fields belong to ApplyProfile's partial merge, not this
+	// stale full-config save.
+	path := filepath.Join(b.dir(), "config.json")
+	if raw, err := os.ReadFile(path); err == nil {
+		var saved Config
+		if err := json.Unmarshal(raw, &saved); err != nil {
+			return err
+		}
+		cfg.Description, cfg.Timezone = saved.Description, saved.Timezone
+		cfg.Role, cfg.BackgroundMaxTime = saved.Role, saved.BackgroundMaxTime
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	raw, err := fsutil.Marshal(cfg)
 	if err != nil {
 		return err
 	}
-	if err := fsutil.WriteAtomic(filepath.Join(b.dir(), "config.json"), raw, 0600); err != nil {
+	if err := fsutil.WriteAtomic(path, raw, 0600); err != nil {
 		return err
 	}
 	b.cardSet = false

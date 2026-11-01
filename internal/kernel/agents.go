@@ -198,7 +198,7 @@ func (k *Kernel) toolsForScope(scope string) []tools.Tool {
 			},
 		)
 		sh.SetMarkerDir(k.shellMarkerDir())
-		k.bindShellSudo(sh)
+		k.bindShellRuntime(sh)
 		shells = append(shells, sh)
 	}
 	root := func(ctx context.Context) string {

@@ -175,7 +175,17 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		k.OnResult = pr.Result
 	}
 	if err := k.RecoverTasks(); err != nil {
+		_ = k.Close()
 		return nil, person.Person{}, err
+	}
+	if err := k.StartOperations(); err != nil {
+		_ = k.Close()
+		return nil, person.Person{}, err
+	}
+	for _, item := range links {
+		if coding, ok := item.(*code.Link); ok {
+			coding.UseEnvironment(k.CLIEnvironment)
+		}
 	}
 	return k, who, nil
 }
@@ -320,6 +330,7 @@ func startEmitters(ctx context.Context, root string, seen map[string]bool) {
 			continue
 		}
 		k.StartEmitters(ctx)
+		context.AfterFunc(ctx, k.CloseOperations)
 		seen[cfg.Name] = true
 	}
 }
@@ -504,6 +515,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		},
 		Updater: updater,
 	}
+	defer ui.CloseOperations()
 	if api := strings.TrimSpace(os.Getenv("XBOT_ACCOUNT_API")); api != "" {
 		// The hosted Account API; without it the local stand-in runs.
 		ui.Account = account.NewRemote(api)

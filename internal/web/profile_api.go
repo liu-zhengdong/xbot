@@ -31,7 +31,22 @@ func (s *Server) forgetKernel(name string) {
 	}
 	s.mu.Unlock()
 	if k != nil {
+		k.CloseOperations()
 		k.CancelBackgrounds()
+	}
+}
+
+// CloseOperations releases cached kernels' local listeners when the host
+// service ends. It does not change the existing Jobs shutdown policy.
+func (s *Server) CloseOperations() {
+	s.mu.Lock()
+	list := make([]*kernel.Kernel, 0, len(s.kernels))
+	for _, k := range s.kernels {
+		list = append(list, k)
+	}
+	s.mu.Unlock()
+	for _, k := range list {
+		k.CloseOperations()
 	}
 }
 

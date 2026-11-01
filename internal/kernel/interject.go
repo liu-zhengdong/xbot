@@ -19,10 +19,11 @@ import (
 // Sink is where a turn's live output goes. The newest owner message takes it
 // over: deltas, tool lines, and the end of the turn go to whoever spoke last.
 type Sink struct {
-	OnDelta  func(string)
-	OnPart   func(provider.ContentPart)
-	OnTool   func(name, summary string)
-	OnResult func(name, output string)
+	OnDelta   func(string)
+	OnPart    func(provider.ContentPart)
+	OnTool    func(name, summary string)
+	OnResult  func(name, output string)
+	OnProfile func(name string)
 	// OnHandoff runs once, when a newer owner message takes the output. The
 	// request behind this sink can then end its stream: the answer goes to
 	// the newer one.

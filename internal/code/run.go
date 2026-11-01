@@ -76,6 +76,10 @@ func (l *Link) UseRunner(baseURL, token string) {
 	l.runnerToken = token
 }
 
+// UseEnvironment binds local coding processes to their originating runtime.
+// Remote runners intentionally do not receive a loopback endpoint.
+func (l *Link) UseEnvironment(fn func([]string) []string) { l.environment = fn }
+
 // UseProvider runs tasks in this process with the bot's model.
 func (l *Link) UseProvider(p provider.Provider) {
 	if l == nil {
@@ -156,7 +160,7 @@ func (l *Link) execute(ctx context.Context, run *liveRun, task Task) {
 	case l.command != "":
 		out = runCommand(ctx, l.command, task, func(text string) {
 			l.stream(task.ID, StatusRunning, text)
-		})
+		}, l.environment)
 	case l.runnerURL != "":
 		out = runRemote(ctx, l.runnerURL, l.runnerToken, task, endpointOf(l.prov))
 	default:
@@ -166,7 +170,7 @@ func (l *Link) execute(ctx context.Context, run *liveRun, task Task) {
 				return nil
 			}
 			return cur.Notes
-		})
+		}, l.environment)
 	}
 	cur, err := l.rec.Get(task.ID)
 	if err == nil && cur.Status == StatusRunning {
@@ -199,7 +203,7 @@ func (l *Link) finalCard(id, status, text string) {
 	l.stream(id, status, text)
 }
 
-func runModel(ctx context.Context, run *liveRun, p provider.Provider, task Task, notes func() []Note) outcome {
+func runModel(ctx context.Context, run *liveRun, p provider.Provider, task Task, notes func() []Note, environment ...func([]string) []string) outcome {
 	if p == nil {
 		return outcome{Status: StatusFailed, Text: "code: no model"}
 	}
@@ -231,7 +235,7 @@ func runModel(ctx context.Context, run *liveRun, p provider.Provider, task Task,
 			run.stopStep = stepCancel
 			run.mu.Unlock()
 		}
-		produced, err := agent.Run(stepCtx, p, workTools(task.WorkDir), msgs, agent.Options{
+		produced, err := agent.Run(stepCtx, p, workTools(task.WorkDir, environment...), msgs, agent.Options{
 			MaxSteps: 1,
 			OneRound: true,
 			Approve:  approveTask,
@@ -275,10 +279,13 @@ func ctxOutcome(ctx context.Context) outcome {
 	return outcome{Status: StatusCancelled, Text: "cancelled"}
 }
 
-func workTools(dir string) []tools.Tool {
+func workTools(dir string, environment ...func([]string) []string) []tools.Tool {
 	var list []tools.Tool
 	for _, sh := range tools.NewShells() {
 		sh.Dir = dir
+		if len(environment) > 0 {
+			sh.BindEnvironment(environment[0])
+		}
 		list = append(list, sh)
 	}
 	return append(list, &tools.ReadFile{Root: dir}, &tools.WriteFile{Root: dir}, &tools.EditFile{Root: dir})
@@ -320,7 +327,7 @@ func calledTool(msgs []provider.Message) bool {
 	return false
 }
 
-func runCommand(ctx context.Context, command string, task Task, emit func(string)) outcome {
+func runCommand(ctx context.Context, command string, task Task, emit func(string), environment ...func([]string) []string) outcome {
 	if err := checkout(ctx, task.Repo, task.WorkDir); err != nil {
 		return outcome{Status: StatusFailed, Text: err.Error()}
 	}
@@ -329,6 +336,9 @@ func runCommand(ctx context.Context, command string, task Task, emit func(string
 	cmd := exec.CommandContext(ctx, command, commandArgs(command, task.Goal)...)
 	cmd.Dir = task.WorkDir
 	cmd.Env = codeEnv(task)
+	if len(environment) > 0 && environment[0] != nil {
+		cmd.Env = environment[0](cmd.Env)
+	}
 	cmd.SysProcAttr = codeProcAttr()
 	cmd.Cancel = func() error { return killCode(cmd) }
 	cmd.WaitDelay = time.Second

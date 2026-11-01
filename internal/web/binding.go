@@ -180,6 +180,7 @@ func (s *Server) bindModel(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
+	k.CloseOperations()
 	delete(s.kernels, b.Name())
 	delete(s.gate, b.Name())
 	writeJSON(w, 200, map[string]string{"provider": in.Provider, "model": in.Model})

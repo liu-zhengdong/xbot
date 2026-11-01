@@ -105,6 +105,30 @@ Agent → Shell → xbot CLI ─┐
 
 批 2 和批 4 共享 MCP 生命周期，批 3 和批 4 共享连接器出站与安装配置，不能在同一份装配代码上各自迁一半。独立文档/验证可以并行，核心运行态按批串行落地。开发期只保留切换所需的短暂双入口，不增加长期兼容开关。
 
+## 批 0/1 实施设计（2026-11-01，独立复核检查点）
+
+**第一刀**：普通 `description/timezone`，不迁移头像、改名、role/persona，不删除 `bot_update_profile`（它还承担头像/改名）。现有 Event/Inbox、权限默认放行、脱敏及 Jobs 不改。
+
+**调用用法**：Agent 的每种本机 Shell 获得 `XBOT_BIN`（当前可执行文件绝对路径）、`XBOT_ROOT`（规范绝对数据根）、`XBOT_ENDPOINT`（当前活 Kernel 的本机操作地址）、`XBOT_BOT`（用于诊断的启动名字）。模型先读 `"$XBOT_BIN" profile --help`，再执行 `"$XBOT_BIN" profile show --self --json` 或 `"$XBOT_BIN" profile set --self --description '维护 XBot' --timezone Asia/Shanghai --json`。CLI 根缺省采用 `XBOT_ROOT`；显式 `--root` 与 endpoint 的规范根不一致必须失败。`--self` 的权威身份是 endpoint 所绑定的活 Kernel，不能以环境里的名字加载另一个 Bot；因此旧工具改名后 endpoint 仍指同一个 Kernel，后续新 Shell 刷新诊断名。帮助离线退出 0；运行操作不可达非 0，不落回文件写入。已有显式名字的离线 CLI 保留并在帮助中写明；带 endpoint 的普通 profile 操作走活入口，未覆盖 flags 明确拒绝组合。
+
+**两种结构不同的方案**：A：复用 serve 网页 API + chat 新建完整 web.Server。好处是重用登录，代价是 chat 被迫装配用户/网页/对话调度，且容易重入 messages 的处理锁。B（选用）：每个已装配 Kernel 在原进程内开一个仅回环随机端口的窄 HTTP handler，仅有 `GET/PATCH /v1/profile`，无通用 action dispatcher、无新 Agent 循环。绑定当前 Kernel，避免实例注册表/UUID/别名数据库；serve、桌面和 chat 全部经既有 openKernel 装配，Kernel.Close 关闭 listener。接受每活 Bot 一个小 listener，换来无路由登记表和跨 chat/serve 同协议；后续批次若出现真正的实例级共享操作再提升所有权，当前不建平台总线。
+
+**最小 IPC**：HTTP JSON 请求/响应上限各 64 KiB（低于 1 MiB）；请求带 `X-XBot-Root`，服务端核对规范根；只监听 127.0.0.1，拒绝浏览器 Origin，不在 URL/输出放密钥。endpoint 是同用户本机定位信息，不作为主人认证或隔离承诺。结果固定为 `{name, description, timezone, scope:"runtime", applied:true}`（show 无 applied 或为 false）；业务失败非 2xx，CLI stdout 仅一条可解析 JSON，stderr 是诊断。关闭或旧 endpoint 必须失败。CLI 保留显式离线入口，不声称它是热更新。
+
+**身份与锁顺序**：handler 直接调用当前 Kernel 的窄 profile 操作，不取 bot 处理文件锁、web gate 或 turnMu，也不投 message/send。普通资料的唯一业务写口为 `bot.ApplyProfile`：校验后在现有 config.json.lock 内读取最新配置、合并显式字段并原子保存，失败不发布新内存快照；活 Bot 以指针式普通 profile 快照（内含 mutex）协调，避免现有 `*b=*fresh` 复制 mutex；只发布受锁字段，不整结构写入 b.cfg。SaveConfig 从稳定快照取值并保留磁盘上较新的普通资料。锁顺序为普通资料快照锁 → config 文件锁，不跨模型/工具/网络等待。`--self show` 现读原配置中的普通字段并刷新快照，因此网页 PATCH 的独立 Bot 对象更新后 CLI 也能读到新值，不建对象登记表。旧 profile 工具、网页 PATCH 和 CLI 共用此写口；不重建 Kernel、Jobs 或任务。改名仍走原工具/既有路径，本刀不扩大改名事务。
+
+**领域共用缝与 UI**：Kernel 暴露读取/更新普通 profile 的领域方法，handler 只做传输边界；网页和旧工具继续调用 bot 的同一 ApplyProfile。保存成功后，经现有活轮次 Sink 增补 `profile` SSE 提示（只带 Bot 名），UI 立即读原列表/详情，并只在当前选择仍相同、不在往来视图时更新现有组件；不经 Inbox、不解析 Shell stdout、不改视觉布局。原 `bot_update_profile` 即时刷新分支保留，直到未来通用状态通知完全覆盖头像/改名；不能用 3 秒轮询替代旧即时行为。短轮也必须在发送 done 前发 profile 提示，长轮在模型仍阻塞时发出；资料面只更新已保存详情，不覆盖用户正编辑的表单草稿。已有列表缓存签名继续包含头像。
+
+**身份传播**：主线、dev/general scoped Shell 共用同一个绑定函数，在最终 commandEnv 加上述环境，覆盖父进程残留值；外部编码命令用其既有白名单环境装配加同一份 caller 环境，内置编码 Shell 同样接入。research 只读包装沿原分类器，首批不开放 profile CLI（不得把任意 xbot 当 readonly），留待按业务动作分类；runner 在其他进程/机器，当前 endpoint 不能直接透传为可达能力。本刀明确保留 research 与远端 runner 缺口，不假报全部执行路径端到端支持，不把回环地址发给远端冒充可用。
+
+**生命周期与发布锁**：入口在 openKernel 全部可能失败的装配完成后最后创建；创建失败关闭该 Kernel 已有资源。提供窄 `CloseOperations`，由 Kernel.Close、chat 返回、web forget/binding rebuild、长期 startEmitters 的 service ctx 取消调用；不为释放 endpoint 重做 Jobs 生命周期。profile 领域写锁/配置文件锁均在通知前释放，SSE 写出经原 replyStream 的锁；不拿资源锁等网络。活轮次 Sink 在插话时随原路移交，通知归当前持有者，不广播、不追加另一条账本。
+
+**预计变更**：`cmd/xbot/{main,cmd_bot,cmd_serve,cmd_chat}.go`（命令/装配/关闭）；新增窄包 `internal/cliops`（定位契约、handler/client）；`internal/bot/{bot,profile}.go` 及必要配置访问点（共享配置写入与快照）；`internal/kernel/{kernel,shelljob,agents}.go`（caller 绑定与生命周期）；`internal/tools/shell.go`、`internal/code/{link,run}.go`（共用环境）；`internal/kernel/interject.go` 与 `internal/web/server.go`（原 Sink 的窄 profile 通知）；`internal/web/static/app.js`（收到业务变更后立即刷新）；相关定向单测、atlas、多 Bot/UI/生态节点、MILESTONES。正式决定另写 ADR 0043；旧 Accepted 正文不动，仅说明实际切换普通 profile/UI 刷新范围，尚无工具族整体退役。
+
+**独立冒烟可观测接口**：真二进制 serve/chat + scripted 模型发出 Shell 命令，stdout 可直接解析上述 JSON；GET 列表/详情核对磁盘与当前资料；用下一次模型请求的环境时间/指纹核对活 Kernel 已感知；保持 SSE 尚未结束，收到 profile 提示后打开现有编辑资料表单观察新简介，API 核对时区；自然短轮同样立即刷新资料，不仅依赖收尾；双 root 并跑确认另一实例没改变；显式 root mismatch、无 endpoint、非法 timezone 都返回非 0 且不改资料；旧工具仍可换头像/改名。实现方不改独立 smoke 期望。最小验证先 CLIops、bot、CLI、Kernel 的相关测试，随后独立真入口及一个代表浏览器场景；不全仓、不三遍、不真模型。
+
+**待复核重点**：每活 Kernel listener 在所有持有路径上是否关闭；指针式普通资料快照及文件合并的锁覆盖是否准确；Sink 变更通知是否在解业务锁后发送、随插话移交，并覆盖长轮与自然短轮。独立冒烟由非实现方拥有：`e2e/smoke/cli_profile_test.go` 和 `e2e/smoke/testdata/cli-profile.cjs`，实现方不改期望。复核完成前不改产品代码。
+
 ## 对照回顾
 
 回顾范围：已读候选清单索引全文、164 份候选文件名和直接相关正文；核对以下 atlas、ADR、guard 与正在做的设计。候选中其余 UI、供应商、评测、设备扩张条目按主题检查冲突面，不纳入本路线实现；开编码前再核对届时有效的候选状态和逐项依赖，不把本表当作所有候选正文已审计的证明。

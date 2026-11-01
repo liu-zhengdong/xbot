@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
 	"xbot/internal/config"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
@@ -257,7 +259,25 @@ func cmdPrimary(root string, args []string) error {
 	return nil
 }
 
+const profileHelp = `Usage:
+  xbot profile show (--self | <name>) [--json]
+  xbot profile set --self [--description TEXT] [--timezone ZONE] [--json]
+  xbot profile set <name> [--description TEXT] [--timezone ZONE] [--role chat|dev] [--background-max-time MIN] [--name NEW] [--json]
+  xbot profile avatar <name> (--file PATH | --clear)
+
+--self uses XBOT_ENDPOINT from the current running Bot; XBOT_ROOT selects its data root.
+Use the current binary via "$XBOT_BIN". Runtime changes save immediately without waiting for the conversation lock.
+With an endpoint, only description/timezone are supported. Without one, an explicit name edits offline configuration.
+--json writes one result object to stdout; failures exit nonzero. Help works offline.
+`
+
 func cmdProfile(root string, args []string) error {
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			fmt.Print(profileHelp)
+			return nil
+		}
+	}
 	if len(args) == 0 {
 		return errors.New("usage: xbot profile show|set|avatar")
 	}
@@ -274,12 +294,36 @@ func cmdProfile(root string, args []string) error {
 }
 
 func cmdProfileShow(root string, args []string) error {
-	if len(args) != 1 {
-		return errors.New("usage: xbot profile show <name>")
-	}
-	b, err := bot.Load(root, args[0])
+	ordered, err := reorderFlags(args, nil)
 	if err != nil {
 		return err
+	}
+	fs := flag.NewFlagSet("profile show", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	self, asJSON := fs.Bool("self", false, "current running Bot"), fs.Bool("json", false, "JSON output")
+	if err := fs.Parse(ordered); err != nil {
+		return err
+	}
+	if (*self && fs.NArg() != 0) || (!*self && fs.NArg() != 1) {
+		return errors.New("usage: xbot profile show (--self | <name>) [--json]")
+	}
+	if *self || os.Getenv("XBOT_ENDPOINT") != "" {
+		value, err := cliops.Call(context.Background(), os.Getenv("XBOT_ENDPOINT"), root, nil)
+		if err != nil {
+			return err
+		}
+		if !*self && value.Name != fs.Arg(0) {
+			return errors.New("profile: endpoint belongs to another Bot")
+		}
+		return printRuntimeProfile(value, *asJSON)
+	}
+	b, err := bot.Load(root, fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		cfg := b.Config()
+		return printRuntimeProfile(cliops.Profile{Name: b.Name(), Description: bot.RedactText(cfg.Description), Timezone: cfg.Timezone, Scope: "offline"}, true)
 	}
 	persona, err := b.ReadPersona()
 	if err != nil {
@@ -298,7 +342,20 @@ func cmdProfileShow(root string, args []string) error {
 	return nil
 }
 
+func printRuntimeProfile(value cliops.Profile, asJSON bool) error {
+	if asJSON {
+		return json.NewEncoder(os.Stdout).Encode(value)
+	}
+	if value.Applied {
+		fmt.Printf("profile saved: %s (%s)\n", value.Name, value.Scope)
+	} else {
+		fmt.Printf("name: %s\ndescription: %s\ntimezone: %s\nscope: %s\n", value.Name, value.Description, value.Timezone, value.Scope)
+	}
+	return nil
+}
+
 type profileSetOpts struct {
+	Self, JSON  bool
 	Bot         string
 	Description string
 	Timezone    string
@@ -319,6 +376,8 @@ func parseProfileSet(args []string) (profileSetOpts, error) {
 	}
 	fs := flag.NewFlagSet("profile set", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
+	self := fs.Bool("self", false, "current running Bot")
+	asJSON := fs.Bool("json", false, "JSON output")
 	desc := fs.String("description", "", "one-line description")
 	tz := fs.String("timezone", "", "IANA timezone, such as Asia/Shanghai")
 	name := fs.String("name", "", "new bot name")
@@ -327,15 +386,20 @@ func parseProfileSet(args []string) (profileSetOpts, error) {
 	if err := fs.Parse(ordered); err != nil {
 		return profileSetOpts{}, err
 	}
-	if fs.NArg() != 1 {
-		return profileSetOpts{}, errors.New("usage: xbot profile set <name> [flags]")
+	if (*self && fs.NArg() != 0) || (!*self && fs.NArg() != 1) {
+		return profileSetOpts{}, errors.New("usage: xbot profile set (--self | <name>) [flags]")
 	}
 	opt := profileSetOpts{
+		Self: *self, JSON: *asJSON,
 		Bot: fs.Arg(0), Description: *desc,
 		Timezone: *tz, Name: *name,
 		Role: *role, BgTime: *bgTime, Set: map[string]bool{},
 	}
-	fs.Visit(func(f *flag.Flag) { opt.Set[f.Name] = true })
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name != "self" && f.Name != "json" {
+			opt.Set[f.Name] = true
+		}
+	})
 	if len(opt.Set) == 0 {
 		return profileSetOpts{}, errors.New("profile set needs at least one flag")
 	}
@@ -346,6 +410,32 @@ func cmdProfileSet(root string, args []string) error {
 	opt, err := parseProfileSet(args)
 	if err != nil {
 		return err
+	}
+	if opt.Self || os.Getenv("XBOT_ENDPOINT") != "" {
+		if opt.Set["name"] || opt.Set["role"] || opt.Set["background-max-time"] {
+			return errors.New("profile: runtime set currently supports only --description and --timezone; avatar/name remain available through existing tools")
+		}
+		if !opt.Self {
+			current, err := cliops.Call(context.Background(), os.Getenv("XBOT_ENDPOINT"), root, nil)
+			if err != nil {
+				return err
+			}
+			if current.Name != opt.Bot {
+				return errors.New("profile: endpoint belongs to another Bot")
+			}
+		}
+		update := &cliops.Update{}
+		if opt.Set["description"] {
+			update.Description = &opt.Description
+		}
+		if opt.Set["timezone"] {
+			update.Timezone = &opt.Timezone
+		}
+		value, err := cliops.Call(context.Background(), os.Getenv("XBOT_ENDPOINT"), root, update)
+		if err != nil {
+			return err
+		}
+		return printRuntimeProfile(value, opt.JSON)
 	}
 	b, err := bot.Load(root, opt.Bot)
 	if err != nil {
@@ -379,6 +469,10 @@ func cmdProfileSet(root string, args []string) error {
 			return err
 		}
 		name = opt.Name
+	}
+	if opt.JSON {
+		cfg := b.Config()
+		return printRuntimeProfile(cliops.Profile{Name: name, Description: bot.RedactText(cfg.Description), Timezone: cfg.Timezone, Scope: "offline", Applied: true}, true)
 	}
 	fmt.Printf("updated %s\n", name)
 	return nil
