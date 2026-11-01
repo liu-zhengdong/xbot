@@ -39,7 +39,6 @@ func TestTableHasEveryClass(t *testing.T) {
 		"routine_delete":      Normal,
 		"message_bot":         Normal,
 		"post_group":          Normal,
-		"write_skill":         Normal,
 		"code_start":          Normal,
 		"browser_stop":        Normal,
 		"bot_status":          Readonly,
@@ -54,6 +53,14 @@ func TestTableHasEveryClass(t *testing.T) {
 		}
 		if got := ClassOf(name); got != class {
 			t.Fatalf("%s class %q want %q", name, got, class)
+		}
+	}
+}
+
+func TestRetiredSkillsUnknown(t *testing.T) {
+	for _, name := range []string{"read_skill", "write_skill"} {
+		if Known(name) || ClassOf(name) != Normal {
+			t.Fatalf("retired skill action retains an executable policy entry: %s", name)
 		}
 	}
 }
@@ -205,7 +212,7 @@ func TestSelfEditAndReadOnlyClasses(t *testing.T) {
 	if need(t, "edit_file", `{"path":"plans/2026.md"}`) {
 		t.Fatal("edit_file asked without a path check")
 	}
-	for _, name := range []string{"read_file", "list_secrets", "list_bots", "list_groups", "routine_list", "recall_history", "expand", "read_skill", "read_subagent", "expand_subagent", "browser_snapshot", "code_show", "web_fetch", "web_search", "view_image"} {
+	for _, name := range []string{"read_file", "list_secrets", "list_bots", "list_groups", "routine_list", "recall_history", "expand", "read_subagent", "expand_subagent", "browser_snapshot", "code_show", "web_fetch", "web_search", "view_image"} {
 		if need(t, name, `{}`) {
 			t.Fatalf("%s asked", name)
 		}

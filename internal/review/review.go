@@ -110,10 +110,6 @@ var Table = map[string]Class{
 	"read_subagent":          Readonly,
 	"expand_subagent":        Readonly,
 
-	// Skills.
-	"read_skill":  Readonly,
-	"write_skill": Normal,
-
 	// The owner question tool.
 	"ask_user": Normal,
 

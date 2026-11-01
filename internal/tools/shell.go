@@ -27,6 +27,10 @@ const (
 	maxCommandBytes     = 16 << 10
 )
 
+// DefaultShellOutputBytes is the existing interpreter output budget. Local CLI
+// projections use this limit so their complete replies reach the model.
+const DefaultShellOutputBytes = maxShellOutput
+
 // Shell runs a command through its selected interpreter.
 // Dir is the working directory. Empty means the process working directory.
 // Shared, when set with Dir, is exported as XBOT_SHARED.

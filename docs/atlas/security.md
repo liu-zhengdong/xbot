@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
-verified: 2026-11-01 @ 63762ae5
+verified: 2026-11-01 @ e21224cf
 ---
 # 安全：保险箱与权限表
 
@@ -21,6 +21,10 @@ verified: 2026-11-01 @ 63762ae5
 ## MCP CLI 与研究只读
 
 MCP不再有可执行mcp_模型工具；Known不为任意旧前缀兜底，历史分类/记录仍可读。research只接受当前canonical BIN或精确受控XBOT_BIN的单POSIX直调，窄lexer保整词引号并拒替换/串联/重定向；list/tools/describe仅self，call另需readonly且在同slot/session精确检查hint再执行。legacy与continuable同接，生产许可仍默认放行，不添加审批UI。source新路由复用Host/browser/root约束；human先owner/owned，未显式root不以客户端默认目录作认证。结果JSON字符串/错误沿动态脱敏，产物实际路径取值+独占0600写在短route内；解码/网络锁外，详情见 [API](../API.md#mcp-运行时-cli)。
+
+## 技能 CLI 与默认开关
+
+两旧技能执行项及review Known条目已移除，历史read_skill正文脱敏仍可投影。research的当前BIN/精确XBOT_BIN单POSIX直调与MCP共享lexer，业务分类复用cmd的纯ParseSkillRuntime，只放self read/help，不放write/离线动作/操作符或伪身份。source继承原root/Host/browser guard，完整wire请求1MiB、整JSON回包64KiB、文件候选20MiB max+1；正文和错误沿原source动态脱敏。全部local scope含其它owner/shared/orphan，只有显式参数决定；只读预检不调用会迁移记忆的Load，config锁内的开关merge保未请求字段。完整行为见 [生态](ecosystem.md) 与 [API](../API.md#技能运行时-cli)。
 
 ## 共享慢调用的脱敏
 
@@ -125,8 +129,8 @@ WantedBy=multi-user.target
 
 | 类别 | 工具 | 确认条件 |
 |---|---|---|
-| `readonly` | `tools`（代理门的 search/describe）、`kernel_manual`、`read_file`、`web_fetch`、`web_search`、`view_image`、`shell_output`、`shell_status`、`list_secrets`、`list_bots`、`list_groups`、`get_group_message_history`、`routine_list`、`recall`、`recall_history`、`expand`、`read_skill`、`read_subagent`、`expand_subagent`、`code_show`、`bot_status`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不（`read_file` 或 `view_image` 触及保险箱/密钥路径时确认） |
-| `normal` | `generate_image`（复用全局 OAuth 的生图代理）、`send_message_to_user`、`compact`、`routine_create`、`routine_update`、`routine_delete`、`routine_pause`、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`shell_cancel`、`ask_user`、`todo`、`create_bot`、`pin_bot`、`set_primary`、`create_group`、`message_bot`、`post_group`、`fork_bot`、`write_skill`、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
+| `readonly` | `tools`（代理门的 search/describe）、`kernel_manual`、`read_file`、`web_fetch`、`web_search`、`view_image`、`shell_output`、`shell_status`、`list_secrets`、`list_bots`、`list_groups`、`get_group_message_history`、`routine_list`、`recall`、`recall_history`、`expand`、`read_subagent`、`expand_subagent`、`code_show`、`bot_status`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不（`read_file` 或 `view_image` 触及保险箱/密钥路径时确认） |
+| `normal` | `generate_image`（复用全局 OAuth 的生图代理）、`send_message_to_user`、`compact`、`routine_create`、`routine_update`、`routine_delete`、`routine_pause`、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`shell_cancel`、`ask_user`、`todo`、`create_bot`、`pin_bot`、`set_primary`、`create_group`、`message_bot`、`post_group`、`fork_bot`、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
 | `delete` | `delete_bot`、`delete_file`、`remove_file`、`secret_rm`、`delete_link`、`remove_mcp` 等名称明确的删除工具 | 总是 |
 | `external_send` | `telegram_send`、`lark_send`、`send_email`、`send_webhook`、其余 `mcp_*`（按前缀规则，没标 `readOnlyHint` 的），以及 `links` 的 `install`/`remove` | 总是（`links` 只在 install/remove） |
 | `http` | `http_request` | 注入 `{{secret:}}` 或方法非 `GET`/`HEAD` |

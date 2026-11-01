@@ -7,11 +7,12 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
 	"xbot/internal/link"
 	"xbot/internal/skill"
 )
 
-// This test uses raw flat fixtures so it also compiles against the pre-change API.
+// Raw flat fixtures cover the shared library independently of import.
 func TestFlatSkillsAllLocalBots(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "skills", "foo", "SKILL.md")
@@ -41,7 +42,8 @@ func TestFlatSkillsAllLocalBots(t *testing.T) {
 			if _, _, err := k.openSkill("foo"); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := (writeSkillTool{k: k}).Run(context.Background(), []byte(`{"slug":"foo","description":"test","body":"body","scope":"self"}`)); err != nil {
+			body := "body"
+			if _, err := k.SkillHandlers().Write(context.Background(), cliops.SkillWrite{Slug: "foo", Description: "test", Body: &body, Scope: "self"}); err != nil {
 				t.Fatal(err)
 			}
 			if err := b.EnableSkill("foo"); err != nil {

@@ -58,7 +58,7 @@ func (k *Kernel) StartOperations() error {
 	if k.workOrigin == "" {
 		k.workOrigin = k.Bot.Name()
 	}
-	handlers := cliops.Handlers{Profile: k.profileOperation, ProfileAvatar: k.profileAvatarOperation}
+	handlers := cliops.Handlers{Profile: k.profileOperation, ProfileAvatar: k.profileAvatarOperation, Skills: k.SkillHandlers()}
 	if k.Resources != nil {
 		mcpHandlers := k.Resources.MCPHandlers()
 		handlers.MCP = &mcpHandlers

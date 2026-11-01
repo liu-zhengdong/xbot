@@ -47,6 +47,9 @@ Usage:
   xbot [--root DIR] connector list
   xbot [--root DIR] connector add <bot> <id>
   xbot [--root DIR] connector remove <bot> <id>
+  xbot [--root DIR] skill read ID --self [--json]
+  xbot [--root DIR] skill write SLUG --description TEXT (--body TEXT | --body-file FILE|-) [--title TEXT] [--scope NAME] --self [--json]
+  xbot skill --help
   xbot [--root DIR] skill list
   xbot [--root DIR] skill import <path>
   xbot [--root DIR] skill show <slug>
@@ -166,7 +169,8 @@ func run(argv []string) error {
 		}
 		return vault.WriteLocalSudo(argv[1], argv[2], os.Stdout)
 	}
-	root, rest, err := splitGlobal(launchArgs(argv))
+	argv = launchArgs(argv)
+	root, rest, err := splitGlobal(argv)
 	if errors.Is(err, errUsage) && defaultCommand != "" {
 		err = nil // a double-clicked desktop build runs defaultCommand
 	}
@@ -186,6 +190,13 @@ func run(argv []string) error {
 	}
 	if len(rest) > 0 && rest[0] == "mcp" {
 		return cmdMCP(root, rest[1:])
+	}
+	if len(rest) > 1 && rest[0] == "skill" {
+		switch rest[1] {
+		case "read", "write", "help", "--help", "-h":
+			// Preserve explicit empty --root instead of treating it as omitted.
+			return cmdSkillRuntime(root, len(argv) > len(rest), rest[1:])
+		}
 	}
 	// The embedded reference needs no data root, credentials, or running service.
 	if len(rest) > 0 && rest[0] == "manual" {
