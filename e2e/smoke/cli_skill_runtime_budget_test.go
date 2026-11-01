@@ -233,3 +233,52 @@ func TestCLISkillRuntimeBodyRefusals(t *testing.T) {
 		t.Fatal("oversized raw skill refusal did not clearly identify a size or budget error")
 	}
 }
+
+// Exercise the model's actual unredirected Shell result, whose budget is lower
+// than the protocol's 64KiB ceiling. A successful read must retain a usable full
+// body reference; a valid HTTP reply clipped by the Shell is not a usable result.
+func TestCLISkillRuntimeShellOutputBudget(t *testing.T) {
+	cliSkillIsolation(t)
+	model := newMCPRuntimeModel(t)
+	srv := Start(t, &Stub{srv: model.server})
+	const worker, slug = "SkillShellBudgetWorker", "shell-output-budget"
+	const tail = "SHELL_FULL_BODY_TAIL"
+	body := strings.Repeat("a", (40<<10)-len(tail)) + tail
+	path := filepath.Join(srv.Root, "skills", slug, "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("---\nname: "+slug+"\ntitle: Shell full body\ndescription: Actual model Shell result fixture\n---\n\n"+body+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	srv.CreateBot(worker, "Read a complete skill through the model's normal Shell result.")
+	const cue = "CLI_SKILL_ACTUAL_SHELL_OUTPUT_BUDGET"
+	model.add(cue, mcpRuntimeTool("sh", map[string]string{"description": "Read the complete skill through the normal source Shell output", "command": `"$XBOT_BIN" skill read ` + slug + ` --self --json`}))
+	cliSkillSend(t, srv, worker, cue)
+	result := model.results(cue)[0]
+	if !strings.HasPrefix(result, "exit 0\n") {
+		t.Fatalf("actual model Shell read failed: %.256q", result)
+	}
+	raw := []byte(commandOutput(result))
+	if len(raw) > 64<<10 {
+		t.Fatalf("actual model skill JSON exceeded protocol64KiB: %d bytes", len(raw))
+	}
+	var reply cliSkillReadReply
+	if err := json.Unmarshal(raw, &reply); err != nil {
+		t.Fatalf("successful unredirected model Shell did not receive complete skill JSON: %v (output bytes=%d)", err, len(raw))
+	}
+	if reply.Slug != slug || reply.Error != "" || reply.Access != "local" || reply.File == "" || reply.Bytes != int64(len(body)) {
+		t.Fatal("actual model read lost its complete-body local artifact reference")
+	}
+	rel := filepath.Clean(filepath.FromSlash(reply.File))
+	if filepath.IsAbs(rel) || !strings.HasPrefix(rel, "results"+string(filepath.Separator)) {
+		t.Fatal("model read artifact is not in the original current workspace results")
+	}
+	full, err := os.ReadFile(filepath.Join(srv.Root, "work", worker, rel))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(full, []byte(body)) || !bytes.HasSuffix(full, []byte(tail)) {
+		t.Fatal("model read artifact lost complete body or its final tail")
+	}
+}
