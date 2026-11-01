@@ -90,6 +90,22 @@
 
 `PUT /api/permissions` 要登录，正文为 `{"confirm":"off|table"}`，成功返回当前值；未知字段、非法值、多份 JSON 对象为 400。它与 `xbot permissions on|off` 共用 `internal/permissions` 和数据根的 `permissions.json`，运行中的 Bot 在下一次权限判断时读取新值。权限分类不变。
 
+## Bot 运行时 CLI
+
+原source Shell使用 `"$XBOT_BIN" list --self --json`、`info [NAME] --self [--steps N] --json`、`new NAME --self (--persona TEXT|--persona-file FILE|-) --json`、`delete NAME --self --json`；没有bot子命令。self选source endpoint/ref而非目标，XBOT_BOT仅诊断。help离线，按arity解析self/help（旗标值可以恰为--self），main在root/default/legacy初始化前分流；runtime失败不回离线，显式root必须匹配规范XBOT_ROOT。无self原list/new/delete/pin/primary/fork保持离线，info只runtime。
+
+同原loopback/Host/browser/root guard：GET `/v1/bot/list`，GET `/v1/bot/info?bot=NAME&steps=N`，POST `/v1/bot/create` 单对象 `{name,persona}`，DELETE `/v1/bot/delete?name=NAME`。create拒未知字段/非对象/尾对象，persona-file/stdin max+1及最终转义请求≤1MiB。trim name/persona、职责非空；运行new不接provider/model、无默认职责，不以授权取名代替授权编职责。
+
+List小回 `{local:[{name,persona_preview?}],remote:[{name,seen}],count}`：local排self、至少一个非空owner交集，共享有交集可见、foreign/orphan不互见，原80字节persona预览。remote只读既有目录缓存，source Owners匹配设备Person且未unpair；Received非零且不早于7天、每设备先64再ValidName，name=bot@device，Seen沿原directory generation缓存时间，不擅加XKey/NoBotMessaging过滤或网络探测。无项为真实[]；不是全root/用户HTTP列表。
+
+Info小回 `{bots:[BotStatus],steps:[BotStep],count}`。请求时调原k.BotStatuses/BotSteps，不能publish时捕Statuses=nil（Web后挂）。非nil Host整体视图不再按source交集重筛；Web按登录owner OwnerBots含owned self、cached live/其它idle+hold；fallback仅self+VisibleBots，others idle；原nil/skip错误行为保。Bot空取全，指定未出现明确拒；steps>10夹10、<=0不取，只named或结果1个才取；Host只现cached K、fallback仅self，不造remote status或新Kernel。cached K保旧Bot快照时，completed_unread的Count/增量Walk仍经同Resources当前route，host cache查发在route外，读取不复活旧transcript；cold无Resources保原transcript-only增量读取，不依赖Inbox是否有效。BotStatus保bot/state、tool/tool_summary/since、backgrounds/agents/completed_unread、last_message/todo、tokens；tokens保prompt/completion/cached/turn_completion/session_prompt/session_completion/session_cached/window/estimated（session_*仅原计数）。Step仅time/tool/state/summary，不暴露私有callID/description，实际没有node/stale_seconds。
+
+Create/Delete每次复核当前source primary。Create复制source全部Owners/Links（Links空合法），用原global默认provider/首model，不继承source binding/role/budget，不建目标Kernel/wake。回 `{name,applied,stage,error?}`；实际default_binding→config→state→persona→owners，successful config后后段失败applied仍true，原persona32KiB限制仍在WritePersona，不假提前零写；EnsureDefault亦可写全局配置。Delete仅原VisibleBots内本地目标或self，仍受primary/last保护，回 `{name,removed,stage,error?}`；原host同entry暂停Jobs/MCP→锁外owned Jobs join→重核→原fence/FinishDelete，不扩大all-child/code/remote/MCP join。三层回调透真实bool；RemoveAll后vault-key错仍removed:true/stage:vault_key、非0并终态清资源，不err推未删/stat猜/rollback/重开准入。complete仅动作已完成，不是新Bot已wake。
+
+生产permissive不增卡、不强普通Delete原callctx；strict固定Delete恒需确认，不查已退delete_bot Known掉成Normal。只strict时经原Jobs现存Local/running/未finished+同listener的原ctx，用原wrapped Shell approver/原providerID/mutex，main冻结policy+原owner动态fork卡/child原回调保持。missing/completed/foreign/noapprover在Pause前拒。approval-only原Shell args附canonical `_xbot_bot:{action:"delete",name:TARGET}`，现grant/deniedBefore同键，目标A→B不吃A，Run raw不改，无随机nonce/新确认工具或表；原回调后重验primary/可见性。
+
+读HTTP硬限64KiB；完整JSON含newline与同准确FormatBotList/Info生成的人读都须≤现Shell32KiB，任一超限则当前source Resources工作区现results写完整脱敏JSON（20MiB结果限），回 `{count,file,access:"local",bytes}`，inline数组省略；两种引用也fit，bytes=实际文件。Create/Delete小回执同双32KiB；客户端先输出真实partial再非0，无proxy/redirect/自动retry，不截数组/remote/状态伪成功。四旧模型门/schema/index/Known已退，research仅list/info/help，pin/primary/fork/persona/role/groups/messages仍原入口。决定见 [ADR0052](adr/0052-bot-runtime-cli.md)。
+
 ## Bot 列表与创建
 
 `GET /api/bots` 返回当前 owner 的 Bot。顺序是置顶在前，组内按名字。主 Bot 会被 `SetPrimary` 置顶，所以通常排在置顶组里。

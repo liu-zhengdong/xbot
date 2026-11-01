@@ -62,4 +62,5 @@ type Handlers struct {
 	MCP           *MCPHandlers
 	Skills        *SkillHandlers
 	Routines      *RoutineHandlers
+	Bots          *BotHandlers
 }

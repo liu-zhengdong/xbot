@@ -597,7 +597,7 @@ func (s *Server) deleteBot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := b.Name()
-	if err := s.DeleteRuntimeBot(r.Context(), name); err != nil {
+	if _, err := s.DeleteRuntimeBot(r.Context(), name); err != nil {
 		if errors.Is(err, bot.ErrPrimary) || errors.Is(err, bot.ErrLast) {
 			writeErr(w, http.StatusConflict, err.Error())
 			return

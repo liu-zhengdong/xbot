@@ -174,6 +174,9 @@ func Start(root string, handlers Handlers) (*Server, error) {
 	mux.HandleFunc("/v1/routine/", func(w http.ResponseWriter, r *http.Request) {
 		serveRoutine(w, r, handlers.Routines)
 	})
+	mux.HandleFunc("/v1/bot/", func(w http.ResponseWriter, r *http.Request) {
+		serveBot(w, r, handlers.Bots)
+	})
 	guarded := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fail := func(code int, message string) {
 			w.Header().Set("Content-Type", "application/json")

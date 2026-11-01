@@ -286,26 +286,26 @@ func (r *BotResources) FinishDelete(name string) (removed bool, err error) {
 }
 
 // DeleteRuntime is the direct chat equivalent of the host's staged deletion.
-func (r *BotResources) DeleteRuntime(ctx context.Context, name string) error {
+func (r *BotResources) DeleteRuntime(ctx context.Context, name string) (removed bool, err error) {
 	b, err := r.CurrentBot()
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err := bot.CheckDelete(b.Root, name); err != nil {
-		return err
+		return false, err
 	}
 	if err := r.BeginDelete(name); err != nil {
-		return err
+		return false, err
 	}
 	r.Jobs.Shutdown()
 	if err := ctx.Err(); err != nil {
-		return errors.Join(err, r.ResumeAdmission())
+		return false, errors.Join(err, r.ResumeAdmission())
 	}
-	removed, err := r.FinishDelete(name)
+	removed, err = r.FinishDelete(name)
 	if removed {
 		r.Close()
 	} else {
 		err = errors.Join(err, r.ResumeAdmission())
 	}
-	return err
+	return removed, err
 }

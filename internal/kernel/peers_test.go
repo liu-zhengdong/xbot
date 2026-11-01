@@ -28,11 +28,16 @@ func TestListBotsRemoteDirectory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	out, err := (listBotsTool{&Kernel{Bot: ada, Now: func() time.Time { return now }}}).Run(context.Background(), nil)
+	k := &Kernel{Bot: ada, Now: func() time.Time { return now }}
+	out, err := k.BotHandlers().List(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out != "bob@b (remote, seen 5m ago)" {
-		t.Fatalf("list_bots: %q", out)
+	if out.Count != 1 || out.Local == nil || len(*out.Local) != 0 || out.Remote == nil || len(*out.Remote) != 1 {
+		t.Fatalf("list %+v", out)
+	}
+	entry := (*out.Remote)[0]
+	if entry.Name != "bob@b" || !entry.Seen.Equal(now.Add(-5*time.Minute)) {
+		t.Fatalf("remote entry %+v", entry)
 	}
 }

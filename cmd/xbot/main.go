@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
 	"xbot/internal/clip"
 	"xbot/internal/config"
 	"xbot/internal/machine"
@@ -185,6 +186,18 @@ func run(argv []string) error {
 	}
 	if err != nil {
 		return err
+	}
+	if len(rest) > 0 {
+		switch rest[0] {
+		case "list", "info", "new", "delete":
+			command, parseErr := cliops.ParseBotRuntime(rest)
+			if !command.Offline {
+				if parseErr != nil {
+					return parseErr
+				}
+				return cmdBotRuntime(root, len(argv) > len(rest), rest)
+			}
+		}
 	}
 	if len(rest) > 0 && rest[0] == "profile" {
 		for _, arg := range rest[1:] {

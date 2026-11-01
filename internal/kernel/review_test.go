@@ -328,10 +328,9 @@ func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
 		code.Open(dir, b.InboxPath()),
 		desktop.Open(b.Root),
 		browser.Open(b.Root),
-		fakeMCPLink{},
 	)
 	for _, name := range []string{link.NameWebhook, link.NameWatch, link.NameSkills, link.NameTelegram,
-		link.NameLark, link.NameCoding, link.NameDesktop, link.NameBrowser, "mcp:fake"} {
+		link.NameLark, link.NameCoding, link.NameDesktop, link.NameBrowser} {
 		k.markLoaded(name)
 	}
 	list, err := k.modelTools()
@@ -362,9 +361,14 @@ func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
 	}
 	for _, want := range []string{"sh", "read_file", "write_file", "edit_file", "web_fetch", "web_search", "view_image", "http_request", "list_secrets",
 		"links", "telegram_send", "lark_send", "code_start", "desktop_click", "browser_open",
-		"create_bot", "delete_bot", "bot_status", "mcp_fake_echo"} {
+		"message_bot", "list_groups", "create_group", "post_group", "fork_bot", "bot_propose_persona"} {
 		if !seen[want] {
 			t.Fatalf("expected tool %q was not registered", want)
+		}
+	}
+	for _, name := range []string{"create_bot", "delete_bot", "list_bots", "bot_status"} {
+		if seen[name] || review.Known(name) {
+			t.Fatalf("retired tool %s remains registered or classified", name)
 		}
 	}
 }

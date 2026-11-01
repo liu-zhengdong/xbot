@@ -111,7 +111,7 @@ func TestDeclaredToolsAreTheShortFixedSet(t *testing.T) {
 	if strings.Join(got, ",") != strings.Join(toolNames(toolsNamed(want)), ",") {
 		t.Fatalf("declared %v, want %v", got, want)
 	}
-	for _, name := range []string{"bot_propose_persona", "bot_status", "recall", "browser_open", "desktop_click", "links"} {
+	for _, name := range []string{"bot_propose_persona", "recall_history", "recall", "browser_open", "desktop_click", "links"} {
 		if !hasToolName(list, name) || hasToolName(declared(list), name) {
 			t.Fatalf("%s must be registered and undeclared", name)
 		}
@@ -199,11 +199,15 @@ func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 		toolCall("d1", "tools", `{"action":"describe","id":"bot_propose_persona"}`),
 		toolCall("d2", "tools", `{"action":"describe","id":"bot_profile"}`),
 		toolCall("c1", "tools", `{"action":"call","id":"`+shell+`","args":{"command":"echo door-shell","description":"echo"}}`),
-		toolCall("c2", "tools", `{"action":"call","id":"bot_status","args":"{}"}`),
-		toolCall("c3", "tools", `{"action":"call","id":"bot_status","args":{}}`),
+		toolCall("c2", "tools", `{"action":"call","id":"recall_history","args":"{\"query\":\"DOOR_HISTORY_52\"}"}`),
+		toolCall("c3", "tools", `{"action":"call","id":"recall_history","args":{"query":"DOOR_HISTORY_52"}}`),
+		toolCall("bad", "tools", `{"action":"call","id":"recall_history","args":{"query":3}}`),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	k, b := doorKernel(t, p)
+	if err := b.Append(bot.Entry{Origin: bot.OriginOwner, Time: time.Unix(0, 0).UTC(), Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("DOOR_HISTORY_52 persisted native history fixture")}}); err != nil {
+		t.Fatal(err)
+	}
 	var approved []string
 	k.Approve = func(_ context.Context, name, _ string) (bool, error) {
 		approved = append(approved, name)
@@ -223,41 +227,59 @@ func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 		}
 	}
 	text := transcriptText(t, b)
-	for _, want := range []string{"bot_propose_persona [bot_profile]", `"text"`, "bot_status", "door-shell", "\t" + b.Name()} {
+	for _, want := range []string{"bot_propose_persona [bot_profile]", `"text"`, "recall_history", "door-shell", "DOOR_HISTORY_52 persisted native history fixture"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in transcript:\n%s", want, text)
 		}
+	}
+	results := map[string]string{}
+	for _, message := range p.reqs[len(p.reqs)-1].Messages {
+		if message.Role == provider.RoleTool {
+			results[message.CallID()] = message.Text()
+		}
+	}
+	for _, id := range []string{"c2", "c3"} {
+		if !strings.Contains(results[id], "DOOR_HISTORY_52 persisted native history fixture") {
+			t.Fatalf("native history forwarding %s: %q", id, results[id])
+		}
+	}
+	if !strings.Contains(results["bad"], "cannot unmarshal number") {
+		t.Fatalf("native tool error was not forwarded: %q", results["bad"])
 	}
 	for _, name := range approved {
 		if name == "tools" {
 			t.Fatal("a card named the door instead of the tool")
 		}
 	}
-	// A later turn reaches the native tool again by id alone.
+	// A later turn reaches the native tool by id alone, then by an ordinary
+	// undeclared call; neither path needs schema promotion or a new load.
 	p2 := &scripted{resps: []provider.Message{
-		toolCall("c4", "tools", `{"action":"call","id":"bot_status","args":{}}`),
+		toolCall("c4", "tools", `{"action":"call","id":"recall_history","args":{"query":"DOOR_HISTORY_52"}}`),
+		toolCall("c5", "recall_history", `{"query":"DOOR_HISTORY_52"}`),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("again")},
 	}}
 	k.Provider = p2
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", time.Unix(2, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	var status string
-	for _, msg := range p2.reqs[1].Messages {
-		if msg.Role == provider.RoleTool && msg.CallID() == "c4" {
-			status = msg.Text()
+	for id, name := range map[string]string{"c4": "tools", "c5": "recall_history"} {
+		var history string
+		for _, msg := range p2.reqs[len(p2.reqs)-1].Messages {
+			if msg.Role == provider.RoleTool && msg.CallID() == id && msg.Name == name {
+				history = msg.Text()
+			}
 		}
-	}
-	if !strings.Contains(status, "\t"+b.Name()) {
-		t.Fatalf("second turn status reply %q", status)
+		if !strings.Contains(history, "DOOR_HISTORY_52 persisted native history fixture") {
+			t.Fatalf("second turn native history %s: %q", id, history)
+		}
 	}
 	published := testPublished(t, k)
 	if !indexHas(published, "bot_propose_persona") {
 		t.Fatal("tool_index lacks a listed tool")
 	}
-	for _, name := range []string{"routine_create", "routine_list", "routine_update", "routine_delete"} {
+	for _, name := range []string{"create_bot", "delete_bot", "list_bots", "bot_status", "routine_create", "routine_list", "routine_update", "routine_delete"} {
 		if indexHas(published, name) || registered(k, name) {
-			t.Fatalf("retired routine tool %s remains available", name)
+			t.Fatalf("retired tool %s remains available", name)
 		}
 	}
 }

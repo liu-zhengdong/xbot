@@ -28,6 +28,17 @@ var ErrNotFound = errors.New("bot: not found")
 // ErrExists means create was asked to replace a bot.
 var ErrExists = errors.New("bot: already exists")
 
+// CreateCommitError reports the actual failed create write and whether the
+// bot config was already saved. Applied does not describe global config writes.
+type CreateCommitError struct {
+	Applied bool
+	Stage   string
+	Err     error
+}
+
+func (e *CreateCommitError) Error() string { return e.Err.Error() }
+func (e *CreateCommitError) Unwrap() error { return e.Err }
+
 // Config is the bot's durable description. Links are granted here.
 // Owners are person ids whose terminal input is a trusted instruction.
 type Config struct {
@@ -236,7 +247,7 @@ func Create(root, name, persona string, links []string) (*Bot, error) {
 	}
 	def, err := config.EnsureDefault(root)
 	if err != nil {
-		return nil, err
+		return nil, &CreateCommitError{Stage: "default_binding", Err: err}
 	}
 	cfg := Config{
 		Name:       name,
@@ -250,13 +261,13 @@ func Create(root, name, persona string, links []string) (*Bot, error) {
 	}
 	b := &Bot{Root: root, cfg: cfg, profile: newProfileState(cfg)}
 	if err := b.SaveConfig(); err != nil {
-		return nil, err
+		return nil, &CreateCommitError{Stage: "config", Err: err}
 	}
 	if err := b.SaveState(State{}); err != nil {
-		return nil, err
+		return nil, &CreateCommitError{Applied: true, Stage: "state", Err: err}
 	}
 	if err := b.WritePersona(persona); err != nil {
-		return nil, err
+		return nil, &CreateCommitError{Applied: true, Stage: "persona", Err: err}
 	}
 	return b, nil
 }

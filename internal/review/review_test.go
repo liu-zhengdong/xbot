@@ -23,7 +23,6 @@ func TestTableHasEveryClass(t *testing.T) {
 		"recall_history":      Readonly,
 		"code_show":           Readonly,
 		"recall":              Readonly,
-		"delete_bot":          Delete,
 		"restart_xbot":        Restart,
 		"secret_rm":           Delete,
 		"telegram_send":       ExternalSend,
@@ -37,7 +36,6 @@ func TestTableHasEveryClass(t *testing.T) {
 		"post_group":          Normal,
 		"code_start":          Normal,
 		"browser_stop":        Normal,
-		"bot_status":          Readonly,
 		"todo":                Normal,
 		"shell_output":        Readonly,
 		"shell_status":        Readonly,
@@ -158,7 +156,7 @@ func TestShellPlainAndReadOnlyActionsDoNotAsk(t *testing.T) {
 }
 
 func TestDeleteToolsAsk(t *testing.T) {
-	for _, name := range []string{"delete_file", "remove_file", "delete_bot", "secret_rm", "secret_delete", "mcp_remove", "delete_link"} {
+	for _, name := range []string{"delete_file", "remove_file", "secret_rm", "secret_delete", "mcp_remove", "delete_link"} {
 		if !need(t, name, `{}`) {
 			t.Fatalf("%s did not ask", name)
 		}
@@ -169,6 +167,14 @@ func TestExternalSendToolsAsk(t *testing.T) {
 	for _, name := range []string{"send_email", "telegram_send", "lark_send", "send_webhook"} {
 		if !need(t, name, `{}`) {
 			t.Fatalf("%s did not ask", name)
+		}
+	}
+}
+
+func TestRetiredBotToolsAreUnknown(t *testing.T) {
+	for _, name := range []string{"create_bot", "delete_bot", "list_bots", "bot_status"} {
+		if Known(name) {
+			t.Errorf("retired policy %s is still known", name)
 		}
 	}
 }
@@ -216,7 +222,7 @@ func TestSelfEditAndReadOnlyClasses(t *testing.T) {
 	if need(t, "edit_file", `{"path":"plans/2026.md"}`) {
 		t.Fatal("edit_file asked without a path check")
 	}
-	for _, name := range []string{"read_file", "list_secrets", "list_bots", "list_groups", "recall_history", "expand", "read_subagent", "expand_subagent", "browser_snapshot", "code_show", "web_fetch", "web_search", "view_image"} {
+	for _, name := range []string{"read_file", "list_secrets", "list_groups", "recall_history", "expand", "read_subagent", "expand_subagent", "browser_snapshot", "code_show", "web_fetch", "web_search", "view_image"} {
 		if need(t, name, `{}`) {
 			t.Fatalf("%s asked", name)
 		}
