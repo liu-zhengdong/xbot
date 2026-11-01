@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/exec/, internal/agent/, internal/notable/]
-verified: 2026-10-27 @ f9094ed + 输出截断静默续写（含 Shell 解释器白名单） + process-bar-busy-one-row
+verified: 2026-11-01 @ c3cd3f0c (local task endpoint lifetime and race)
 ---
 # 后台工作与子代理
 
@@ -12,6 +12,7 @@ verified: 2026-10-27 @ f9094ed + 输出截断静默续写（含 Shell 解释器�
 负责：子代理与执行者（`xbot runner`）。不负责：长编码任务（见 [生态](ecosystem.md) 的编码代理 Link）、插话分叉（见 [插话时分叉](fork.md)）。
 
 ## 怎么运转
+- **本机 CLI 身份与寿命**：dev/general 的 scoped Shell 继承原 Bot 的当前二进制、数据根和操作 endpoint。短命 serve.Pass 收尾后，本机子代理仍沿既有 Local 执行集合持有入口；任务实际退出、移出 admission 并排空原队列后，OnIdle 在无执行器锁时回调释放已退役入口。服务退出与显式 Kernel 淘汰强制关闭。research 只读 CLI 分类和远端 runner 回连尚未覆盖，不声明全部执行路径可用；入口与锁见 [内核](kernel.md#当前实例的-cli-资料入口)。
 - **解释器工具白名单**：`dev` 按具体解释器名授权；`research` 的 `shell:readonly` 是权限标记，包装已安装解释器，不是工具名。只读包装沿用集中分类器，cmd / PowerShell 不放行 POSIX 读命令。自定义写类型使用具体解释器名，写资源排队识别任一种解释器。发现与参数规格见 [生态](ecosystem.md)。
 - Agent 主循环与收尾总结共用 [输出截断续写](providers.md#输出截断)，本地子代理和 runner 同样使用；续写期间不执行本地工具，不新增工具权限或任务记录。
 - **主线全工具，长活派子代理**（[ADR 0028](../adr/0028-no-foreground-background-split.md)，取代 0016；`Kernel.Dispatch`，`serve` 和 `chat` 打开，Bot 要有 agents link）：没有前后台之分，主线拿挂载目录里的全部工具，`Dispatch` 打开也不砍，写文件、写类 shell、`http_request`、对外发送都照常走权限表；短活主线自己干，长活用 `dispatch(type, task)` 交给一种预制子代理。`Dispatch` 只决定起子代理的入口是按类型的 `dispatch` 还是旧的 `spawn`，两者不同时出现。主线没有步数或秒数上限，也没有「到点只剩 `dispatch`」的收尾。规则里多一条 `DispatchRule`（`dispatch.go`）：先用一两句回用户说明要做什么，再自己干或派活；多步、长构建或调研、用户不该等的活交给子代理。旧的「你是前台、自己不干活」措辞只在迁移 Bot 规则文件时被认出删掉（`legacyDispatchRule`）。守门测试 `TestMainLineAndSubagentsReachTheMountedTools`、`TestMainLineDoesTheWork`。

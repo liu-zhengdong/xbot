@@ -25,6 +25,8 @@ type Link struct {
 	runnerToken string
 	prov        provider.Provider
 	transcript  func(string) error
+	environment func([]string) []string
+	onIdle      func()
 	mu          sync.Mutex
 	live        map[string]*liveRun
 	tail        map[string]string

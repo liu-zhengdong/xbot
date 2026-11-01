@@ -98,6 +98,11 @@ func (k *Kernel) dispatch(ctx context.Context, typeName, task string) (string, e
 		return "", err
 	}
 	persona := ty.Instructions(exec.SubPersona)
+	if ty.Name != "research" {
+		if guide := k.cliProfileGuide(); guide != "" {
+			persona += "\n\n" + guide
+		}
+	}
 	if mem := k.dispatchMemory(ctx); mem != "" {
 		persona += "\n\n你服务的人和这个 Bot 的已知情况（记忆的只读快照）：\n" + mem
 	}

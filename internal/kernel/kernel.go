@@ -20,6 +20,8 @@
 // the next is taken; they are listed here in the order the outer work runs, so a new
 // caller can see where it belongs:
 //
+//	operations.mu local profile/old-tool rename; then Bot profile snapshot and
+//	              config file locks; released before calling a live Sink
 //	envMu       environment publication and input append (may sample approvals)
 //	approvals.mu live card projection; never acquires envMu
 //	turnMu      the foreground turn pointer (Kernel.turn)
@@ -87,6 +89,8 @@ type Kernel struct {
 	OnTool     func(name, summary string)
 	OnResult   func(name, output string)
 	OnFinding  func(string)
+	// OnProfile reports a saved profile through the current turn's output.
+	OnProfile func(string)
 	// Permissive permanently disables tool permission cards (ADR 0019).
 	// Production sets this true; only links connector key input remains.
 	Permissive bool
@@ -150,6 +154,7 @@ type Kernel struct {
 	promptOnce sync.Once
 	promptEnv  envprompt.Env
 	turnMu     sync.Mutex
+	operations operationState
 
 	// memWriteMu serializes own memory writes with their before/after reads.
 	memWriteMu  sync.Mutex
@@ -274,7 +279,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	// misses it. A message that arrives before the first model call stops
 	// that call before it leaves. Setup failures leave the original words and
 	// a normal failure reply, even when their old stream has handed off.
-	first := &Sink{OnPart: k.OnPart, OnDelta: k.OnDelta, OnTool: k.OnTool, OnResult: k.OnResult, OnHandoff: k.OnHandoff}
+	first := &Sink{OnPart: k.OnPart, OnDelta: k.OnDelta, OnTool: k.OnTool, OnResult: k.OnResult, OnProfile: k.OnProfile, OnHandoff: k.OnHandoff}
 	if ev.Source == link.NameTimer {
 		first.OnDelta = nil
 	}
@@ -611,6 +616,9 @@ func (k *Kernel) rulesText() (string, error) {
 	if k.hasLink(link.NameMemory) && !strings.Contains(rules, ExperienceRule) {
 		rules += "\n\n" + ExperienceRule
 	}
+	if guide := k.cliProfileGuide(); guide != "" {
+		rules += "\n\n" + guide
+	}
 	if k.Memory == nil || strings.Contains(rules, MemoryWriteRule) {
 		return rules, nil
 	}
@@ -895,6 +903,7 @@ func (k *Kernel) Close() error {
 	if k == nil {
 		return nil
 	}
+	k.retireOperations()
 	k.shellMu.Lock()
 	jobs := k.shell
 	k.shellMu.Unlock()

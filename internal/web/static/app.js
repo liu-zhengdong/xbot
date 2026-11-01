@@ -7487,6 +7487,21 @@
     return prose;
   }
 
+  async function refreshSavedProfile(selection) {
+    const request = ++state.panelLoad;
+    const [, data] = await Promise.all([
+      refreshLists(),
+      api("/api/bots/" + encodeURIComponent(selection.id)),
+    ]);
+    if (state.sel !== selection || request !== state.panelLoad || selection.type !== "bot" || state.peer) return;
+    // Refresh the saved details used when Edit Profile next opens. An already
+    // open editing form owns its draft and is not replaced by this read.
+    state.panelData = data;
+    state.panelError = false;
+    setHeader(selection.id);
+    if (state.tab === "details") paintPanel();
+  }
+
   async function readSSE(res, selection, prose, onQueued, onLive) {
     const reader = res.body.getReader();
     const dec = new TextDecoder();
@@ -7531,6 +7546,8 @@
           prose = liveBubble();
           onLive(prose);
           threadStick.changed();
+        } else if (event === "profile" && payload.name === selection.id) {
+          refreshSavedProfile(selection).catch(() => {});
         } else if (event === "result" && payload.name === "bot_update_profile") {
           // The result arrives after persistence. Refresh faces even while the
           // streaming poll is paused, without holding up incoming text. The

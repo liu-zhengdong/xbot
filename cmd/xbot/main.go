@@ -61,7 +61,8 @@ Usage:
   xbot [--root DIR] unpin <name>
   xbot [--root DIR] primary
   xbot [--root DIR] primary set <name>
-  xbot [--root DIR] profile show <name>
+  xbot [--root DIR] profile show (--self | <name>) [--json]
+  xbot [--root DIR] profile set --self [--description TEXT] [--timezone ZONE] [--json]
   xbot [--root DIR] profile set <name> [--description TEXT] [--timezone ZONE] [--role chat|dev] [--background-max-time MIN] [--name NEW]
   xbot [--root DIR] profile avatar <name> (--file PATH | --clear)
   xbot [--root DIR] template export <name> --out FILE
@@ -121,6 +122,10 @@ Terminology:
   profile set --role chat|dev: runtime preset (运行档位), not duties.
 
 Environment:
+  XBOT_BIN        current runtime executable (in Agent shells)
+  XBOT_ROOT       data root, used when --root is omitted
+  XBOT_ENDPOINT   local runtime profile endpoint (in Agent shells)
+  XBOT_BOT        diagnostic Bot name; --self resolves at the endpoint
   XBOT_API_KEY    API key of the deepseek provider entry
   XBOT_BASE_URL   base_url the deepseek entry is first created with (default https://api.deepseek.com/v1)
   XBOT_MODEL       model the deepseek entry is first created with (default deepseek-flash)
@@ -163,8 +168,19 @@ func run(argv []string) error {
 	if errors.Is(err, errUsage) && defaultCommand != "" {
 		err = nil // a double-clicked desktop build runs defaultCommand
 	}
+	if errors.Is(err, errHelp) {
+		fmt.Print(usageText)
+		return nil
+	}
 	if err != nil {
 		return err
+	}
+	if len(rest) > 0 && rest[0] == "profile" {
+		for _, arg := range rest[1:] {
+			if arg == "--help" || arg == "-h" {
+				return cmdProfile("", rest[1:])
+			}
+		}
 	}
 	// The embedded reference needs no data root, credentials, or running service.
 	if len(rest) > 0 && rest[0] == "manual" {
@@ -173,6 +189,9 @@ func run(argv []string) error {
 	root, err = resolveRoot(root)
 	if err != nil {
 		return err
+	}
+	if len(rest) > 0 && rest[0] == "profile" {
+		return cmdProfile(root, rest[1:])
 	}
 	if len(rest) > 0 && rest[0] == "send" {
 		return cmdSend(rest[1:], os.Stdin, os.Stdout)
@@ -314,6 +333,9 @@ func defaultRoot() (string, error) {
 // resolveRoot makes --root absolute before any bot directory is derived from it.
 // A relative root otherwise makes subagent directories relative, and spawn rejects them.
 func resolveRoot(root string) (string, error) {
+	if strings.TrimSpace(root) == "" {
+		root = os.Getenv("XBOT_ROOT")
+	}
 	if strings.TrimSpace(root) == "" {
 		var err error
 		root, err = defaultRoot()

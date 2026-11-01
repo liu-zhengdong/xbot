@@ -8,6 +8,15 @@
 - 真实 serve + Chrome 的 `TestChatTabsJourney` 与 `TestMemoryPanelWhole` 通过（16.286s），包括首屏之外的旧记录、45 条匹配的分页、清除和提纲；为修复截图捕获到动画中间态，现有截图 helper 关闭截图期间动画，再跑该旅程通过（14.954s）。浅深色及 1440/768/390 的 DPR 2 证据在 `~/.xbot-build/ui-shots/memory-single-column-20261101/product/after/`，已目视对照确认原型。
 - scoped vet、JS 语法、gofmt、diff check 与 atlas audit 通过；audit 保留既有文档长度、旧验证戳、未归档文档等提醒。Not run: 全仓及无关旅程、真实模型、Windows/Linux 原生窗口、生产性能专项。实现提交 `16f9ab0c`；已构建并通过既有 SIGHUP 路径让 8788 桌面开发版优雅重载，运行 tip 核对一致；本机小鲸的真实库 TTS 查询返回 5 条且无匹配查询为空。级别：本地 main 已合入，隔离真实入口端到端通过，待用户日用验收。
 
+## 2026-11-01 CLI 平台批 0/1：当前 Bot 普通资料
+
+- L 档，沿用户已认可路线完成一页实施设计、候选依赖复核与独立设计审计，新增 [ADR 0043](adr/0043-cli-platform-runtime-entry.md)，不改旧 Accepted 正文。首刀仅 description/timezone；头像/改名旧工具和原即时刷新保留，Event/Inbox、生产永远放行及脱敏不变。产品提交 `07f17164`，实际任务寿命修复 `fe7e1f83`，增量 `c3cd3f0c` 修复 coding 原队列交接空窗及跨活 Kernel 资料快照同步。
+- serve、桌面和独立 chat 在原进程提供窄 profile HTTP 入口；Shell、本机可写子代理和本机编码进程获得同一当前二进制/root/endpoint/Bot 语义。`profile show/set --self --json` 真调用原运行时，root mismatch/不可达非 0，不另启 Kernel 或伪装文件写入。ApplyProfile 文件锁内合并显式字段，受锁普通快照不整份改写 cfg；当前活轮 Sink 发 profile 提示，现有 UI 在长轮和自然短轮立即读回资料，保留编辑草稿与迟到请求保护。
+- 独立代码复核命中 serve.Pass 收尾早关后台入口：已取得真二进制旧红，修复后独立后台用例绿。本机 Local/code 原 live 集合持有入口，实际退出并排空原队列后无锁 OnIdle 释放；code 移除旧 live 项延到原 wake 启动继任之后，服务 context 为寿命上界。两个 Bot 真句柄的定向用例确认旧 Pass 保存后，当前活轮下一次模型请求已含新时区/profile 指纹；已成功落盘后刷新失败不会伪报保存失败。
+- 实现方检查：普通 profile 合并实际旧红新绿；协议/root/JSON、同对象并发保存、持处理锁自改、model request 短指引、服务未停时淘汰/重建旧 endpoint 均通过。bot/kernel/web 定向 race 通过；Local 与 coding（含已排队第二任务）寿命、跨活句柄同步的定向 race 通过。既有头像流中刷新浏览器、sudo 环境/后台 helper、编码进程流式与密钥剔除回归通过；受影响八包 vet、JS 语法、diff/格式检查通过。atlas audit 退出 0、无断链，30 项既有非致命提示（size 1、stale 8、dev 4、unabsorbed 3、unmapped 14），未扩修无关文档。
+- 独立验证方拥有并运行 `TestCLIProfile*`：serve 双 root、非主身份、web PATCH 后 show、失败/root mismatch/非法时区、独立 chat、离线帮助与无运行时失败、真实浏览器长/自然短轮即时资料刷新，以及真实 Webhook→serve.Pass→dev 主轮收尾后 CLI。实现方未修改这些用例期望、未重复执行独立 E2E。
+- IPC 小样本：100 次本机 GET，fresh connection、含 root 检查，额外 p95 **0.325 ms**，直接 callback p95 42 ns；排除 CLI 进程启动，非模型/生产 p95。级别：普通资料首刀分支端到端通过，未合 main、未日用；未 push/发版/改用户运行实例。Not run：全仓/三遍、真实模型、Linux/Windows、生产性能与 CLI 进程启动专项、research 只读 CLI 分类、远端 runner 回连、头像/改名完整运行时 CLI、MCP 后续批次。
+
 ## 2026-11-01 全仓减法清理
 
 - 按用户的奥卡姆剃刀要求扫描全仓引用。删除 3 个无调用方 Go 私有函数、11 个闲置 JS 函数、旧主列过滤缓存和工具气泡 CSS；删除只测旧前端投影的两条单测。三份已取代的开发设计删除，atlas 去掉失效设计链接，性能约束只在 AGENTS 维护。审计忽略代码示例中的伪链接，仍检测真实断链。

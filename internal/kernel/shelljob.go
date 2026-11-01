@@ -81,7 +81,7 @@ func (k *Kernel) attachShell() {
 			if ok {
 				sh.BindSession(k.shellStartDir, k.shellAfterDir)
 				sh.SetMarkerDir(k.shellMarkerDir())
-				k.bindShellSudo(sh)
+				k.bindShellRuntime(sh)
 			}
 			k.bindFileCwd(t)
 			k.configureWeb(t)
@@ -89,8 +89,9 @@ func (k *Kernel) attachShell() {
 	}
 }
 
-// bindShellSudo is shared by mounted and scoped (subagent) shells.
-func (k *Kernel) bindShellSudo(sh *tools.Shell) {
+// bindShellRuntime is shared by mounted and scoped (subagent) shells.
+func (k *Kernel) bindShellRuntime(sh *tools.Shell) {
+	sh.BindEnvironment(k.CLIEnvironment)
 	if k.Bot == nil || k.Vault == nil {
 		return
 	}

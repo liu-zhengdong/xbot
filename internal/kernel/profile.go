@@ -89,6 +89,8 @@ func (profileTool) Confirm(args json.RawMessage) (bool, string, error) {
 	return false, summary, nil
 }
 func (t profileTool) Run(_ context.Context, args json.RawMessage) (string, error) {
+	t.k.operations.mu.Lock()
+	defer t.k.operations.mu.Unlock()
 	name, update, _, err := parseProfileArgs(args)
 	if err != nil {
 		return "", err
