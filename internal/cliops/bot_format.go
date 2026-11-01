@@ -119,6 +119,18 @@ func FormatBotPrimary(reply BotPrimaryReply) string {
 	return text
 }
 
+// FormatBotPersona includes the final newline for shared server and CLI budgets.
+func FormatBotPersona(reply BotPersonaReply) string {
+	text := fmt.Sprintf("name: %s\nwritten: %t\n", reply.Name, reply.Written)
+	if reply.Effective != "" {
+		text += fmt.Sprintf("effective: %s\n", reply.Effective)
+	}
+	if reply.Error != "" {
+		text += fmt.Sprintf("error: %s\n", reply.Error)
+	}
+	return text
+}
+
 func FormatBotDelete(reply BotDeleteReply) string {
 	text := fmt.Sprintf("name: %s\nremoved: %t\nstage: %s\n", reply.Name, reply.Removed, reply.Stage)
 	if reply.Error != "" {

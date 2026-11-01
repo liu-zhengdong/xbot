@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self完整职责具体合同待单次窄核，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self完整职责合同2d9单次SHAPE PASS，正在实施，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -587,9 +587,9 @@ ccdc具体合同单次窄核后，原source平面list/info/new/delete、动态�
 
 f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary.json真实commit后pin失败partial、原A失权/B预先endpoint得权与两模型门退役已提炼至 [API](../API.md#bot-运行时-cli)、[内核](../atlas/kernel.md#bot-发现与管理实例入口)、[ADR0053](../adr/0053-bot-pin-primary-runtime-cli.md)。586首A→B链与cc46三个边界的四项独立所测精确phase/当前合入级别只记 [MILESTONES](../MILESTONES.md)，不在母文档复制已完成合同。persona全Bot self/full职责file-stdin/原SelfEdit/nextwake是下一具体族，fork、卡、role预算、消息群和用户独立owner-SSE设计仍原边界，不借两小写动作扩展。
 
-## 批 persona：完整self职责（具体合同待窄核）
+## 批 persona：完整self职责（具体合同PASS，实施中）
 
-L档，基线TRUE main6291fae16a9c66d8835a1caf1a373dca07685e99；上一pin/primary四项业务精确phase与全部必要静态已封，不重旧Bot5/routine6/skills/profile/MCP。这里只迁原bot_propose_persona{text:FULL}，新 [ADR0054](../adr/0054-self-persona-runtime-cli.md) glob空后建Proposed，先commit交24 SINGLE actualshape；通过前不产品、不先猜CLI开红。没有独立persona CLI setter；runtime profile show/JSON没有完整职责，不把已完成普通资料/头像重做。
+L档，基线TRUE main6291fae16a9c66d8835a1caf1a373dca07685e99；上一pin/primary四项业务精确phase与全部必要静态已封，不重旧Bot5/routine6/skills/profile/MCP。这里只迁原bot_propose_persona{text:FULL}，2d9具体合同已由reviewer24 SINGLE ACTUAL CONCRETE SHAPE PASS，无必要结构阻断，[ADR0054](../adr/0054-self-persona-runtime-cli.md)已Accepted；按原合同交首compiled与真实file→nextwake链候选。独立最窄7977a4df/2d9/validation4dd70752真实NONPRIMARY source warm默认卡后persona set --self --text --json触unknown command，.98s/package2.166s，封存不重。没有独立persona CLI setter；runtime profile show/JSON没有完整职责，不把已完成普通资料/头像重做。
 
 ### Caller与完整输入
 

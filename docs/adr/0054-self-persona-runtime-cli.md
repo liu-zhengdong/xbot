@@ -1,14 +1,14 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0054 完整职责沿原 self source CLI 与 SelfEdit 审批
 
 ## 问题与调用方
 
-仅迁原bot_propose_persona{完整text}：所有Bot都能改自己，不要求primary，不接其它NAME、卡/role预算/通用patch。实际没有独立Persona CLI setter，profile runtime JSON没有职责全文。调用方选 `"$XBOT_BIN" persona set --self (--text TEXT | --file FILE|-) [--json]`；file/stdin为原Shell命令16KiB限下完整32KiB职责的实际输入通路。help离线，无self/endpoint不回落磁盘。新0054 glob空后建Proposed，具体caller/DTO/边界与怎样算对见 [母dev](../dev/cli-platform-entry.md#批-persona完整self职责具体合同待窄核)。
+仅迁原bot_propose_persona{完整text}：所有Bot都能改自己，不要求primary，不接其它NAME、卡/role预算/通用patch。实际没有独立Persona CLI setter，profile runtime JSON没有职责全文。调用方选 `"$XBOT_BIN" persona set --self (--text TEXT | --file FILE|-) [--json]`；file/stdin为原Shell命令16KiB限下完整32KiB职责的实际输入通路。help离线，无self/endpoint不回落磁盘。新0054 glob空后建Proposed，具体caller/DTO/边界与怎样算对见 [母dev](../dev/cli-platform-entry.md#批-persona完整self职责具体合同pass实施中)。
 
 ## 两种实际形状与选择
 
