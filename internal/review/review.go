@@ -74,14 +74,8 @@ var Table = map[string]Class{
 	"tools":        Readonly,
 	"restart_xbot": Restart,
 
-	// Routines and the owner notification. A routine is the bot's own
-	// schedule, so deleting one is not a data deletion. The kernel reviews a
-	// create/update's nonempty precheck separately as sh, using this same table.
-	"routine_create":       Normal,
-	"routine_list":         Readonly,
-	"routine_update":       Normal,
-	"routine_delete":       Normal,
-	"routine_pause":        Normal,
+	// Runtime routine CRUD uses the source CLI; its effective precheck is
+	// reviewed as the existing Shell call with this same policy table.
 	"send_message_to_user": Normal,
 	"generate_image":       Normal,
 	"listen":               Readonly,

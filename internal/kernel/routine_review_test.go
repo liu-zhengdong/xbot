@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"xbot/internal/agent"
+	"xbot/internal/cliops"
 	"xbot/internal/link"
 	"xbot/internal/machine"
 	"xbot/internal/provider"
@@ -20,10 +21,8 @@ import (
 
 func TestRoutinePrecheckUsesShellReview(t *testing.T) {
 	b := testBot(t, link.NameTimer)
-	tm := &link.Timer{Dir: b.RoutineDir()}
-	mode := machine.Allow
-	on := true
-	k := &Kernel{Bot: b, Links: []link.Link{tm}, Machine: func() (string, error) { return mode, nil }, PermissionsOn: func() bool { return on }}
+	mode, on := machine.Allow, true
+	k := &Kernel{Bot: b, Machine: func() (string, error) { return mode, nil }, PermissionsOn: func() bool { return on }}
 	k.ensureTurn().turnTrusted = true
 	protected := "printf marker > " + precheckQuote(filepath.Join(b.Root, "env"))
 	for _, tc := range []struct {
@@ -41,119 +40,143 @@ func TestRoutinePrecheckUsesShellReview(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mode, on = tc.mode, tc.on
-			shellArgs, _ := json.Marshal(map[string]string{"description": "test review", "command": tc.command})
-			need, _, err := (reviewedTool{Tool: &tools.Shell{}, k: k}).Confirm(shellArgs)
+			args, _ := json.Marshal(map[string]string{"description": "test review", "command": tc.command})
+			need, _, err := (reviewedTool{Tool: &tools.Shell{}, k: k}).Confirm(args)
 			if need != tc.need || (err != nil) != tc.reject {
-				t.Fatalf("shell reference: need=%v err=%v", need, err)
+				t.Fatalf("reference shell need=%v err=%v", need, err)
 			}
-			for _, tool := range []tools.Tool{routineCreate{k}, routineUpdate{k}} {
-				args, _ := json.Marshal(map[string]string{"id": "check", "name": "check", "prompt": "p", "cron": "0 * * * *", "precheck": tc.command})
-				got, summary, err := (reviewedTool{Tool: tool, k: k}).Confirm(args)
-				if got != tc.need || (err != nil) != tc.reject {
-					t.Fatalf("%s bypassed shell: need=%v err=%v", tool.Name(), got, err)
-				}
-				if tc.need && !strings.Contains(summary, tc.command) && !strings.Contains(summary, "precheck sh -c") {
-					t.Fatalf("card lacks command: %q", summary)
-				}
-				if tc.need && strings.HasPrefix(tc.name, "protected") && !strings.Contains(summary, review.ProtectedSuffix) {
-					t.Fatalf("missing protected-path summary: %s", summary)
-				}
+			got, summary, err := k.reviewPrecheck(context.Background(), tc.command, "create routine")
+			if got != tc.need || (err != nil) != tc.reject {
+				t.Fatalf("precheck need=%v err=%v", got, err)
+			}
+			if tc.need && !strings.Contains(summary, "precheck sh -c") {
+				t.Fatalf("card lacks command: %s", summary)
+			}
+			if tc.need && strings.HasPrefix(tc.name, "protected") && !strings.Contains(summary, review.ProtectedSuffix) {
+				t.Fatalf("missing protected summary: %s", summary)
 			}
 		})
 	}
-	mode, on = machine.Ask, true
-	if err := tm.Save(link.Routine{ID: "check", Prompt: "p", Cron: "0 * * * *", Precheck: "true"}); err != nil {
-		t.Fatal(err)
-	}
-	if need, _, err := (reviewedTool{Tool: routineUpdate{k}, k: k}).Confirm(json.RawMessage(`{"id":"check","enabled":true}`)); err != nil || !need {
-		t.Fatalf("kept command bypassed review: %v %v", need, err)
-	}
-	for _, tool := range []tools.Tool{routineCreate{k}, routineUpdate{k}} {
-		for _, field := range []string{`,"precheck":""`, `,"precheck":"  \n"`} {
-			if need, _, err := (reviewedTool{Tool: tool, k: k}).Confirm(json.RawMessage(`{"id":"check"` + field + `}`)); err != nil || need {
-				t.Fatalf("empty precheck changed old scheduling: %v %v", need, err)
-			}
-		}
-	}
-	if err := tm.Update("check", func(r *link.Routine) error { r.Precheck = ""; return nil }); err != nil {
-		t.Fatal(err)
-	}
-	for _, tool := range []tools.Tool{routineCreate{k}, routineUpdate{k}} {
-		if need, _, err := (reviewedTool{Tool: tool, k: k}).Confirm(json.RawMessage(`{"id":"check","enabled":true}`)); err != nil || need {
-			t.Fatalf("ordinary routine now asks: %v %v", need, err)
-		}
+	if _, _, err := k.reviewPrecheck(context.Background(), strings.Repeat("x", tools.MaxPrecheckBytes+1), "create"); err == nil {
+		t.Fatal("oversized precheck accepted")
 	}
 }
 
-// Review must resolve a relative precheck against its execution cwd even if a
-// conversation's shell has cd'ed elsewhere.
 func TestRoutinePrecheckReviewsProcessCWD(t *testing.T) {
 	b := testBot(t, link.NameTimer)
 	t.Chdir(b.Root)
 	k := &Kernel{Bot: b, WorkDir: t.TempDir()}
-	for _, tool := range []tools.Tool{routineCreate{k}, routineUpdate{k}} {
-		need, summary, err := (reviewedTool{Tool: tool, k: k}).Confirm(json.RawMessage(`{"id":"check","precheck":"printf marker > env"}`))
-		if err != nil || !need || !strings.Contains(summary, review.ProtectedSuffix) {
-			t.Fatalf("%s: need=%v summary=%q err=%v", tool.Name(), need, summary, err)
+	need, summary, err := k.reviewPrecheck(context.Background(), "printf marker > env", "create routine")
+	if err != nil || !need || !strings.Contains(summary, review.ProtectedSuffix) {
+		t.Fatalf("need=%v summary=%q err=%v", need, summary, err)
+	}
+}
+
+// This is an author unit at the real Agent -> Jobs -> source HTTP boundary.
+// The Shell fixture replaces process execution only; it never injects a Job or
+// approval identity into HTTP. The real RunCall supplies that identity.
+type routineSourceShell struct {
+	run func(context.Context, json.RawMessage) (string, error)
+}
+
+func (routineSourceShell) Name() string        { return "sh" }
+func (routineSourceShell) Description() string { return "fixture shell" }
+func (routineSourceShell) Parameters() any     { return map[string]any{"type": "object"} }
+func (routineSourceShell) Confirm(json.RawMessage) (bool, string, error) {
+	return false, "original CLI command", nil
+}
+func (s routineSourceShell) Run(ctx context.Context, raw json.RawMessage) (string, error) {
+	return s.run(ctx, raw)
+}
+
+func routineApprovalFixture(t *testing.T) (*Kernel, *link.Timer, string) {
+	t.Helper()
+	b := testBot(t, link.NameTimer)
+	tm := &link.Timer{Dir: b.RoutineDir()}
+	k := &Kernel{Bot: b, Links: []link.Link{tm}, WorkDir: t.TempDir()}
+	k.ensureTurn().turnTrusted = true
+	if err := k.StartOperations(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(k.CloseOperations)
+	endpoint := ""
+	for _, item := range k.CLIEnvironment(nil) {
+		if value, ok := strings.CutPrefix(item, "XBOT_ENDPOINT="); ok {
+			endpoint = value
 		}
+	}
+	return k, tm, endpoint
+}
+
+func runRoutineSource(t *testing.T, k *Kernel, approve agent.Approver, raw string, run func(context.Context, json.RawMessage) (string, error)) {
+	t.Helper()
+	p := &scripted{resps: []provider.Message{toolCall("source-call", "sh", raw)}}
+	ctx := context.WithValue(context.Background(), turnKey{}, k.ensureTurn())
+	_, err := agent.Run(ctx, p, []tools.Tool{routineSourceShell{run}}, nil, agent.Options{OneRound: true, Approve: approve, RunTool: k.runToolCall})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
 func TestRoutinePrecheckApprovalPreventsExecution(t *testing.T) {
-	for _, name := range []string{"routine_create", "routine_update"} {
+	for _, action := range []string{"create", "update"} {
 		for _, allow := range []bool{false, true} {
-			t.Run(name+"/"+map[bool]string{false: "deny", true: "allow"}[allow], func(t *testing.T) {
-				b := testBot(t, link.NameTimer)
-				tm := &link.Timer{Dir: b.RoutineDir()}
-				marker := filepath.Join(b.Root, "env") // Fake protected data, no real credentials.
+			t.Run(fmt.Sprintf("%s/%v", action, allow), func(t *testing.T) {
+				k, tm, endpoint := routineApprovalFixture(t)
+				marker := filepath.Join(k.Bot.Root, "env")
 				command := "printf marker > " + precheckQuote(marker)
-				k := &Kernel{Bot: b, Links: []link.Link{tm}}
-				k.ensureTurn().turnTrusted = true
-				var tool tools.Tool = routineCreate{k}
-				if name == "routine_update" {
-					tool = routineUpdate{k}
+				if action == "update" {
 					if err := tm.Save(link.Routine{ID: "check", Prompt: "p", Cron: "0 * * * *", Enabled: true}); err != nil {
 						t.Fatal(err)
 					}
 				}
-				args, _ := json.Marshal(map[string]string{"id": "check", "name": "check", "prompt": "p", "cron": "0 * * * *", "precheck": command})
-				p := &scripted{resps: []provider.Message{toolCall("check-call", name, string(args))}}
 				asked := 0
-				_, err := agent.Run(context.Background(), p, []tools.Tool{reviewedTool{Tool: tool, k: k}}, nil, agent.Options{OneRound: true, Approve: func(_ context.Context, got, summary string) (bool, error) {
+				approve := k.trackApprove(func(ctx context.Context, name, summary string) (bool, error) {
 					asked++
-					if got != name || !strings.Contains(summary, review.ProtectedSuffix) {
-						t.Errorf("approval %s %q", got, summary)
+					if name != "sh" || agent.ToolCallID(ctx) != "source-call" || !strings.Contains(summary, review.ProtectedSuffix) || !strings.Contains(string(agent.ToolArgs(ctx)), "_xbot_routine") {
+						t.Errorf("wrong original approval: %s %s %s", name, summary, agent.ToolArgs(ctx))
 					}
 					return allow, nil
-				}})
-				if err != nil || asked != 1 {
-					t.Fatalf("approval count=%d err=%v", asked, err)
+				})
+				runRoutineSource(t, k, approve, `{"command":"\"$XBOT_BIN\" routine create --self --args-file patch.json","description":"configure routine"}`, func(ctx context.Context, _ json.RawMessage) (string, error) {
+					var reply cliops.RoutineWriteReply
+					var err error
+					if action == "create" {
+						reply, err = cliops.CallRoutineCreate(ctx, endpoint, k.Bot.Root, tools.CallID(ctx), cliops.RoutineCreate{ID: "check", Name: "check", Prompt: "p", Cron: "0 * * * *", Precheck: &command})
+					} else {
+						reply, err = cliops.CallRoutineUpdate(ctx, endpoint, k.Bot.Root, tools.CallID(ctx), "check", cliops.RoutinePatch{Precheck: &command})
+					}
+					if reply.Applied != allow || (err != nil) == allow {
+						t.Errorf("applied=%v allow=%v err=%v", reply.Applied, allow, err)
+					}
+					return "completed", nil
+				})
+				if asked != 1 {
+					t.Fatalf("approvals=%d", asked)
 				}
 				r, err := tm.Load("check")
 				if allow {
 					if err != nil || r.Precheck != command {
-						t.Fatalf("approved command not saved: %+v %v", r, err)
+						t.Fatalf("approved not saved: %+v %v", r, err)
 					}
-				} else if name == "routine_create" {
+				} else if action == "create" {
 					if !os.IsNotExist(err) {
-						t.Fatalf("denied create persisted: %+v %v", r, err)
+						t.Fatalf("denied create saved: %+v %v", r, err)
 					}
 				} else if err != nil || r.Precheck != "" {
-					t.Fatalf("denied update changed command: %+v %v", r, err)
+					t.Fatalf("denied update changed: %+v %v", r, err)
 				}
 				if err := tm.Fire(time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC), func(link.Event) error { return nil }); err != nil {
 					t.Fatal(err)
 				}
 				_, err = os.Stat(marker)
 				if allow && err != nil || !allow && !os.IsNotExist(err) {
-					t.Fatalf("protected write after allow=%v: %v", allow, err)
+					t.Fatalf("marker allow=%v err=%v", allow, err)
 				}
 			})
 		}
 	}
 }
-
-func precheckQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
 
 func TestRoutineCreatePrecheckDuplicateNull(t *testing.T) {
 	for _, tc := range []struct {
@@ -171,59 +194,59 @@ func TestRoutineCreatePrecheckDuplicateNull(t *testing.T) {
 		{"single_true", `,"precheck":"true"`, "true", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			b := testBot(t, link.NameTimer)
-			tm := &link.Timer{Dir: b.RoutineDir()}
-			marker := filepath.Join(b.Root, "env") // Only a temporary fake protected path.
+			k, tm, endpoint := routineApprovalFixture(t)
+			marker := filepath.Join(k.Bot.Root, "env")
 			command := "printf marker > " + precheckQuote(marker)
-			k := &Kernel{Bot: b, Links: []link.Link{tm}}
-			k.ensureTurn().turnTrusted = true
-			shellArgs, _ := json.Marshal(map[string]string{"description": "test protected command", "command": command})
-			if need, _, err := (reviewedTool{Tool: &tools.Shell{}, k: k}).Confirm(shellArgs); err != nil || !need {
-				t.Fatalf("reference shell must require approval: %v %v", need, err)
-			}
 			fields := tc.fields
 			if strings.Contains(fields, "%") {
 				quoted, _ := json.Marshal(command)
 				fields = fmt.Sprintf(fields, string(quoted))
 			}
-			args := `{"id":"check","name":"check","prompt":"p","cron":"0 * * * *"` + fields + `}`
-			p := &scripted{resps: []provider.Message{toolCall("create", "routine_create", args)}}
-			approvals := 0
-			_, err := agent.Run(context.Background(), p, []tools.Tool{reviewedTool{Tool: routineCreate{k}, k: k}}, nil, agent.Options{
-				OneRound: true,
-				Approve:  func(context.Context, string, string) (bool, error) { approvals++; return false, nil },
-			})
-			if err != nil || approvals != tc.approvals {
-				t.Fatalf("approvals=%d want=%d err=%v", approvals, tc.approvals, err)
+			var in cliops.RoutineCreate
+			raw := `{"id":"check","name":"check","prompt":"p","cron":"0 * * * *"` + fields + `}`
+			if err := json.Unmarshal([]byte(raw), &in); err != nil {
+				t.Fatal(err)
 			}
-			r, loadErr := tm.Load("check")
-			if tc.approvals == 0 {
-				if loadErr != nil || r.Precheck != tc.saved {
-					t.Errorf("review skipped but saved precheck=%q, want %q: %v", r.Precheck, tc.saved, loadErr)
+			asked := 0
+			runRoutineSource(t, k, k.trackApprove(func(context.Context, string, string) (bool, error) { asked++; return false, nil }), `{"command":"routine create from args file","description":"configure routine"}`, func(ctx context.Context, _ json.RawMessage) (string, error) {
+				reply, err := cliops.CallRoutineCreate(ctx, endpoint, k.Bot.Root, tools.CallID(ctx), in)
+				if (err != nil) != (tc.approvals > 0) || reply.Applied != (tc.approvals == 0) {
+					t.Errorf("reply=%+v err=%v", reply, err)
 				}
-			} else if !os.IsNotExist(loadErr) {
-				t.Errorf("denied command persisted: %+v %v", r, loadErr)
+				return "completed", nil
+			})
+			if asked != tc.approvals {
+				t.Fatalf("approvals=%d want=%d", asked, tc.approvals)
 			}
-			now := time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC)
+			r, err := tm.Load("check")
+			if tc.approvals == 0 {
+				if err != nil || r.Precheck != tc.saved {
+					t.Fatalf("saved=%+v err=%v", r, err)
+				}
+			} else if !os.IsNotExist(err) {
+				t.Fatalf("denied saved: %+v %v", r, err)
+			}
 			emitted := 0
+			now := time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC)
 			for i := 0; i < 2; i++ {
 				if err := tm.Fire(now, func(link.Event) error { emitted++; return nil }); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if _, err := os.Stat(marker); !os.IsNotExist(err) {
-				t.Errorf("unapproved protected command executed: %v", err)
+			if emitted != 1-tc.approvals {
+				t.Fatalf("emitted=%d", emitted)
 			}
-			wantEmitted := 1 - tc.approvals
-			if emitted != wantEmitted {
-				t.Fatalf("emitted=%d, want=%d", emitted, wantEmitted)
+			if _, err := os.Stat(marker); !os.IsNotExist(err) {
+				t.Fatalf("unapproved command executed: %v", err)
 			}
 			if tc.approvals == 0 {
-				r, err := tm.Load("check")
+				r, err = tm.Load("check")
 				if err != nil || r.LastSlot != "20261027T0800" {
-					t.Fatalf("ordinary/true slot not committed: %+v %v", r, err)
+					t.Fatalf("slot=%+v %v", r, err)
 				}
 			}
 		})
 	}
 }
+
+func precheckQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }

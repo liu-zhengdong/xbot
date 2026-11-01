@@ -32,6 +32,21 @@ type toolArgsKey struct{}
 type toolCallIDKey struct{}
 type toolSummaryKey struct{}
 
+// CallApprover invokes this concrete call's already-wrapped approver with
+// approval-only arguments. It never changes the arguments passed to Tool.Run.
+type CallApprover func(context.Context, json.RawMessage, string) (bool, error)
+
+type toolApproverKey struct{}
+type toolApprover struct {
+	name string
+	call CallApprover
+}
+
+func ToolApprover(ctx context.Context) (string, CallApprover) {
+	value, _ := ctx.Value(toolApproverKey{}).(toolApprover)
+	return value.name, value.call
+}
+
 func ToolSummary(ctx context.Context) string { s, _ := ctx.Value(toolSummaryKey{}).(string); return s }
 
 // ToolCallID identifies the call whose approval is being decided.
@@ -499,6 +514,16 @@ func execTool(ctx context.Context, byName map[string]tools.Tool, tc provider.Too
 	}
 	ctx = withToolArgs(context.WithValue(ctx, toolCallIDKey{}, tc.ID), raw)
 	ctx = context.WithValue(ctx, toolSummaryKey{}, summary)
+	var callApprove CallApprover
+	if opt.Approve != nil {
+		callApprove = func(callCtx context.Context, approvalArgs json.RawMessage, summary string) (bool, error) {
+			approve.Lock()
+			defer approve.Unlock()
+			callCtx = withToolArgs(context.WithValue(callCtx, toolCallIDKey{}, tc.ID), approvalArgs)
+			return opt.Approve(callCtx, t.Name(), summary)
+		}
+	}
+	ctx = context.WithValue(ctx, toolApproverKey{}, toolApprover{name: t.Name(), call: callApprove})
 	run := func(ctx context.Context) (string, error) { return t.Run(ctx, raw) }
 	if prep, ok := t.(interface {
 		PrepareRun(context.Context, json.RawMessage) (tools.PreparedRun, error)

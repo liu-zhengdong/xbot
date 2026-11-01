@@ -48,6 +48,8 @@ func (k *Kernel) runToolCall(ctx context.Context, t tools.Tool, args json.RawMes
 	summary := agent.ToolSummary(ctx)
 	parentCtx := ctx
 	parentScope := scopeOf(ctx)
+	originalOwner, _ := ctx.Value(turnKey{}).(*turn)
+	child, _ := ctx.Value(routineChildPolicyKey{}).(bool)
 	owner := k.turnFor(ctx)
 	owner.mu.Lock()
 	frozen := &turn{turnSender: owner.turnSender, turnKind: owner.turnKind, turnTrusted: owner.turnTrusted, turnSource: owner.turnSource, turnHops: owner.turnHops, turnChain: owner.turnChain, branch: owner.branch, fromSeq: owner.fromSeq}
@@ -59,7 +61,13 @@ func (k *Kernel) runToolCall(ctx context.Context, t tools.Tool, args json.RawMes
 		Prepare: func(ctx context.Context, id string) (context.Context, func()) {
 			release := func() {}
 			if review.IsShellTool(t.Name()) {
-				release = k.holdOperations()
+				server, held := k.holdSourceOperations()
+				release = held
+				source := routineCallSource{listener: server, owner: originalOwner, child: child}
+				if !child && originalOwner != nil {
+					source.trusted, source.person = frozen.turnTrusted, k.memoryPersonOf(frozen)
+				}
+				ctx = context.WithValue(ctx, routineCallSourceKey{}, source)
 			}
 			// Copy the raw cwd so the shell can still report a missing directory.
 			k.noteScope(id, k.readScope(parentScope))

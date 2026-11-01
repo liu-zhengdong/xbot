@@ -132,6 +132,7 @@ type live struct {
 	onCwd                      func(string)
 	finalCwd                   string
 	cleanup                    func()
+	callContext                context.Context
 }
 
 // NewJobs records jobs under dir. Call Load before Run so a restarted process

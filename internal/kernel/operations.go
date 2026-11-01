@@ -120,14 +120,20 @@ func (k *Kernel) retireOperations() {
 // The existing local execution sets own retained endpoints. OnIdle is called
 // only after task removal and queue drain, with no task resource lock held.
 func (k *Kernel) holdOperations() func() {
+	_, release := k.holdSourceOperations()
+	return release
+}
+
+func (k *Kernel) holdSourceOperations() (*cliops.Server, func()) {
 	k.operations.mu.Lock()
-	if k.operations.server == nil {
+	server := k.operations.server
+	if server == nil {
 		k.operations.mu.Unlock()
-		return func() {}
+		return nil, func() {}
 	}
 	k.operations.calls++
 	k.operations.mu.Unlock()
-	return func() {
+	return server, func() {
 		k.operations.mu.Lock()
 		k.operations.calls--
 		k.operations.mu.Unlock()
