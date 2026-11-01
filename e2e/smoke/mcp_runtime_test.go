@@ -657,11 +657,13 @@ func TestMCPRuntimeReconcile(t *testing.T) {
 	// No drain: old held action must terminate without releasing its gate.
 	mcpRuntimeWait(t, hot.canceled, 8*time.Second, "spec replacement waited for old action to drain")
 	mcpRuntimeClosed(t, peer, local.Session)
-	if job := mcpRuntimeJobEnded(t, srv, hotID, 8*time.Second); job["status"] != "done" && job["status"] != "failed" {
-		t.Fatalf("configuration-changed source Shell did not reach an original terminal job: %v", job)
+	hotJob := mcpRuntimeJobEnded(t, srv, hotID, 8*time.Second)
+	exitCode, _ := hotJob["exit_code"].(float64)
+	if (hotJob["status"] != "done" && hotJob["status"] != "failed") || exitCode == 0 {
+		t.Fatalf("configuration-changed original Shell job did not finish with a nonzero CLI exit: %v", hotJob)
 	}
 	unknown := strings.ToLower(strings.Join(mcpRuntimeInspect(t, srv, model, "MCP_SPEC_OLD_OUTPUT", hotID, false), "\n"))
-	if !regexp.MustCompile(`(?m)^exit [1-9][0-9]*\n`).MatchString(unknown) || !strings.Contains(unknown, "configuration_changed") || !strings.Contains(unknown, "outcome_unknown") {
+	if !strings.Contains(unknown, "configuration_changed") || !strings.Contains(unknown, "outcome_unknown") {
 		t.Fatalf("sent action did not report configuration change and unknown side effects: %s", unknown)
 	}
 	if peer.callCount("spec-changed") != 1 {
