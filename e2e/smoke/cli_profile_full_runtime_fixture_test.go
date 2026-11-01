@@ -42,7 +42,7 @@ func cliFullValue(t *testing.T, raw []byte) cliFullProfile {
 	}
 	var value cliFullProfile
 	if err := json.Unmarshal(raw, &value); err != nil {
-		t.Fatalf("profile output is not one JSON object: %v", err)
+		t.Fatalf("profile output is not one JSON object: %v; bounded output prefix=%q", err, raw[:min(len(raw), 1024)])
 	}
 	return value
 }
