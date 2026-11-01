@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过，父集成待收，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过，父集成待收，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -585,7 +585,11 @@ ccdc具体合同单次窄核后，原source平面list/info/new/delete、动态�
 
 ## pin与primary切片已提炼
 
-f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary.json真实commit后pin失败partial、原A失权/B预先endpoint得权与两模型门退役已提炼至 [API](../API.md#bot-运行时-cli)、[内核](../atlas/kernel.md#bot-发现与管理实例入口)、[ADR0053](../adr/0053-bot-pin-primary-runtime-cli.md)。586首A→B链与cc46三个边界的四项独立所测精确phase/当前合入级别只记 [MILESTONES](../MILESTONES.md)，不在母文档复制已完成合同。persona全Bot self/full职责file-stdin/原SelfEdit/nextwake是下一具体族，fork、卡、role预算、消息群和用户独立owner-SSE设计仍原边界，不借两小写动作扩展。
+f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary.json真实commit后pin失败partial、原A失权/B预先endpoint得权与两模型门退役已提炼至 [API](../API.md#bot-运行时-cli)、[内核](../atlas/kernel.md#bot-发现与管理实例入口)、[ADR0053](../adr/0053-bot-pin-primary-runtime-cli.md)。586首A→B链与cc46三个边界的四项独立所测精确phase/当前合入级别只记 [MILESTONES](../MILESTONES.md)，不在母文档复制已完成合同。persona全Bot self/full职责file-stdin/原SelfEdit/nextwake另在下节提炼，fork、卡、role预算、消息群和用户独立owner-SSE设计仍原边界，不借两小写动作扩展。
+
+## 完整self职责切片已提炼
+
+2d9具体合同单次窄核后，所有原source Bot的persona set self完整text/file/stdin、原WritePersona单atomic提交、下一真实wake正文/hash与SelfEdit实际Shell原调用审批已提炼至 [API](../API.md#自身职责运行时-cli)、[内核](../atlas/kernel.md#自身职责与原-selfedit-审批)、[ADR0054](../adr/0054-self-persona-runtime-cli.md)。260首file→nextwake与546完整边界的作者/独立精确phase、当前合入级别仅记 [MILESTONES](../MILESTONES.md)，不留完成合同重复副本。卡/role预算/fork/消息群/vault连接器/用户owner-SSE原边界保；后续remaining平台与Event/Link母路线按实际下一切片继续，不借persona扩展或提前抢步骤。
 
 ## 还没做的
 

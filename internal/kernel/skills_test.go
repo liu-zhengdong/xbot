@@ -267,8 +267,8 @@ func TestLegacySpawnRetiresSkillSchema(t *testing.T) {
 		t.Fatalf("main tools door was removed with skills: %v", err)
 	}
 	door := toolDoor{k}
-	if out, err := door.Run(context.Background(), json.RawMessage(`{"action":"describe","id":"bot_propose_persona"}`)); err != nil || !strings.Contains(out, "bot_propose_persona") {
-		t.Fatalf("remaining persona schema: %q %v", out, err)
+	if out, err := door.Run(context.Background(), json.RawMessage(`{"action":"describe","id":"recall_history"}`)); err != nil || !strings.Contains(out, "recall_history") {
+		t.Fatalf("remaining history schema: %q %v", out, err)
 	}
 	for _, id := range []string{"read_skill", "write_skill", "unknown-skill-action"} {
 		args, err := json.Marshal(map[string]string{"action": "describe", "id": id})

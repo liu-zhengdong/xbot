@@ -145,7 +145,7 @@ func TestCLIBotRuntimeReadOnlyAndSchemas(t *testing.T) {
 	)
 	model.add(mainCue,
 		mcpRuntimeTool("sh", map[string]string{"description": "Pin the actual peer through the migrated source CLI", "command": `"$XBOT_BIN" pin ` + peer + ` --self --json`}),
-		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "bot_propose_persona"}),
+		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "recall_history"}),
 		mcpRuntimeTool("dispatch", map[string]string{"type": "research", "task": research}),
 		mcpRuntimeTool("dispatch", map[string]string{"type": "dev", "task": dev}),
 	)
@@ -158,7 +158,7 @@ func TestCLIBotRuntimeReadOnlyAndSchemas(t *testing.T) {
 	}
 	mainResults := model.results(mainCue)
 	// ADR0053 retires native pin/primary; retain the prior actual pinning effect
-	// via its current CLI and keep Tools describe on the still-live persona door.
+	// via its current CLI and keep Tools describe on the still-live history door.
 	var pinned struct {
 		Name            string
 		Pinned, Applied bool
@@ -168,8 +168,8 @@ func TestCLIBotRuntimeReadOnlyAndSchemas(t *testing.T) {
 	if pinned.Name != peer || !pinned.Pinned || !pinned.Applied || pinned.Stage != "complete" || pinned.Error != "" {
 		t.Fatal("migrated source CLI did not report the actual saved peer pin")
 	}
-	if strings.HasPrefix(mainResults[1], "error:") || !strings.Contains(mainResults[1], "bot_propose_persona") {
-		t.Fatal("the preserved Tools describe lost the unaffected persona door")
+	if strings.HasPrefix(mainResults[1], "error:") || !strings.Contains(mainResults[1], "recall_history") {
+		t.Fatal("the preserved Tools describe lost the unaffected history door")
 	}
 	afterPeer := readConfig(peer)
 	if !afterPeer.Pinned || afterPeer.Name != beforePeer.Name || afterPeer.Persona != beforePeer.Persona || !slices.Equal(afterPeer.Owners, beforePeer.Owners) {

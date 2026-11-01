@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/, internal/peer/, internal/cron/, internal/notify/]
-verified: 2026-11-02 @ cc46ba7c
+verified: 2026-11-02 @ 5464f159
 ---
 # 多 Bot
 
@@ -17,7 +17,7 @@ verified: 2026-11-02 @ cc46ba7c
 - **运行时改名/删除**：保原主 Bot/last 保护与全局库迁移；资源感知的同表 mover、无锁 join、失败恢复和删后清理部分成功语义见 [内核](kernel.md#mcp-与每-bot-进程资源)。
 - **置顶与转交**：任何Bot可被置顶；模型source操作仅当前primary，用pin/unpin NAME --self或primary set NAME --self，目标self/本地VisibleBots owner交集。primary默认置顶但可unpin，转交只确保新primary pinned、不自动unpin旧主；原primary.lock内pointer写成后pin失败也已转交，回primary/applied/stage事实，旧A原endpoint下一写失权、B原已存在endpoint下一写得权，无newK/wake/身份转移。两原Normal能力沿CLI，pin_bot/set_primary与空bots组已退；无self原有效离线arity保，原SaveConfig合并/短回执见 [API](../API.md#bot-运行时-cli)与 [ADR0053](../adr/0053-bot-pin-primary-runtime-cli.md)。
 - **侧边栏分组**：每个 Bot 的档案有一个可选的 `group`。用户另外有一份分组顺序，没有拖拽排序。侧边栏按这份顺序显示可折叠的分组，每组带上 Bot 数量；`group` 为空，或不在这份顺序里的，归到最后的「未分组」。可以新建、改名、删除分组。删除分组只把里面的 Bot 挪到未分组，不删除 Bot。「未分组」不是一个可以新建或删除的分组。分组不进模板。这和 Bot 之间的聊天群不是一回事：聊天群仍用 `g_` 开头的 id，有自己的消息记录。
-- **当前实例Bot四操作**：平面list/info/new/delete --self沿source领域，不再登记list/status/create/delete四模型门。List排self/本地非空owner交集+原remote缓存，Info保原动态Host/Web owner或fallback self+Visible差异，不能当全root同一目录。new/delete须source当前primary；创建只接受明确非空职责，用途未知先ask_user或普通提问补缺，不编默认职责，继承source所有Owners/Links（空合法）与global默认model，不继承sourcebinding/role/budget。config/state/persona/owners后段partial如实applied/stage，原persona32KiB晚期检查不前移；目标正文进自己的固定前缀，无人为wake。删除保primary/last/可见本地目标与同host entry，removed后清钥错仍true、不恢复不存在对象；strict原wrapped Shell审批，production不增卡。fork/persona/role/messages/groups原门保；pin/primary沿同source小CLI，见上条。DTO、32KiB双格式及完整产物见 [API](../API.md#bot-运行时-cli)，结构见 [内核](kernel.md#bot-发现与管理实例入口)与 [ADR0052](../adr/0052-bot-runtime-cli.md)。
+- **当前实例Bot四操作**：平面list/info/new/delete --self沿source领域，不再登记list/status/create/delete四模型门。List排self/本地非空owner交集+原remote缓存，Info保原动态Host/Web owner或fallback self+Visible差异，不能当全root同一目录。new/delete须source当前primary；创建只接受明确非空职责，用途未知先ask_user或普通提问补缺，不编默认职责，继承source所有Owners/Links（空合法）与global默认model，不继承sourcebinding/role/budget。config/state/persona/owners后段partial如实applied/stage，原persona32KiB晚期检查不前移；目标正文进自己的固定前缀，无人为wake。删除保primary/last/可见本地目标与同host entry，removed后清钥错仍true、不恢复不存在对象；strict原wrapped Shell审批，production不增卡。fork/role/messages/groups原门保；persona沿下文职责self CLI。pin/primary沿同source小CLI，见上条。DTO、32KiB双格式及完整产物见 [API](../API.md#bot-运行时-cli)，结构见 [内核](kernel.md#bot-发现与管理实例入口)与 [ADR0052](../adr/0052-bot-runtime-cli.md)。
 - **Fork Bot**：原 Bot 写一份交接摘要作为新 Bot 的初始记忆；新 Bot 有自己的职责，对话流从零开始；两个 Bot 自动互相认识；可以选择同时建一个项目群。
 - **Bot 之间通信**：同一用户的 Bot 默认互相可见，可以互发消息、建群。群有自己的记录，群里的消息分发到每个成员的收件箱。设有防循环的限制（跳数上限、频率上限）。`message_bot` 的目标写成 `bot@设备` 时，经网关发给用户另一台配对设备上的 Bot，规则见 [网关](gateway.md)。
 - **Bot 之间的私聊记录**：Bot 发给另一个 Bot 的消息全部留存，不分成临时和永久两类。正文先进收件 Bot 的收件箱，处理之后留在收件 Bot 的 transcript 里，不另建一份会话。因此这些话一直能被搜索、导出，也能被 `recall_history` 看见。用户跟某个 Bot 聊天时，对方 Bot 发来的内容仍只显示成一行淡淡的提示。要按时间翻看两边的原文，用只读接口 `GET /api/bots/{a}/peers/{b}/messages`，而且这个人必须同时是两个 Bot 的 owner。群里的消息不走这个接口。`{b}` 也可以是另一台配对设备上的 `bot@设备`：只读本机这一半，收到的取自 `bot:bot@设备` 事件，发出的取自 `message_bot` 调用和工具结果（`status` 为 sent/queued/failed），退回通知是 `kind: "bounce"` 的一行；每行都拆出 `from_bot`/`from_device`/`to_bot`/`to_device`，客户端不解析 `bot@设备`。以后可以单独压缩这类来回；现在不压，它们跟这份 transcript 里的其他行走同一套摘要。
@@ -65,7 +65,7 @@ set 只修改给出的名字、简介、时区、生成头像 seed，可在同�
 | 头像 | config 的 avatar/avatar_seed；上传在 avatar、avatar.mime；用户或 Bot，少变 | 不进提示；编辑资料 |
 | 标签/分组 | 没有独立 tags；侧栏分组用 config.group（Bot.SetGroup）；用户/已有分组工具，偶变 | 不把分组注入人设；侧栏 |
 | 简介 | config.description；用户或当前实例 profile CLI，少变 | 只给人看，ComposedPersona 不注入简介；环境仅留已有 profile 指纹，不含正文；编辑资料 |
-| 职责 | bots/<name>/persona.md；用户定边界，编辑资料或 Bot 沿既有修改入口改，少变 | 进入 S0 `### 职责` 段，始终在；创建入口写的就是它 |
+| 职责 | bots/<name>/persona.md；用户定边界，owner编辑资料或Bot用persona set --self (--text TEXT\|--file FILE\|-)整写自己，非primary亦可 | 进入 S0 `### 职责` 段；trim后1..32KiB字节、单原子写/textNL0600，下一wake原compositor读新正文/保卡，当前已组装请求不重拼；不复制进记忆/规则 |
 | 人设卡 | 已选 persona-cards/<id>/card.md，没选过用默认卡「工程合伙人」；用户在编辑资料下拉里换 | 进入 S0 `### 人设卡 · 卡名` 段，叠在职责后。卡是引用，不另抄进记忆 |
 | 工作档案 | bots/<name>/memory/memory.md 和 log/YYYY-MM.md；Bot 对话中更新，常变 | 常驻事实与近期日志快照、后续环境差异；详情记忆。只记学到的现状、规则、决定，不复制或覆盖职责，无第三文件 |
 | 说话风格 | 人设卡正文；旧 style 已迁入 Bot 记忆 | 随所在块，不新增风格字段 |
@@ -74,5 +74,7 @@ set 只修改给出的名字、简介、时区、生成头像 seed，可在同�
 | 运行档位 | config.role = chat/dev；用户，少变 | 内核预算使用，不注入人设；离线 CLI profile set --role 帮助称运行档位 |
 | 时区 | config.timezone；用户或当前实例 profile CLI，少变 | 当前时间只在环境流；不拼人设 |
 | 免打扰 | 已按 ADR 0026 删除；旧字段忽略后移除 | 无提示入口、无界面，不恢复 |
+
+职责CLI没有target NAME/全文getter/offline setter，不并profile JSON/卡/role预算；self沿原Resources当前name/path，不信XBOT_BOT诊断。file/stdin给原Shell16KiB命令限下完整32KiB入口，raw/escaped各1MiB，Written/next_wake小回执不造多阶段partial。strict沿原SelfEdit审批桥/完整摘要意图与实际owner/child调用；Permissive不增卡。初次PickedCard可能EnsureSeeds，比较卡不变先warm取基线，setter不发额外wake。协议见 [API](../API.md#自身职责运行时-cli)、[ADR0054](../adr/0054-self-persona-runtime-cli.md)。
 
 `fork --role` 保留 flag，但帮助称职责；`profile set --role` 是运行档位。工作档案边界通过跟版 MemoryWriteRule 提醒；升级规则不改用户职责或记忆文件。

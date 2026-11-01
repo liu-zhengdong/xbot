@@ -42,7 +42,7 @@ func (k *Kernel) allowReadOnlyPlatform(interpreter string, args json.RawMessage)
 	if len(argv) == 0 {
 		return false
 	}
-	if argv[0] == "list" || argv[0] == "info" || argv[0] == "new" || argv[0] == "delete" || argv[0] == "pin" || argv[0] == "unpin" || argv[0] == "primary" {
+	if argv[0] == "list" || argv[0] == "info" || argv[0] == "new" || argv[0] == "delete" || argv[0] == "pin" || argv[0] == "unpin" || argv[0] == "primary" || argv[0] == "persona" {
 		parsed, err := cliops.ParseBotRuntime(argv)
 		return err == nil && (parsed.Help || parsed.Self && !parsed.Offline && (parsed.Action == "list" || parsed.Action == "info"))
 	}

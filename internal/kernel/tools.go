@@ -102,31 +102,6 @@ func intProp(desc string) map[string]any {
 	return map[string]any{"type": "integer", "description": desc}
 }
 
-type personaTool struct{ k *Kernel }
-
-func (personaTool) Name() string { return "bot_propose_persona" }
-func (personaTool) Description() string {
-	return "Propose new duties for this bot: what it is for and where its limits are. Voice comes from its persona card, not from this text. It is saved only after the owner confirms, and applies on the next wake."
-}
-func (personaTool) Parameters() any {
-	return schema(map[string]any{"text": stringProp("the full duties text")}, []string{"text"})
-}
-func (personaTool) Confirm(json.RawMessage) (bool, string, error) {
-	return false, "update persona", nil
-}
-func (t personaTool) Run(_ context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		Text string `json:"text"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	if err := t.k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { return b.WritePersona(in.Text) }); err != nil {
-		return "", err
-	}
-	return "persona saved; it applies on the next wake", nil
-}
-
 type sendMessageTool struct{ k *Kernel }
 
 func (sendMessageTool) Name() string { return "send_message_to_user" }

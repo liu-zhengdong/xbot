@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/exec/, internal/agent/, internal/notable/]
-verified: 2026-11-02 @ cc46ba7c
+verified: 2026-11-02 @ 5464f159
 ---
 # 后台工作与子代理
 
@@ -18,7 +18,7 @@ verified: 2026-11-02 @ cc46ba7c
 - **typed 创建**：`dispatch(type,task,context?,provider?,model?,thinking?,reasoning_effort?)`。context 默认 `fresh`，只有孩子系统前缀与任务；`fork` 继承父当前轮开轮之前的已完成上下文，不带当前轮未完成工具调用或插话。父固定模型补丁不作为子补丁；即使父历史为空，子规则、类型、所选模型 overlay 与任务仍存在。工具结果按调用配对投影，原文只追加。
 - **类型与工具**：`internal/agenttype` 内置 research（20分钟，读文件/只读解释器/搜索/网页/看图）、dev（2小时，读写/解释器/搜索/看图/本机技能库）、general（45分钟，挂载目录内全部）。`bots/<name>/agents/types/<name>.md` 可覆盖或新增，头部为 when/tools/budget/report，坏文件跳过；没有类型默认模型字段。每一步从当前挂载目录刷新工具，再用创建时白名单过滤，懒加载 Link 可在后续步出现。research 的 `shell:readonly` 是权限标记，按集中分类器包装实际解释器，cmd/PowerShell 不放行 POSIX 读命令。
 - 孩子不持有 dispatch/spawn、父/兄弟控制或给主人直发工具；只有 scoped `send_message_to_parent(text)`，没有任意 target。read_subagent/expand_subagent 在孩子内限定自己的记录。工具仍沿原工具确认和 Jobs 行为；本批未把整套子工具升级为主线 reviewedTool。
-- **单次选模**：省略沿父当前绑定，只给 model 沿父 provider，只给 provider 取其已配置首模型。显式组合和推理值沿既有 config.Resolve/协议校验；创建时固定有效身份，继续时重新解析当前凭据与能力，不换绑父 Bot，不保存密钥、Endpoint 或旧 listener。孩子实际 route 决定 overlay、vision、hosted/本地搜索互斥、T/H、工具定义预算和摘要器。fit/overflow ratio 每激活独立，派生摘要只在请求投影，冷恢复从原文重新 fit；超 H 无法压入时明确失败。MCP、资料更新、技能read/write、例程CRUD及Bot list/info/new/delete、pin/unpin/primary set不再进入子模型schema，沿当前实例CLI；dev/general保原可写Shell，research只用共用窄lexer/纯parser允许self skill read、routine list、平面Bot list/info及help，写与离线动作不放行（pin/unpin/primary仅help，原零参数primary可能ensureSeed亦不放行）；这些Normal控制不附加审批桥，实际source主资格每次复核。普通 provider/fit 错误不增加旧工具专用重试。协议见 [供应商](providers.md)。
+- **单次选模**：省略沿父当前绑定，只给 model 沿父 provider，只给 provider 取其已配置首模型。显式组合和推理值沿既有 config.Resolve/协议校验；创建时固定有效身份，继续时重新解析当前凭据与能力，不换绑父 Bot，不保存密钥、Endpoint 或旧 listener。孩子实际 route 决定 overlay、vision、hosted/本地搜索互斥、T/H、工具定义预算和摘要器。fit/overflow ratio 每激活独立，派生摘要只在请求投影，冷恢复从原文重新 fit；超 H 无法压入时明确失败。MCP、资料更新、技能read/write、例程CRUD及Bot list/info/new/delete、pin/unpin/primary set及persona self整写不再进入子模型schema，沿当前实例CLI；dev/general保原可写Shell，research只用共用窄lexer/纯parser允许self skill read、routine list、平面Bot list/info及help，写与离线动作不放行（pin/unpin/primary/persona仅help，原零参数primary可能ensureSeed亦不放行）；pin/primary这两Normal控制不附加审批桥，实际source主资格每次复核；persona全Bot self沿原SelfEdit严格桥与实际child自己的approver/无Person身份，正文32KiB用file/stdin完整送原writer，下一wake生效不发管理wake。普通 provider/fit 错误不增加旧工具专用重试。协议见 [供应商](providers.md)。
 
 ## 身份、执行与消息
 

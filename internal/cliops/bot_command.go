@@ -22,12 +22,12 @@ func ParseBotRuntime(argv []string) (BotCommand, error) {
 	}
 	c.Action = argv[0]
 	switch c.Action {
-	case "list", "info", "new", "delete", "pin", "unpin", "primary":
+	case "list", "info", "new", "delete", "pin", "unpin", "primary", "persona":
 	default:
 		return c, fmt.Errorf("bot: unknown command %q", c.Action)
 	}
 	control := c.Action == "pin" || c.Action == "unpin" || c.Action == "primary"
-	c.Offline = c.Action != "info" && !control
+	c.Offline = c.Action != "info" && c.Action != "persona" && !control
 	// Identify runtime syntax with the original new flag arities. A value or a
 	// positional after -- may literally be --self or --help.
 	for i := 1; i < len(argv); i++ {
@@ -81,7 +81,7 @@ func ParseBotRuntime(argv []string) (BotCommand, error) {
 			case "--help":
 				c.Help = true
 			}
-		case "--persona", "--persona-file", "--steps", "--provider", "--model", "-persona", "-provider", "-model":
+		case "--persona", "--persona-file", "--steps", "--provider", "--model", "-persona", "-provider", "-model", "--text", "--file":
 			if !eq {
 				if i+1 == len(argv) {
 					return c, fmt.Errorf("bot: %s needs a value", flag)
@@ -90,6 +90,15 @@ func ParseBotRuntime(argv []string) (BotCommand, error) {
 				value = argv[i]
 			}
 			switch flag {
+			case "--text", "--file":
+				if c.Action != "persona" {
+					return c, fmt.Errorf("bot: %s requires persona set", flag)
+				}
+				if flag == "--text" {
+					c.Persona = value
+				} else {
+					c.PersonaFile = value
+				}
 			case "--persona", "--persona-file":
 				if c.Action != "new" {
 					return c, fmt.Errorf("bot: %s requires new", flag)
@@ -117,6 +126,27 @@ func ParseBotRuntime(argv []string) (BotCommand, error) {
 	}
 	if seen["--persona"] && seen["--persona-file"] {
 		return c, errors.New("bot: --persona and --persona-file are mutually exclusive")
+	}
+	if c.Action == "persona" {
+		if seen["--text"] && seen["--file"] {
+			return c, errors.New("persona set: --text and --file are mutually exclusive")
+		}
+		if c.Help && (len(pos) == 0 || (len(pos) == 1 && pos[0] == "set")) {
+			return c, nil
+		}
+		if len(pos) != 1 || pos[0] != "set" {
+			return c, errors.New("persona: expected set with no target Bot name")
+		}
+		if !c.Self {
+			return c, errors.New("persona set: requires --self from an active XBot shell")
+		}
+		if !seen["--text"] && !seen["--file"] {
+			return c, errors.New("persona set: exactly one of --text or --file is required")
+		}
+		if seen["--file"] && c.PersonaFile == "" {
+			return c, errors.New("persona set: --file needs a nonempty path")
+		}
+		return c, nil
 	}
 	if c.Help {
 		return c, nil

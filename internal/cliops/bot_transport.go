@@ -83,6 +83,36 @@ func serveBot(w http.ResponseWriter, r *http.Request, handlers *BotHandlers) {
 			value.Error = err.Error()
 		}
 		reply, problem = value, err
+	case "persona":
+		if r.Method != http.MethodPut {
+			fail(http.StatusMethodNotAllowed, "persona: set requires PUT")
+			return
+		}
+		if handlers.Persona == nil {
+			fail(http.StatusNotFound, "persona: runtime unavailable")
+			return
+		}
+		var input BotPersona
+		if err := decodeBotRequest(w, r, &input); err != nil {
+			fail(http.StatusBadRequest, err.Error())
+			return
+		}
+		value, err := handlers.Persona(ctx, input)
+		if err != nil {
+			value.Error = err.Error()
+		}
+		// A display failure must still acknowledge a committed write. Neither
+		// output form may exceed the existing Shell's 32 KiB budget.
+		wire, marshalErr := json.Marshal(value)
+		if marshalErr != nil || len(wire)+1 > 32<<10 || len(FormatBotPersona(value)) > 32<<10 {
+			err = errors.New("persona: runtime result exceeds 32 KiB Shell output budget")
+			value.Error = err.Error()
+			wire, _ = json.Marshal(value)
+			if len(wire)+1 > 32<<10 || len(FormatBotPersona(value)) > 32<<10 {
+				value.Name = ""
+			}
+		}
+		reply, problem = value, err
 	case "delete":
 		if r.Method != http.MethodDelete {
 			fail(http.StatusMethodNotAllowed, "bot: delete requires DELETE")
@@ -160,7 +190,7 @@ func serveBot(w http.ResponseWriter, r *http.Request, handlers *BotHandlers) {
 	_, _ = w.Write(append(raw, '\n'))
 }
 
-func decodeBotRequest(w http.ResponseWriter, r *http.Request, input *BotCreate) error {
+func decodeBotRequest(w http.ResponseWriter, r *http.Request, input any) error {
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, BotMaxRequest))
 	if err != nil {
 		return errors.New("bot: invalid request or request exceeds 1 MiB")
@@ -206,6 +236,15 @@ func CallBotInfo(ctx context.Context, endpoint, root string, query BotInfoQuery)
 func CallBotCreate(ctx context.Context, endpoint, root string, input BotCreate) (BotCreateReply, error) {
 	var result BotCreateReply
 	err := callBot(ctx, endpoint, root, "", http.MethodPost, "create", input, &result)
+	if result.Error != "" {
+		err = errors.New(result.Error)
+	}
+	return result, err
+}
+
+func CallBotPersona(ctx context.Context, endpoint, root, callID string, input BotPersona) (BotPersonaReply, error) {
+	var result BotPersonaReply
+	err := callBot(ctx, endpoint, root, callID, http.MethodPut, "persona", input, &result)
 	if result.Error != "" {
 		err = errors.New(result.Error)
 	}

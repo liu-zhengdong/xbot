@@ -18,28 +18,27 @@ func shellNeed(t *testing.T, command string) bool {
 
 func TestTableHasEveryClass(t *testing.T) {
 	want := map[string]Class{
-		"read_file":           Readonly,
-		"list_secrets":        Readonly,
-		"recall_history":      Readonly,
-		"code_show":           Readonly,
-		"recall":              Readonly,
-		"restart_xbot":        Restart,
-		"secret_rm":           Delete,
-		"telegram_send":       ExternalSend,
-		"lark_send":           ExternalSend,
-		"http_request":        HTTP,
-		"shell":               Shell,
-		"write_file":          SelfEdit,
-		"edit_file":           SelfEdit,
-		"bot_propose_persona": SelfEdit,
-		"message_bot":         Normal,
-		"post_group":          Normal,
-		"code_start":          Normal,
-		"browser_stop":        Normal,
-		"todo":                Normal,
-		"shell_output":        Readonly,
-		"shell_status":        Readonly,
-		"shell_cancel":        Normal,
+		"read_file":      Readonly,
+		"list_secrets":   Readonly,
+		"recall_history": Readonly,
+		"code_show":      Readonly,
+		"recall":         Readonly,
+		"restart_xbot":   Restart,
+		"secret_rm":      Delete,
+		"telegram_send":  ExternalSend,
+		"lark_send":      ExternalSend,
+		"http_request":   HTTP,
+		"shell":          Shell,
+		"write_file":     SelfEdit,
+		"edit_file":      SelfEdit,
+		"message_bot":    Normal,
+		"post_group":     Normal,
+		"code_start":     Normal,
+		"browser_stop":   Normal,
+		"todo":           Normal,
+		"shell_output":   Readonly,
+		"shell_status":   Readonly,
+		"shell_cancel":   Normal,
 	}
 	for name, class := range want {
 		if !Known(name) {
@@ -59,12 +58,11 @@ func TestRetiredSkillsUnknown(t *testing.T) {
 	}
 }
 
-func TestRetiredProfileUnknownPersonaStillSelfEdit(t *testing.T) {
-	if Known("bot_update_profile") || ClassOf("bot_update_profile") != Normal {
-		t.Fatal("retired profile tool retains an executable policy entry")
-	}
-	if !Known("bot_propose_persona") || ClassOf("bot_propose_persona") != SelfEdit || !NeedsOwner("bot_propose_persona", json.RawMessage(`{}`)) {
-		t.Fatal("persona action lost its existing review classification")
+func TestRetiredProfileAndPersonaUnknown(t *testing.T) {
+	for _, name := range []string{"bot_update_profile", "bot_propose_persona"} {
+		if Known(name) || ClassOf(name) != Normal {
+			t.Fatalf("retired tool retains an executable policy entry: %s", name)
+		}
 	}
 }
 
@@ -210,11 +208,6 @@ func TestLinksInstallAndRemoveAsk(t *testing.T) {
 }
 
 func TestSelfEditAndReadOnlyClasses(t *testing.T) {
-	for _, name := range []string{"bot_propose_persona"} {
-		if !need(t, name, `{}`) {
-			t.Fatalf("%s did not ask", name)
-		}
-	}
 	// write_file/edit_file are path-dependent; the kernel checks the path.
 	if need(t, "write_file", `{"path":"notes.md","content":"x"}`) {
 		t.Fatal("write_file asked without a path check")
