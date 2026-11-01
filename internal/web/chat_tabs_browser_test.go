@@ -46,7 +46,8 @@ const tab=name=>[...document.querySelectorAll('#workspace-tabs [role=tab]')].fin
  $('#composer').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
  await waitFor(()=>fixture.streams.length,'message not sent');const stream=fixture.streams.at(-1);
  tab('记忆').click();say(stream,'在记忆页期间到达的回复');
- finish(stream,'');await sleep(150);tab('聊天').click();
+ // Persist the delivered text as the real server does before closing SSE.
+ finish(stream,'在记忆页期间到达的回复');await sleep(150);tab('聊天').click();
  await waitFor(()=>thread.textContent.includes('在记忆页期间到达的回复'),'stream result lost while chat hidden');
  assert(thread.textContent.split('在记忆页期间到达的回复').length===2,'stream reply duplicated');
  assert(testErrors.length===0,testErrors.join('; '));document.body.dataset.testResult='passed';

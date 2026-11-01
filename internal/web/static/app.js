@@ -2917,7 +2917,7 @@
       if (target) loadThread("around", target);
       return;
     }
-    row.scrollIntoView({ block: "center", behavior: "instant" });
+    threadStick.locate(row);
     row.classList.remove("quote-hit");
     void row.offsetWidth;
     row.classList.add("quote-hit");
@@ -4747,6 +4747,7 @@
   }
 
   function paintHistory() {
+    const anchor = threadStick.sticking ? null : threadStick.anchor();
     const sel = state.sel, meta = sel?.history;
     const inner = thread.querySelector(".thread-inner:not(.thread-skeleton)");
     if (inner && sel?.type === "bot" && !state.peer) {
@@ -4764,6 +4765,7 @@
       const text = sel?.historyLoading === key ? "加载中…" : label;
       if (btn.textContent !== text) btn.textContent = text;
     }
+    threadStick.restore(anchor);
     threadStick.schedule();
   }
 
@@ -4775,6 +4777,7 @@
     const request = ++state.threadLoad;
     selection.historyLoading = mode;
     paintHistory();
+    let readingAnchor = null;
     try {
       if (selection.type === "bot") {
         let query = "";
@@ -4790,6 +4793,9 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "request failed");
         if (state.sel !== selection || request !== state.threadLoad || state.streaming || state.peer) return false;
+        // Capture after the request: the reader may have scrolled while it
+        // was in flight. Include early returns and control/error height changes.
+        readingAnchor = threadStick.sticking ? null : threadStick.anchor();
         selection.transcriptETag = !query ? res.headers.get("ETag") : null;
         let messages = (data.messages || []).map(chatMessage);
         const old = state.messages;
@@ -4799,13 +4805,13 @@
           selection.history = {...selection.history, total:data.window.total, has_more_after:true};
           return true;
         }
-        if (data.window && old.length && ["older", "newer", "poll"].includes(mode)) {
+        if (data.window && old.length && ["older", "newer", "poll", "settle"].includes(mode)) {
           const head = messages[0]?.id, tail = messages.at(-1)?.id;
           if (mode === "poll" && !threadStick.sticking && head > old.at(-1).id + 1) {
             selection.history = { ...selection.history, total: data.window.total, has_more_after: true };
             return true;
           }
-          if (head && tail && !(mode === "poll" && head > old.at(-1).id + 1)) {
+          if (head && tail && !(["poll", "settle"].includes(mode) && head > old.at(-1).id + 1)) {
             const byID = new Map(old.map(m => [m.id, m]));
             messages.forEach(m => byID.set(m.id, m));
             messages = [...byID.values()].sort((a,b) => a.id-b.id);
@@ -4816,8 +4822,8 @@
         }
         const paging = mode === "older" || mode === "newer";
         if (paging || mode === "around") threadStick.release();
-        const anchor = paging ? threadStick.anchor() : null;
-        if (mode === "latest") { state.firstRender = true; threadStick.reset(); }
+        if (paging) readingAnchor = threadStick.anchor();
+        if (mode === "latest") { readingAnchor = null; state.firstRender = true; threadStick.reset(); }
         const changed = applyTranscript(messages, selection.id);
         revealThread();
         selection.history = data.window ? { ...data.window,
@@ -4830,6 +4836,7 @@
         if (olderAtCapacity) historyButtons.error.textContent = "当前窗口已满，可用搜索定位更早的消息。";
         if (subtitleError && subtitle.textContent === "对话加载失败，请重试。") setStatus("");
         if (mode === "around") {
+          readingAnchor = null;
           const row = thread.querySelector('[data-transcript-key="chat:' + Number(target) + ':0"]');
           if (row) {
             threadStick.locate(row);
@@ -4846,7 +4853,8 @@
         // the oldest page can both change the controls' height.
         selection.historyLoading = false;
         paintHistory();
-        if (paging) threadStick.restore(anchor);
+        threadStick.restore(readingAnchor);
+        readingAnchor = null;
         threadStick.changed();
         state.previewAt["b:" + selection.id] = Date.now();
         state.sig = "transcript-loaded";
@@ -4869,6 +4877,7 @@
       return true;
     } catch (e) {
       if (state.sel === selection && request === state.threadLoad && !state.streaming && !state.pendingSends.length) {
+        readingAnchor = threadStick.sticking ? null : threadStick.anchor();
         if (!state.messages.length) threadUnavailable();
         else {
           historyButtons.error.textContent = "对话加载失败，请重试。";
@@ -4881,6 +4890,7 @@
       if (state.sel === selection && request === state.threadLoad) {
         selection.historyLoading = false;
         paintHistory();
+        threadStick.restore(readingAnchor);
       }
     }
   }
@@ -7809,11 +7819,12 @@
           setWorking(prose.closest(".body"));
           paintStatus();
         } else if (event === "result" && payload.name === "send_message_to_user" && payload.text) {
-          // A message that landed is this bubble; the next one streams into a
-          // fresh live row, as the transcript keeps one bubble per call.
-          host.querySelector(".live-status")?.remove();
-          appendMarkdown(prose, stripBotImages(displayText(payload.text)));
-          host.parentElement.classList.remove("live");
+          // Use the final bubble layout at delivery, so adding its speaker at
+          // settlement cannot move text the reader is already looking at.
+          const row = host.parentElement;
+          const delivered = botBubble({time: row.dataset.time}, {text: payload.text}, state.messages, selection.id);
+          if (row.classList.contains("cont")) markContinuation(delivered, row.dataset.time);
+          row.replaceWith(delivered);
           prose = liveBubble();
           onLive(prose);
           threadStick.changed();
@@ -7977,7 +7988,9 @@
       state.sig = "";
       clearQuote();
       settle();
-      await loadThread();
+      // A completed send must reconcile temporary rows even if the reader
+      // left the bottom; only background polls freeze the historical window.
+      await loadThread("settle");
     } catch (e) {
       // Session expired mid-send: keep the text so the input gets it back
       // after the owner logs in again (showLogin already dropped the thread).
@@ -7992,7 +8005,7 @@
           live?.remove();
           settle();
           state.sig = "";
-          await loadThread();
+          await loadThread("settle");
           return;
         }
         if (!state.pendingSends.includes(pending)) state.pendingSends.push(pending);
@@ -8009,7 +8022,7 @@
         announceSend("回复出错了");
         settle();
         state.sig = "";
-        await loadThread();
+        await loadThread("settle");
         if (state.sel !== selection) return;
         // The transcript already holds this message: it did arrive, only the reply failed.
         if (!state.pendingSends.includes(pending)) return;

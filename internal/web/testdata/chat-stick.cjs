@@ -4,7 +4,7 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 const [chrome,url,profile]=process.argv.slice(2);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-const child=spawn(chrome,['--headless=new','--disable-gpu','--no-sandbox','--no-first-run','--no-default-browser-check','--remote-debugging-port=0','--user-data-dir='+profile,url],{stdio:'ignore'});
+const child=spawn(chrome,['--headless=new','--disable-gpu','--no-sandbox','--no-first-run','--no-default-browser-check','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'],{stdio:'ignore'});
 let socket;
 (async()=>{
  let port;
@@ -17,6 +17,9 @@ let socket;
  socket.onmessage=event=>{const m=JSON.parse(event.data);if(m.id){const call=pending.get(m.id);pending.delete(m.id);if(m.error)call.reject(Error(m.error.message));else call.resolve(m.result)}};
  const send=(method,params={})=>new Promise((resolve,reject)=>{pending.set(++id,{resolve,reject});socket.send(JSON.stringify({id,method,params}))});
  const evaluate=async expression=>(await send('Runtime.evaluate',{expression,returnByValue:true})).result.value;
+ const [width,height]=(process.env.XBOT_STICK_VIEWPORT||'800,600').split(',').map(Number);
+ await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
+ await send('Page.navigate',{url});
  for(let i=0;i<350;i++){
   const result=await evaluate('document.body?.dataset.testResult');
   if(result){

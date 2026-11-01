@@ -17,6 +17,19 @@ func TestChatStickBrowser(t *testing.T) {
 	runChatFramesBrowser(t, transcriptWindowFixture, chatStickDriver)
 }
 
+func TestChatStickSettlementBrowser(t *testing.T) {
+	runChatFramesBrowser(t, transcriptWindowFixture+`fixture.seq=420;`, chatStickSettlementDriver)
+}
+
+func TestChatStickHistoryNoticeBrowser(t *testing.T) {
+	t.Setenv("XBOT_STICK_VIEWPORT", "320,844")
+	runChatFramesBrowser(t, transcriptWindowFixture, chatStickHistoryNoticeDriver)
+}
+
+func TestChatStickQuoteBrowser(t *testing.T) {
+	runChatFramesBrowser(t, transcriptWindowFixture+`fixture.messages[bots[0].name].at(-1).reply_to=419;`, chatStickQuoteDriver)
+}
+
 func runChatFramesBrowser(t *testing.T, fixture, driver string) {
 	t.Helper()
 	// ResizeObserver/rAF need real frames, not dump-dom's virtual timers.
@@ -47,6 +60,108 @@ func runChatFramesBrowser(t *testing.T, fixture, driver string) {
 	}
 	t.Log(strings.TrimSpace(string(out)))
 }
+
+const chatStickHistoryNoticeDriver = `
+const $=s=>document.querySelector(s),assert=(v,m)=>{if(!v)throw Error(m)};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const waitFor=async(f,m)=>{for(let i=0;i<1000;i++){if(f())return;await sleep(10)}throw Error(m)};
+(async()=>{
+ await waitFor(()=>$('#thread [data-seq="420"]')&&!$('.thread-loading-cover'),'opening failed');await sleep(100);
+ const thread=$('#thread');thread.scrollTop-=400;thread.dispatchEvent(new Event('scroll'));await sleep(100);
+ const anchor=[...thread.querySelectorAll('.msg[data-transcript-key]')].find(n=>n.getBoundingClientRect().bottom>thread.getBoundingClientRect().top);
+ const y=anchor.getBoundingClientRect().top;
+ fixture.messages[bots[0].name].push({seq:421,role:'user',content:'上翻时的新消息',time:'2026-10-31T11:00:00Z'});historyFixture.version++;
+ document.dispatchEvent(new Event('visibilitychange'));await waitFor(()=>!$('#history-latest').hidden,'new tail notice missing');await sleep(100);
+ const delta=Math.abs(anchor.getBoundingClientRect().top-y);
+ assert(delta<3,'new message controls moved reading anchor: '+delta);
+ assert(!$('#thread [data-seq="421"]'),'new tail replaced historical reading');
+ // Retry/error controls also belong to the same stable reading transaction.
+ $('#history-latest').click();await waitFor(()=>$('#thread [data-seq="421"]'),'latest failed');await sleep(100);
+ thread.scrollTop-=400;thread.dispatchEvent(new Event('scroll'));await sleep(100);
+ const errorAnchor=[...thread.querySelectorAll('.msg[data-transcript-key]')].find(n=>n.getBoundingClientRect().bottom>thread.getBoundingClientRect().top),errorY=errorAnchor.getBoundingClientRect().top;
+ historyFixture.failTranscript=true;document.dispatchEvent(new Event('visibilitychange'));
+ await waitFor(()=>!$('#history-error').hidden,'poll failure missing');await sleep(100);
+ assert(Math.abs(errorAnchor.getBoundingClientRect().top-errorY)<3,'poll failure moved reading anchor');
+ assert(testErrors.length===0,testErrors.join('; '));document.body.dataset.testResult='passed';
+})().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
+`
+
+const chatStickQuoteDriver = `
+const $=s=>document.querySelector(s),assert=(v,m)=>{if(!v)throw Error(m)};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const waitFor=async(f,m)=>{for(let i=0;i<1000;i++){if(f())return;await sleep(10)}throw Error(m)};
+(async()=>{
+ await waitFor(()=>$('#thread [data-seq="420"] .quote-block')&&!$('.thread-loading-cover'),'opening failed');await sleep(100);
+ const thread=$('#thread'),tail=$('#thread [data-seq="420"]'),target=$('#thread [data-seq="419"]');
+ tail.style.minHeight=(thread.clientHeight/2+30)+'px';await sleep(100);
+ tail.querySelector('.quote-block').click();await sleep(100);
+ const gap=thread.scrollHeight-thread.clientHeight-thread.scrollTop,y=target.getBoundingClientRect().top;
+ assert(gap>3&&gap<120,'fixture quote did not land near bottom: '+gap);
+ tail.style.minHeight=(thread.clientHeight+500)+'px';await sleep(100);
+ assert(Math.abs(target.getBoundingClientRect().top-y)<3,'layout follow pulled reader away from quoted message');
+ assert(testErrors.length===0,testErrors.join('; '));document.body.dataset.testResult='passed';
+})().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
+`
+
+const chatStickSettlementDriver = `
+const $=s=>document.querySelector(s),assert=(v,m)=>{if(!v)throw Error(m)};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const waitFor=async(f,m)=>{for(let i=0;i<1000;i++){if(f())return;await sleep(10)}throw Error(m)};
+(async()=>{
+ await waitFor(()=>$('#thread [data-seq="420"]')&&!$('.thread-loading-cover'),'opening failed');await sleep(100);
+ const thread=$('#thread'),gap=()=>thread.scrollHeight-thread.clientHeight-thread.scrollTop;
+ const send=async text=>{
+  const n=fixture.streams.length,box=$('#input');box.textContent=text;box.dispatchEvent(new Event('input'));$('#composer').requestSubmit();
+  await waitFor(()=>fixture.streams.length>n&&$('#thread .live'),'send failed');return fixture.streams.at(-1);
+ };
+ const text='收到，这是一段完整回复。'.repeat(300);
+ const stream=await send('收尾后继续跟随');say(stream,text);await sleep(100);
+ assert(gap()<3,'live reply did not follow');
+ finish(stream,text);historyFixture.version++;
+ await waitFor(()=>!$('#thread .live'),'settlement failed');await sleep(100);
+ assert(gap()<3,'settlement lost bottom: '+gap());
+ fixture.messages[bots[0].name].push(...sayRows('随后主动发来的消息。'.repeat(100)));historyFixture.version++;
+ document.dispatchEvent(new Event('visibilitychange'));await sleep(3300);
+ assert(thread.textContent.includes('随后主动发来的消息。')&&gap()<3,'poll after settlement lost bottom: '+gap());
+ // Returning from history is an explicit request to follow, even if the
+ // replacement tail is much shorter than the current expanded window.
+ for(let i=0;i<3;i++){$('#history-older').click();await sleep(100)}
+ thread.scrollTop=thread.scrollHeight;thread.dispatchEvent(new Event('scroll'));await sleep(100);
+ $('#history-older').click();await sleep(100);
+ thread.scrollTop-=400;thread.dispatchEvent(new Event('scroll'));await sleep(100);
+ fixture.messages[bots[0].name].push(...sayRows('返回最新后这条也应跟随。'.repeat(200)));historyFixture.version++;
+ document.dispatchEvent(new Event('visibilitychange'));await sleep(3300);
+ assert(!$('#history-latest').hidden,'new tail missing');$('#history-latest').click();await sleep(150);
+ assert(gap()<3,'shorter latest window lost bottom: '+gap());
+ fixture.messages[bots[0].name].push(...sayRows('下一条主动消息。'));historyFixture.version++;
+ document.dispatchEvent(new Event('visibilitychange'));await sleep(3300);
+ assert(thread.textContent.includes('下一条主动消息。')&&gap()<3,'latest did not retain follow: '+gap());
+ // Finishing while the reader is above the tail must still reconcile SSE
+ // rows, without discarding the expanded history or moving its visible row.
+ const readingRow=[...thread.querySelectorAll('.msg[data-transcript-key]')].at(-1);
+ const detached=await send('上翻阅读时收工');say(detached,text);await sleep(100);
+ readingRow.scrollIntoView({block:'center'});thread.dispatchEvent(new Event('scroll'));await sleep(100);
+ const anchor=[...thread.querySelectorAll('.msg[data-transcript-key]')].find(n=>n.getBoundingClientRect().bottom>thread.getBoundingClientRect().top);
+ assert(anchor,'detached reader has no visible persisted message');
+ const y=anchor.getBoundingClientRect().top,oldest=thread.querySelector('.msg[data-transcript-key]');
+ finish(detached,text);historyFixture.version++;await sleep(150);
+ assert(!thread.querySelector('.msg:not([data-transcript-key])'),'detached settlement left temporary message rows');
+ assert(oldest.isConnected,'detached settlement discarded loaded history');
+ assert(Math.abs(anchor.getBoundingClientRect().top-y)<3,'detached settlement moved reading anchor');
+ // The newly delivered long reply is also a readable location before the
+ // server replaces its temporary row with the final projection.
+ const liveStream=await send('阅读刚到的长回复');say(liveStream,text);await sleep(100);
+ const liveText=[...thread.querySelectorAll('.bot-bubble')].at(-2);
+ thread.scrollTop=thread.scrollHeight-thread.clientHeight-500;thread.dispatchEvent(new Event('scroll'));await sleep(100);
+ const range=document.createRange();range.setStart(liveText.firstChild.firstChild,200);range.setEnd(liveText.firstChild.firstChild,201);
+ const textY=range.getBoundingClientRect().top;
+ finish(liveStream,text);historyFixture.version++;await sleep(150);
+ const finalText=[...thread.querySelectorAll('.bot-bubble')].at(-1);
+ const finalRange=document.createRange();finalRange.setStart(finalText.firstChild.firstChild,200);finalRange.setEnd(finalText.firstChild.firstChild,201);
+ assert(Math.abs(finalRange.getBoundingClientRect().top-textY)<3,'settlement moved text inside live reply: '+(finalRange.getBoundingClientRect().top-textY));
+ assert(testErrors.length===0,testErrors.join('; '));document.body.dataset.testResult='passed';
+})().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
+`
 
 const chatStickDriver = `
 const $=s=>document.querySelector(s),assert=(v,m)=>{if(!v)throw Error(m)};

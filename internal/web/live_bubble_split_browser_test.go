@@ -48,11 +48,11 @@ const bubbles=()=>[...document.querySelectorAll('#thread .msg.bot')].map(n=>n.te
  // Idle polls with an unchanged transcript leave the thread and trace alone.
  await waitFor(()=>$('#workspace-tabs [role=tab]'),'panel did not open');
  [...document.querySelectorAll('#workspace-tabs [role=tab]')].find(n=>n.textContent==='轨迹').click();
- await waitFor(()=>$('#panel-body .trace'),'trace missing');
- const inner=$('#thread .thread-inner'),trace=$('#panel-body .trace');
+ await waitFor(()=>$('#panel-body .trace-explorer'),'trace missing');
+ const inner=$('#thread .thread-inner'),trace=$('#panel-body .trace-explorer');
  const reads=fixture.reads;await waitFor(()=>fixture.reads>reads+1,'poll did not resume');
  assert($('#thread .thread-inner')===inner,'unchanged poll redrew the thread');
- assert($('#panel-body .trace')===trace,'unchanged poll redrew the trace');
+ assert($('#panel-body .trace-explorer')===trace,'unchanged poll redrew the trace');
  // History: a run from before tool-only chat keeps its reply text; a new run
  // that only wrote reply text shows no bot bubble.
  msgs.push(message('user','旧问题'));
