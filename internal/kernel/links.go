@@ -500,18 +500,20 @@ func (k *Kernel) connector(dir, kind string) *link.Connector {
 }
 
 func (k *Kernel) mountGrantLocked(name string) link.Link {
-	dir := bot.Dir(k.Bot.Root, k.Bot.Name())
+	dir := bot.Dir(k.Bot.Root, k.currentName())
 	switch name {
 	case link.NameTerminal:
 		return link.Terminal{}
 	case link.NameTools:
-		return link.NewToolsLinkAt(work.BotDir(k.Bot.Root, k.Bot.Name()), work.SharedDir(k.Bot.Root))
+		return link.NewToolsLinkAt(work.BotDir(k.Bot.Root, k.currentName()), work.SharedDir(k.Bot.Root))
 	case link.NameTimer:
 		sender := "timer"
 		if owners := k.Bot.Config().Owners; len(owners) > 0 {
 			sender = owners[0]
 		}
-		return &link.Timer{Dir: k.Bot.RoutineDir(), Sender: sender}
+		timer := &link.Timer{Dir: k.Bot.RoutineDir(), Sender: sender}
+		k.bindCurrentPaths(timer)
+		return timer
 	case link.NameMemory:
 		return link.Memory{}
 	case link.NamePersona:
@@ -540,6 +542,7 @@ func (k *Kernel) mountGrantLocked(name string) link.Link {
 		return browser.Open(k.Bot.Root)
 	case link.NameCoding:
 		l := code.Open(dir, k.Bot.InboxPath())
+		k.bindCurrentPaths(l)
 		if k.Provider != nil {
 			l.UseProvider(k.boundProvider())
 		}
@@ -558,9 +561,8 @@ func (k *Kernel) mountGrantLocked(name string) link.Link {
 			}
 		}
 		if k.Bot != nil {
-			b := k.Bot
 			l.UseTranscript(func(text string) error {
-				return b.Append(bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)}})
+				return k.appendCurrentEntry(bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)}})
 			})
 		}
 		if cmd := code.ResolveCommand(os.Getenv("XBOT_CODE_AGENT")); cmd != "" {

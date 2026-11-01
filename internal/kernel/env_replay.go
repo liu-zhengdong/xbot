@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/person"
@@ -251,7 +252,7 @@ func environmentBasis(st bot.State, msgs []provider.Message) string {
 	return shortHash(st.MemSnap + "\n" + strings.Join(parts, "\n"))
 }
 func (k *Kernel) visibleEnvironment(st bot.State) (environment, error) {
-	lines, err := k.Bot.UncoveredLines(st.Blocks)
+	lines, err := k.currentUncoveredLines(st.Blocks)
 	if err != nil {
 		return environment{}, err
 	}
@@ -278,7 +279,7 @@ func (k *Kernel) appendEnvironment(text string) (provider.Message, error) {
 		return provider.Message{}, nil
 	}
 	m := provider.Message{Role: provider.RoleUser, Internal: true, Content: provider.TextContent(text)}
-	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), Origin: bot.OriginInternal, Message: provider.Message{Role: m.Role, Content: provider.TextContent(m.Text())}})
+	seq, err := k.appendCurrentSeq(bot.Entry{Time: k.now(), Origin: bot.OriginInternal, Message: provider.Message{Role: m.Role, Content: provider.TextContent(m.Text())}})
 	m.Seq = seq
 	return m, err
 }
@@ -291,7 +292,8 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 	for key, value := range prev.Fields {
 		next.Fields[key] = value
 	}
-	paths, err := k.Bot.Paths()
+	var paths bot.TracePaths
+	err := k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { var err error; paths, err = b.Paths(); return err })
 	if err != nil {
 		return next, err
 	}
@@ -307,14 +309,19 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 		switch key {
 		case "persona":
 			// Duty and card are named apart, so a picked card never hides the duty.
-			v, err = k.Bot.ReadPersona()
+			v, err = k.currentPersona()
 			label := "职责"
 			if v == bot.DefaultPersona {
 				label = "默认职责"
 			}
 			v = label + " " + shortHash(v)
-			if c, ok := k.Bot.PickedCard(); ok {
-				v += "；人设卡 " + c.Name + " " + shortHash(c.Body)
+			if err == nil {
+				err = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error {
+					if c, ok := b.PickedCard(); ok {
+						v += "；人设卡 " + c.Name + " " + shortHash(c.Body)
+					}
+					return nil
+				})
 			}
 		case "rules":
 			v, err = k.rulesText()
@@ -420,7 +427,7 @@ func (k *Kernel) publishEnvironment(st bot.State, prev environment, full bool, b
 	return k.appendEnvironmentPrompts(context.Background(), environmentDelta(prev, next, basis, st.MemSnap), full)
 }
 func (k *Kernel) receiveEnvironment(ev link.Event, seq int) error {
-	st, err := k.Bot.LoadState()
+	st, err := k.currentState()
 	if err != nil {
 		return err
 	}
@@ -469,7 +476,7 @@ func (k *Kernel) syncEnv(st bot.State, _ link.Event, _ string) (bot.State, error
 	if err != nil {
 		return st, err
 	}
-	return st, k.Bot.SaveState(st)
+	return st, k.saveCurrentState(st)
 }
 func (k *Kernel) ensureSnapshot(st bot.State) error {
 	k.envMu.Lock()
@@ -537,7 +544,7 @@ func (r *turnRun) finishEnvironment(ctx context.Context, raw, fitted provider.Re
 	if err := ctx.Err(); err != nil {
 		return fitted, err
 	}
-	st, err := k.Bot.LoadState()
+	st, err := k.currentState()
 	if err != nil {
 		return fitted, err
 	}

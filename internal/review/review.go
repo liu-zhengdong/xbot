@@ -66,9 +66,8 @@ var Table = map[string]Class{
 	"experience_record": Normal,
 	"experience_search": Readonly,
 
-	// Persona and profile.
+	// Persona. Profile changes use the runtime CLI domain.
 	"bot_propose_persona": SelfEdit,
-	"bot_update_profile":  SelfEdit,
 
 	// The tool door's search and describe only read the registry; a call
 	// through it is reviewed as the tool it names (ADR 0035).

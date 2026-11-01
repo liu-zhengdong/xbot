@@ -15,6 +15,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/config"
 	"xbot/internal/cron"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/notify"
 	"xbot/internal/provider"
@@ -124,7 +125,7 @@ func (t personaTool) Run(_ context.Context, args json.RawMessage) (string, error
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
 	}
-	if err := t.k.Bot.WritePersona(in.Text); err != nil {
+	if err := t.k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { return b.WritePersona(in.Text) }); err != nil {
 		return "", err
 	}
 	return "persona saved; it applies on the next wake", nil
@@ -199,14 +200,20 @@ func (t sendMessageTool) Run(ctx context.Context, args json.RawMessage) (string,
 }
 
 func deliverNote(ctx context.Context, k *Kernel, text string) error {
-	if _, err := notify.Open(k.Bot.OutboxPath()).Append(text, k.now()); err != nil {
+	at := k.now()
+	var name string
+	if err := k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error {
+		name = b.Name()
+		_, err := notify.Open(b.OutboxPath()).Append(text, at)
+		return err
+	}); err != nil {
 		return err
 	}
 	desk := k.Desktop
 	if desk == nil {
 		desk = notify.Desktop
 	}
-	_ = desk(ctx, k.Bot.Name(), text)
+	_ = desk(ctx, name, text)
 	return nil
 }
 

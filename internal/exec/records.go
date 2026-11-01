@@ -196,18 +196,30 @@ func (j *job) recordCount() int {
 	return j.recordSeq
 }
 
-func (j *job) record(e SeqEntry) (int, error) {
-	j.recordMu.Lock()
-	defer j.recordMu.Unlock()
+func (j *job) record(e SeqEntry) (seq int, err error) {
+	err = j.withStorageIO(func() error { var e2 error; seq, e2 = j.recordLocked(e); return e2 })
+	return
+}
+
+func (j *job) recordLocked(e SeqEntry) (int, error) {
 	if e.Time.IsZero() {
 		e.Time = time.Now().UTC()
 	}
-	e.Seq = 0 // Physical line numbers are assigned when reading, never trusted from disk.
+	e.Seq = 0
 	if err := fsutil.AppendJSONL(transcriptPath(j.dir), e); err != nil {
 		return 0, err
 	}
 	j.recordSeq++
 	return j.recordSeq, nil
+}
+
+func (j *job) readRecords() (entries []SeqEntry, err error) {
+	err = j.withStorageIO(func() error { var e error; entries, e = readRecords(j.dir); return e })
+	return
+}
+
+func (j *job) appendLegacy(e bot.Entry) error {
+	return j.withStorageIO(func() error { return appendEntry(j.dir, e) })
 }
 
 func inputMessage(e SeqEntry) provider.Message {
@@ -245,7 +257,9 @@ func projectRecords(entries []SeqEntry) []provider.Message {
 }
 
 // sealCalls appends cancellation tombstones; it never executes historical calls.
-func (j *job) sealCalls() error {
+func (j *job) sealCalls() error { return j.withStorageIO(j.sealCallsLocked) }
+
+func (j *job) sealCallsLocked() error {
 	entries, err := readRecords(j.dir)
 	if err != nil {
 		return err
@@ -266,7 +280,7 @@ func (j *job) sealCalls() error {
 	}
 	for _, tc := range open {
 		m := provider.Message{Role: provider.RoleTool, Name: tc.Function.Name, Content: provider.ToolResult(tc.ID, "工具调用已中断；没有自动重新执行。")}
-		if _, err := j.record(SeqEntry{Entry: bot.Entry{Message: m, Origin: bot.OriginInternal}, TurnSeq: j.turnSeq}); err != nil {
+		if _, err := j.recordLocked(SeqEntry{Entry: bot.Entry{Message: m, Origin: bot.OriginInternal}, TurnSeq: j.turnSeq}); err != nil {
 			return err
 		}
 	}

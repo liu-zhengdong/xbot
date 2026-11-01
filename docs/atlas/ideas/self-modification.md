@@ -1,5 +1,6 @@
 ---
 kind: idea
+verified: 2026-11-01 @ 748ea940
 parent: ../README.md
 guard: owner
 status: 候选，机制还没设计
@@ -22,7 +23,7 @@ status: 候选，机制还没设计
 
 **留记录。** 改了什么、为什么、谁批准的，都追加进记录，不改写历史。transcript 只追加；每次确认决定写进 `decisions.jsonl`；仓库里的决策写成 ADR，只追加不删。
 
-现在已有的雏形：Bot 改自己的人设和档案（`bot_propose_persona`、`bot_update_profile`，以及直接写这两个文件）由权限总开关控制；`bot_update_profile` 默认直接落盘，侧栏与顶栏当面刷新，只有 permissions on 时按 SelfEdit 表审核；`write_skill` 写盘前走确认卡；LESSONS.md 里同一条教训出现 3 天就升级成硬约束，这本身就是一条人参与的「从经验改规则」的路径。
+现在已有的雏形：Bot 通过当前实例 profile CLI 组合修改名字、简介、时区和头像 seed，上传/清除头像是独立动作；实际保存或移动后以当前活轮次的 profile 提示刷新资料，不再执行旧 profile 模型工具。职责仍由 `bot_propose_persona` 等原独立入口修改；它与直接写 persona/profile 文件沿既有统一权限分类，生产默认放行，严格测试/评测模式保留 SelfEdit 审核。`write_skill` 仍按现有权限表执行；LESSONS.md 里同一条教训出现 3 天就升级成硬约束，这本身就是一条人参与的「从经验改规则」的路径。资料入口与部分失败语义见 [多 Bot](../multibot.md#运行时普通资料)。
 
 ## 它带来什么、代价是什么
 好处是 Bot 能从长期使用里积累改进，而不是每次都靠人发现问题再改。代价和风险都不小：评测覆盖不到的地方可能悄悄变差，自动改动多了以后，人很难看懂系统为什么变成现在这样。所以在设计清楚之前，它只在候选清单里，不开工。

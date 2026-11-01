@@ -15,9 +15,11 @@ import (
 	"xbot/internal/compact"
 	"xbot/internal/config"
 	"xbot/internal/exec"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 	"xbot/internal/review"
 	"xbot/internal/tools"
+	"xbot/internal/work"
 	"xbot/prompts"
 )
 
@@ -57,15 +59,19 @@ func (k *Kernel) StartSubagent(ctx context.Context, in SubagentRequest) (exec.Ta
 	if err != nil {
 		return exec.Task{}, err
 	}
-	d := exec.Descriptor{Version: 1, ID: id, Bot: k.Bot.Name(), Type: ty.Name, Mode: mode,
+	d := exec.Descriptor{Version: 1, ID: id, Bot: k.currentName(), Type: ty.Name, Mode: mode,
 		CWD: k.cwdFor(ctx), Tools: append([]string(nil), ty.Tools...), MaxSteps: maxStepsGuard,
 		TimeoutSec: int(ty.Budget / time.Second)}
 	if err := k.selectSubagentRoute(&d, in); err != nil {
 		return exec.Task{}, err
 	}
+	var ownDir string
+	if err := k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error { ownDir = current.AgentDir(id); return nil }); err != nil {
+		return exec.Task{}, err
+	}
 	persona := ty.Instructions(exec.SubPersona)
 	persona += "\n\n需要提前沟通时调用 send_message_to_parent；结束时运行时会自动交回结果。不要直接向用户发消息。"
-	persona += fmt.Sprintf("\n\n你的 id 是 %s。自己的原文记录在 %s；read_subagent / expand_subagent 仅能查看你自己，不能查看其他孩子。", id, k.Bot.AgentDir(id))
+	persona += fmt.Sprintf("\n\n你的 id 是 %s。自己的原文记录在 %s；read_subagent / expand_subagent 仅能查看你自己，不能查看其他孩子。", id, ownDir)
 	if ty.Name != "research" {
 		if guide := k.cliProfileGuide(); guide != "" {
 			persona += "\n\n" + guide
@@ -83,16 +89,17 @@ func (k *Kernel) StartSubagent(ctx context.Context, in SubagentRequest) (exec.Ta
 			persona += "\n\n## Model\n" + overlay
 		}
 	}
-	req := exec.StartRequest{ID: id, Bot: k.Bot.Name(), Task: in.Task, Mode: mode, Dir: k.Bot.AgentDir(id),
-		Type: ty.Name, Persona: persona, MaxSteps: d.MaxSteps, TimeoutSec: d.TimeoutSec,
-		Resource: writeResource(ty, d.CWD), Descriptor: &d}
+	req, err := k.restoreSubagent(ctx, d)
+	if err != nil {
+		return exec.Task{}, err
+	}
+	req.Task, req.Persona = in.Task, persona
 	if mode == exec.ModeFork {
 		req.Fork, err = k.completedSubagentHistory(ctx)
 		if err != nil {
 			return exec.Task{}, err
 		}
 	}
-	k.noteScope(id, d.CWD)
 	task, err := k.ensureExec().Start(ctx, req)
 	if err != nil {
 		k.dropScope(id)
@@ -176,7 +183,7 @@ func (k *Kernel) subagentProvider(req exec.StartRequest) (provider.Provider, err
 	if err != nil {
 		return nil, err
 	}
-	p, err = selector.Select(context.Background(), provider.Hint{Bot: k.Bot.Name()})
+	p, err = selector.Select(context.Background(), provider.Hint{Bot: k.currentName()})
 	if err != nil {
 		return nil, err
 	}
@@ -184,15 +191,38 @@ func (k *Kernel) subagentProvider(req exec.StartRequest) (provider.Provider, err
 }
 
 func (k *Kernel) restoreSubagent(_ context.Context, d exec.Descriptor) (exec.StartRequest, error) {
-	k.noteScope(d.ID, d.CWD)
-	cwd, notice := k.shellStartScope(d.ID)
-	if notice != "" {
-		d.CWD = cwd
+	req := exec.StartRequest{ID: d.ID, Mode: d.Mode, Type: d.Type, MaxSteps: d.MaxSteps, TimeoutSec: d.TimeoutSec}
+	// The descriptor may have been read before a rename, even when this Kernel
+	// already loaded the new name. Rebase its own origin before creating scope;
+	// a later request rebase cannot repair a scope that fell back to workspace.
+	k.cwd.mu.Lock()
+	k.ensureLoadedLocked()
+	err := k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		previous := d.Bot
+		d.CWD = k.rebaseOriginalPath(d.CWD, current)
+		if previous != "" {
+			d.CWD = rebasePath(d.CWD, bot.Dir(current.Root, previous), bot.Dir(current.Root, current.Name()))
+			d.CWD = rebasePath(d.CWD, work.BotDir(current.Root, previous), work.BotDir(current.Root, current.Name()))
+		}
+		k.rebaseCwdLocked(current)
+		if k.cwd.extra == nil {
+			k.cwd.extra = map[string]string{}
+		}
+		if _, exists := k.cwd.extra[d.ID]; !exists && d.CWD != "" {
+			k.cwd.extra[d.ID] = d.CWD
+		}
+		d.Bot, req.Bot = current.Name(), current.Name()
+		req.Dir, req.Workspace = current.AgentDir(d.ID), k.currentWorkspaceFor(current)
+		return nil
+	})
+	k.cwd.mu.Unlock()
+	if err != nil {
+		return exec.StartRequest{}, err
 	}
-	req := exec.StartRequest{ID: d.ID, Bot: k.Bot.Name(), Mode: d.Mode, Type: d.Type,
-		Dir: k.Bot.AgentDir(d.ID), Workspace: k.WorkDir, MaxSteps: d.MaxSteps,
-		TimeoutSec: d.TimeoutSec, Descriptor: &d,
-		Resource: writeResource(agenttype.Type{Tools: d.Tools}, cwd)}
+	cwd, _ := k.shellStartScope(d.ID)
+	d.CWD = cwd
+	req.Descriptor = &d
+	req.Resource = writeResource(agenttype.Type{Tools: d.Tools}, cwd)
 	if jobs := k.shellJobs(); jobs != nil {
 		req.JobDir = jobs.Directory()
 	}
@@ -246,7 +276,7 @@ func (k *Kernel) completedSubagentHistory(ctx context.Context) ([]provider.Messa
 		return nil, errors.New("dispatch: fork requires the current turn boundary")
 	}
 	cutoff := opening - 1
-	st, err := k.Bot.LoadState()
+	st, err := k.currentState()
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +287,12 @@ func (k *Kernel) completedSubagentHistory(ctx context.Context) ([]provider.Messa
 			blocks = append(blocks, b)
 		}
 	}
-	lines, err := k.Bot.UncoveredLines(blocks)
+	var lines []bot.SeqEntry
+	err = k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		var err error
+		lines, err = current.UncoveredLines(blocks)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -298,7 +333,7 @@ func (t agentMessageTool) Run(ctx context.Context, args json.RawMessage) (string
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
 	}
-	task, err := t.k.messageSubagent(ctx, in.ID, in.Text, in.Delivery, "bot:"+t.k.Bot.Name())
+	task, err := t.k.messageSubagent(ctx, in.ID, in.Text, in.Delivery, "bot:"+t.k.currentName())
 	if err != nil {
 		return "", err
 	}
@@ -358,33 +393,43 @@ func (t listSubagentsTool) Run(_ context.Context, args json.RawMessage) (string,
 	if in.Limit < 1 || in.Limit > 100 {
 		return "", errors.New("limit must be 1–100")
 	}
-	dirs, err := os.ReadDir(t.k.Bot.AgentsDir())
-	if os.IsNotExist(err) {
-		return "[]", nil
-	}
+	items := []exec.Meta{}
+	err := t.k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		dirs, err := os.ReadDir(current.AgentsDir())
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		for _, dir := range dirs {
+			if !dir.IsDir() || !execID(dir.Name()) {
+				continue
+			}
+			m, err := exec.ReadMeta(current.AgentDir(dir.Name()))
+			if err != nil {
+				continue
+			}
+			_, err = exec.ReadDescriptor(current.AgentDir(dir.Name()))
+			m.Continuable = err == nil
+			m.Summary, m.Task = clipSummary(m.Summary, 300), clipSummary(m.Task, 300)
+			m.Notable = nil
+			items = append(items, m)
+		}
+		return nil
+	})
 	if err != nil {
 		return "", err
 	}
-	items := []exec.Meta{}
-	for _, dir := range dirs {
-		if !dir.IsDir() || !execID(dir.Name()) {
-			continue
+	for i := range items {
+		var path string
+		if err := t.k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error { path = current.AgentDir(items[i].ID); return nil }); err != nil {
+			return "", err
 		}
-		m, err := exec.ReadMeta(t.k.Bot.AgentDir(dir.Name()))
-		if err != nil {
-			continue
+		// ActiveTask takes owners. Metadata file reads above have released route.
+		if live, ok := exec.ActiveTask(path); ok {
+			items[i].Status, items[i].Blocked, items[i].TurnSeq = live.Status, live.Blocked, live.TurnSeq
 		}
-		if live, ok := exec.ActiveTask(t.k.Bot.AgentDir(dir.Name())); ok {
-			m.Status = live.Status
-			m.Blocked = live.Blocked
-			m.TurnSeq = live.TurnSeq
-		}
-		_, err = exec.ReadDescriptor(t.k.Bot.AgentDir(dir.Name()))
-		m.Continuable = err == nil
-		m.Summary = clipSummary(m.Summary, 300)
-		m.Task = clipSummary(m.Task, 300)
-		m.Notable = nil // detailed effects are read on demand, never multiplied into this list
-		items = append(items, m)
 	}
 	sort.Slice(items, func(i, j int) bool {
 		a, b := items[i].StartedAt, items[j].StartedAt

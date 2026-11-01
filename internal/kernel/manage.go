@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/peer"
 )
 
@@ -15,7 +16,7 @@ func (k *Kernel) isPrimary() bool {
 		return false
 	}
 	name, err := bot.Primary(k.Bot.Root)
-	return err == nil && name == k.Bot.Name()
+	return err == nil && name == k.currentName()
 }
 
 type createBotTool struct{ k *Kernel }
@@ -87,8 +88,8 @@ func (t deleteBotTool) Run(ctx context.Context, args json.RawMessage) (string, e
 		return "", err
 	}
 	name := strings.TrimSpace(in.Name)
-	if name != t.k.Bot.Name() {
-		visible, err := peer.VisibleBots(t.k.Bot.Root, t.k.Bot.Name())
+	if name != t.k.currentName() {
+		visible, err := peer.VisibleBots(t.k.Bot.Root, t.k.currentName())
 		if err != nil {
 			return "", err
 		}
@@ -140,8 +141,8 @@ func (t pinBotTool) Run(_ context.Context, args json.RawMessage) (string, error)
 		return "", err
 	}
 	name := strings.TrimSpace(in.Name)
-	if name != t.k.Bot.Name() {
-		visible, err := peer.VisibleBots(t.k.Bot.Root, t.k.Bot.Name())
+	if name != t.k.currentName() {
+		visible, err := peer.VisibleBots(t.k.Bot.Root, t.k.currentName())
 		if err != nil {
 			return "", err
 		}
@@ -156,11 +157,20 @@ func (t pinBotTool) Run(_ context.Context, args json.RawMessage) (string, error)
 			return "", errNotVisible
 		}
 	}
-	b, err := bot.Load(t.k.Bot.Root, name)
-	if err != nil {
-		return "", err
+	var err error
+	if name == t.k.currentName() {
+		err = t.k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+			name = current.Name()
+			return current.SetPinned(in.Pinned)
+		})
+	} else {
+		var target *bot.Bot
+		target, err = bot.Load(t.k.Bot.Root, name)
+		if err == nil {
+			err = target.SetPinned(in.Pinned)
+		}
 	}
-	if err := b.SetPinned(in.Pinned); err != nil {
+	if err != nil {
 		return "", err
 	}
 	if in.Pinned {
@@ -198,8 +208,8 @@ func (t setPrimaryTool) Run(_ context.Context, args json.RawMessage) (string, er
 		return "", err
 	}
 	name := strings.TrimSpace(in.Name)
-	if name != t.k.Bot.Name() {
-		visible, err := peer.VisibleBots(t.k.Bot.Root, t.k.Bot.Name())
+	if name != t.k.currentName() {
+		visible, err := peer.VisibleBots(t.k.Bot.Root, t.k.currentName())
 		if err != nil {
 			return "", err
 		}

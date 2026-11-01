@@ -23,7 +23,7 @@ type Sink struct {
 	OnPart    func(provider.ContentPart)
 	OnTool    func(name, summary string)
 	OnResult  func(name, output string)
-	OnProfile func(name string)
+	OnProfile func(ProfileNotice)
 	// OnHandoff runs once, when a newer owner message takes the output. The
 	// request behind this sink can then end its stream: the answer goes to
 	// the newer one.
@@ -57,14 +57,16 @@ func botKey(b *bot.Bot) string {
 
 // interjectState is the part of a turn that takes owner messages.
 type interjectState struct {
-	mu       sync.Mutex
-	open     bool
-	queue    []provider.Message
-	stop     context.CancelFunc // the model call in flight, or nil
-	toolWait chan struct{}      // current batch wait signal, never a call queue
-	sink     *Sink
-	first    *Sink // the Handle caller's
-	handed   bool  // the Handle caller's output was taken over
+	mu              sync.Mutex
+	open            bool
+	registrationKey string
+	registration    *liveTurn
+	queue           []provider.Message
+	stop            context.CancelFunc // the model call in flight, or nil
+	toolWait        chan struct{}      // current batch wait signal, never a call queue
+	sink            *Sink
+	first           *Sink // the Handle caller's
+	handed          bool  // the Handle caller's output was taken over
 	// park is closed when an owner message arrives, so a confirmation card
 	// being waited on parks (park.go). parked says it is closed.
 	park   chan struct{}
@@ -78,11 +80,16 @@ func (k *Kernel) openInterject(t *turn, first *Sink) {
 	t.inter.open = true
 	t.inter.sink = first
 	t.inter.first = first
-	t.inter.mu.Unlock()
-	if k.AllowFork {
-		return
+	if !k.AllowFork {
+		key := botKey(k.Bot)
+		if k.Resources != nil {
+			key = bot.Dir(k.Bot.Root, k.Resources.Name())
+		}
+		value := &liveTurn{k: k, t: t}
+		t.inter.registrationKey, t.inter.registration = key, value
+		liveTurns.Store(key, value)
 	}
-	liveTurns.Store(botKey(k.Bot), &liveTurn{k: k, t: t})
+	t.inter.mu.Unlock()
 }
 
 // closeInterject ends interjection for t. Unless force is set, messages
@@ -101,8 +108,9 @@ func (k *Kernel) closeInterject(t *turn, force bool) []provider.Message {
 		return nil
 	}
 	t.inter.open = false
-	if v, ok := liveTurns.Load(botKey(k.Bot)); ok && v.(*liveTurn).t == t {
-		liveTurns.Delete(botKey(k.Bot))
+	if t.inter.registration != nil {
+		liveTurns.CompareAndDelete(t.inter.registrationKey, t.inter.registration)
+		t.inter.registration, t.inter.registrationKey = nil, ""
 	}
 	return q
 }
@@ -112,7 +120,7 @@ func (k *Kernel) closeInterject(t *turn, force bool) []provider.Message {
 func (k *Kernel) receive(ev link.Event) (int, error) {
 	k.envMu.Lock()
 	defer k.envMu.Unlock()
-	seq, err := k.Bot.FindEvent(ev.ID)
+	seq, err := k.findCurrentEvent(ev.ID)
 	if err != nil {
 		return 0, err
 	}
@@ -121,7 +129,7 @@ func (k *Kernel) receive(ev link.Event) (int, error) {
 		if ev.Source == link.NameApproval {
 			origin = bot.OriginInternal
 		}
-		seq, err = k.Bot.AppendSeq(bot.Entry{Time: ev.Time, EventID: ev.ID, ReplyTo: ev.ReplyTo, Origin: origin, Images: ev.Images, Audios: ev.Audios,
+		seq, err = k.appendCurrentSeq(bot.Entry{Time: ev.Time, EventID: ev.ID, ReplyTo: ev.ReplyTo, Origin: origin, Images: ev.Images, Audios: ev.Audios,
 			Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(link.Render(ev, link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners)))}})
 		if err != nil {
 			return 0, err
@@ -303,11 +311,11 @@ func (k *Kernel) replyToFailedInputs(t *turn) error {
 	t.mu.Lock()
 	replyThrough := t.replyInputThrough
 	t.mu.Unlock()
-	n, err := k.Bot.Count()
+	n, err := k.currentCount()
 	if err != nil {
 		return err
 	}
-	rows, err := k.Bot.Slice(t.fromSeq, n)
+	rows, err := k.currentSlice(t.fromSeq, n)
 	if err != nil {
 		return err
 	}

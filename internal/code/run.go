@@ -30,6 +30,7 @@ type liveRun struct {
 	mu       sync.Mutex
 	cancel   context.CancelFunc
 	stopStep func()
+	taskIO   func(func(Task) error) error
 }
 
 // ResolveCommand prefers an explicit path. Otherwise it uses the first of
@@ -112,7 +113,7 @@ func (l *Link) launch(task Task) {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	run := &liveRun{cancel: cancel}
+	run := &liveRun{cancel: cancel, taskIO: func(fn func(Task) error) error { return l.taskIO(task.ID, fn) }}
 	if l.live == nil {
 		l.live = map[string]*liveRun{}
 	}
@@ -176,7 +177,7 @@ func (l *Link) execute(ctx context.Context, run *liveRun, task Task) {
 	case l.command != "":
 		out = runCommand(ctx, l.command, task, func(text string) {
 			l.stream(task.ID, StatusRunning, text)
-		}, l.environment)
+		}, run.taskIO, l.environment)
 	case l.runnerURL != "":
 		out = runRemote(ctx, l.runnerURL, l.runnerToken, task, endpointOf(l.prov))
 	default:
@@ -223,7 +224,13 @@ func runModel(ctx context.Context, run *liveRun, p provider.Provider, task Task,
 	if p == nil {
 		return outcome{Status: StatusFailed, Text: "code: no model"}
 	}
-	if err := checkout(ctx, task.Repo, task.WorkDir); err != nil {
+	current := func(fn func(Task) error) error { return fn(task) }
+	if run != nil && run.taskIO != nil {
+		current = run.taskIO
+	}
+	var err error
+	task, err = checkoutTask(ctx, task, current)
+	if err != nil {
 		return outcome{Status: StatusFailed, Text: err.Error()}
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(task.TimeoutSec)*time.Second)
@@ -245,13 +252,16 @@ func runModel(ctx context.Context, run *liveRun, p provider.Provider, task Task,
 				seen = len(batch)
 			}
 		}
+		if err := current(func(cur Task) error { task = cur; return nil }); err != nil {
+			return outcome{Status: StatusFailed, Text: err.Error()}
+		}
 		stepCtx, stepCancel := context.WithCancel(ctx)
 		if run != nil {
 			run.mu.Lock()
 			run.stopStep = stepCancel
 			run.mu.Unlock()
 		}
-		produced, err := agent.Run(stepCtx, p, workTools(task.WorkDir, environment...), msgs, agent.Options{
+		produced, err := agent.Run(stepCtx, p, workToolsCurrent(task, current, environment...), msgs, agent.Options{
 			MaxSteps: 1,
 			OneRound: true,
 			Approve:  approveTask,
@@ -295,16 +305,29 @@ func ctxOutcome(ctx context.Context) outcome {
 	return outcome{Status: StatusCancelled, Text: "cancelled"}
 }
 
-func workTools(dir string, environment ...func([]string) []string) []tools.Tool {
+func workToolsCurrent(task Task, current func(func(Task) error) error, environment ...func([]string) []string) []tools.Tool {
+	dir := task.WorkDir
 	var list []tools.Tool
 	for _, sh := range tools.NewShells() {
 		sh.Dir = dir
 		if len(environment) > 0 {
 			sh.BindEnvironment(environment[0])
 		}
+		if current != nil {
+			sh.BindStartIO(func(_ context.Context, start func(string) error) error {
+				return current(func(task Task) error { return start(task.WorkDir) })
+			})
+		}
 		list = append(list, sh)
 	}
-	return append(list, &tools.ReadFile{Root: dir}, &tools.WriteFile{Root: dir}, &tools.EditFile{Root: dir})
+	for _, t := range []tools.Tool{&tools.ReadFile{Root: dir}, &tools.WriteFile{Root: dir}, &tools.EditFile{Root: dir}} {
+		if current != nil {
+			list = append(list, currentFileTool{Tool: t, current: current, recordDir: task.recordDir})
+		} else {
+			list = append(list, t)
+		}
+	}
+	return list
 }
 
 func taskText(task Task) string {
@@ -343,8 +366,13 @@ func calledTool(msgs []provider.Message) bool {
 	return false
 }
 
-func runCommand(ctx context.Context, command string, task Task, emit func(string), environment ...func([]string) []string) outcome {
-	if err := checkout(ctx, task.Repo, task.WorkDir); err != nil {
+func runCommand(ctx context.Context, command string, task Task, emit func(string), current func(func(Task) error) error, environment ...func([]string) []string) outcome {
+	if current == nil {
+		current = func(fn func(Task) error) error { return fn(task) }
+	}
+	var err error
+	task, err = checkoutTask(ctx, task, current)
+	if err != nil {
 		return outcome{Status: StatusFailed, Text: err.Error()}
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(task.TimeoutSec)*time.Second)
@@ -366,7 +394,15 @@ func runCommand(ctx context.Context, command string, task Task, emit func(string
 	if err != nil {
 		return outcome{Status: StatusFailed, Text: err.Error()}
 	}
-	if err := cmd.Start(); err != nil {
+	if err := current(func(cur Task) error {
+		cmd.Dir = cur.WorkDir
+		for i, entry := range cmd.Env {
+			if strings.HasPrefix(entry, "XBOT_CODE_REPO=") {
+				cmd.Env[i] = "XBOT_CODE_REPO=" + cur.Repo
+			}
+		}
+		return cmd.Start()
+	}); err != nil {
 		return outcome{Status: StatusFailed, Text: err.Error()}
 	}
 	var mu sync.Mutex
@@ -441,6 +477,55 @@ func clipText(s string) string {
 		return s[:4000]
 	}
 	return s
+}
+
+// checkoutTask keeps local directory preparation and git Start inside current
+// Task I/O; git/network completion is outside every record/route lock.
+func checkoutTask(ctx context.Context, task Task, current func(func(Task) error) error) (Task, error) {
+	var cmd *exec.Cmd
+	var stderr bytes.Buffer
+	err := current(func(cur Task) error {
+		task = cur
+		if _, err := os.Stat(filepath.Join(task.WorkDir, ".git")); err == nil {
+			return nil
+		}
+		if strings.TrimSpace(task.Repo) == "" {
+			return os.MkdirAll(task.WorkDir, 0700)
+		}
+		if err := os.MkdirAll(task.WorkDir, 0700); err != nil {
+			return err
+		}
+		// Git recognizes a colon before any slash as a remote locator. Keep
+		// URL/SCP syntax intact; local relative paths keep the process cwd
+		// identity they had before clone started inside the target directory.
+		repo := task.Repo
+		colon, slash := strings.IndexByte(repo, ':'), strings.IndexByte(repo, '/')
+		local := colon < 0 || slash >= 0 && slash < colon || filepath.VolumeName(repo) != ""
+		if !filepath.IsAbs(repo) && local {
+			var err error
+			repo, err = filepath.Abs(repo)
+			if err != nil {
+				return err
+			}
+		}
+		cmd = exec.CommandContext(ctx, "git", "clone", "--", repo, ".")
+		cmd.Dir = task.WorkDir
+		cmd.Stderr = &stderr
+		return cmd.Start()
+	})
+	if err != nil {
+		return task, err
+	}
+	if cmd != nil {
+		if err := cmd.Wait(); err != nil {
+			msg := strings.TrimSpace(stderr.String())
+			if msg == "" {
+				msg = err.Error()
+			}
+			return task, fmt.Errorf("code: clone: %s", clipText(msg))
+		}
+	}
+	return task, nil
 }
 
 // checkout clones repo into dir when dir has no .git yet. An empty repo only creates dir.

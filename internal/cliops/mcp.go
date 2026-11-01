@@ -57,6 +57,7 @@ type MCPHandlers struct {
 }
 
 type Handlers struct {
-	Profile func(*Update) (Profile, error)
-	MCP     *MCPHandlers
+	Profile       func(*Update) (Profile, error)
+	ProfileAvatar func(data []byte, clear bool) (Profile, error)
+	MCP           *MCPHandlers
 }

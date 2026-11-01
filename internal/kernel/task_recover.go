@@ -8,6 +8,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/code"
 	"xbot/internal/exec"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 )
 
@@ -19,7 +20,12 @@ func (k *Kernel) RecoverTasks() error {
 }
 
 func (k *Kernel) recoverTasks() error {
-	dirs, err := os.ReadDir(k.Bot.AgentDir(""))
+	var dirs []os.DirEntry
+	err := k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		var err error
+		dirs, err = os.ReadDir(current.AgentsDir())
+		return err
+	})
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
@@ -34,10 +40,16 @@ func (k *Kernel) recoverTasks() error {
 		if remote, ok := k.execSnapshot().(*exec.Remote); ok {
 			for _, id := range ids {
 				// Unreadable metadata is handled by Interrupt below, not by the transport.
-				if _, err := exec.ReadMeta(k.Bot.AgentDir(id)); err != nil {
+				var dir string
+				if err := k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+					dir = current.AgentDir(id)
+					_, err := exec.ReadMeta(dir)
+					return err
+				}); err != nil {
 					continue
 				}
-				if err := remote.Restore(id, k.Bot.AgentDir(id)); err != nil {
+				// Transport may wait on the runner; never hold route over it.
+				if err := remote.Restore(id, dir); err != nil {
 					return err
 				}
 			}
@@ -57,10 +69,14 @@ func (k *Kernel) recoverTasks() error {
 			if live[id] {
 				continue
 			}
-			if _, ok := exec.ActiveTask(k.Bot.AgentDir(id)); ok {
-				continue
-			}
-			m, err := exec.Interrupt(k.Bot.AgentDir(id))
+			// InterruptCurrent owns the owner/address policy before entering the
+			// final short route callback. Wrapping Interrupt in route would invert
+			// route -> owners, while a detached path could revive the old directory.
+			m, err := exec.InterruptCurrent(id, func(fn func(string, string, string) error) error {
+				return k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+					return fn(current.Name(), current.AgentsDir(), k.currentWorkspaceFor(current))
+				})
+			})
 			if err != nil {
 				if m.Status != bot.ForkInterrupted {
 					return err
@@ -69,14 +85,19 @@ func (k *Kernel) recoverTasks() error {
 				// the interruption once via its stable EventID; do not block other work.
 				m.Summary += "\n无法保存中断状态：" + err.Error()
 			}
-			if m.Status != bot.ForkInterrupted || k.Inbox == nil {
+			if m.Status != bot.ForkInterrupted {
 				continue
 			}
 			eventID := "ev_" + id + "_interrupted"
 			if m.TurnSeq > 0 {
 				eventID = exec.TerminalEventID(id, m.TurnSeq)
 			}
-			if err := k.Inbox.Post(link.Event{ID: eventID, Source: link.SourceSubagent, Type: exec.EvFailed, Sender: id, Content: m.Summary, Time: m.FinishedAt, Untrusted: true}); err != nil {
+			if err := k.withCurrentIO(func(_ *bot.Bot, box *inbox.Inbox) error {
+				if box == nil {
+					return nil
+				}
+				return box.Post(link.Event{ID: eventID, Source: link.SourceSubagent, Type: exec.EvFailed, Sender: id, Content: m.Summary, Time: m.FinishedAt, Untrusted: true})
+			}); err != nil {
 				return err
 			}
 		}

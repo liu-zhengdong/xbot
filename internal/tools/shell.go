@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -49,6 +51,8 @@ type Shell struct {
 	startDir    func(context.Context) (dir, notice string)
 	afterDir    func(context.Context, string) (kept, notice string)
 	markerDir   string
+	markerIO    func(func(string) error) error
+	startIO     func(context.Context, func(string) error) error
 	localSudo   func() (vault.Backend, error)
 	environment func([]string) []string
 }
@@ -79,6 +83,23 @@ func (s *Shell) SetMarkerDir(dir string) {
 		s.markerDir = dir
 	}
 	s.sessMu.Unlock()
+}
+
+// BindMarkerIO resolves and completes marker creation/removal on the source's
+// current route. The callback never runs across the shell process lifetime.
+func (s *Shell) BindMarkerIO(fn func(func(string) error) error) {
+	s.sessMu.Lock()
+	defer s.sessMu.Unlock()
+	if s.markerIO == nil {
+		s.markerIO = fn
+	}
+}
+
+// BindStartIO holds the current-path fence only through the actual local Start.
+func (s *Shell) BindStartIO(fn func(context.Context, func(string) error) error) {
+	s.sessMu.Lock()
+	defer s.sessMu.Unlock()
+	s.startIO = fn
 }
 
 func (s *Shell) session() (func(context.Context) (string, string), func(context.Context, string) (string, string), string) {
@@ -292,6 +313,9 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	env := s.commandEnv(in.Keys)
 	command := in.Command
 	var marker string
+	var markerFile *os.File
+	var markerCleanup func()
+	var markerHandle *os.File
 	var ended string
 	// cwdCh is written by the job's finish goroutine and read only on the
 	// path that actually waited. A late send after a background return does
@@ -305,13 +329,43 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 		if markDir == "" {
 			return "", errors.New("shell: no directory for the cwd marker")
 		}
-		f, err := os.CreateTemp(markDir, "xbot-cwd-*.txt")
-		if err != nil {
-			return "", err
+		s.sessMu.Lock()
+		markerIO := s.markerIO
+		s.sessMu.Unlock()
+		create := func(current string) error {
+			var err error
+			markerFile, err = os.CreateTemp(current, "xbot-cwd-*.txt")
+			return err
 		}
-		marker = f.Name()
-		f.Close()
-		command = s.wrapCwd(dir, in.Command, marker)
+		var markerErr error
+		if markerIO != nil {
+			markerErr = markerIO(create)
+		} else {
+			markerErr = create(markDir)
+		}
+		if markerErr != nil {
+			return "", markerErr
+		}
+		marker = markerFile.Name()
+		var cleanupOnce sync.Once
+		markerCleanup = func() {
+			cleanupOnce.Do(func() {
+				_ = markerFile.Close()
+				if markerIO != nil {
+					_ = markerIO(func(current string) error { return os.Remove(filepath.Join(current, filepath.Base(marker))) })
+				} else {
+					_ = os.Remove(marker)
+				}
+			})
+		}
+		if runtime.GOOS != "windows" && (s.Name() == "sh" || s.Name() == "bash" || s.Name() == "zsh") {
+			// The child and the parent retain the same inode across directory
+			// rename. The trap never opens the former absolute path.
+			markerHandle = markerFile
+			command = "exec 9>&3 3>&-\ntrap 'pwd -P >&9' EXIT\n" + in.Command + "\n"
+		} else {
+			command = s.wrapCwd(dir, in.Command, marker)
+		}
 		if s.Name() == "cmd" {
 			env = append(env, "XBOT_CWD_MARKER="+marker)
 		}
@@ -319,10 +373,17 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	}
 	env, cleanupSudo, sudoStore, err := s.sudoEnv(env)
 	if err != nil {
-		if marker != "" {
-			_ = os.Remove(marker)
+		if markerCleanup != nil {
+			markerCleanup()
 		}
 		return "", err
+	}
+	s.sessMu.Lock()
+	startIO := s.startIO
+	s.sessMu.Unlock()
+	var startProcess func(func(string) error) error
+	if startIO != nil {
+		startProcess = func(start func(string) error) error { return startIO(ctx, start) }
 	}
 	// The shared Jobs runner owns the wait for every command.
 	var out string
@@ -340,6 +401,9 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 			OnExit:      cleanupSudo,
 			Background:  in.RunInBackground,
 			CwdFile:     marker,
+			CwdHandle:   markerHandle,
+			CwdCleanup:  markerCleanup,
+			StartIO:     startProcess,
 			OnCwd: func(got string) {
 				if cwdCh == nil || got == "" {
 					return
@@ -352,13 +416,21 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 		})
 	} else {
 		defer cleanupSudo()
-		out, err = runInterpreterCommand(ctx, s.interpreter, command, timeout, s.maxOutput(), dir, env)
+		if markerCleanup != nil {
+			defer markerCleanup()
+		}
+		var files []*os.File
+		if markerHandle != nil {
+			files = []*os.File{markerHandle}
+		}
+		out, err = runInterpreterCommandIO(ctx, s.interpreter, command, timeout, s.maxOutput(), dir, env, startProcess, files...)
 		if sudoStore != nil {
 			out = sudoStore.MaskTruncated(sudoStore.Redact(out))
 		}
-		if marker != "" {
+		if markerHandle != nil {
+			ended = readCwdHandle(markerHandle)
+		} else if marker != "" {
 			ended = readCwdFile(marker)
-			_ = os.Remove(marker)
 		}
 	}
 	if err != nil {
@@ -595,10 +667,14 @@ func runCommand(ctx context.Context, command string, timeout time.Duration, maxO
 	return runInterpreterCommand(ctx, interpreter{name: "sh", path: "sh"}, command, timeout, maxOut, dir, env)
 }
 
-func runInterpreterCommand(ctx context.Context, in interpreter, command string, timeout time.Duration, maxOut int, dir string, env []string) (string, error) {
+func runInterpreterCommand(ctx context.Context, in interpreter, command string, timeout time.Duration, maxOut int, dir string, env []string, files ...*os.File) (string, error) {
+	return runInterpreterCommandIO(ctx, in, command, timeout, maxOut, dir, env, nil, files...)
+}
+func runInterpreterCommandIO(ctx context.Context, in interpreter, command string, timeout time.Duration, maxOut int, dir string, env []string, startIO func(func(string) error) error, files ...*os.File) (string, error) {
 	tctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := in.command(tctx, command)
+	cmd.ExtraFiles = files
 	if dir != "" {
 		cmd.Dir = dir
 	}
@@ -609,7 +685,15 @@ func runInterpreterCommand(ctx context.Context, in interpreter, command string, 
 	out := &capWriter{max: maxOut}
 	cmd.Stdout = out
 	cmd.Stderr = out
-	err := cmd.Run()
+	var err error
+	if startIO != nil {
+		err = startIO(func(current string) error { cmd.Dir = current; return cmd.Start() })
+	} else {
+		err = cmd.Start()
+	}
+	if err == nil {
+		err = cmd.Wait()
+	}
 	text, truncated := out.String()
 	text = clip.Valid(text)
 	text = strings.TrimRight(text, "\n")
@@ -664,6 +748,25 @@ func wrapShellCwd(start, command, marker string) string {
 
 func shQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func readCwdHandle(file *os.File) string {
+	data := make([]byte, 4097)
+	n, err := file.ReadAt(data, 0)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return ""
+	}
+	return parseCwdMarker(data[:n])
+}
+func parseCwdMarker(data []byte) string {
+	if len(data) > 4096 {
+		return ""
+	}
+	s := strings.TrimSpace(string(data))
+	if s == "" || strings.ContainsAny(s, "\r\n\x00") || !filepath.IsAbs(s) {
+		return ""
+	}
+	return filepath.Clean(s)
 }
 
 func readCwdFile(path string) string {

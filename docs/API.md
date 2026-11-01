@@ -15,9 +15,16 @@
 
 ## 本机 CLI profile 操作
 
-这组接口位于当前 Kernel 的独立回环 `XBOT_ENDPOINT`，不是网页 `--http` 端口；serve、桌面和独立 chat 同协议。只支持 `GET/PATCH /v1/profile`，不经 messages/events 或对话处理锁。调用须无浏览器 Origin/Fetch-Site，Host 为该回环端口，`X-XBot-Root` 为规范数据根；根不匹配 409。身份是该入口绑定的 Bot，不接收另一个 Bot 名，也不作为主人认证或隔离承诺。
+这组接口位于当前 Kernel 的独立回环 `XBOT_ENDPOINT`，不是网页 `--http` 端口；serve、桌面和独立 chat 同协议，不经 messages/events 或对话处理锁。调用须无浏览器 Origin/Fetch-Site，Host 为该回环地址，`X-XBot-Root` 为规范数据根；根不匹配 409。self 由该 endpoint 绑定的 Resources 识别；改名后同一 endpoint 继续认新名，`XBOT_BOT` 只作诊断，不接收其它 Bot 作为目标，也不作为主人认证或隔离承诺。
 
-PATCH JSON 为可选字符串 `description`、`timezone`、`avatar_seed`，至少一项；前两项空字符串清除，seed trim 后为 1–80 字符且不得含尖括号、单双引号、&、反引号或控制符，可组合且全量校验后一次保存。seed 将头像切为 generated，保存后在原资源锁内 best-effort 清旧 upload/MIME。未知字段、多份 JSON、非法值或超限返回非 2xx，不先写组合中的合法项。请求/响应各最多 64 KiB。成功回 `{name,description,timezone,avatar,avatar_seed,scope:"runtime",applied}`，GET 的 applied 为 false，PATCH 为 true；失败为 `{error}`。配置保存后通过现有活轮次 Sink 发送 `profile` SSE `{name}`，网页再读原资料接口；不新增 Inbox 类型。入口随宿主/任务生命周期关闭，旧地址不可用时 CLI 非 0，不另启 Kernel 或静默离线改文件。没有 runtime 上传/clear 方法；旧 `profile avatar <name> --file/--clear` 有 endpoint 时拒绝，只保留无 endpoint 的人用离线用途。
+- `GET /v1/profile`：读当前名字、简介、时区和头像元数据，不修改资料。
+- `PATCH /v1/profile`：JSON 为可选字符串 `name`、`description`、`timezone`、`avatar_seed`，至少一项，可组合。简介最多 160 字符；简介/时区的空字符串清除，名字必须合法且 portable；seed trim 后为 1–80 字符，不含尖括号、单双引号、&、反引号或控制符。seed 将头像切为 generated。JSON 请求及回包各最多 64 KiB；未知字段、额外 JSON、非法组合或预期目标冲突在业务写入前拒绝。name+fields 合入最终 fresh config 写入，未请求配置保留；persona/group/role/预算不进入这个 JSON。
+- `POST /v1/profile/avatar`：原始图片二进制 body，最多 1 MiB。按字节嗅探 PNG/JPEG/GIF/WebP，不信任 Content-Type；不传 base64、服务端文件路径或组合 profile 元数据。超限 413，非法图片非 2xx。CLI 对应 `profile avatar --self --file FILE --json`。
+- `DELETE /v1/profile/avatar`：空 body，清除上传状态并回到原 seed；CLI 对应 `profile avatar --self --clear --json`。上传/clear 是独立动作，不与 set 组合。
+
+资料回执保留 `{name,description,timezone,avatar,avatar_seed,scope:"runtime",applied}`，另有 `moved`，按结果提供 `previous_name`、`applied_fields` 与脱敏 `error`。GET 的 applied 为 false，同名且无其它字段不报告物理移动。前置 guard/解析失败且尚无领域结果时回 `{error}`；领域方法已产生结果，即使后期 IO 错误返回非 2xx，也保留实际名字和完成字段，CLI 输出该结果后非 0 退出，不把回执丢成裸错误。上传按实际成功点报告 `avatar_file`、`avatar_mime`、`avatar`；seed/clear 的元数据成功后清旧图 best-effort，清理失败不伪报未保存。多文件操作不承诺全事务，目录实际留在新名时后续路由跟随新名。
+
+实际资料变化沿当前活轮次 Sink 发送 `profile` SSE `{name,previous_name?}`，网页再读原资料接口；不新增 Inbox 类型。入口随宿主/任务生命周期关闭，不可达时 CLI 明确非 0，不另启 Kernel 或静默离线改文件。无 endpoint 保原人用离线用途。完整命令见 [运行时普通资料](atlas/multibot.md#运行时普通资料)。
 
 ## 设备静态壳
 
@@ -177,11 +184,11 @@ PATCH JSON 为可选字符串 `description`、`timezone`、`avatar_seed`，至�
 
 `PATCH /api/bots/{name}/routines/{id}`：须登录且属于该 Bot 的用户。请求体可含布尔字段 `enabled`、字符串字段 `precheck` 和有序字符串数组 `skills`，至少提供一个；返回更新后的例程。`precheck` 是 shell 命令字符串（不是布尔开关），最多 16 KiB；省略保留原值，空串移除检查。`skills` 为已有技能名/id（最多 32 项，每项去首尾空白后 1–240 字节、单行），省略保留、`[]` 清空；详情与 PATCH 回执非空时返回同一字段。叫醒时按序只读加载；缺失、改名、停用或读取失败会跳过并在本次上下文说明原因。请求体上限 128 KiB（容纳 JSON 转义），详情接口的 `routines[]` 在非空时也返回 `precheck`。和 Bot 的改例程工具共用 `Timer.Update`；不改变提示、时区或计划。未登录 401，Bot/例程不存在 404，字段缺失、类型不对、命令超长或未知字段 400，写入失败 500。有效前置命令（包括省略字段时保留的命令）复用 shell 审核；需要确认或机器 off 时返回 403、整次 PATCH 不落盘，可通过聊天中的 `routine_update` 走现有确认。显式清空仍可使用本接口。执行规则见 [多 Bot](atlas/multibot.md)。
 
-`PATCH /api/bots/{name}` 只改出现的字段。空字符串清空该字段。可写：`name`、`description`（最多 160）、`timezone`、`persona`、`avatar_seed`；`language`、`quiet_start`、`quiet_end` 已删除，带上是 400。`avatar_seed` 把 `avatar` 设成 `generated`，并删掉已上传的图片；种子非法 400，正文是 `bot: avatar seed ...`。改名不改种子。请求里如果还带 `proactivity`，接受后丢掉，不写入。改名会改目录、配置和群成员；主 Bot 改名后 `primary.json` 跟着改，置顶状态不变。成功 200 `{"name":"<当前名字>"}`。非法取值 400，正文是 `bot: ...`。非法时区同样 400，正文含 `bot: timezone:`。
+`PATCH /api/bots/{name}` 只改出现的字段。可写 `name`、`description`（最多 160）、`timezone`、`avatar_seed`，并保原独立 `persona`、`group` 业务；简介/时区/group 空字符串清除，persona 必须为非空职责正文。`language`、`quiet_start`、`quiet_end` 已删除，带上是 400；旧 `proactivity` 接受后忽略。名字与普通字段先全量规范化、预检，借同一 typed profile 提交；persona/group 的输入也先校验，但仍分别写入，不承诺跨文件事务。seed 切 generated，元数据保存后 best-effort 清上传图/MIME；仅改名保原 seed，必要时把旧名字的 fallback seed 固定下来。主 Bot 改名后 primary 跟随、置顶不变，peer 成员在实际移动后更新。成功 200 返回当前资料与 `previous_name/applied_fields/moved`；领域提交后出错仍返回完整资料回执与 `error`，客户端以实际 name/moved 处理部分结果。前置非法值按原错误状态拒绝。
 
-`POST /api/bots/{name}/avatar` 是 `multipart/form-data`，字段名 `file`。只接受 PNG、JPEG、GIF、WebP，最大 1 MiB。成功 200 `{"name","avatar":"custom","avatar_seed"}`。`avatar_seed` 保持上传前的种子。之后列表和详情里的 `avatar_url` 指向 `GET /api/bots/{name}/avatar`，响应是图片字节，`Content-Type` 按图片内容定，带 `X-Content-Type-Options: nosniff`，`Cache-Control: private, no-cache`。生成的头像不经过这个接口，GET 只返回上传的图。
+`POST /api/bots/{name}/avatar` 保 `multipart/form-data` 外壳，字段名 `file`；整个请求最多 2 MiB，图片字节最多 1 MiB，按内容嗅探 PNG/JPEG/GIF/WebP，再转同一 typed 头像领域写口。成功资料回执中 `avatar:"custom"`，seed 保留上传前的值；失败若已有文件/MIME 写入，保留实际阶段与 `error`，不把三次写入宣称全事务。之后列表和详情里的 `avatar_url` 指向 `GET /api/bots/{name}/avatar`，GET 返回原上传图，按内容给 Content-Type，带 `X-Content-Type-Options: nosniff`、`Cache-Control: private, no-cache`；生成头像仍由浏览器画，不经 GET 传图。
 
-`DELETE /api/bots/{name}/avatar` 回到按种子画的头像，种子是上传前那个。200 `{"name","avatar":"generated","avatar_seed"}`。
+`DELETE /api/bots/{name}/avatar` 转同一独立 clear 动作，回执的 `avatar:"generated"`，沿原 seed；元数据保存成功后清理旧图 best-effort。上述 Web 写入仍要求 owner 会话及同源约束，资料部分回执字段与 [本机 CLI profile 操作](#本机-cli-profile-操作) 一致。
 
 `POST /api/bots/{name}/open-workdir` 只在桌面版存在：让系统文件管理器打开这个 Bot 的工作目录。成功 200 `{"status":"ok"}`。浏览器里（`/api/session` 没有 `app:true`）是 404；桌面版里调用文件管理器失败是 500，正文是原因。要登录；不是这个 owner 的 Bot 是 404。
 
@@ -257,10 +264,11 @@ PATCH JSON 为可选字符串 `description`、`timezone`、`avatar_seed`，至�
 - `event: tool`，`data: {"name","summary"}`。`ask_user` 必填 question、options（2–6 项）、recommended（必须等于某个选项的完整字符串）；summary 是问题，后面每行一个 `1. 选项`。终端会把这段打出来。界面也可以按这个画选择，不必再解析工具参数。
 - `event: approval`，`data: {"id","tool","summary","deadline"}`。`deadline` 是 RFC3339，这张卡自动继续的时刻，默认是发出后 30 分钟，可由 `Server.ApprovalWait` 配置。到点没人确认就自动允许原调用并继续，追加 `auto_approved` 和灰字 notice。界面立刻展示确认卡和允许、拒绝按钮；倒计时只读 `deadline`，没有字段就不显示倒计时。
 - `event: result`，`data: {"name","output"}`，output 截到 4000 字
+- `event: profile`，`data: {"name":"new","previous_name":"old"}`；普通更新可省略 previous_name。普通资料、头像和改名的实际变更提示；部分提交出错也可带实际新名。当前 selection 匹配 previous_name 时就地更新名字与草稿 key，保原 SSE 和输入；不从工具结果猜资料变更，不串到已切换的其它 Bot。
 - `event: done`，`data: {"text":"这一轮拼起来的正文","reply_to":2}`。`reply_to` 省略表示这条回复没有指向某一条用户消息。整段回复去掉空白后正好是 `SILENT` 时不发 `delta`，`text` 是空字符串。工具调用之前流出来的字只是状态，可以出现在 `delta` 里，但不会留在 `done.text`。界面用 `done.text` 作为这轮的最终回复，不要把工具调用前的 `delta` 拼进那条回复。模型用来标记引用的 `reply_to:` 行不会出现在 `delta` 或 `done.text` 里。
 - `event: error`，`data: {"error":"..."}`
 
-`POST /api/bots/{name}/approvals/{id}`，body `{"allow":true}` 或 `{"allow":false}`。未登录 401。不是这个 owner 的 Bot，或没有这张待确认的卡，是 404 `no such approval`。已经答过是 409。超过等待时间是 410 `approval expired`。成功 200 `{"status":"ok"}`。默认等 30 分钟（`Server.ApprovalWait` 同时配置权限卡和提问卡）；显示卡片的那次请求断开后，这张卡仍可以用这个接口决定。到时没有回答，按允许执行原调用并继续；transcript 卡追加 `state="auto_approved"` 和 `notice="30 分钟没人确认，已按允许执行"`。挂起的调用沿用一次性放行与决定唤醒恢复。超时后再点权限卡仍返回 410。进程重启时，上一个进程留下的待确认卡追加 `no_decision:restart`。**默认不发权限卡**（[ADR 0019](adr/0019-no-permission-cards-by-default.md)，`xbot permissions on` 打开）：只有 `links` 的 install/remove 和触到保险箱或密钥还发卡；机器开关按 `allow` 算，外部事件开的一轮碰记忆也不发卡。`update_profile` 默认直接更新本 Bot 头像/资料，含 `avatar_seed` 也不出预览确认卡；落盘后回执为 `profile saved`，网页收到工具结果即刷新侧栏与顶栏头像，流式回复期间也生效。打开之后，哪些工具发卡只看内核里那一张权限表，工具自己从不决定：只有对外发送（连接器、`links` 的 install/remove、未知/MCP 工具）、删除、注入 `{{secret:}}` 或非 `GET`/`HEAD` 的 `http_request`、persona/profile 自改（`propose_persona`/`update_profile`，以及 `write_file`/`edit_file` 写自己的 persona/profile 文件）发卡。routine 的增删改暂停、Bot 之间的 `message_bot`/`post_group`、写技能、编码任务都不发。本机工具（`shell`、`read_file`、`write_file`、`edit_file`、桌面、浏览器）再按机器开关：`allow` 按表，`ask` 每次发卡，`off` 直接拒绝；`browser_stop` 在 `off` 下仍可确认。这条链路上根本没有确认人时，工具结果是 `not run: no approver available on this link`，不会写成用户拒绝。用户明确拒绝才是 `denied by user`。
+`POST /api/bots/{name}/approvals/{id}`，body `{"allow":true}` 或 `{"allow":false}`。未登录 401。不是这个 owner 的 Bot，或没有这张待确认的卡，是 404 `no such approval`。已经答过是 409。超过等待时间是 410 `approval expired`。成功 200 `{"status":"ok"}`。默认等 30 分钟（`Server.ApprovalWait` 同时配置权限卡和提问卡）；显示卡片的那次请求断开后，这张卡仍可以用这个接口决定。到时没有回答，按允许执行原调用并继续；transcript 卡追加 `state="auto_approved"` 和 `notice="30 分钟没人确认，已按允许执行"`。挂起的调用沿用一次性放行与决定唤醒恢复。超时后再点权限卡仍返回 410。进程重启时，上一个进程留下的待确认卡追加 `no_decision:restart`。**默认不发权限卡**（[ADR 0019](adr/0019-no-permission-cards-by-default.md)，`xbot permissions on` 打开）：只有 `links` 的 install/remove 和触到保险箱或密钥还发卡；机器开关按 `allow` 算，外部事件开的一轮碰记忆也不发卡。资料改名、普通字段与头像更新经当前实例 profile 领域入口，不再走旧模型工具审批或工具结果刷新分支；实际变更沿 `profile` SSE 提示。打开之后，哪些工具发卡只看内核里那一张权限表，工具自己从不决定：只有对外发送（连接器、`links` 的 install/remove、未知/MCP 工具）、删除、注入 `{{secret:}}` 或非 `GET`/`HEAD` 的 `http_request`、职责自改与 persona/profile 文件自改（`bot_propose_persona`，以及 `write_file`/`edit_file` 写自己的 persona/profile 文件）发卡。routine 的增删改暂停、Bot 之间的 `message_bot`/`post_group`、写技能、编码任务都不发。本机工具（`shell`、`read_file`、`write_file`、`edit_file`、桌面、浏览器）再按机器开关：`allow` 按表，`ask` 每次发卡，`off` 直接拒绝；`browser_stop` 在 `off` 下仍可确认。这条链路上根本没有确认人时，工具结果是 `not run: no approver available on this link`，不会写成用户拒绝。用户明确拒绝才是 `denied by user`。
 
 `POST /api/bots/{name}/questions/{id}`，body `{"choice":"选项的完整字符串"}`。未登录 401；不是当前 owner 的 Bot 或没有这张卡 404；choice 不在 options 内 400；已手动选择过 409；成功 200 `{"status":"ok"}`。超时自动推荐后再点选仍返回 200，把选择当作一条新用户消息处理。直接发普通消息走原 messages 接口，并结束未答提问卡的计时。
 

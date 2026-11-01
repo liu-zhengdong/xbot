@@ -55,7 +55,7 @@ func (t recallTool) Run(ctx context.Context, args json.RawMessage) (string, erro
 		if in.Scope != "" && in.Scope != scope {
 			continue
 		}
-		group, id := "bots", t.k.Bot.Name()
+		group, id := "bots", t.k.currentName()
 		if scope == "person" {
 			group, id = "people", person
 		}

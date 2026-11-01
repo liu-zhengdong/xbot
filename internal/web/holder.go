@@ -121,25 +121,49 @@ func (s *Server) releaseWhenIdle(name string, h *handleHold, k *kernel.Kernel) {
 	}
 }
 
+// withInboxIO borrows the original Resources across a wait or Handle. A saved
+// Inbox pointer is only the legacy fallback; its path may predate a rename.
+func withInboxIO(resources *kernel.BotResources, b *bot.Bot, box *inbox.Inbox, fn func(*bot.Bot, *inbox.Inbox) error) error {
+	if resources != nil {
+		return resources.WithCurrentIO(fn)
+	}
+	if box == nil {
+		var err error
+		box, err = inbox.Open(b.InboxPath())
+		if err != nil {
+			return err
+		}
+	}
+	return fn(b, box)
+}
+
 // absorbedReply reports whether a running turn already took event id from the inbox.
 // If so, it finds the row that turn recorded for text: a row on a background branch
 // returns that branch; a main-line row returns the main-line answer written after it,
 // or failed when none was written.
-func (s *Server) absorbedReply(b *bot.Bot, box *inbox.Inbox, id, text string) (absorbed bool, reply, background string, failed bool) {
-	if err := box.Reload(); err != nil {
+func (s *Server) absorbedReply(b *bot.Bot, resources *kernel.BotResources, box *inbox.Inbox, id, text string) (absorbed bool, reply, background string, failed bool) {
+	var entries []bot.Entry
+	err := withInboxIO(resources, b, box, func(current *bot.Bot, currentBox *inbox.Inbox) error {
+		if err := currentBox.Reload(); err != nil {
+			return err
+		}
+		for _, ev := range currentBox.Pending() {
+			if ev.ID == id {
+				return nil
+			}
+		}
+		absorbed = true
+		n, err := current.Count()
+		if err != nil || n == 0 {
+			return err
+		}
+		entries, err = current.Slice(1, n)
+		return err
+	})
+	if !absorbed {
 		return false, "", "", false
 	}
-	for _, ev := range box.Pending() {
-		if ev.ID == id {
-			return false, "", "", false
-		}
-	}
-	n, err := b.Count()
-	if err != nil || n == 0 {
-		return true, "", "", true
-	}
-	entries, err := b.Slice(1, n)
-	if err != nil {
+	if err != nil || len(entries) == 0 {
 		return true, "", "", true
 	}
 	seqs := make([]bot.SeqEntry, len(entries))

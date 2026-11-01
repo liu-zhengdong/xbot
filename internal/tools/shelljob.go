@@ -86,6 +86,9 @@ type RunRequest struct {
 	Env         []string
 	Background  bool
 	CwdFile     string
+	CwdHandle   *os.File
+	CwdCleanup  func()
+	StartIO     func(func(string) error) error
 	OnCwd       func(string)
 	OnExit      func()
 }
@@ -307,6 +310,9 @@ func (j *Jobs) Run(ctx context.Context, req RunRequest) (string, error) {
 			case <-lv.done:
 			}
 		}
+	}
+	if res.Job == nil && res.Err != nil && req.CwdCleanup != nil {
+		req.CwdCleanup()
 	}
 	return res.Text, res.Err
 }

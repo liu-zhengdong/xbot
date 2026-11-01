@@ -30,7 +30,7 @@ func (k *Kernel) currentApprovals() ([]PendingApproval, error) {
 	a := &k.approvals
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	n, err := k.Bot.Count()
+	n, err := k.currentCount()
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func (k *Kernel) currentApprovals() ([]PendingApproval, error) {
 	}
 	for a.through < n {
 		end := min(n, a.through+64)
-		entries, err := k.Bot.Slice(a.through+1, end)
+		entries, err := k.currentSlice(a.through+1, end)
 		if err != nil {
 			return nil, err
 		}

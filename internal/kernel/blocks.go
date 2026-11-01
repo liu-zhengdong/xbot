@@ -230,18 +230,18 @@ func migrate(st bot.State) bot.State {
 // The last KeepTail messages stay raw. A range may contain whole active blocks and replace them
 // with one coarser block. It may not cut through a block or a tool-call pair.
 func (k *Kernel) CompactRange(ctx context.Context, from, to int, focus string) (string, error) {
-	n, err := k.Bot.Count()
+	n, err := k.currentCount()
 	if err != nil {
 		return "", err
 	}
-	st, err := k.Bot.LoadState()
+	st, err := k.currentState()
 	if err != nil {
 		return "", err
 	}
 	st = migrate(st)
 	var span []bot.Entry
 	if from >= 1 && to >= from && to <= n {
-		span, err = k.Bot.Slice(from, to)
+		span, err = k.currentSlice(from, to)
 		if err != nil {
 			return "", err
 		}
@@ -263,7 +263,7 @@ func (k *Kernel) CompactRange(ctx context.Context, from, to int, focus string) (
 	if err := k.refreshMemSnap(ctx, &st); err != nil {
 		return "", err
 	}
-	if err := k.Bot.SaveState(st); err != nil {
+	if err := k.saveCurrentState(st); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("compacted %d-%d", from, to), nil
@@ -361,7 +361,7 @@ func (k *Kernel) tailStartBudget(n, budget int) (int, error) {
 	if start < 1 {
 		start = 1
 	}
-	seed, err := k.Bot.Slice(start, n)
+	seed, err := k.currentSlice(start, n)
 	if err != nil {
 		return 0, err
 	}
@@ -374,7 +374,7 @@ func (k *Kernel) tailStartBudget(n, budget int) (int, error) {
 		if lo < 1 {
 			lo = 1
 		}
-		part, err := k.Bot.Slice(lo, start-1)
+		part, err := k.currentSlice(lo, start-1)
 		if err != nil {
 			return 0, err
 		}
@@ -423,7 +423,7 @@ func (k *Kernel) compactPlan(st bot.State, protectSeq int) (from, to int, span [
 }
 
 func (k *Kernel) compactPlanBudget(st bot.State, protectSeq, budget int) (from, to int, span []bot.Entry, ok bool, err error) {
-	n, err := k.Bot.Count()
+	n, err := k.currentCount()
 	if err != nil {
 		return 0, 0, nil, false, err
 	}
@@ -439,7 +439,7 @@ func (k *Kernel) compactPlanBudget(st bot.State, protectSeq, budget int) (from, 
 	if maxTo < from {
 		return 0, 0, nil, false, nil
 	}
-	span, err = k.Bot.Slice(from, maxTo)
+	span, err = k.currentSlice(from, maxTo)
 	if err != nil {
 		return 0, 0, nil, false, err
 	}
@@ -544,7 +544,7 @@ func (k *Kernel) foldBlocks(ctx context.Context, st bot.State) (bot.State, error
 	st.Blocks = addBlock(st.Blocks, bot.SummaryBlock{
 		From: first, To: last, Text: text, Focus: "folded", At: k.now(),
 	})
-	if err := k.Bot.SaveState(st); err != nil {
+	if err := k.saveCurrentState(st); err != nil {
 		return st, err
 	}
 	return st, nil
@@ -581,7 +581,7 @@ func (k *Kernel) autoCompact(ctx context.Context, st bot.State, protectSeq int, 
 	if err := k.refreshMemSnap(ctx, &st); err != nil {
 		return st, err
 	}
-	if err := k.Bot.SaveState(st); err != nil {
+	if err := k.saveCurrentState(st); err != nil {
 		return st, err
 	}
 	return st, nil

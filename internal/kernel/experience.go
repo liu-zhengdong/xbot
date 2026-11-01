@@ -11,6 +11,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/clip"
 	"xbot/internal/experience"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 )
@@ -31,14 +32,23 @@ const (
 // standing rule, not a per-message reminder.
 const ExperienceRule = "一段工作或对话告一段落时（做了决定、修好了问题、学到了东西、用户有了反应），调用 experience_record，用一两句话记下发生了什么，像给同事留张便条；闲聊不记。之后用 experience_search 找回；detail 能读出一条 transcript 消息的全文。"
 
-func (k *Kernel) experiences() experience.Store {
-	return experience.At(bot.Dir(k.Bot.Root, k.Bot.Name()))
+func (k *Kernel) withExperienceIO(fn func(experience.Store) error) error {
+	return k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		return fn(experience.At(bot.Dir(current.Root, current.Name())))
+	})
 }
 
 // experienceEnv is the environment field for the newest experience. A read
 // error keeps the last published value rather than failing the turn.
 func (k *Kernel) experienceEnv(next *environment) {
-	e, n, ok, err := k.experiences().Latest()
+	var e experience.Entry
+	var n int
+	var ok bool
+	err := k.withExperienceIO(func(store experience.Store) error {
+		var err error
+		e, n, ok, err = store.Latest()
+		return err
+	})
 	if err != nil || !ok {
 		return
 	}
@@ -52,7 +62,7 @@ func (k *Kernel) experienceEnv(next *environment) {
 // lastOwnerSeq is the newest owner line at or before n, or 0.
 func (k *Kernel) lastOwnerSeq(n int) (int, error) {
 	from := max(1, n-segmentDigestRead+1)
-	entries, err := k.Bot.Slice(from, n)
+	entries, err := k.currentSlice(from, n)
 	if err != nil {
 		return 0, err
 	}
@@ -68,7 +78,7 @@ func (k *Kernel) lastOwnerSeq(n int) (int, error) {
 // segmentDigest is a short, model-free outline of a transcript range: who
 // said what, which tools ran. Tool results are left out.
 func (k *Kernel) segmentDigest(from, to int) (string, error) {
-	entries, err := k.Bot.Slice(from, min(to, from+segmentDigestRead-1))
+	entries, err := k.currentSlice(from, min(to, from+segmentDigestRead-1))
 	if err != nil {
 		return "", err
 	}
@@ -120,7 +130,7 @@ func (k *Kernel) RecordExperience(summary, focus string, from, to int) (experien
 	if len(summary) > experienceSummaryCap {
 		return experience.Entry{}, fmt.Errorf("experience_record: summary is %d bytes; keep it under %d", len(summary), experienceSummaryCap)
 	}
-	n, err := k.Bot.Count()
+	n, err := k.currentCount()
 	if err != nil {
 		return experience.Entry{}, err
 	}
@@ -144,7 +154,13 @@ func (k *Kernel) RecordExperience(summary, focus string, from, to int) (experien
 			return experience.Entry{}, err
 		}
 	}
-	return k.experiences().Add(e)
+	var saved experience.Entry
+	err = k.withExperienceIO(func(store experience.Store) error {
+		var err error
+		saved, err = store.Add(e)
+		return err
+	})
+	return saved, err
 }
 
 // SearchExperiences returns matching experiences with their segment digests,
@@ -153,16 +169,25 @@ func (k *Kernel) SearchExperiences(query string, limit int) (string, error) {
 	if limit <= 0 || limit > experienceSearchLimit {
 		limit = experienceSearchLimit
 	}
-	store := k.experiences()
 	var hits []experience.Entry
 	if strings.TrimSpace(query) == "" {
-		list, err := store.Recent(limit)
+		var list []experience.Entry
+		err := k.withExperienceIO(func(store experience.Store) error {
+			var err error
+			list, err = store.Recent(limit)
+			return err
+		})
 		if err != nil {
 			return "", err
 		}
 		hits = list
 	} else {
-		pool, err := store.Recent(experienceSearchPool)
+		var pool []experience.Entry
+		err := k.withExperienceIO(func(store experience.Store) error {
+			var err error
+			pool, err = store.Recent(experienceSearchPool)
+			return err
+		})
 		if err != nil {
 			return "", err
 		}
@@ -193,14 +218,20 @@ func (k *Kernel) SearchExperiences(query string, limit int) (string, error) {
 		b.WriteByte('\n')
 	}
 	b.WriteString("Call detail with a seq to read one message in full.")
-	return k.presentHistory(b.String(), k.Bot.Name(), false, experienceSearchCap), nil
+	return k.presentHistory(b.String(), k.currentName(), false, experienceSearchCap), nil
 }
 
 // Detail returns one transcript message in full, up to detailCap. With an
 // experience id, seq counts from that experience's first message (0-based).
 func (k *Kernel) Detail(seq int, experienceID int64) (string, error) {
 	if experienceID > 0 {
-		e, ok, err := k.experiences().Get(experienceID)
+		var e experience.Entry
+		var ok bool
+		err := k.withExperienceIO(func(store experience.Store) error {
+			var err error
+			e, ok, err = store.Get(experienceID)
+			return err
+		})
 		if err != nil {
 			return "", err
 		}
@@ -212,26 +243,31 @@ func (k *Kernel) Detail(seq int, experienceID int64) (string, error) {
 		}
 		seq += e.From
 	}
-	n, err := k.Bot.Count()
+	n, err := k.currentCount()
 	if err != nil {
 		return "", err
 	}
 	if seq < 1 || seq > n {
 		return "", fmt.Errorf("detail: seq %d outside 1-%d", seq, n)
 	}
-	part, err := k.Bot.Slice(seq, seq)
+	part, err := k.currentSlice(seq, seq)
 	if err != nil {
 		return "", err
 	}
-	e, err := k.Bot.HydrateLimit(part[0], detailCap)
+	var e bot.Entry
+	err = k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		var err error
+		e, err = current.HydrateLimit(part[0], detailCap)
+		return err
+	})
 	if err != nil {
 		return "", err
 	}
-	body := fmt.Sprintf("# seq %d %s %s\n%s", seq, e.Message.Role, e.Time.In(k.location()).Format("2006-01-02 15:04"), k.withLineNoteIn(k.Bot, e.Message.Role, e.Message.Text(), e.Images, e.Audios))
+	body := fmt.Sprintf("# seq %d %s %s\n%s", seq, e.Message.Role, e.Time.In(k.location()).Format("2006-01-02 15:04"), k.withLineNote(e.Message.Role, e.Message.Text(), e.Images, e.Audios))
 	if blob := toolBlob(e.Message); blob != "" {
 		body += "\n" + blob
 	}
-	return k.presentHistory(body, k.Bot.Name(), false, detailCap), nil
+	return k.presentHistory(body, k.currentName(), false, detailCap), nil
 }
 
 type experienceRecordTool struct{ k *Kernel }

@@ -39,7 +39,7 @@ func (k *Kernel) PrepareBinding(ctx context.Context, providerName, modelName str
 	for _, tool := range declared(list) {
 		toolTokens += estimateTools([]provider.ToolDef{{Name: tool.Name(), Description: tool.Description(), Parameters: tool.Parameters()}})
 	}
-	st, err := k.Bot.LoadState()
+	st, err := k.currentState()
 	if err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func (k *Kernel) PrepareBinding(ctx context.Context, providerName, modelName str
 	if _, err := k.CompactRange(ctx, from, to, "binding: "+defaultFocus); err != nil {
 		return reject(err)
 	}
-	st, err = k.Bot.LoadState()
+	st, err = k.currentState()
 	if err != nil {
 		return err
 	}

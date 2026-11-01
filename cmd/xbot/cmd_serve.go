@@ -334,9 +334,13 @@ func startEmitters(ctx context.Context, root string, seen map[string]bool, facto
 	}
 }
 
-func showNotes(b *bot.Bot) error {
-	box := notify.Open(b.OutboxPath())
-	notes, err := box.Unread()
+func showNotes(k *kernel.Kernel) error {
+	var notes []notify.Note
+	err := withChatIO(k, func(current *bot.Bot, _ *inbox.Inbox) error {
+		var err error
+		notes, err = notify.Open(current.OutboxPath()).Unread()
+		return err
+	})
 	if err != nil {
 		return err
 	}
@@ -348,7 +352,7 @@ func showNotes(b *bot.Bot) error {
 		fmt.Fprintf(os.Stderr, "notification: %s\n", n.Text)
 		ids = append(ids, n.ID)
 	}
-	return box.MarkRead(ids)
+	return withChatIO(k, func(current *bot.Bot, _ *inbox.Inbox) error { return notify.Open(current.OutboxPath()).MarkRead(ids) })
 }
 
 func cmdBind(root string, args []string) error {

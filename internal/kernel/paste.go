@@ -8,6 +8,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/compact"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 	"xbot/internal/work"
 )
@@ -34,11 +35,23 @@ const (
 // pastedNote names the pictures on a line so the model can open any of them
 // with view_image. Empty when the line had none.
 func (k *Kernel) pastedNote(names []string) string {
-	return k.pastedNoteIn(k.Bot, names)
+	var current *bot.Bot
+	if err := k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { current = b; return nil }); err != nil {
+		return ""
+	}
+	source := ""
+	if current != nil {
+		source = current.Name()
+	}
+	return k.pastedNoteFor(current, source, names)
 }
 
 // pastedNoteIn is pastedNote for a named bot's pictures.
 func (k *Kernel) pastedNoteIn(owner *bot.Bot, names []string) string {
+	return k.pastedNoteFor(owner, k.currentName(), names)
+}
+
+func (k *Kernel) pastedNoteFor(owner *bot.Bot, sourceName string, names []string) string {
 	if len(names) == 0 {
 		return ""
 	}
@@ -54,7 +67,7 @@ func (k *Kernel) pastedNoteIn(owner *bot.Bot, names []string) string {
 		}
 		b.WriteString(pastedPathIn(owner, name))
 	}
-	if owner != nil && k.Bot != nil && owner.Name() != k.Bot.Name() {
+	if owner != nil && k.Bot != nil && owner.Name() != sourceName {
 		b.WriteString("（这些图在对方 Bot 的工作区里，这里的 view_image 打不开）")
 	}
 	// A cross-bot read names the other bot's workspace, which this bot's
@@ -106,7 +119,12 @@ func (k *Kernel) readPasted(name string) (string, []byte, error) {
 	if k == nil || k.Bot == nil || k.Bot.Root == "" {
 		return "", nil, os.ErrNotExist
 	}
-	data, err := work.ReadPasted(work.BotDir(k.Bot.Root, k.Bot.Name()), name)
+	var data []byte
+	err := k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		var err error
+		data, err = work.ReadPasted(work.BotDir(current.Root, current.Name()), name)
+		return err
+	})
 	if err != nil {
 		return "", nil, err
 	}
@@ -211,16 +229,28 @@ func pastedPathIn(b *bot.Bot, name string) string {
 // pictures are ones the bot showed the owner (send_message_to_user images), so they are
 // named as such, not as the owner's.
 func (k *Kernel) withLineNote(role, content string, names []string, audios ...[]string) string {
-	return k.withLineNoteIn(k.Bot, role, content, names, audios...)
+	var current *bot.Bot
+	if err := k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { current = b; return nil }); err != nil {
+		return content
+	}
+	source := ""
+	if current != nil {
+		source = current.Name()
+	}
+	return k.withLineNoteFor(current, source, role, content, names, audios...)
 }
 
 // withLineNoteIn is withLineNote for a named bot's line.
 func (k *Kernel) withLineNoteIn(b *bot.Bot, role, content string, names []string, audios ...[]string) string {
+	return k.withLineNoteFor(b, k.currentName(), role, content, names, audios...)
+}
+
+func (k *Kernel) withLineNoteFor(b *bot.Bot, sourceName, role, content string, names []string, audios ...[]string) string {
 	if len(audios) > 0 {
 		content = joinNote(content, audioNote(b, audios[0]))
 	}
 	if role != provider.RoleAssistant || len(names) == 0 {
-		return k.withPastedNoteIn(b, content, names)
+		return joinNote(content, k.pastedNoteFor(b, sourceName, names))
 	}
 	paths := make([]string, len(names))
 	for i, name := range names {

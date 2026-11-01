@@ -9,6 +9,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/fsutil"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/skill"
@@ -113,31 +114,38 @@ func (t writeSkillTool) Run(_ context.Context, args json.RawMessage) (string, er
 	if t.k == nil || t.k.Bot == nil || t.k.Bot.Root == "" {
 		return "", fmt.Errorf("skill: no bot")
 	}
-	bots, target, err := t.k.skillScope(in.Scope)
-	if err != nil {
-		return "", err
-	}
-	// Serialize installs in this library, including across local processes: the
-	// winning file and its per-bot defaults must come from the same write.
-	lock, err := fsutil.Lock(filepath.Join(skill.Dir(t.k.Bot.Root), ".write.lock"))
-	if err != nil {
-		return "", err
-	}
-	defer lock.Release()
-	if err := skill.Write(t.k.Bot.Root, in.Slug, in.Description, in.Body, in.Title); err != nil {
-		return "", err
-	}
-	// Apply only at write time; subsequent manual switches remain authoritative.
-	for _, b := range bots {
-		if target == "" || b.Name() == target {
-			err = b.EnableSkill(in.Slug)
-		} else {
-			err = b.DisableSkill(in.Slug)
-		}
+	err = t.k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		bots, target, err := t.k.skillScopeFor(in.Scope, current.Name())
 		if err != nil {
-			return "", fmt.Errorf("skill: file written but scope update incomplete: %w", err)
+			return err
 		}
+		// Serialize installs in this library, including across local processes: the
+		// winning file and its per-bot defaults must come from the same write.
+		lock, err := fsutil.Lock(filepath.Join(skill.Dir(t.k.Bot.Root), ".write.lock"))
+		if err != nil {
+			return err
+		}
+		defer lock.Release()
+		if err := skill.Write(t.k.Bot.Root, in.Slug, in.Description, in.Body, in.Title); err != nil {
+			return err
+		}
+		// Apply only at write time; subsequent manual switches remain authoritative.
+		for _, b := range bots {
+			if target == "" || b.Name() == target {
+				err = b.EnableSkill(in.Slug)
+			} else {
+				err = b.DisableSkill(in.Slug)
+			}
+			if err != nil {
+				return fmt.Errorf("skill: file written but scope update incomplete: %w", err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
 	}
+
 	return "wrote skill " + in.Slug, nil
 }
 
@@ -169,12 +177,16 @@ func decodeWriteSkill(args json.RawMessage) (writeSkillInput, error) {
 // Resolve only explicit scope against the current data root's local bots.
 // Invalid/ambiguous targets fail before writing the skill or any switch.
 func (k *Kernel) skillScope(scope string) ([]*bot.Bot, string, error) {
+	return k.skillScopeFor(scope, k.currentName())
+}
+
+func (k *Kernel) skillScopeFor(scope, currentName string) ([]*bot.Bot, string, error) {
 	cfgs, err := bot.List(k.Bot.Root)
 	if err != nil {
 		return nil, "", err
 	}
 	if strings.EqualFold(scope, "self") {
-		scope = k.Bot.Name()
+		scope = currentName
 	}
 	var bots []*bot.Bot
 	target := ""
@@ -223,7 +235,11 @@ func (k *Kernel) openSkill(id string) (string, skill.Info, error) {
 	if found == nil {
 		return "", skill.Info{}, fmt.Errorf("skill: %s not found", id)
 	}
-	for _, slug := range k.Bot.DisabledSkills() {
+	var disabled []string
+	if err := k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error { disabled = current.DisabledSkills(); return nil }); err != nil {
+		return "", skill.Info{}, err
+	}
+	for _, slug := range disabled {
 		if strings.TrimSpace(slug) == found.Slug {
 			return "", skill.Info{}, fmt.Errorf("skill: disabled")
 		}

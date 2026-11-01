@@ -87,12 +87,15 @@ func ActiveTask(dir string) (Task, bool) {
 }
 
 func (j *job) snapshot(status string, position int) Task {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	if j.stopped && status == statusRunning {
-		status = "stopping"
-	}
-	return Task{ID: j.id, Task: j.task, Status: status, Position: position, Blocked: j.blocked, Continuable: j.request.Descriptor != nil, TurnSeq: j.turnSeq, ResultPath: j.resultPath}
+	var task Task
+	_ = j.withStorageIO(func() error {
+		if j.stopped && status == statusRunning {
+			status = "stopping"
+		}
+		task = Task{ID: j.id, Task: j.task, Status: status, Position: position, Blocked: j.blocked, Continuable: j.request.Descriptor != nil, TurnSeq: j.turnSeq, ResultPath: j.resultPath}
+		return nil
+	})
+	return task
 }
 
 func (l *Local) waitingCountLocked() int {
@@ -129,32 +132,48 @@ func (l *Local) newJob(req StartRequest) (*job, error) {
 	j := &job{request: req, id: req.ID, task: req.Task, mode: req.Mode, kind: req.Type, persona: req.Persona,
 		fork: copyMessages(req.Fork), maxSteps: steps, timeout: timeout, progressEvery: l.limits.ProgressEvery,
 		dir: req.Dir, workspace: req.Workspace, resource: req.Resource, provider: p, approve: l.Approve, parent: l, ctrl: make(chan Control, 16)}
-	j.refreshTools = func() []tools.Tool { return l.listTools(req) }
+	j.refreshTools = func() []tools.Tool { return l.listTools(j.requestSnapshot()) }
 	return j, nil
 }
 
-func (l *Local) boundDir(id string) (string, error) {
-	if l.AgentsDir == "" {
-		return "", ErrNotContinuable
+func (l *Local) boundDir(id string) (dir string, err error) {
+	owners.Lock()
+	defer owners.Unlock()
+	err = l.directoryIO(id, func(_ string, path string, _ string) error { dir = path; return nil })
+	return
+}
+
+// ownerFor resolves under the same address lock as MoveBot. No route callback
+// takes an executor lock; the Local lock is acquired after the short callback.
+func (l *Local) ownerFor(id string) (*Local, bool, error) {
+	owners.Lock()
+	var owner *Local
+	err := l.directoryIO(id, func(_ string, dir string, _ string) error { owner = owners.local[canonicalDir(dir)]; return nil })
+	if err != nil {
+		owners.Unlock()
+		return nil, false, err
 	}
-	dir := filepath.Join(l.AgentsDir, id)
-	st, err := os.Lstat(dir)
-	if err == nil && (!st.IsDir() || st.Mode()&os.ModeSymlink != 0) {
-		return "", ErrNotFound
+	if owner == nil {
+		owners.Unlock()
+		return nil, false, nil
 	}
-	if err != nil && !os.IsNotExist(err) {
-		return "", err
-	}
-	return dir, nil
+	owner.mu.Lock()
+	owners.Unlock()
+	j, _ := owner.findLocked(id)
+	cont := j != nil && j.isContinuable()
+	owner.mu.Unlock()
+	return owner, cont, nil
 }
 
 func (l *Local) startContinuable(ctx context.Context, req StartRequest) (Task, error) {
-	dir, err := l.boundDir(req.ID)
-	if err != nil {
-		return Task{}, err
-	}
-	if canonicalDir(req.Dir) != canonicalDir(dir) {
-		return Task{}, fmt.Errorf("exec: task directory is outside agents directory")
+	if l.WithCurrentIO == nil {
+		dir, err := l.boundDir(req.ID)
+		if err != nil {
+			return Task{}, err
+		}
+		if canonicalDir(req.Dir) != canonicalDir(dir) {
+			return Task{}, fmt.Errorf("exec: task directory is outside agents directory")
+		}
 	}
 	d := *req.Descriptor
 	d.Tools = append([]string(nil), d.Tools...)
@@ -166,48 +185,54 @@ func (l *Local) startContinuable(ctx context.Context, req StartRequest) (Task, e
 	if err != nil {
 		return Task{}, err
 	}
-	key := canonicalDir(req.Dir)
 	owners.Lock()
 	defer owners.Unlock()
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if owners.local[key] != nil {
-		return Task{}, ErrActiveElsewhere
-	}
-	if _, err := os.Stat(filepath.Join(req.Dir, "descriptor.json")); err == nil {
-		return Task{}, fmt.Errorf("exec: identity already exists; send a message to continue")
-	} else if !os.IsNotExist(err) {
-		return Task{}, err
-	}
-	if l.busyLocked(j.resource) || len(l.jobs) >= l.limits.MaxConcurrent {
-		if l.waitingCountLocked() >= maxWaiting {
-			return Task{}, ErrQueueFull
-		}
-	}
-	if err := writeDescriptor(j.dir, d); err != nil {
-		return Task{}, err
-	}
-	seed := initialMessages(j)
-	// A fork always starts with the child's own rules and route overlay.
-	if req.Mode == ModeFork {
-		persona := req.Persona
-		if persona == "" {
-			persona = SubPersona
-		}
-		seed = append([]provider.Message{{Role: provider.RoleSystem, Content: provider.TextContent(persona)}}, copyMessages(req.Fork)...)
-		seed = append(seed, provider.Message{Role: provider.RoleUser, Content: provider.TextContent(req.Task)})
-	}
-	for _, m := range seed[:len(seed)-1] {
-		if _, err := j.record(SeqEntry{Entry: bot.Entry{Message: m}}); err != nil {
-			return Task{}, err
-		}
-	}
-	c := Control{Kind: KindSteer, Text: req.Task, Sender: "bot:" + req.Bot}
-	seq, err := j.receive(c)
+	err = j.withStorageIO(func() error { return nil })
 	if err != nil {
 		return Task{}, err
 	}
-	j.initial, j.turnSeq = pendingInput{seq, c}, seq
+	key := canonicalDir(j.requestSnapshot().Dir)
+	if owners.local[key] != nil {
+		return Task{}, ErrActiveElsewhere
+	}
+	if (l.busyLocked(j.resource) || len(l.jobs) >= l.limits.MaxConcurrent) && l.waitingCountLocked() >= maxWaiting {
+		return Task{}, ErrQueueFull
+	}
+	err = j.withStorageIO(func() error {
+		if _, e := os.Stat(filepath.Join(j.dir, "descriptor.json")); e == nil {
+			return fmt.Errorf("exec: identity already exists; send a message to continue")
+		} else if !os.IsNotExist(e) {
+			return e
+		}
+		if e := writeDescriptor(j.dir, *j.request.Descriptor); e != nil {
+			return e
+		}
+		seed := initialMessages(j)
+		if req.Mode == ModeFork {
+			persona := req.Persona
+			if persona == "" {
+				persona = SubPersona
+			}
+			seed = append([]provider.Message{{Role: provider.RoleSystem, Content: provider.TextContent(persona)}}, copyMessages(req.Fork)...)
+			seed = append(seed, provider.Message{Role: provider.RoleUser, Content: provider.TextContent(req.Task)})
+		}
+		for _, m := range seed[:len(seed)-1] {
+			if _, e := j.recordLocked(SeqEntry{Entry: bot.Entry{Message: m}}); e != nil {
+				return e
+			}
+		}
+		c := Control{Kind: KindSteer, Text: req.Task, Sender: "bot:" + j.request.Bot}
+		seq, e := j.recordLocked(SeqEntry{Entry: bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(c.Text)}}, Kind: "message_received", Delivery: c.Kind, Sender: c.Sender})
+		if e == nil {
+			j.initial, j.turnSeq = pendingInput{seq, c}, seq
+		}
+		return e
+	})
+	if err != nil {
+		return Task{}, err
+	}
 	owners.local[key] = l
 	return l.admitLocked(j), nil
 }
@@ -249,48 +274,53 @@ func (l *Local) Message(ctx context.Context, id string, c Control) (Task, error)
 	if c.Text == "" || len(c.Text) > 16<<10 {
 		return Task{}, fmt.Errorf("exec: message must contain 1..16384 bytes")
 	}
-	if c.Sender == "" {
-		c.Sender = "bot:" + filepath.Base(filepath.Dir(l.AgentsDir))
-	}
-	if l.AgentsDir == "" {
-		return Task{}, ErrNotContinuable
-	}
-	dir, err := l.boundDir(id)
+	owners.Lock()
+	var dir string
+	var owner *Local
+	err := l.directoryIO(id, func(name, path, _ string) error {
+		dir = path
+		if c.Sender == "" {
+			c.Sender = "bot:" + name
+		}
+		owner = owners.local[canonicalDir(path)]
+		return nil
+	})
 	if err != nil {
+		owners.Unlock()
 		return Task{}, err
 	}
-	key := canonicalDir(dir)
-	owners.Lock()
-	if owner := owners.local[key]; owner != nil {
+	if owner != nil {
 		owner.mu.Lock()
 		owners.Unlock()
-		defer owner.mu.Unlock()
 		j, position := owner.findLocked(id)
 		if j == nil {
-			return Task{}, ErrActiveElsewhere
+			owner.mu.Unlock()
+			return Task{}, ErrNotFound
 		}
-		if j.request.Descriptor == nil {
+		if !j.isContinuable() {
+			owner.mu.Unlock()
 			return Task{}, ErrNotContinuable
 		}
 		if len(j.pending) >= 16 {
+			owner.mu.Unlock()
 			return Task{}, ErrQueueFull
 		}
 		next := j.closing || j.stopped || c.Kind == KindQueue
 		if next && position == 0 && !j.hasNextLocked() && owner.waitingCountLocked() >= maxWaiting {
+			owner.mu.Unlock()
 			return Task{}, ErrQueueFull
 		}
-		seq, err := j.receive(c)
-		if err != nil {
-			return Task{}, err
+		seq, e := j.receive(c)
+		if e != nil {
+			owner.mu.Unlock()
+			return Task{}, e
 		}
 		j.pending = append(j.pending, pendingInput{seq, c})
+		var cancel context.CancelFunc
 		if c.Kind == KindInterrupt && !j.closing && !j.stopped {
 			j.mu.Lock()
-			cancel := j.stepCancel
+			cancel = j.stepCancel
 			j.mu.Unlock()
-			if cancel != nil {
-				cancel()
-			}
 		}
 		select {
 		case j.ctrl <- Control{}:
@@ -300,24 +330,38 @@ func (l *Local) Message(ctx context.Context, id string, c Control) (Task, error)
 		if position > 0 {
 			status = statusQueued
 		}
-		return j.snapshot(status, position), nil
-	}
-	owners.Unlock()
-	d, err := ReadDescriptor(dir)
-	if err != nil {
-		return Task{}, err
-	}
-	m, err := ReadMeta(dir)
-	if err != nil {
-		return Task{}, err
-	}
-	if (m.Status == statusRunning || m.Status == statusQueued || m.Status == "stopping") && tools.SameProcess(m.PID, m.ProcStart) {
-		return Task{}, ErrActiveElsewhere
-	}
-	if m.Status == statusRunning || m.Status == statusQueued || m.Status == "stopping" {
-		if _, err := Interrupt(dir); err != nil {
-			return Task{}, err
+		task := j.snapshot(status, position)
+		owner.mu.Unlock()
+		if cancel != nil {
+			cancel()
 		}
+		return task, nil
+	}
+	l.mu.Lock()
+	var d Descriptor
+	err = l.directoryIO(id, func(_ string, path, _ string) error {
+		dir = path
+		var e error
+		d, e = ReadDescriptor(path)
+		if e != nil {
+			return e
+		}
+		m, e := ReadMeta(path)
+		if e != nil {
+			return e
+		}
+		if m.Status == statusRunning || m.Status == statusQueued || m.Status == "stopping" {
+			if tools.SameProcess(m.PID, m.ProcStart) {
+				return ErrActiveElsewhere
+			}
+			_, e = interruptContinuableIO(path, m, nil)
+		}
+		return e
+	})
+	l.mu.Unlock()
+	owners.Unlock()
+	if err != nil {
+		return Task{}, err
 	}
 	if l.Restore == nil {
 		return Task{}, fmt.Errorf("exec: restore is unavailable")
@@ -326,7 +370,6 @@ func (l *Local) Message(ctx context.Context, id string, c Control) (Task, error)
 	if err != nil {
 		return Task{}, err
 	}
-	// The descriptor owns identity and policy; current runtime owns tools/credentials.
 	req.ID, req.Bot, req.Dir, req.Type, req.Mode, req.Descriptor = id, d.Bot, dir, d.Type, d.Mode, &d
 	req.MaxSteps, req.TimeoutSec, req.Task = d.MaxSteps, d.TimeoutSec, c.Text
 	j, err := l.newJob(req)
@@ -336,46 +379,75 @@ func (l *Local) Message(ctx context.Context, id string, c Control) (Task, error)
 		}
 		return Task{}, err
 	}
-	unusedScope := true
+	unused := true
 	defer func() {
-		if unusedScope && l.ReleaseScope != nil {
+		if unused && l.ReleaseScope != nil {
 			l.ReleaseScope(req)
 		}
 	}()
 	owners.Lock()
 	l.mu.Lock()
-	// Another request may have claimed it while the current runtime was assembled.
-	if owner := owners.local[key]; owner != nil {
+	var key string
+	err = l.directoryIO(id, func(_ string, path, _ string) error { key = canonicalDir(path); return nil })
+	if err != nil {
 		l.mu.Unlock()
 		owners.Unlock()
-		// A winning activation on this Local uses the same scope. A different
-		// Local owns separate tools, so discard only this losing assembly.
-		if owner != l && l.ReleaseScope != nil {
-			l.ReleaseScope(req)
-		}
-		unusedScope = false
-		return l.Message(ctx, id, c)
-	}
-	defer owners.Unlock()
-	defer l.mu.Unlock()
-	if (l.busyLocked(j.resource) || len(l.jobs) >= l.limits.MaxConcurrent) && l.waitingCountLocked() >= maxWaiting {
-		return Task{}, ErrQueueFull
-	}
-	// Resolve the physical seq after claiming the admission boundary, rather
-	// than from an earlier read that another activation could have extended.
-	entries, err := readRecords(dir)
-	if err != nil {
 		return Task{}, err
 	}
-	j.recordSeq = len(entries)
+	if other := owners.local[key]; other != nil {
+		l.mu.Unlock()
+		owners.Unlock()
+		if other != l && l.ReleaseScope != nil {
+			l.ReleaseScope(req)
+		}
+		unused = false
+		return l.Message(ctx, id, c)
+	}
+	err = j.withStorageIO(func() error {
+		// Re-read dependencies after Restore; rename may have changed only the paths.
+		current, e := ReadDescriptor(j.dir)
+		if e != nil {
+			return e
+		}
+		m, e := ReadMeta(j.dir)
+		if e != nil {
+			return e
+		}
+		if (m.Status == statusRunning || m.Status == statusQueued || m.Status == "stopping") && tools.SameProcess(m.PID, m.ProcStart) {
+			return ErrActiveElsewhere
+		}
+		current.Provider, current.Model, current.Thinking, current.ReasoningEffort = d.Provider, d.Model, d.Thinking, d.ReasoningEffort
+		current.Tools = append([]string(nil), d.Tools...)
+		j.request.Descriptor = &current
+		j.request.Bot = current.Bot
+		entries, e := readRecords(j.dir)
+		if e != nil {
+			return e
+		}
+		j.recordSeq = len(entries)
+		return nil
+	})
+	if err == nil && (l.busyLocked(j.resource) || len(l.jobs) >= l.limits.MaxConcurrent) && l.waitingCountLocked() >= maxWaiting {
+		err = ErrQueueFull
+	}
+	if err != nil {
+		l.mu.Unlock()
+		owners.Unlock()
+		return Task{}, err
+	}
 	seq, err := j.receive(c)
 	if err != nil {
+		l.mu.Unlock()
+		owners.Unlock()
 		return Task{}, err
 	}
 	j.initial, j.turnSeq = pendingInput{seq, c}, seq
 	owners.local[key] = l
-	unusedScope = false
-	return l.admitLocked(j), nil
+	unused = false
+	task := l.admitLocked(j)
+	l.mu.Unlock()
+	owners.Unlock()
+	return task, nil
 }
 
 func (l *Local) findLocked(id string) (*job, int) {
@@ -396,31 +468,36 @@ func (l *Local) Stop(ctx context.Context, id string) (Task, error) {
 	if !idRe.MatchString(id) {
 		return Task{}, fmt.Errorf("exec: bad id")
 	}
-	if l.AgentsDir == "" {
-		return Task{}, ErrNotContinuable
-	}
-	dir, err := l.boundDir(id)
+	owners.Lock()
+	var owner *Local
+	err := l.directoryIO(id, func(_ string, dir string, _ string) error { owner = owners.local[canonicalDir(dir)]; return nil })
 	if err != nil {
+		owners.Unlock()
 		return Task{}, err
 	}
-	owners.Lock()
-	owner := owners.local[canonicalDir(dir)]
 	if owner == nil {
+		l.mu.Lock()
+		var task Task
+		err = l.directoryIO(id, func(_ string, dir string, _ string) error {
+			if _, e := ReadDescriptor(dir); e != nil {
+				return e
+			}
+			m, e := ReadMeta(dir)
+			if e != nil {
+				return e
+			}
+			if m.Status == statusRunning || m.Status == statusQueued || m.Status == "stopping" {
+				if tools.SameProcess(m.PID, m.ProcStart) {
+					return ErrActiveElsewhere
+				}
+				m, e = interruptContinuableIO(dir, m, nil)
+			}
+			task = Task{ID: id, Task: m.Task, Status: m.Status, Continuable: true, TurnSeq: m.TurnSeq, ResultPath: m.ResultPath}
+			return e
+		})
+		l.mu.Unlock()
 		owners.Unlock()
-		if _, err := ReadDescriptor(dir); err != nil {
-			return Task{}, err
-		}
-		m, err := ReadMeta(dir)
-		if err != nil {
-			return Task{}, err
-		}
-		if (m.Status == statusRunning || m.Status == statusQueued || m.Status == "stopping") && tools.SameProcess(m.PID, m.ProcStart) {
-			return Task{}, ErrActiveElsewhere
-		}
-		if m.Status == statusRunning || m.Status == statusQueued || m.Status == "stopping" {
-			m, err = Interrupt(dir)
-		}
-		return Task{ID: id, Task: m.Task, Status: m.Status, Continuable: true, TurnSeq: m.TurnSeq, ResultPath: m.ResultPath}, err
+		return task, err
 	}
 	owner.mu.Lock()
 	owners.Unlock()
@@ -428,6 +505,10 @@ func (l *Local) Stop(ctx context.Context, id string) (Task, error) {
 	if j == nil {
 		owner.mu.Unlock()
 		return Task{}, ErrNotFound
+	}
+	if !j.isContinuable() {
+		owner.mu.Unlock()
+		return Task{}, ErrNotContinuable
 	}
 	if err := j.dropPendingLocked(); err != nil {
 		owner.mu.Unlock()
@@ -440,15 +521,15 @@ func (l *Local) Stop(ctx context.Context, id string) (Task, error) {
 	}
 	j.stopped = true
 	if position > 0 {
-		// Keep it in admission while its cancellation is recorded and callbacks finish.
 		j.closing = true
 		if err := j.markInput("message_dropped", j.initial); err != nil {
 			owner.mu.Unlock()
 			return Task{}, err
 		}
+		task := j.snapshot(statusCancelled, position)
 		owner.mu.Unlock()
 		j.finish(statusCancelled, EvFailed, "cancelled before it started")
-		return Task{ID: id, Task: j.task, Status: statusCancelled, Continuable: true, TurnSeq: j.turnSeq, ResultPath: j.resultPath}, nil
+		return task, nil
 	}
 	j.mu.Lock()
 	j.cancelReq = true
@@ -467,19 +548,29 @@ func (l *Local) Stop(ctx context.Context, id string) (Task, error) {
 }
 
 func (l *Local) controlContinuable(ctx context.Context, id string, c Control) (bool, error) {
-	dir := filepath.Join(l.AgentsDir, id)
-	if _, ok := ActiveTask(dir); !ok {
-		if _, err := ReadDescriptor(dir); errors.Is(err, ErrNotFound) || errors.Is(err, ErrNotContinuable) {
+	owner, cont, err := l.ownerFor(id)
+	if err != nil {
+		return true, err
+	}
+	if owner != nil && !cont {
+		return false, nil
+	}
+	if owner == nil {
+		owners.Lock()
+		err = l.directoryIO(id, func(_ string, dir string, _ string) error { _, e := ReadDescriptor(dir); return e })
+		owners.Unlock()
+		if errors.Is(err, ErrNotFound) || errors.Is(err, ErrNotContinuable) {
 			return false, nil
-		} else if err != nil {
+		}
+		if err != nil {
 			return true, err
 		}
 	}
 	if c.Kind == KindCancel {
-		_, err := l.Stop(ctx, id)
-		return true, err
+		_, err = l.Stop(ctx, id)
+	} else {
+		_, err = l.Message(ctx, id, c)
 	}
-	_, err := l.Message(ctx, id, c)
 	return true, err
 }
 
@@ -510,13 +601,13 @@ func (j *job) beginContinuable() ([]provider.Message, error) {
 	if err := j.markInput("message_consumed", j.initial); err != nil {
 		return nil, err
 	}
-	entries, err := readRecords(j.dir)
+	entries, err := j.readRecords()
 	if err != nil {
 		return nil, err
 	}
 	msgs := projectRecords(entries)
 	if j.parent.Wrap != nil {
-		j.provider = j.parent.Wrap(j.request, j.provider, len(msgs))
+		j.provider = j.parent.Wrap(j.requestSnapshot(), j.provider, len(msgs))
 	}
 	return msgs, nil
 }
@@ -583,7 +674,7 @@ func (j *job) resumeInterrupt(msgs *[]provider.Message, stepsLeft *int) bool {
 	if stop, _ := j.drainContinuable(msgs, stepsLeft); stop {
 		return false
 	}
-	entries, err := readRecords(j.dir)
+	entries, err := j.readRecords()
 	if err != nil {
 		j.initErr = err
 		return false
@@ -615,7 +706,7 @@ func (j *job) waitContinuable(ctx context.Context) error {
 
 func (j *job) reportBlocked(text string) error {
 	ev := Event{AgentID: j.id, Kind: EvBlocked, Text: clipText(text, 2048), TurnSeq: j.turnSeq}
-	if j.request.Descriptor != nil {
+	if j.isContinuable() {
 		seq, err := j.record(SeqEntry{Entry: bot.Entry{Origin: bot.OriginInternal}, Kind: "blocked", TurnSeq: j.turnSeq})
 		if err != nil {
 			return err
@@ -631,7 +722,7 @@ func (l *Local) SendParent(ctx context.Context, id, text string) (Event, error) 
 		return Event{}, err
 	}
 	j, ok := ctx.Value(executingJobKey{}).(*job)
-	if !ok || j.parent != l || j.id != id || j.request.Descriptor == nil {
+	if !ok || j.parent != l || j.id != id || !j.isContinuable() {
 		return Event{}, fmt.Errorf("exec: parent message requires the running child context")
 	}
 	text = strings.TrimSpace(text)
@@ -660,21 +751,22 @@ func TerminalEventID(id string, turnSeq int) string {
 
 func (j *job) restoreNext() *job {
 	l := j.parent
-	req := j.request
+	current := j.requestSnapshot()
+	req := cloneRequest(current)
 	var err error
 	if l.Restore != nil {
-		req, err = l.Restore(context.Background(), *j.request.Descriptor)
+		req, err = l.Restore(context.Background(), *current.Descriptor)
 	}
-	req.ID, req.Bot, req.Dir, req.Type, req.Mode, req.Descriptor = j.id, j.request.Bot, j.dir, j.kind, j.mode, j.request.Descriptor
-	req.MaxSteps, req.TimeoutSec = j.request.Descriptor.MaxSteps, j.request.Descriptor.TimeoutSec
+	req.ID, req.Bot, req.Dir, req.Type, req.Mode, req.Descriptor = j.id, current.Bot, current.Dir, j.kind, j.mode, current.Descriptor
+	req.MaxSteps, req.TimeoutSec = current.Descriptor.MaxSteps, current.Descriptor.TimeoutSec
 	if err == nil {
-		var next *job
-		next, err = l.newJob(req)
-		if err == nil {
+		if next, e := l.newJob(req); e == nil {
 			return next
+		} else {
+			err = e
 		}
 	}
-	return &job{request: req, id: j.id, dir: j.dir, parent: l, ctrl: make(chan Control, 16), timeout: j.timeout, maxSteps: j.maxSteps, initErr: err}
+	return &job{request: req, id: j.id, dir: current.Dir, workspace: req.Workspace, resource: req.Resource, parent: l, ctrl: make(chan Control, 16), timeout: j.timeout, maxSteps: j.maxSteps, initErr: err}
 }
 
 func (j *job) finishContinuable(status, kind, text string) {
@@ -698,49 +790,62 @@ func (j *job) finishContinuable(status, kind, text string) {
 		}
 	}
 	l.mu.Unlock()
-	fail := func(err error) {
-		if err != nil {
-			status, kind = statusFailed, EvFailed
-			text += "\n" + err.Error()
-			if !stopped {
-				l.mu.Lock()
-				if dropErr := j.dropBeforeLocked(cutoff); dropErr != nil {
-					text += "\n" + dropErr.Error()
-				}
-				l.mu.Unlock()
-			}
-		}
-	}
-	fail(j.sealCalls())
+	req := j.requestSnapshot()
+	cwd := ""
 	if l.CurrentCWD != nil {
-		d := *j.request.Descriptor
-		if cwd := l.CurrentCWD(j.request); cwd != "" {
-			d.CWD = cwd
-		}
-		err := writeDescriptor(j.dir, d)
-		fail(err)
-		if err == nil {
-			j.request.Descriptor.CWD = d.CWD
-		}
+		cwd = l.CurrentCWD(req)
 	}
 	line := notable.Line(j.notable.Items())
-	path, report, err := turnResult(j.dir, j.turnSeq, text, line)
-	fail(err)
-	if err != nil {
-		report = "保存任务结果失败：" + err.Error()
+	report := ""
+	var failures []error
+	failIO := func(err error) {
+		if err != nil {
+			failures = append(failures, err)
+			status, kind = statusFailed, EvFailed
+			text += "\n" + err.Error()
+		}
 	}
-	j.mu.Lock()
-	j.resultPath = path
-	j.mu.Unlock()
-	_, err = j.record(SeqEntry{Entry: bot.Entry{Origin: bot.OriginInternal}, Kind: "turn_end", TurnSeq: j.turnSeq, Status: status, ResultPath: path})
-	fail(err)
-	j.mu.Lock()
-	j.blocked = false
-	steps := j.steps
-	j.mu.Unlock()
-	j.writeStatus(status, clipText(text, reportBytes))
+	var steps int
+	var release StartRequest
+	ioErr := j.withStorageIO(func() error {
+		failIO(j.sealCallsLocked())
+		d := *j.request.Descriptor
+		if cwd != "" {
+			d.CWD = rebasePath(cwd, workForAgents(filepath.Dir(req.Dir)), j.workspace)
+		}
+		if e := writeDescriptor(j.dir, d); e != nil {
+			failIO(e)
+		} else {
+			j.request.Descriptor.CWD = d.CWD
+		}
+		path, result, e := turnResult(j.dir, j.turnSeq, text, line)
+		failIO(e)
+		report = result
+		if e != nil {
+			report = "saving task result failed: " + e.Error()
+		}
+		j.resultPath = path
+		_, e = j.recordLocked(SeqEntry{Entry: bot.Entry{Origin: bot.OriginInternal}, Kind: "turn_end", TurnSeq: j.turnSeq, Status: status, ResultPath: path})
+		failIO(e)
+		j.blocked = false
+		steps = j.steps
+		failIO(j.writeStatusLocked(status, clipText(text, reportBytes)))
+		release = cloneRequest(j.request)
+		return nil
+	})
+	failIO(ioErr)
+	if len(failures) > 0 && !stopped {
+		l.mu.Lock()
+		if e := j.dropBeforeLocked(cutoff); e != nil {
+			text += "\n" + e.Error()
+		}
+		l.mu.Unlock()
+	}
+	if release.ID == "" {
+		release = req
+	}
 	if l.ReleaseScope != nil {
-		l.ReleaseScope(j.request)
+		l.ReleaseScope(release)
 	}
 
 	// Assemble outside all executor locks. The old activation continues to
@@ -753,7 +858,7 @@ func (j *job) finishContinuable(status, kind, text string) {
 			l.mu.Unlock()
 			owners.Unlock()
 			if l.ReleaseScope != nil {
-				l.ReleaseScope(next.request)
+				l.ReleaseScope(next.requestSnapshot())
 			}
 			next = nil
 			continue
@@ -764,6 +869,15 @@ func (j *job) finishContinuable(status, kind, text string) {
 		l.mu.Unlock()
 		owners.Unlock()
 		next = j.restoreNext()
+	}
+	if next != nil {
+		current := j.requestSnapshot()
+		if e := next.withStorageIO(func() error {
+			next.rebaseCurrentLocked(current.Bot, filepath.Dir(current.Dir), current.Workspace)
+			return nil
+		}); e != nil {
+			next.initErr = e
+		}
 	}
 	delete(l.jobs, j.id)
 	if i := l.waitingIndex(j.id); i >= 0 {
@@ -781,7 +895,10 @@ func (j *job) finishContinuable(status, kind, text string) {
 		l.waiting = append(l.waiting, next)
 		next.writeStatus(statusQueued, "")
 	} else {
-		delete(owners.local, canonicalDir(j.dir))
+		key := canonicalDir(j.requestSnapshot().Dir)
+		if owners.local[key] == l {
+			delete(owners.local, key)
+		}
 	}
 	l.mu.Unlock()
 	owners.Unlock()

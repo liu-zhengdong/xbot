@@ -3,10 +3,13 @@ package kernel
 import (
 	"regexp"
 	"strings"
+	"xbot/internal/bot"
+	"xbot/internal/inbox"
 )
 
-func (k *Kernel) botRules() (string, error) {
-	return k.Bot.MigrateRules(botRuleSupplements)
+func (k *Kernel) botRules() (text string, err error) {
+	err = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { text, err = b.MigrateRules(botRuleSupplements); return err })
+	return
 }
 
 // A recognizable default paragraph belongs to the kernel. An edited sentence

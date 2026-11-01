@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -150,17 +149,19 @@ type Task struct {
 
 // Local runs each subagent as a goroutine.
 type Local struct {
-	AgentsDir    string
-	Restore      func(context.Context, Descriptor) (StartRequest, error)
-	ProviderFor  func(StartRequest) (provider.Provider, error)
-	CurrentCWD   func(StartRequest) string
-	ReleaseScope func(StartRequest)
-	RunTool      func(StartRequest, context.Context, tools.Tool, json.RawMessage, func(context.Context) tools.CallResult) tools.CallResult
-	JobsFor      func(StartRequest) (*tools.Jobs, error)
-	Limits       Limits
-	Prov         provider.Provider
-	Approve      agent.Approver
-	ToolSet      func(id, dir string) []tools.Tool
+	// WithCurrentIO resolves runtime paths only for short local I/O. It must not call back into exec.
+	WithCurrentIO func(func(botName, agentsDir, workspace string) error) error
+	AgentsDir     string
+	Restore       func(context.Context, Descriptor) (StartRequest, error)
+	ProviderFor   func(StartRequest) (provider.Provider, error)
+	CurrentCWD    func(StartRequest) string
+	ReleaseScope  func(StartRequest)
+	RunTool       func(StartRequest, context.Context, tools.Tool, json.RawMessage, func(context.Context) tools.CallResult) tools.CallResult
+	JobsFor       func(StartRequest) (*tools.Jobs, error)
+	Limits        Limits
+	Prov          provider.Provider
+	Approve       agent.Approver
+	ToolSet       func(id, dir string) []tools.Tool
 	// OnIdle runs after the final task really returns and leaves admission.
 	// It is called with no executor lock held.
 	OnIdle func()
@@ -266,16 +267,26 @@ func (l *Local) Start(ctx context.Context, req StartRequest) (Task, error) {
 		resource:      req.Resource,
 		provider:      p,
 		tools:         list,
-		refreshTools:  func() []tools.Tool { return l.listTools(req) },
+		refreshTools:  nil,
 		approve:       l.Approve,
 		parent:        l,
 		ctrl:          make(chan Control, 16),
 	}
+	j.refreshTools = func() []tools.Tool { return l.listTools(j.requestSnapshot()) }
 	if l.Wrap != nil {
-		j.provider = l.Wrap(req, j.provider, len(initialMessages(j)))
+		j.provider = l.Wrap(j.requestSnapshot(), j.provider, len(initialMessages(j)))
 	}
+	owners.Lock()
+	defer owners.Unlock()
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if err := j.withStorageIO(func() error { return nil }); err != nil {
+		return Task{}, err
+	}
+	key := canonicalDir(j.requestSnapshot().Dir)
+	if owners.local[key] != nil {
+		return Task{}, ErrActiveElsewhere
+	}
 	if _, ok := l.jobs[req.ID]; ok || l.waitingIndex(req.ID) >= 0 {
 		return Task{}, fmt.Errorf("exec: %s is already running", req.ID)
 	}
@@ -285,16 +296,17 @@ func (l *Local) Start(ctx context.Context, req StartRequest) (Task, error) {
 		}
 		// The record exists from the start, so read_subagent and the
 		// status list show it as queued.
-		if err := os.MkdirAll(j.dir, 0700); err != nil {
+		if err := j.withStorageIO(func() error {
+			pid, start := tools.CurrentProcess()
+			return writeMeta(j.dir, Meta{PID: pid, ProcStart: start, ID: j.id, Status: statusQueued, Task: j.task, Mode: j.mode, Type: j.kind})
+		}); err != nil {
 			return Task{}, err
 		}
-		pid, start := tools.CurrentProcess()
-		if err := writeMeta(j.dir, Meta{PID: pid, ProcStart: start, ID: j.id, Status: statusQueued, Task: j.task, Mode: j.mode, Type: j.kind}); err != nil {
-			return Task{}, err
-		}
+		owners.local[key] = l
 		l.waiting = append(l.waiting, j)
 		return Task{ID: j.id, Task: j.task, Status: statusQueued, Position: len(l.waiting)}, nil
 	}
+	owners.local[key] = l
 	l.launchLocked(j)
 	return Task{ID: j.id, Task: j.task, Status: statusRunning, Blocked: j.isBlocked()}, nil
 }
@@ -330,18 +342,38 @@ func (l *Local) launchLocked(j *job) {
 	l.jobs[j.id] = j
 	go func() {
 		runLoop(j)
-		if j.request.Descriptor != nil {
+		if j.isContinuable() {
 			return // finishContinuable owns its atomic admission handoff.
 		}
-		l.mu.Lock()
-		delete(l.jobs, j.id)
-		l.drainLocked()
-		idle := len(l.jobs) == 0 && len(l.waiting) == 0
-		l.mu.Unlock()
-		if idle && l.OnIdle != nil {
-			l.OnIdle()
-		}
+		l.finishLegacy(j)
 	}()
+}
+
+// finishLegacy retires only this accepted activation, after its last I/O.
+func (l *Local) finishLegacy(j *job) {
+	owners.Lock()
+	l.mu.Lock()
+	same := l.jobs[j.id] == j
+	if same {
+		delete(l.jobs, j.id)
+	}
+	if i := l.waitingIndex(j.id); i >= 0 && l.waiting[i] == j {
+		l.waiting = append(l.waiting[:i], l.waiting[i+1:]...)
+		same = true
+	}
+	if same {
+		key := canonicalDir(j.requestSnapshot().Dir)
+		if owners.local[key] == l {
+			delete(owners.local, key)
+		}
+	}
+	l.drainLocked()
+	idle := len(l.jobs) == 0 && len(l.waiting) == 0
+	l.mu.Unlock()
+	owners.Unlock()
+	if idle && l.OnIdle != nil {
+		l.OnIdle()
+	}
 }
 
 // drainLocked fills free slots with the oldest resource-eligible waiter.
@@ -382,7 +414,10 @@ func (l *Local) Tasks() ([]Task, error) {
 
 // Control delivers steer, queue, interrupt, or cancel.
 func (l *Local) Control(ctx context.Context, id string, c Control) error {
-	if l.AgentsDir != "" && idRe.MatchString(id) {
+	if (l.WithCurrentIO != nil || l.hasAgentsDir()) && idRe.MatchString(id) {
+		if owner, cont, err := l.ownerFor(id); err == nil && owner != nil && !cont {
+			return owner.controlLegacy(ctx, id, c)
+		}
 		if handled, err := l.controlContinuable(ctx, id, c); handled {
 			return err
 		}
@@ -395,6 +430,10 @@ func (l *Local) Control(ctx context.Context, id string, c Control) error {
 		_, err = jobs.Cancel(id)
 		return err
 	}
+	return l.controlLegacy(ctx, id, c)
+}
+
+func (l *Local) controlLegacy(ctx context.Context, id string, c Control) error {
 	l.prepare()
 	if err := ctx.Err(); err != nil {
 		return err
@@ -408,15 +447,19 @@ func (l *Local) Control(ctx context.Context, id string, c Control) error {
 	if j == nil {
 		if i := l.waitingIndex(id); i >= 0 {
 			w := l.waiting[i]
+			if w.closing {
+				l.mu.Unlock()
+				if c.Kind == KindCancel {
+					return nil
+				}
+				return fmt.Errorf("exec: %s is not running", id)
+			}
 			if c.Kind == KindCancel {
 				// It never started: nothing to stop, only the queue entry.
-				l.waiting = append(l.waiting[:i], l.waiting[i+1:]...)
-				idle := len(l.jobs) == 0 && len(l.waiting) == 0
+				w.closing = true
 				l.mu.Unlock()
 				w.finish(statusCancelled, EvFailed, "cancelled before it started")
-				if idle && l.OnIdle != nil {
-					l.OnIdle()
-				}
+				l.finishLegacy(w)
 				return nil
 			}
 			j = w

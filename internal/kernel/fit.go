@@ -200,7 +200,7 @@ func (k *Kernel) lineSeq(f *turnFit, msgs []provider.Message, i int) int {
 	if seq <= 0 || k.Bot == nil || i >= len(msgs) {
 		return 0
 	}
-	got, err := k.Bot.Slice(seq, seq)
+	got, err := k.currentSlice(seq, seq)
 	if err != nil || len(got) != 1 {
 		return 0
 	}
@@ -401,7 +401,7 @@ func (k *Kernel) noteFit(t *turn, reason string) {
 		t.shrunk.Store(true)
 	}
 	if k.Bot != nil {
-		_ = k.Bot.LogTrace(bot.TraceFit, reason, k.now())
+		_ = k.logCurrentTrace(bot.TraceFit, reason)
 	}
 }
 

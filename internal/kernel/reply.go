@@ -82,7 +82,7 @@ func (k *Kernel) recordTurn(t *turn, m provider.Message) (int, error) {
 	if len(images) > 0 && m.Role == provider.RoleUser {
 		m.SetText(stripPastedNote(m.Text(), k.pastedNote(images)))
 	}
-	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), EventID: m.EventID, Message: k.scrubEntry(m), ReplyTo: replyTo, Branch: t.branch, Origin: origin, Images: images, Audios: audios})
+	seq, err := k.appendCurrentSeq(bot.Entry{Time: k.now(), EventID: m.EventID, Message: k.scrubEntry(m), ReplyTo: replyTo, Branch: t.branch, Origin: origin, Images: images, Audios: audios})
 	if err != nil {
 		return 0, err
 	}
@@ -97,7 +97,7 @@ func (k *Kernel) quotePrefix(seq int) string {
 	if seq < 1 || k == nil || k.Bot == nil {
 		return ""
 	}
-	part, err := k.Bot.Slice(seq, seq)
+	part, err := k.currentSlice(seq, seq)
 	if err != nil || len(part) != 1 {
 		return ""
 	}
@@ -111,7 +111,7 @@ func (k *Kernel) userReplyTarget(seq int) bool {
 	if seq < 1 || k == nil || k.Bot == nil {
 		return false
 	}
-	part, err := k.Bot.Slice(seq, seq)
+	part, err := k.currentSlice(seq, seq)
 	if err != nil || len(part) != 1 {
 		return false
 	}

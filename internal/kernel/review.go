@@ -13,6 +13,7 @@ import (
 	"xbot/internal/agent"
 	"xbot/internal/bot"
 	"xbot/internal/config"
+	"xbot/internal/inbox"
 	"xbot/internal/machine"
 	"xbot/internal/review"
 	"xbot/internal/tools"
@@ -203,7 +204,7 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 	}
 	if review.IsShellTool(name) && !k.permissive() && !k.turnFor(ctx).turnTrusted && k.Bot != nil && !review.ShellToolIsReadOnly(name, args) {
 		root := k.Bot.Root
-		memoryDirs := []string{filepath.Join(root, "bots", k.Bot.Name(), "memory")}
+		memoryDirs := []string{filepath.Join(root, "bots", k.currentName(), "memory")}
 		if person := k.memoryPersonOf(k.turnFor(ctx)); person != "" {
 			memoryDirs = append(memoryDirs, filepath.Join(root, "people", person, "memory"))
 		}
@@ -390,5 +391,6 @@ func (k *Kernel) RecordDecision(state, tool, summary string) {
 	}
 	summary = k.redactor()(summary)
 	summary = scrubSecrets(summary, k.secretValues())
-	_ = k.Bot.LogDecision(state, tool, summary, k.now())
+	at := k.now()
+	_ = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { return b.LogDecision(state, tool, summary, at) })
 }

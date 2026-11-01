@@ -122,7 +122,7 @@ var kernelTools = []struct {
 		return []tools.Tool{recallTool{k}, experienceRecordTool{k}, experienceSearchTool{k}}
 	}, nil},
 	{"bot_profile", always, func(k *Kernel) []tools.Tool {
-		return []tools.Tool{personaTool{k}, profileTool{k}}
+		return []tools.Tool{personaTool{k}}
 	}, nil},
 	{"routine", always, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{routineCreate{k}, routineList{k}, routineUpdate{k}, routineDelete{k}}

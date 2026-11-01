@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/, internal/peer/, internal/cron/, internal/notify/]
-verified: 2026-11-01 @ aaa66c49 (resource rename/delete regression/race; prior avatar fresh merge/nameless config evidence reused)
+verified: 2026-11-01 @ 748ea940
 ---
 # 多 Bot
 
@@ -22,10 +22,10 @@ verified: 2026-11-01 @ aaa66c49 (resource rename/delete regression/race; prior a
 - **Bot 之间通信**：同一用户的 Bot 默认互相可见，可以互发消息、建群。群有自己的记录，群里的消息分发到每个成员的收件箱。设有防循环的限制（跳数上限、频率上限）。`message_bot` 的目标写成 `bot@设备` 时，经网关发给用户另一台配对设备上的 Bot，规则见 [网关](gateway.md)。
 - **Bot 之间的私聊记录**：Bot 发给另一个 Bot 的消息全部留存，不分成临时和永久两类。正文先进收件 Bot 的收件箱，处理之后留在收件 Bot 的 transcript 里，不另建一份会话。因此这些话一直能被搜索、导出，也能被 `recall_history` 看见。用户跟某个 Bot 聊天时，对方 Bot 发来的内容仍只显示成一行淡淡的提示。要按时间翻看两边的原文，用只读接口 `GET /api/bots/{a}/peers/{b}/messages`，而且这个人必须同时是两个 Bot 的 owner。群里的消息不走这个接口。`{b}` 也可以是另一台配对设备上的 `bot@设备`：只读本机这一半，收到的取自 `bot:bot@设备` 事件，发出的取自 `message_bot` 调用和工具结果（`status` 为 sent/queued/failed），退回通知是 `kind: "bounce"` 的一行；每行都拆出 `from_bot`/`from_device`/`to_bot`/`to_device`，客户端不解析 `bot@设备`。以后可以单独压缩这类来回；现在不压，它们跟这份 transcript 里的其他行走同一套摘要。
 - **跨用户**：必须双方授权，授权范围要具体、可以撤销；来自对方的内容一律当作不可信。
-- **Bot 档案**：名字、简介、头像（没上传时是按 `avatar_seed` 在浏览器里画的 Notionists 线条人像，旧 Bot 的 seed 就是名字；人像只用冻结的白名单，只有平静和微笑两种表情，见 scripts/avatar。16 像素用只剩脸部的裁切，容器是 `#e4e4e7` 上的圆，深色 `#a8a8ad`。上传失败、seed 是 `glyph`、或脚本没加载时，画由名字决定的几何图形。「我」的头像不变，XBot 的 logo 从不拿来当头像。生成的人像只在浏览器里画，从不经过服务端，服务端不存也不发这类 SVG。编辑资料的抽屉里「换一张」「换一批」「上传」「清除」换头像；Licenses：DiceBear 代码 MIT，Notionists 美术 CC0 1.0，作者 Zoish，见 static/vendor/LICENSES.txt）、简介、选用的人设卡、IANA 时区。没有安静、适中、积极三档；想怎么通知，写在自己的 persona 里（[ADR 0004](../adr/0004-drop-proactivity-levels.md)）。旧档案里的 `proactivity` 还能读进来，被忽略，不进提示，也不再从 API 或网页返回。没有「说话方式」和免打扰：怎么说话写在人设卡正文里；通知在任何唤醒、任何时刻都直接送出。旧配置里的 `quiet_start`/`quiet_end` 读进来丢掉，下次保存就不再写回；旧的 `held.json` 由 serve 的下一轮把每条当普通通知送出后删除。Bot 用 `bot_update_profile` 更新本 Bot 头像/资料，默认调用即落盘，普通资料回执为 `profile saved`，换头像回执再明确「头像已换好；侧栏与顶栏当面刷新」；描述与 Persona Link 引导也对齐当前对话即时刷新，不许推迟到后续唤醒；网页收到工具结果即刷新侧栏与顶栏头像，流式回复期间也生效。可以导出模板（不含记忆）。默认人设和规则要求用用户的语言回答，先调用工具再给结果，不要先用另一门语言讲自己打算做什么。用户没接的提议不要再说一遍。 档案里没有 `style`；旧配置的 language、tone、length、emoji 在首次加载时合成一条该 Bot 的长期记忆，写记忆成功后才裁掉 `style`（[ADR 0020](../adr/0020-voice-in-kernel-preferences-in-memory.md)）。迁移与 SaveConfig 共用 config.json.lock。旧模板里的 `style` 和免打扰字段导入时忽略。改名（网页编辑资料或 `bot_update_profile`）移动目录后，`shell-jobs` 记录里指向旧目录的 output 一并原子改写，读不到或对不上旧路径的记录原样保留交给 Load 容错（见内核「慢工具后台化」）。
+- **Bot 档案**：名字、简介、头像（没上传时是按 `avatar_seed` 在浏览器里画的 Notionists 线条人像，旧 Bot 的 seed 就是名字；人像只用冻结的白名单，只有平静和微笑两种表情，见 scripts/avatar。16 像素用只剩脸部的裁切，容器是 `#e4e4e7` 上的圆，深色 `#a8a8ad`。上传失败、seed 是 `glyph`、或脚本没加载时，画由名字决定的几何图形。「我」的头像不变，XBot 的 logo 从不拿来当头像。生成的人像只在浏览器里画，从不经过服务端，服务端不存也不发这类 SVG。编辑资料的抽屉里「换一张」「换一批」「上传」「清除」换头像；Licenses：DiceBear 代码 MIT，Notionists 美术 CC0 1.0，作者 Zoish，见 static/vendor/LICENSES.txt）、简介、选用的人设卡、IANA 时区。没有安静、适中、积极三档；想怎么通知，写在自己的 persona 里（[ADR 0004](../adr/0004-drop-proactivity-levels.md)）。旧档案里的 `proactivity` 还能读进来，被忽略，不进提示，也不再从 API 或网页返回。没有「说话方式」和免打扰：怎么说话写在人设卡正文里；通知在任何唤醒、任何时刻都直接送出。旧配置里的 `quiet_start`/`quiet_end` 读进来丢掉，下次保存就不再写回；旧的 `held.json` 由 serve 的下一轮把每条当普通通知送出后删除。Bot 经当前实例 CLI 更新本 Bot 的名字、简介、时区及头像，命令与部分失败回执见下文「运行时普通资料」。实际保存或移动后沿当前活轮次发送 `profile` 提示，网页在流式回复期间刷新侧栏与顶栏；资料修改不再作为模型工具注册。可以导出模板（不含记忆）。默认人设和规则要求用用户的语言回答，先调用工具再给结果，不要先用另一门语言讲自己打算做什么。用户没接的提议不要再说一遍。 档案里没有 `style`；旧配置的 language、tone、length、emoji 在首次加载时合成一条该 Bot 的长期记忆，写记忆成功后才裁掉 `style`（[ADR 0020](../adr/0020-voice-in-kernel-preferences-in-memory.md)）。迁移与 SaveConfig 共用 config.json.lock。旧模板里的 `style` 和免打扰字段导入时忽略。改名（网页编辑资料或当前实例 `profile set --self --name`）移动目录后，`shell-jobs` 记录里指向旧目录的 output 一并原子改写，读不到或对不上旧路径的记录原样保留交给 Load 容错（见内核「慢工具后台化」）。
 - **人设卡**（`internal/personacard`，[ADR 0026](../adr/0026-persona-cards-replace-voice-and-quiet-hours.md)）：本机一份卡库，扁平的 `persona-cards/<id>/card.md`（不按用户分子目录；旧的 `persona-cards/<owner>/<id>/` 在第一次读写时由 `liftOwners` 在库锁里抬上来，保留 id 所以绑定不变，`.default`/`.seeded` 跟着迁；扁平层已有同 id 时，内容相同丢掉旧副本、不同就换新 id 另存，不覆盖，并在同一库锁里把唯一用户是这个 owner、绑着旧 id 的 Bot 配置改绑到新 id（其他 Bot 照旧指向原 id 那张），所以每个 Bot 迁移后读到的仍是迁移前那张；`PickedCard` 先经 `Default` 开库再读绑定，抬库那一轮就读到改绑后的 id），第一行 `name: 卡名`，空一行后是正文；正文最多 32 KiB，最多 200 张，id 是 16 位十六进制，只作目录名，界面不展示。卡只管口吻和分寸，叠在职责（`persona.md`）之上，不替换职责。Bot 配置的 `persona_card` 是选用的卡 id，空就是没显式选过、用卡库的默认卡「工程合伙人」（`personacard.PartnerPersona`；卡库里 `.default` 记它的 id，所以改名仍是默认卡；默认卡不能删，`ErrDefault`）。`PickedCard` 每轮从磁盘读绑定和卡正文，是引用不是快照：改卡后用它的 Bot 下一轮就按新的说话；卡库还没开过时它先调 `EnsureSeeds`。`ComposedPersona` = 职责正文 + 空行 + `### 人设卡 · 卡名` 段；环境分开公布职责和卡的指纹；导出的模板只带职责，不带卡。已经加载的旧 Bot 副本保存配置时保留磁盘上的绑定，只有 `SetPersonaCard` 能改它。卡被删时回到默认卡；Bot 不是唯一用户时没有卡段。导入 Markdown 总是新建：第一行短的非空行作卡名，否则用文件名；同名先 409，确认后加「 (2)」「 (3)」。删卡时有 Bot 在用先 409 报数量，确认后逐个改回默认卡再删；选用和删卡都在卡库锁里（库锁先于配置锁）。旧配置的说话方式迁进记忆时，profile 层满了就写进 log 层，不挡 Bot 加载。新卡库第一次被网页列出时（`GET /api/persona-cards` 先调 `EnsureSeeds`）写入四张内置卡「工程合伙人」「碎嘴群友」「值班运维」「周末搭子」（`internal/personacard/seeds.go`），之后每次 `EnsureSeeds` 都确认默认卡还在（旧卡库没有就按名字认领或补一张，只补这一张），种完、或成功新建/导入/改过/删过卡都会留 `.seeded`（删卡在库锁里先留标记再删，所以升级前的旧卡库删光也不补）；有标记的库在同一库锁下检查存量卡：名字匹配且读盘正文逐字等于 `7173d25` 三张旧薄稿之一，或 `9fdfcbd` 之前四张内置卡的「主人」完整版之一（`legacy-owner/` 一名可有多份快照；「碎嘴群友」另认一份本机补过【跟人交流】段的版本）时，用当前正文原子写回；当前正文、改过标题或正文的卡零写入（读盘按原有规则去除首尾空白）。单张升级失败保留原稿，继续其余卡并汇总错误，下次列表重试；未标记的有卡库不动，删光也不再补。`.lock` 不算历史（失败的选用/删除也会建它）；有卡但可能正在种时，列表在库锁上等种完再读，失败的一轮会删掉自己写的卡。
-- **Bot 自改头像**：`bot_update_profile` 接受 `name`、`description`、`timezone` 和 `avatar_seed`，仅修改当前 Kernel 的 Bot，可组合更新。默认 permissions off 调用即落盘，没有头像预览确认卡例外；permissions on 按既有 SelfEdit 权限表审核。summary 带 `avatar_seed "…"`。`ValidAvatarSeed` 在写入前校验：去首尾空白后 1–80 个字符，不含控制字符及 `<>"'&` 和反引号；非法 seed、非字符串或未知字段返回工具错误，不出卡。执行时把 seed 与简介/时区合并为一次 `ApplyProfile`，验证通过才保存 seed，头像状态改为 `generated`；成功后在原资源锁内清除旧上传图及 MIME。换一批就是设置新 seed，习惯 `名字#n`（如 `XBot#3`），与编辑资料一致；没有跨 Bot 参数或上传图片参数，不增加出图工具，也不改变头像风格。[验收设计](../dev/bot-self-avatar.md)。
-- **运行档位**：档案里的 `role` 是 `chat` 或 `dev`，决定这个 Bot 默认能干多久。`chat` 是聊天型：后台一件事最多 45 分钟。`dev` 是工程型：后台 2 小时。空的或不认识的值按 `chat`。`xbot profile set --role chat|dev` 设置，`--background-max-time`（分钟）可以单独覆盖，写 0 保留档位默认值，负数关掉这项限制（任何负值都归一为关闭）。主线没有工具次数或秒数上限（[ADR 0028](../adr/0028-no-foreground-background-split.md) 删掉了 `foreground_max_tools`/`foreground_max_time` 和对应的命令行参数；旧 `config.json` 里留着这两个键也照常读，不再生效）；「多久之内回答用户」靠规则里的「先回人再干活」，后台上限才是「一件事能干多久」，所以步数不是可配项：内核里只有一个防呆常量（1000 步），正常任务撞不到。`serve` 和 `chat` 都按这里算出来的上限跑。注意 `xbot fork --role` 是新 Bot 的职责描述（persona），和这里的运行档位不是一回事。
+- **Bot 自改头像**：生成头像使用 `profile set --self --avatar-seed SEED`，可与名字、简介、时区组合；上传与清除分别使用独立 `profile avatar --self --file FILE`、`--clear`。seed 去首尾空白后为 1–80 个字符，不含控制字符及尖括号、单双引号、&、反引号；换一批就是设置新 seed，习惯 `名字#n`（如 `XBot#3`）。生成态元数据保存后在同一资源写锁内 best-effort 清旧上传图及 MIME；上传按字节嗅探 PNG/JPEG/GIF/WebP，保留原 seed；清除回到该 seed。它们共用现有头像写缝，不增加出图模型工具，不改变生成头像风格。
+- **运行档位**：档案里的 `role` 是 `chat` 或 `dev`，决定这个 Bot 默认能干多久。`chat` 是聊天型：后台一件事最多 45 分钟。`dev` 是工程型：后台 2 小时。空的或不认识的值按 `chat`。`xbot profile set --role chat|dev` 设置，`--background-max-time`（分钟）可以单独覆盖，写 0 保留档位默认值，负数关掉这项限制（任何负值都归一为关闭）。这些是原离线配置项，不扩入当前实例资料组合或其 JSON 字段。主线没有工具次数或秒数上限（[ADR 0028](../adr/0028-no-foreground-background-split.md) 删掉了 `foreground_max_tools`/`foreground_max_time` 和对应的命令行参数；旧 `config.json` 里留着这两个键也照常读，不再生效）；「多久之内回答用户」靠规则里的「先回人再干活」，后台上限才是「一件事能干多久」，所以步数不是可配项：内核里只有一个防呆常量（1000 步），正常任务撞不到。`serve` 和 `chat` 都按这里算出来的上限跑。注意 `xbot fork --role` 是新 Bot 的职责描述（persona），和这里的运行档位不是一回事。
 - **定时例程**：五段 cron，最小间隔 5 分钟；或者一次性的 `at`（RFC3339）。cron 按电脑本地时区解释（文件里 zone 为 local；旧文件没有 zone 视为 UTC，serve 启动时自动迁移，触发时刻不变，先备份到 routines-backup-<时间>，可用 `xbot routine migrate --dry-run` 预览）。夏令时重复的那一小时只触发一次、跳过的时刻不触发。一次性例程不受最小间隔限制，到点后自动停用，错过 2 分钟窗口就停用、不补发。serve 里定时器每 15 秒单独检查一次并把事件投进收件箱，不等 Bot 的模型调用结束；处理事件仍在下一轮 serve 处理。回滚到 C1 之前的版本时，要把 routines-backup-<时间> 还原回 routines，否则旧版本会把本地时间的 cron 当成 UTC。纯排期的创建、修改、暂停、删除由 Bot 自己做主；带前置命令的变更还须经过 [shell 审核](security.md)。停机或睡眠超过 2 分钟后，下一次检查给每个 Bot 发一条汇总事件（serve 和 chat 轮询共用 internal/proc 水位线，ID 按水位线确定、可去重，最多看 7 天，首次运行不发），列出错过的时间点，不补跑。
 - **例程挂技能**：`Routine.skills` 为可选有序技能名/id 数组；创建缺省或 `[]` 不加载，更新省略保留、`[]` 清空。工具 create/update/list、HTTP PATCH/详情、CLI `routine list --bot NAME` 与 `routine update ID --bot NAME --skills id1,id2` 共用持久化字段。Timer 的 cron/at 事件只带引用，经原收件箱投递；内核唯一正文装配函数 `projectRoutineSkills` 复用 `read_skill` 的读取与停用名单，初次叫醒和忙时吸收都接此缝，正文只在当轮请求中可见，不进固定前缀或历史，下次重新读。缺失（含改名/删除）、停用或读取失败逐项跳过，在唤醒上下文写明 id 与原因，任务继续；不写技能库、不更改调度或 precheck。最多 32 项、每项 1–240 字节，正文沿用单项 16 KiB 上限，见 [ADR 0036](../adr/0036-routine-skills.md)。
 - **例程前置检查**：`Routine.precheck` 是可选的 shell 命令字符串，缺字段、空字符串或纯空白直接按原路投递。非空时在投递前复用现有无 Jobs 的 `sh -c` 硬超时路径：命令最多 16 KiB、2 秒执行预算，工作目录沿用进程 cwd，stdin 关闭，stdout/stderr 保留 0 字节；供应商密钥按 shell 的现有环境过滤规则剔除，实时机器 gate 的有效模式为 ask/off 或读取失败时不执行。退出码 0 才投递原 routine Event；非 0、超时或启动失败静默跳过，但仍 Commit LastSlot，一次性例程同时停用，不发通知。`Fire`、serve 和 chat/proc 共用 `Timer.Deliver`；事件 ID、正文与 Inbox 去重不变，投递失败仍不提交 slot、下次重试。并发轮询仍可能重复执行检查命令，应使用无副作用的检查；唤醒按原稳定事件 ID 去重。`routine_create/update/list` 可设置、清空和查看；更新省略保留，显式空串移除。创建/修改的前置命令复用 [安全](security.md) 的同表 shell 审核，不能靠排期 Normal 分类放行。HTTP 字段见 [API](../API.md)。
@@ -39,11 +39,22 @@ verified: 2026-11-01 @ aaa66c49 (resource rename/delete regression/race; prior a
 
 ## 运行时普通资料
 
-在主线、本机可写子代理或本机编码任务的 Shell 中，使用当前二进制 `XBOT_BIN` 执行 `profile show --self --json` 或 `profile set --self --description TEXT --timezone ZONE --avatar-seed SEED --json`。`--self` 由活运行入口绑定当前 Bot，`XBOT_BOT` 只是诊断名；数据根来自 `XBOT_ROOT`，显式根与入口不匹配会失败。成功 JSON 含 `name/description/timezone/avatar/avatar_seed/scope:"runtime"/applied`，stdout 不混启动信息；入口不可达明确失败，不另启内核或回落写文件。显式名字且没有 endpoint 的旧 CLI 保留离线配置语义；`--help` 离线退出 0。
+在主线、本机可写子代理或本机编码任务的 Shell 中，使用当前二进制 `XBOT_BIN`：
 
-简介/时区/生成头像 seed 与旧工具、网页 PATCH 共用一次 `ApplyProfile`：完整校验后在已有 config 文件锁内读 fresh 配置、合并显式字段、原子保存；成功后才发布受独立锁保护的 profile 快照，旧配置副本保存其它设置时保留磁盘上最新普通资料与头像元数据。`--self show` 现读同组字段，所以网页 PATCH 的独立 Bot 副本更新也能读回；不重建 Kernel 或中断 Jobs。上传/clear、改名、persona 和运行预算尚不支持此运行时 set；旧 `profile avatar <name> --file/--clear` 在有 endpoint 时明确拒绝，仅无 endpoint 可离线使用。完整旧工具仍在，未整族退役；research 只读分类和远端 runner 回连未覆盖。
+```sh
+"$XBOT_BIN" profile set --self --name NewName --description TEXT --timezone Asia/Shanghai --avatar-seed 'NewName#2' --json
+"$XBOT_BIN" profile show --self --json
+"$XBOT_BIN" profile avatar --self --file ./face.png --json
+"$XBOT_BIN" profile avatar --self --clear --json
+```
 
-生成 seed、上传、clear 复用私有 typed 写缝，锁序为 profile 快照 → config 文件锁，资源文件读写也在同一 config 锁内。clear 保留 fresh seed；生成态元数据保存后才 best-effort 清旧 upload/MIME，清理仍在锁内，不删掉并发新 upload，清理失败不伪报未保存。上传文件/MIME/配置分别原子写，不承诺三文件崩溃事务。`AvatarState` 只读受锁头像字段；`AvatarBytes/ExportTemplate` 在锁内 fresh metadata 判 custom，再读同一状态的 bytes/MIME，旧 custom 句柄不能服务已 generated 的遗留文件；缺 name 的受支持旧配置沿 Load 语义补目录名，再计算 seed fallback/导出名字；generator 在锁外调用并使用同一规范名字。既有离线 Rename 的空 seed 钉原名也走 typed 缝并保留 custom 模式，不扩展运行时改名所有权。
+set 只修改给出的名字、简介、时区、生成头像 seed，可在同一请求中组合。`--self` 由原 `XBOT_ENDPOINT` 绑定的 Resources 识别当前 Bot；改名后同一脚本沿原 endpoint 继续调用，旧环境里的 `XBOT_BOT` 只作诊断。显式指定其它名字或不匹配的数据根会失败。入口不可达明确失败，不另启 Kernel 或回落写文件；无 endpoint 的人用 CLI 保原离线配置用途，`--help` 离线退出 0。persona、group、role 和运行预算沿原独立业务，不并入此运行时 set。
+
+当前 endpoint 的 JSON profile 请求和回包各最多 64 KiB；头像上传另走原始二进制 body，最多 1 MiB，元数据不携图片或 base64。JSON 回执保留 `name/description/timezone/avatar/avatar_seed/scope:"runtime"/applied`，更新回执按实际结果提供 `previous_name/applied_fields/moved`，失败可带脱敏 `error`。发生后期 IO 错误时，CLI 仍输出实际结果并非 0 退出；名字与已应用字段以回执为准，不把部分保存冒充全失败或全回滚。普通读取不写 profile，改同名且没有其它字段时不作物理移动。
+
+外部入口一次纯规范化校验，再只读预检目标 Bot/work/key；改名在 primary 提交锁内重验冲突，持已打开的 config 锁跨目录移动，把名字、请求字段和必要的 legacy seed pin 合入一次 fresh 配置写入。未请求的模型、运行档位、人设卡和技能开关保留。无改名也在 profile 快照锁、config 文件锁内 fresh merge，成功后才刷新快照。可预测的非法输入或冲突不改业务文件；后期 primary/work/peer/重载 IO 可能部分成功，实际新目录仍存在时后续路由跟随新名。旧 `bot_update_profile` 模型入口及其 schema 已退役，网页更新借同一 typed 领域方法。决定见 [ADR 0048](../adr/0048-complete-runtime-profile-entry.md)。
+
+上传、clear 仍复用私有 typed 头像写缝。文件、MIME、config 分别原子写，回执依实际成功点记录 `avatar_file`、`avatar_mime`、`avatar`，不承诺三文件事务；clear 或 seed 的元数据成功后清旧图 best-effort，清理失败不伪报未保存。`AvatarState` 只读受锁头像字段；`AvatarBytes/ExportTemplate` 在锁内 fresh metadata 判 custom，再读同一状态的 bytes/MIME，旧 custom 句柄不能服务已 generated 的遗留文件。缺 name 的受支持旧配置补目录名，再计算 seed fallback/导出名字；generator 在锁外调用。persona 与 group 的输入先校验，仍是独立写入，不构成跨文件资料事务。
 
 ## 人设组成与提示词边界
 
@@ -52,15 +63,15 @@ verified: 2026-11-01 @ aaa66c49 (resource rename/delete regression/race; prior a
 | 名字 | bots/<name>/config.json 的 name；用户或 Bot，少变 | 档案、环境 paths 中的 Bot 目录可识别；不另复制名字提示；编辑资料 |
 | 头像 | config 的 avatar/avatar_seed；上传在 avatar、avatar.mime；用户或 Bot，少变 | 不进提示；编辑资料 |
 | 标签/分组 | 没有独立 tags；侧栏分组用 config.group（Bot.SetGroup）；用户/已有分组工具，偶变 | 不把分组注入人设；侧栏 |
-| 简介 | config.description；用户或 bot_update_profile，少变 | 只给人看，ComposedPersona 不注入简介；环境仅留已有 profile 指纹，不含正文；编辑资料 |
+| 简介 | config.description；用户或当前实例 profile CLI，少变 | 只给人看，ComposedPersona 不注入简介；环境仅留已有 profile 指纹，不含正文；编辑资料 |
 | 职责 | bots/<name>/persona.md；用户定边界，编辑资料或 Bot 沿既有修改入口改，少变 | 进入 S0 `### 职责` 段，始终在；创建入口写的就是它 |
 | 人设卡 | 已选 persona-cards/<id>/card.md，没选过用默认卡「工程合伙人」；用户在编辑资料下拉里换 | 进入 S0 `### 人设卡 · 卡名` 段，叠在职责后。卡是引用，不另抄进记忆 |
 | 工作档案 | bots/<name>/memory/memory.md 和 log/YYYY-MM.md；Bot 对话中更新，常变 | 常驻事实与近期日志快照、后续环境差异；详情记忆。只记学到的现状、规则、决定，不复制或覆盖职责，无第三文件 |
 | 说话风格 | 人设卡正文；旧 style 已迁入 Bot 记忆 | 随所在块，不新增风格字段 |
 | 技能 | skills/<slug>/SKILL.md；用户导入，Bot 可起草；config.disabled_skills 按 Bot 停用 | S2 目录，read_skill 按需正文；技能页 |
-| 连接器/工具 | config.links、MCP 配置/目录；用户授权 | Links 的 S1 及已装目录的 S2；工具 schema 按需，连接器页 |
-| 运行档位 | config.role = chat/dev；用户，少变 | 内核预算使用，不注入人设；CLI profile set --role 帮助称运行档位 |
-| 时区 | config.timezone；用户或 bot_update_profile，少变 | 当前时间只在环境流；不拼人设 |
+| 连接器/工具 | config.links、MCP 配置/目录；用户授权 | Links 的 S1 及已装目录的 S2；非 MCP 工具 schema 按需，MCP 用当前实例 CLI；连接器页 |
+| 运行档位 | config.role = chat/dev；用户，少变 | 内核预算使用，不注入人设；离线 CLI profile set --role 帮助称运行档位 |
+| 时区 | config.timezone；用户或当前实例 profile CLI，少变 | 当前时间只在环境流；不拼人设 |
 | 免打扰 | 已按 ADR 0026 删除；旧字段忽略后移除 | 无提示入口、无界面，不恢复 |
 
 `fork --role` 保留 flag，但帮助称职责；`profile set --role` 是运行档位。工作档案边界通过跟版 MemoryWriteRule 提醒；升级规则不改用户职责或记忆文件。

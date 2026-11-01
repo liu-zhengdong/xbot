@@ -390,6 +390,9 @@ func (j *Jobs) runProcess(ctx context.Context, lv *live, req RunRequest) (text s
 	if req.OnExit != nil {
 		defer req.OnExit()
 	}
+	if req.CwdCleanup != nil {
+		defer req.CwdCleanup()
+	}
 	script := req.Exec
 	if script == "" {
 		script = req.Command
@@ -399,17 +402,26 @@ func (j *Jobs) runProcess(ctx context.Context, lv *live, req RunRequest) (text s
 		in = interpreter{name: "sh", path: "sh"}
 	}
 	cmd := in.command(ctx, script)
+	if req.CwdHandle != nil {
+		cmd.ExtraFiles = []*os.File{req.CwdHandle}
+	}
 	setGroup(cmd)
 	cmd.Cancel = func() error { return killProcess(cmd) }
 	cmd.Dir = req.Dir
 	cmd.Env = req.Env
 	cmd.Stdout = lv.w
 	cmd.Stderr = lv.w
-	if err := cmd.Start(); err != nil {
+	var startErr error
+	if req.StartIO != nil {
+		startErr = req.StartIO(func(current string) error { cmd.Dir = current; return cmd.Start() })
+	} else {
+		startErr = cmd.Start()
+	}
+	if startErr != nil {
 		if req.onStart != nil {
 			req.onStart()
 		}
-		return "", err
+		return "", startErr
 	}
 	lv.mu.Lock()
 	lv.cmd = cmd
@@ -428,7 +440,9 @@ func (j *Jobs) runProcess(ctx context.Context, lv *live, req RunRequest) (text s
 	code := exitCode(err)
 	lv.mu.Lock()
 	lv.job.ExitCode = code
-	if req.CwdFile != "" {
+	if req.CwdHandle != nil {
+		lv.finalCwd = readCwdHandle(req.CwdHandle)
+	} else if req.CwdFile != "" {
 		lv.finalCwd = readCwdFile(req.CwdFile)
 	}
 	if !lv.detached && req.OnCwd != nil {

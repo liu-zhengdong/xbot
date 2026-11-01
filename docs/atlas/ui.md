@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-01 @ 7e2f9ec5 (chat scroll anchors and reply settlement; prior window-selection evidence retained)
+verified: 2026-11-01 @ 63762ae5 (profile phase evidence and final chat/Run increments; concurrent chat-scroll 7e2f9ec5 and window-selection evidence retained)
 
 ---
 # 网页界面
@@ -104,9 +104,9 @@ Composer 的 mic 在发送钮左侧：点按进入录音条，「发送」提交
 Bot 菜单「查看生成的图片」保留为可选工作区定位功能，打开现有模态框展示服务端工作区路径并可复制；桌面有真实 OpenPath 回调时才显示「打开目录」，复用 open-workdir。接口仍固定路径并校验 Bot 所有权，不分发图片、不新增产物账本。
 ### 资料即时刷新
 
-普通资料或生成头像 seed 的 CLI 保存成功后，当前轮次的 `profile` SSE 提示触发原 Bot 列表与资料接口并行读取，更新侧栏和已有资料缓存；流未结束也可打开编辑资料看到新简介，生成头像 seed 同样刷新侧栏和顶栏，自然短轮也不只依赖收尾。状态提示不解析 Shell 输出、不写 Inbox、不改变布局。选择和资料请求 generation 阻止迟到结果覆盖新 Bot 或较新的资料；已打开的编辑表单保留草稿，不被刷新替换。
+普通资料、生成头像 seed、独立上传/清除与改名共用 `profile` SSE 提示；实际发生部分保存或移动时也按实际身份通知。网页并行读取原 Bot 列表与当前名字的资料接口，更新侧栏、顶栏头像和已有资料缓存，不解析 Shell 输出或旧模型工具结果，不写 Inbox。流未结束也能看到新简介或头像，读取失败不打断回复；已打开的编辑表单保留草稿，不被刷新替换。
 
-`bot_update_profile` 的原工具结果即时刷新分支仍保留，头像字段参与侧栏缓存签名；当前仍选中原 Bot 且不在往来视图时同步重绘顶栏。两种刷新都不等待流式结束，慢请求不阻塞正文，读取失败不打断回复。
+改名提示带 `{name,previous_name}`。只有 `previous_name` 匹配当前选中 Bot 时，界面才在原 selection 对象上改名，更新 URL、顶栏、侧栏、按 Bot 的草稿及子代理状态；保留原 SSE reader/abort、已输入文字、焦点、待发附件与滚动位置，不调用重新选择 Bot 的入口来重开流。后续请求和 SSE 继续认新名，资料请求 generation 拒绝较旧响应；切到其它 Bot 后到达的旧提示不改当前视图。头像仍参与侧栏缓存签名，更新不等待流式结束。
 ### 网页搜索设置
 
 「网页搜索」控制整台 XBot 的所有 Bot。关闭时不提供本机和厂商搜索；自动模式优先模型自带搜索，没有则用本机；总用本机只用所选本机搜索。新一轮对话使用新设置；本机已有内核也会在下一次调用读取设置，不重建内核或取消任务。运行中的远端任务保留启动时的设置，新任务使用新设置。供应商详情不加搜索开关。

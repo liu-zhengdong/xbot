@@ -1,6 +1,11 @@
 package code
 
-import "strings"
+import (
+	"strings"
+	"xbot/internal/bot"
+	"xbot/internal/inbox"
+	"xbot/internal/provider"
+)
 
 // UseTranscript appends each coding card to the bot transcript.
 // The text is already wrapped in <coding_card>.
@@ -38,10 +43,19 @@ func (l *Link) stream(id, status, text string) {
 	}
 	fn := l.transcript
 	l.mu.Unlock()
-	if fn == nil || text == "" {
+	if text == "" {
 		return
 	}
-	_ = fn(Card(id, status, text))
+	card := Card(id, status, text)
+	if l.currentIO != nil {
+		_ = l.currentIO(func(b *bot.Bot, _ *inbox.Inbox) error {
+			return b.Append(bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(card)}})
+		})
+		return
+	}
+	if fn != nil {
+		_ = fn(card)
+	}
 }
 
 // Card is one transcript line for a coding task. The same id is rewritten by

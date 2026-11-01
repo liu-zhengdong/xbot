@@ -88,9 +88,14 @@
 
 ## 运行态与后台
 
+- **跨目录改名的原调用要持真实文件资源，不能让退出闭包再开旧绝对路径。** 原因：组合改名已成功，Shell 的 cwd trap 仍打开旧 marker，stderr 混进同一次 JSON 回执；继承已打开 marker 的 inode、当前路径短段创建/清理，才能同时保 cwd 与严格输出。冷恢复还须在初始化 scope 前按 descriptor 原身份重基；只在最终保存 request 时改路径已经太晚。守护：`TestShellCwdMarkerFollowsRenameThroughOpenFile`、`TestProfileRestoreRebasesDescriptorBeforeScopeInitialization`、`TestProfileChangePersistsCurrentCwdForColdProcess`；独立 RenameEntry 在 `5ed71e5a` 红、`94f34c67` 绿。Seen 1×（2026-11-01）。
+- **已提交的事实必须先构成回执，后续 refresh 或重新打开资源失败不能把它抹成纯错误。** 原因：实际 name/config 已保存，坏 Inbox 导致 route closed，原快照读取返回零值，CLI 与原 SSE 都漏掉已发生的移动；先保 name/previous_name/moved/applied_fields，再追加刷新错误并按同 live value 通知。守护：`TestProfileCommittedReceiptAndNoticeSurviveClosedInboxRoute`，`94f34c67` 定向通过；未宣称任意多文件 IO 全事务。Seen 1×（2026-11-01）。
+
 - **后台仍在使用的运行入口不能随主轮结束释放，队列交接也必须保持连续持有。** 原因：serve.Pass 结束时关闭 Kernel，仍活的本机子代理随后得到空 XBOT_BIN；编码任务先从 live 删除再启动已排队任务，又会让退役检查误判空闲。复用原执行集合，真正空闲后释放，服务退出强制关闭，不另建任务账本。守护：`TestCLIProfileServeBackground` 在 `07f17164` 真二进制 exit 127、`fe7e1f83` 转绿；`TestRetiredRuntimeFollowsLocalTaskLifetime` 覆盖本机子代理和编码任务。Seen 1×（2026-11-01）。
 
 ## 配置与兼容
+
+- **改名的路径前缀要匹配同一目录的逻辑与物理拼写，不能只比 name 和词法 Rel。** 原因：合法 `/var` 或用户 symlink root 下，原 Shell `pwd -P` 已保存物理目录；mover 用原 root 拼写，未匹配就把 atName 置新，后续原 project 永久留旧前缀并误退工作根。UseBot 的新配置也不能充当原 WorkDir 来源。复用现有路径 resolver 识别同一前缀；保外部/相对 Repo 与权限 roots，不改输入去绕过合法 alias。守护：`TestProfileAliasedRootKeepsPhysicalLiveProject` 先红 .659s、race 绿1.794s，`TestProfileChangeColdCwdUsesPhysicalRootIdentity` 先红 .634s、绿 .488s；独立 ONLYResources 在 `0004ad0f` 命中同 `/var`→`/private/var` 漏迁，不将其它通过组算作该 case 已过。Seen 1×（2026-11-01）。
 
 - **新增 fresh 读取时，消费到的字段要延续已有 Loader 的归一化。** 原因：头像读取直接解磁盘 config，遗漏 Load 对缺 name 使用目录名的既有回退，使受支持旧 Bot 的模板名字、seed 和生成器输入变空。复用归一化规则，不扩大到未使用字段。守护：`TestOldConfigWithoutAvatar` 的缺 name、模板与生成器断言在 `0053145b` 红、`3816c3bb` 定向 race 绿，并保留改名不换脸检查。Seen 1×（2026-11-01）。
 

@@ -109,7 +109,7 @@ func (r *turnRun) requestContext(req provider.Request) (provider.Request, error)
 			through = msg.Seq
 		}
 	}
-	err := r.k.Bot.Walk(through+1, 0, func(seq int, e bot.Entry) error {
+	err := r.k.currentWalk(through+1, 0, func(seq int, e bot.Entry) error {
 		if seen[seq] || e.Message.Role != provider.RoleUser || e.Branch != "" || bot.IsApprovalCard(e.Message.Text()) || e.IsForkMark() {
 			return nil
 		}
@@ -315,7 +315,7 @@ func (r *turnRun) guardStep(_ int, stepMsgs []provider.Message) (string, bool, s
 		}
 	}
 	if stop {
-		_ = r.k.Bot.LogTrace(bot.TraceStop, reason, r.k.now())
+		_ = r.k.logCurrentTrace(bot.TraceStop, reason)
 	}
 	return join.String(), stop, reason
 }
@@ -368,7 +368,7 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 	fit.refreshEnvironment = !r.k.AllowFork
 	rp.fit = func(ctx context.Context, req provider.Request, overflow bool) provider.Request {
 		// Reserve the sampled replacement before fit, so a snapshot never bypasses H.
-		st, err := r.k.Bot.LoadState()
+		st, err := r.k.currentState()
 		if err == nil && !r.k.AllowFork {
 			prev := replayEnvironment(req.Messages, st.MemSnap)
 			next, sampleErr := r.k.sampleEnvironment(prev)

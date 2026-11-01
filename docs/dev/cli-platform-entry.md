@@ -367,6 +367,90 @@ config aliases/callers转core并显式predicate：尤其link.connectors目录Val
 3. 必要边界：help无root/本地凭据副作用；human显式dev实例/错root；args-file/stdin/大整数/非法或多JSON；isError内容+非0；image/unknown/structured完整本机产物且不stdout base64；research literal/注入拒绝、精确hint与list期间换spec零RPC；主/legacy子/continuable provider请求均无MCPschema而非MCP Tools仍可用。
 4. 最小相关unit/race及真实入口各一次，绿即停；不完整矩阵/全仓/真模型/权限UI，不提前完整rename/runner。先交24具体新增DTO/argv/guard/同slot/probe/写fence，PASS后分冲突面实现；最终同cut退旧，不暂留双入口进入main。
 
+## 批 profile 完整等价：组合改名、头像与原运行态连续
+
+2026-11-01，基线main `458dcc94`。沿父1c一页选A，本节只写实际新增接口/IO，不再开路线审。独立最窄红：test `544a808b36626869807cf8ed366027c782500bf2` / validation `ad776eb0` 与该基线树一致，真实source Shell `profile set --self --name FullProfileRenamed --json` exit1，明确仅支持description/timezone/seed，case1.58s/package3.075s；只新`cli_profile_full_runtime_test.go`。旧profile/avatar/MCP绿证据不重跑。[ADR0048](../adr/0048-complete-runtime-profile-entry.md) 待24核本节新增结构。
+
+### 调用与预算
+
+```sh
+"$XBOT_BIN" profile set --self --name NewName --description '简介' --timezone Asia/Shanghai --avatar-seed 'NewName#2' --json
+"$XBOT_BIN" profile show --self --json
+"$XBOT_BIN" mcp list --self --json
+"$XBOT_BIN" profile avatar --self --file ./face.png --json
+"$XBOT_BIN" profile avatar --self --clear --json
+```
+
+name+description/timezone/seed保原同请求组合，avatar上传/clear仍独立，不加set头像文件组合。role/timebudget不扩；persona/group保原独立业务。self用原endpoint/Resources，不取旧XBOT_BOT定位；显式名字与绑定Bot不符/错root照拒，无endpoint保原明确离线用途。
+
+JSON `/v1/profile` GET/PATCH与回包仍64KiB；`/v1/profile/avatar` POST原始二进制body<=1MiB，Content-Type提示后端实际sniff，DELETE clear，复用原Host/browser/root guard。CLI Open文件+有界流式传输，不无界ReadFile、base64、服务端path或临时图像服务；元数据独立profile请求，不塞复杂header。Web原multipart外壳兼容、file仍<=1MiB，薄转同typed头像domain，不把2MiB envelope例外带进source协议。metadata/file非法或超限提交前拒绝。upload现bytes→MIME→config多次原子写，后期IO不冒称全零改，回完成阶段；seed/clear metadata成功后清旧图best-effort仍按saved。
+
+### typed输入、提交与真实回执
+
+```go
+type ProfileChange struct { Name, Description, Timezone, AvatarSeed *string }
+type ProfileChangeResult struct {
+    Name, PreviousName string
+    AppliedFields []string
+    Moved bool
+}
+func ValidateProfileChange(ProfileChange) (ProfileChange, error)
+func CheckProfileChange(root, from string, normalized ProfileChange) error
+func (*Bot) ApplyProfileChange(normalized ProfileChange) (*Bot, ProfileChangeResult, error)
+```
+
+外部入口只规范化一次，内部传复制后的typed值。Validate提取现applyProfile的name flat/ValidName/PortableName、description limitText160、timezone flat/LoadLocation、seed Trim/ValidAvatarSeed；完整验证在任何业务写前。Check只读Stat/必要ReadFile+Unmarshal查目标Bot/work/key，不用会迁移的Load，更不ApplyProfile试校验。private checkLocked在primary提交锁内重核依赖；Bot/work/key统一same-file规则，moveWork同步修大小写同文件豁免；peer成员修改前先完成全部预期校验。
+
+无改名仍profile.mu→config.lock fresh merge→WriteAtomic→快照。改名经movers进入route→primary→profile.mu→config锁，持已打开config锁跨目录move，在新路径把name+请求fields+legacy seed pin一次fresh merge写入，保未请求skills/card/role/model。不能改b.cfg后SaveConfig（会回填磁盘profile旧值吞新字段），不在目标Load后嵌套迁移/SaveConfig抢同锁。旧Rename/RenameWithResult薄委托name-only同实现，保RenameBot/peer/primary/work/key职责，不留两套rename。kernel的peer.RenameMember改在提交返回实际moved=true之后执行，错误join入partial；这样primary锁内冲突复核之前不先写groups，不向bot包传通用before/rollback钩子。
+
+actual WriteAtomic成功点才记applied_fields，最终目录落点决定name/moved；同名no-op moved=false，大小写不靠old消失/new出现猜。预期无效/冲突零改。后期primary/work/key/重载IO仍现best-effort回滚：若名回旧而fields已存，回old/moved=false/fields非空；目录留新就回new/moved=true，全部mover/route必须跟新，失败不能复活旧目录。无现成physicalMovedResult或rename failurehook，不冒称已有；验证用真实文件故障/实际move回调结果，不提前造通用故障框架。
+
+cliops.Update加Name；Profile回包增previous_name、applied_fields、moved、可选脱敏error，保name/description/timezone/avatar/avatar_seed/scope/applied。guard前失败保原错误；domain已产结果则HTTP即使4xx/5xx仍带完整有界DTO+error，CLI先输出实际结果再非0，Call不能遇非200丢partial。avatar仍用现私有avatarEdit的typed upload/clear写口，独立回applied_fields中的实际完成阶段（avatar_file、avatar_mime、avatar元数据），无图像bytes入DTO；普通/头像/改名实际变化均统一profile通知，无变化不发假成功。
+
+### 原资源、liveTurn与当前路径
+
+profileOperation仍source operations.mu；短route普通更新，改名释放route读锁再进host/mover，不拿turnMu/web gate。r.Rename改为 `func(*Kernel, bot.ProfileChange) (bot.ProfileChangeResult,error)`；`web.RenameResources(source,change)` / `Kernel.MoveResources(change)`传同typed值到底层写缝，原RenameRuntime(next)/RenameTo(next)作name-only领域委托。host entry/Gate/MCP ref/Jobs同对象，旧holds按实际move释放。
+
+`BotResources.WithCurrentIO(func(*bot.Bot,*inbox.Inbox) error) error`在route.RLock内检查closed并做短文件IO，不能回调exec/Jobs/host、发布或网络。当前metadata可snapshot，实际路径lookup→open/write/close必须同回调。source profile、主线Append/FindEvent/LoadState/SaveState及fork结算、forwardExec父信/完成Post、Code transcript/Post、Timer文件与notify outbox接此落点，不返回旧path锁外写。Timer构造期WithDirectoryIO包装List/Load/Update/Commit实际文件段，emit锁外。code原pathMu/Record锁保，transcript callback用当前route，不捕获k.Bot.Append。不异步给全部旧K写Bot字段，Provider/role/budget快照不重建。
+
+workspace/allowedRoots、scope/命令Prepare+Finalize、父任务cwd从当前r读；只对旧Bot或work前缀内路径用filepath.Rel重基，外部cwd/repo保留。沿原scope/cwd锁在实际读写点重基，不新登记表；文件工具Root、本地进程Start取当前路径短段，Wait/模型/工具循环不持route。source listener lease、调用输出归属、Event ID与Jobs原表不换。
+
+liveTurns只从old bot.Dir找原value且Resources同一才rekey至new；登记key保turn/interject状态。closeInterject用保存key+CompareAndDelete同value，不凭已改k.Bot猜key，rekey/close同interject互斥。rekey固定在整段MoveResources/code/exec/Jobs返回（route/storage/owners全部释放）后、publish前；可仍留host锁封名索引，不能在physical的route.Lock内取inter.mu，close用保存key+CompareAndDelete且不复活closed turn，chat/name-only/cold共用该末段。全部host/mover锁释放后publish，沿现表真实liveTurn刷新普通profile快照再走原Sink；不拿另一K.operations成环。`kernel.ProfileNotice{Name,PreviousName string}` 是通知值，Kernel/Sink.OnProfile改 `func(ProfileNotice)`，web.replyStream.profile接同值并JSON为name/previous_name；已变化的partial失败也发布。
+
+### accepted Local、短存储与冷续
+
+```go
+func MoveBot(oldAgents,newAgents string, move func()(moved bool,err error))(bool,error)
+// 所有Local构造期注入，空Local也使用。只在末层短IO调用。
+WithCurrentIO func(func(botName,agentsDir,workspace string) error) error
+```
+
+放现code.Move callback内部，锁序source ops→host→code.pathMu/Record.mu→owners→去重实际Local.mu→job.recordMu(storage fence)→Jobs.meta/dir→route→physical。只从现owners.local oldAgents子key取真实accepted实体。当前表只收continuable；为完整覆盖其它旧K的legacy，本刀legacy Start在同owners→Local准入段登记canonical req.Dir→原Local，terminal真实结算后核原job指针/当前key/owners[key]==l精确删除，queue cancel也等实际结算完。无新表/全K登记/全局capacity；Control按Descriptor区分legacy，不误送continuable.Message。空Local不登记。
+
+moved=true即使后期IO err也先重基Local/job/owners；外code callback沿2a after模式给其mover nil令Record一起重指，再join返回partial。不加drain/newbusy/Join。重基j.dir/request.Dir/JobDir/Bot/workspace/descriptor.Bot+CWD/resultPath与resource中dir:/repo:内部前缀；ID/turnseq/队列/原选模/预算不变。迁既有合法descriptor/meta可变path（含冷完成记录，不登记活job），旧transcript/results内容不写；恢复旧turn_end ResultPath按当前childdir+turnseq投影，不灌旧绝对路径回meta。
+
+扩大现recordMu而不添第二job锁：路径/seq、Mkdir/legacy append、record append、begin/resume读record、seal扫描补tombstone、queued/terminal meta、descriptor、result O_EXCL→resultPath→turn_end→末status完整短段。recordLocked/sealCallsLocked/writeStatusLocked避重入，writeStatus改storage→j.mu。WithCurrentIO只在这些末层取route、按当前路径重基字段并完成open/write/close，fn不反拿exec/Jobs/ops或外部callback。
+
+模型/Tool/ProviderFor/Wrap/Restore/CurrentCWD/ReleaseScope/emit/OnIdle全锁外。每步tools/RunTool/Wrap先storage取当前request深拷贝再锁外调，去掉newJob/legacy refreshTools捕获旧req。finish先锁外快照/CurrentCWD，再storage按当前workspace重基返回cwd并写descriptor/result/end/status，出段才dropBefore/ReleaseScope/emit/Restore；原fail闭包会拿Local，不能搬进storage。restoreNext准备next后在最终owners→Local handoff再按当前旧job重基，不让未入索引准备态越过move。
+
+Message冷续两段：owners→Local→storage→WithCurrentIO读currentdir/状态及私有interruptLocked；放锁Restore/newJob；最终同顺序重取路径/owner/descriptor依赖，按原descriptor选模/ID重基再入场，不能用旧d.Bot/dir盖回。Stop/Control/boundDir同用闭包；不是WithCurrentIO包整个Message（会route→owners）。原允许成功不以新busy躲避。
+
+### UI与同cut退旧
+
+`applyProfileRename(selection,{name,previous_name})`仅原selection仍当前且previous==selection.id时就地rekey同对象，更新id/URL/xbot-selected-bot、sidebar/header、workDescriptions及Bot key的composer草稿/附件。child view加窄rename入口，route/draftKey/chosenKey用当前bot并迁child草稿key，保同root/child/generation/输入。SSE先处理previous_name再refresh，form PATCH成功走同入口，不selectBot/resetConversation，保原reader/abort/text/附件/焦点/scroll。非当前/迟到响应沿原selection/gen拒，不因碰巧同名改另一个视图。无视觉改版。
+
+退profileTool/parseProfileArgs、registry bot_update_profile、review旧执行名、UI result-name刷新hack及手册guide。保personaTool/FlushLegacyHeld/RenameBot领域函数/group原业务；Web persona/group按原规则前置验证再独立保存，不让profile预期冲突先写persona。mixed测试只迁失效tool断言，保有效persona/字段校验/权限默认放行，独立测试只归0d。
+
+### 怎样算对与实施顺序
+
+1. 先独立真Shell最窄红转绿：组合name+desc+tz+seed→原endpoint第二show/MCP及下一步append/父信均新名，错root/显式别Bot拒绝。
+2. 冲突/非法组合（含work/key/大小写）零改；真实保存/move后失败如实partial，不复活旧目录；同名moved=false、未请求配置保留。
+3. >64KiB有效头像真实HTTP流、1MiB边界/超限/类型拒绝+clear，stdout/Event无image bytes，不冒任意IO全回滚。
+4. 活Local gate跨rename原ID steer/父信/结算，新dir唯一记录；冷Message续同ID/原选模/turnseq，旧行不写。原Jobs/code/timer跨move与旧hold释放，不新busy拒成功。
+5. 浏览器一项previous_name就地改名、原SSE/草稿/焦点/scroll与child输入保持，切Bot迟到隔离；保persona有效，模型请求无旧profile工具。
+
+24只核本节新增锁/IO结构。最窄入口先通再补边界，普通profile/seed与2a移动/lease/MCP绿证据封存复用，不全仓/全矩阵/真模型/无关视觉旅程。不合main/push/日用实例；这里是合同，事实记MILESTONES，完成现状再提炼atlas。
+
 ## 对照回顾
 
 回顾范围：候选索引全文、164 份候选 metadata/title 逐条、直接相关 44 篇全文与其余 120 篇主题筛查已由独立研究方核对，未新增阻止批 0/1 的前置；不是宣称全部 164 篇正文逐字读过。人用终端 PATH 的 P3 不等于本批 XBOT_BIN 已完成它；环境实体暂不开、多 Provider/子代理人工排期不阻塞首刀。旧搜索 Link/禁 hosted、expand/load/schema 旧描述和默认写跑先问方向与当前 atlas/ADR 不一致，本批不执行、不改候选状态。头像即时刷新、改名 Jobs 连续性保持；research/runner 缺口明示。下表核对 atlas、ADR、guard 与正在做的设计，不把无关 UI、供应商、评测、设备扩张条目纳入实现。
@@ -417,7 +501,7 @@ config aliases/callers转core并显式predicate：尤其link.connectors目录Val
 
 - 主人日用验收尚未开始。普通资料首刀的独立审计、真入口验证与合入已完成；后续不重复该刀设计审批，按新切片复核实际增量。
 - 批 0 的后续实际操作及入站依赖清单、research 按业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
-- 头像上传/clear、改名完整运行时 CLI 与其组合仍未覆盖，保留完整旧工具和原即时刷新，未整族移除。avatar_seed 的独立真入口、兼容增量审核与合入已完成，不重复该刀验收。
+- profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已实现于 feature 分支，当前合同见本份“批 profile 完整等价”，现状已提炼 atlas；独立 RenameEntry 在 94f34c67 通过并封存，Atomic/Resources/Avatar/Browser 仍待完整产品验收与最终增量审计，未合 main/日用。普通字段、avatar_seed 与 MCP 已绿证据继续复用，不重做整批。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
 - 技能/例程/Bot/群/连接器等平台能力逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。

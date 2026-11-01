@@ -1202,6 +1202,11 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	resources, err := s.ResourcesFor(b)
+	if err != nil {
+		streamErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	var (
 		shared bool
 		ok     bool
@@ -1218,12 +1223,12 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ok {
-		box, err := inbox.Open(b.InboxPath())
+		var box *inbox.Inbox
+		err := withInboxIO(resources, b, nil, func(_ *bot.Bot, currentBox *inbox.Inbox) error {
+			box = currentBox
+			return currentBox.Post(ev)
+		})
 		if err != nil {
-			streamErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if err := box.Post(ev); err != nil {
 			streamErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -1262,10 +1267,10 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	if shared {
 		// A turn is running here. Post the message so that turn can fork, then answer
 		// it as the foreground once the gate is free.
-		box, err = inbox.Open(b.InboxPath())
-		if err == nil {
-			err = box.Post(ev)
-		}
+		err = withInboxIO(resources, b, nil, func(_ *bot.Bot, currentBox *inbox.Inbox) error {
+			box = currentBox
+			return currentBox.Post(ev)
+		})
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
@@ -1277,8 +1282,10 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	later(gate.Unlock)
 	k.UseBot(b)
 	if box != nil {
-		later(func() { _ = box.Ack(ev.ID) })
-		if absorbed, text, bg, failed := s.absorbedReply(b, box, ev.ID, text); absorbed {
+		later(func() {
+			_ = withInboxIO(resources, b, box, func(_ *bot.Bot, currentBox *inbox.Inbox) error { return currentBox.Ack(ev.ID) })
+		})
+		if absorbed, text, bg, failed := s.absorbedReply(b, resources, box, ev.ID, text); absorbed {
 			// The running turn took the message in before it could fork.
 			switch {
 			case bg != "":
@@ -1448,7 +1455,9 @@ func (rs *replyStream) result(name, output string) {
 	rs.send("result", payload)
 }
 
-func (rs *replyStream) profile(name string) { rs.send("profile", map[string]string{"name": name}) }
+func (rs *replyStream) profile(notice kernel.ProfileNotice) {
+	rs.send("profile", map[string]string{"name": notice.Name, "previous_name": notice.PreviousName})
+}
 
 func (rs *replyStream) reply() string {
 	rs.mu.Lock()

@@ -50,7 +50,7 @@ func (k *Kernel) Fork(ctx context.Context, req ForkRequest) (ForkResult, error) 
 	if !bot.ValidName(name) {
 		return ForkResult{}, fmt.Errorf("fork: invalid name %q", req.Name)
 	}
-	if name == k.Bot.Name() {
+	if name == k.currentName() {
 		return ForkResult{}, errors.New("fork: a bot cannot fork onto itself")
 	}
 	if role == "" {
@@ -97,17 +97,17 @@ func (k *Kernel) Fork(ctx context.Context, req ForkRequest) (ForkResult, error) 
 	if err := k.storeHandoff(ctx, child.Name(), summary); err != nil {
 		return ForkResult{}, err
 	}
-	note := fmt.Sprintf("Forked from %s for this role. Ask %s for details with message_bot. You cannot read %s's transcript.", k.Bot.Name(), k.Bot.Name(), k.Bot.Name())
+	note := fmt.Sprintf("Forked from %s for this role. Ask %s for details with message_bot. You cannot read %s's transcript.", k.currentName(), k.currentName(), k.currentName())
 	if err := k.rememberBot(ctx, child.Name(), "fork-source", note); err != nil {
 		return ForkResult{}, err
 	}
 	srcNote := fmt.Sprintf("Forked %s for role %q. Reach them with message_bot. They cannot read your transcript.", name, clipNote(role, 240))
-	if err := k.rememberBot(ctx, k.Bot.Name(), "fork-"+name, srcNote); err != nil {
+	if err := k.rememberBot(ctx, k.currentName(), "fork-"+name, srcNote); err != nil {
 		return ForkResult{}, err
 	}
 	out := ForkResult{Name: name}
 	if group != "" {
-		g, err := (&peer.Bus{Root: k.Bot.Root, Now: k.now}).CreateGroup(k.Bot.Name(), group, []string{name})
+		g, err := (&peer.Bus{Root: k.Bot.Root, Now: k.now}).CreateGroup(k.currentName(), group, []string{name})
 		if err != nil {
 			return ForkResult{}, err
 		}
@@ -117,12 +117,12 @@ func (k *Kernel) Fork(ctx context.Context, req ForkRequest) (ForkResult, error) 
 }
 
 func (k *Kernel) handoff(ctx context.Context, role string) (string, error) {
-	st, err := k.Bot.LoadState()
+	st, err := k.currentState()
 	if err != nil {
 		return "", err
 	}
 	st = migrate(st)
-	lines, err := k.Bot.UncoveredLines(st.Blocks)
+	lines, err := k.currentUncoveredLines(st.Blocks)
 	if err != nil {
 		return "", err
 	}
@@ -132,18 +132,18 @@ func (k *Kernel) handoff(ctx context.Context, role string) (string, error) {
 		entries = append(entries, ln.Entry)
 		seqs = append(seqs, ln.Seq)
 	}
-	facts, err := k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopeBot, BotName: k.Bot.Name(), Tier: memory.TierProfile})
+	facts, err := k.Memory.Recall(ctx, memory.Query{Scope: memory.ScopeBot, BotName: k.currentName(), Tier: memory.TierProfile})
 	if err != nil {
 		return "", err
 	}
 	turns := projected(st.Blocks, entries, seqs)
 	if len(turns) == 0 && len(facts) == 0 {
-		return fmt.Sprintf("Handoff from %s. No transcript yet. New role: %s", k.Bot.Name(), oneLine(role)), nil
+		return fmt.Sprintf("Handoff from %s. No transcript yet. New role: %s", k.currentName(), oneLine(role)), nil
 	}
 	if k.Compactor == nil {
 		return "", errors.New("fork: no compactor to write the handoff")
 	}
-	persona, err := k.Bot.ReadPersona()
+	persona, err := k.currentPersona()
 	if err != nil {
 		return "", err
 	}
@@ -207,7 +207,7 @@ func (k *Kernel) rememberBot(ctx context.Context, botName, key, text string) err
 		Scope:     memory.ScopeBot,
 		Tier:      memory.TierProfile,
 		BotName:   botName,
-		WrittenBy: k.Bot.Name(),
+		WrittenBy: k.currentName(),
 		Text:      text,
 		Time:      k.now(),
 	})

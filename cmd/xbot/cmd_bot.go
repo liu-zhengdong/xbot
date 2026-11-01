@@ -261,14 +261,14 @@ func cmdPrimary(root string, args []string) error {
 
 const profileHelp = `Usage:
   xbot profile show (--self | <name>) [--json]
-  xbot profile set --self [--description TEXT] [--timezone ZONE] [--avatar-seed SEED] [--json]
+  xbot profile set --self [--name NEW] [--description TEXT] [--timezone ZONE] [--avatar-seed SEED] [--json]
   xbot profile set <name> [--description TEXT] [--timezone ZONE] [--avatar-seed SEED] [--role chat|dev] [--background-max-time MIN] [--name NEW] [--json]
-  xbot profile avatar <name> (--file PATH | --clear)
+  xbot profile avatar (--self | <name>) (--file PATH | --clear) [--json]
 
 --self uses XBOT_ENDPOINT from the current running Bot; XBOT_ROOT selects its data root.
 Use the current binary via "$XBOT_BIN". Runtime changes save immediately without waiting for the conversation lock.
-With an endpoint, description/timezone/avatar-seed are supported. Without one, an explicit name edits offline configuration.
-profile avatar --file/--clear is offline-only and refuses an active endpoint; runtime uploads/clear are not supported.
+With an endpoint, name/description/timezone/avatar-seed can be combined. Without one, an explicit name edits offline configuration.
+profile avatar uploads the raw image (at most 1 MiB) or clears it; profile metadata uses a separate set request.
 --json writes one result object to stdout; failures exit nonzero. Help works offline.
 `
 
@@ -348,7 +348,9 @@ func printRuntimeProfile(value cliops.Profile, asJSON bool) error {
 	if asJSON {
 		return json.NewEncoder(os.Stdout).Encode(value)
 	}
-	if value.Applied {
+	if value.PreviousName != "" || value.Error != "" {
+		fmt.Printf("name: %s\nprevious_name: %s\nmoved: %t\napplied_fields: %s\nscope: %s\n", value.Name, value.PreviousName, value.Moved, strings.Join(value.AppliedFields, ","), value.Scope)
+	} else if value.Applied {
 		fmt.Printf("profile saved: %s (%s)\n", value.Name, value.Scope)
 	} else {
 		fmt.Printf("name: %s\ndescription: %s\ntimezone: %s\navatar: %s\navatar_seed: %s\nscope: %s\n", value.Name, value.Description, value.Timezone, value.Avatar, value.AvatarSeed, value.Scope)
@@ -416,8 +418,8 @@ func cmdProfileSet(root string, args []string) error {
 		return err
 	}
 	if opt.Self || os.Getenv("XBOT_ENDPOINT") != "" {
-		if opt.Set["name"] || opt.Set["role"] || opt.Set["background-max-time"] {
-			return errors.New("profile: runtime set currently supports --description, --timezone and --avatar-seed; name remains available through existing tools")
+		if opt.Set["role"] || opt.Set["background-max-time"] {
+			return errors.New("profile: runtime set supports --name, --description, --timezone and --avatar-seed; role and time budget are offline-only")
 		}
 		if !opt.Self {
 			current, err := cliops.Call(context.Background(), os.Getenv("XBOT_ENDPOINT"), root, nil)
@@ -429,6 +431,9 @@ func cmdProfileSet(root string, args []string) error {
 			}
 		}
 		update := &cliops.Update{}
+		if opt.Set["name"] {
+			update.Name = &opt.Name
+		}
 		if opt.Set["description"] {
 			update.Description = &opt.Description
 		}
@@ -439,10 +444,10 @@ func cmdProfileSet(root string, args []string) error {
 			update.AvatarSeed = &opt.AvatarSeed
 		}
 		value, err := cliops.Call(context.Background(), os.Getenv("XBOT_ENDPOINT"), root, update)
-		if err != nil {
-			return err
+		if value.Name != "" {
+			err = errors.Join(err, printRuntimeProfile(value, opt.JSON))
 		}
-		return printRuntimeProfile(value, opt.JSON)
+		return err
 	}
 	b, err := bot.Load(root, opt.Bot)
 	if err != nil {
@@ -490,9 +495,8 @@ func cmdProfileSet(root string, args []string) error {
 }
 
 type avatarOpts struct {
-	Bot   string
-	File  string
-	Clear bool
+	Bot, File         string
+	Self, JSON, Clear bool
 }
 
 func parseProfileAvatar(args []string) (avatarOpts, error) {
@@ -504,45 +508,94 @@ func parseProfileAvatar(args []string) (avatarOpts, error) {
 	fs.SetOutput(io.Discard)
 	file := fs.String("file", "", "image file")
 	clear := fs.Bool("clear", false, "remove the uploaded avatar")
+	self := fs.Bool("self", false, "current running Bot")
+	asJSON := fs.Bool("json", false, "JSON output")
 	if err := fs.Parse(ordered); err != nil {
 		return avatarOpts{}, err
 	}
-	if fs.NArg() != 1 {
-		return avatarOpts{}, errors.New("usage: xbot profile avatar <name> (--file PATH | --clear)")
+	if (*self && fs.NArg() != 0) || (!*self && fs.NArg() != 1) {
+		return avatarOpts{}, errors.New("usage: xbot profile avatar (--self | <name>) (--file PATH | --clear) [--json]")
 	}
 	if *clear == (*file != "") {
 		return avatarOpts{}, errors.New("pass one of --file or --clear")
 	}
-	return avatarOpts{Bot: fs.Arg(0), File: *file, Clear: *clear}, nil
+	return avatarOpts{Bot: fs.Arg(0), File: *file, Clear: *clear, Self: *self, JSON: *asJSON}, nil
 }
 
 func cmdProfileAvatar(root string, args []string) error {
-	if os.Getenv("XBOT_ENDPOINT") != "" {
-		return errors.New("profile avatar: --file/--clear is offline-only; runtime uploads/clear are not supported (use profile set --self --avatar-seed for a generated avatar)")
-	}
 	opt, err := parseProfileAvatar(args)
 	if err != nil {
 		return err
 	}
-	b, err := bot.Load(root, opt.Bot)
+	endpoint := os.Getenv("XBOT_ENDPOINT")
+	runtime := opt.Self || endpoint != ""
+	if runtime && !opt.Self {
+		current, err := cliops.Call(context.Background(), endpoint, root, nil)
+		if err != nil {
+			return err
+		}
+		if current.Name != opt.Bot {
+			return errors.New("profile: endpoint belongs to another Bot")
+		}
+	}
+	var b *bot.Bot
+	if !runtime {
+		b, err = bot.Load(root, opt.Bot)
+		if err != nil {
+			return err
+		}
+	}
+	var upload io.Reader
+	if !opt.Clear {
+		file, err := os.Open(opt.File)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		info, err := file.Stat()
+		if err != nil {
+			return err
+		}
+		if info.Size() > cliops.MaxAvatarBody {
+			return errors.New("profile avatar: upload exceeds 1 MiB")
+		}
+		upload = file
+	}
+	if runtime {
+		value, err := cliops.CallAvatar(context.Background(), endpoint, root, upload, opt.Clear)
+		if value.Name != "" {
+			err = errors.Join(err, printRuntimeProfile(value, opt.JSON))
+		}
+		return err
+	}
+	var data []byte
+	if !opt.Clear {
+		data, err = io.ReadAll(io.LimitReader(upload, cliops.MaxAvatarBody+1))
+		if err != nil {
+			return err
+		}
+		if len(data) > cliops.MaxAvatarBody {
+			return errors.New("profile avatar: upload exceeds 1 MiB")
+		}
+	}
+	result, err := b.ApplyAvatarChange(data, opt.Clear)
+	cfg := b.Config()
+	avatar, seed := b.AvatarState()
+	value := cliops.Profile{Name: b.Name(), Description: bot.RedactText(cfg.Description), Timezone: cfg.Timezone, Avatar: avatar, AvatarSeed: bot.RedactText(seed), Scope: "offline", Applied: len(result.AppliedFields) != 0, PreviousName: result.PreviousName, AppliedFields: result.AppliedFields}
+	if err != nil {
+		value.Error = bot.RedactText(err.Error())
+	}
+	if opt.JSON || err != nil && len(result.AppliedFields) != 0 {
+		return errors.Join(err, printRuntimeProfile(value, opt.JSON))
+	}
 	if err != nil {
 		return err
 	}
 	if opt.Clear {
-		if err := b.ClearAvatar(); err != nil {
-			return err
-		}
 		fmt.Printf("cleared avatar for %s\n", b.Name())
-		return nil
+	} else {
+		fmt.Printf("avatar set for %s\n", b.Name())
 	}
-	data, err := os.ReadFile(opt.File)
-	if err != nil {
-		return err
-	}
-	if err := b.SetAvatar(data, ""); err != nil {
-		return err
-	}
-	fmt.Printf("avatar set for %s\n", b.Name())
 	return nil
 }
 

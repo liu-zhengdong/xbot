@@ -206,6 +206,7 @@
     if (!res.ok) {
       const err = new Error(data.error || "request failed");
       err.status = res.status;
+      err.receipt = data;
       throw err;
     }
     return data;
@@ -7062,7 +7063,7 @@
   async function loadTrace(direction = "refresh") {
     const selection = state.sel;
     if (selection?.type !== "bot" || state.tab !== "trace" || !panel.classList.contains("open") || selection.traceLoading) return;
-    const meta = state.traceWindow;
+    const meta = state.traceWindow, requestName = selection.id;
     let query = "";
     if (meta?.tail_seq) query = direction === "before" ? "?before=" + meta.head_seq : "?after=" + meta.tail_seq + "&limit=200";
     selection.traceLoading = direction;
@@ -7071,11 +7072,11 @@
       const res = await apiFetch("/api/bots/" + encodeURIComponent(selection.id) + "/transcript" + query, {
         credentials:"same-origin", headers:selection.traceQuery === query && selection.traceETag ? {"If-None-Match":selection.traceETag} : {},
       });
-      if (state.sel !== selection) return;
+      if (state.sel !== selection || selection.id !== requestName) return;
       if (res.status === 304) { selection.traceError = false; return; }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "request failed");
-      if (state.sel !== selection) return;
+      if (state.sel !== selection || selection.id !== requestName) return;
       selection.traceQuery = query; selection.traceETag = res.headers.get("ETag"); selection.traceError = false;
       const incoming = data.messages || [], previous = state.traceMessages, bySeq = new Map(previous.map(m => [m.seq, m]));
       for (const message of incoming) if (!sameTranscriptValue(bySeq.get(message.seq), message)) bySeq.set(message.seq, message);
@@ -7097,10 +7098,10 @@
         if (anchor?.isConnected) list.scrollTop += anchor.getBoundingClientRect().top - top;
       }
     } catch (e) {
-      if (state.sel === selection) { selection.traceError = true; selection.traceFailedDirection = direction; }
+      if (state.sel === selection && selection.id === requestName) { selection.traceError = true; selection.traceFailedDirection = direction; }
     } finally {
-      selection.traceLoading = false;
-      if (state.sel === selection && state.tab === "trace") paintPanel();
+      if (selection.id === requestName) selection.traceLoading = false;
+      if (state.sel === selection && selection.id === requestName && state.tab === "trace") paintPanel();
     }
   }
 
@@ -7322,16 +7323,30 @@
         busy = false;
       }
     });
+    root.rename = (previous, next) => {
+      if (name !== previous) return;
+      name = next;
+      const label = root.querySelector(".avatar-name");
+      if (label) label.textContent = next;
+    };
     paint();
     return root;
   }
 
   function profileForm(data) {
-    const drawerGen = profileDrawerGen;
+    const drawerGen = profileDrawerGen, selection = state.sel;
     const wrap = document.createElement("div");
     const head = avatarSection(data.name);
     const name = textInput(data.name, 64);
     name.dataset.profileFocus = "true";
+    wrap.dataset.profileBot = data.name;
+    wrap.renameProfile = (previous, next) => {
+      if (state.sel !== selection || data.name !== previous) return;
+      data = {...data, name:next};
+      wrap.dataset.profileBot = next;
+      if (name.value === previous) name.value = next;
+      head.rename(previous, next);
+    };
     const description = textInput(data.description, 160);
     const duty = document.createElement("textarea");
     duty.value = data.persona || "";
@@ -7427,12 +7442,17 @@
       if (nextDuty !== (data.persona || "").trim()) body.persona = nextDuty;
       try {
         const res = await api("/api/bots/" + encodeURIComponent(data.name), { method: "PATCH", body: body });
+        applyProfileRename(selection, res);
+        if (drawerGen !== profileDrawerGen) return;
         closeModal();
-        await refreshLists();
-        const next = (res && res.name) || body.name || data.name;
-        if (state.sel && next !== state.sel.id) await selectBot(next);
-        else await loadPanel();
-      } catch (e) { showErr(e, "保存失败"); }
+        if (state.sel === selection && selection?.type === "bot" && !state.peer) await refreshSavedProfile(selection);
+        else await refreshLists();
+      } catch (e) {
+        applyProfileRename(selection, e.receipt);
+        if (drawerGen !== profileDrawerGen) return;
+        if (state.sel === selection && e.receipt?.applied) refreshSavedProfile(selection).catch(() => {});
+        showErr(e, "保存失败");
+      }
     };
     exp.addEventListener("click", async () => {
       err.hidden = true;
@@ -7768,7 +7788,43 @@
     return prose;
   }
 
+  function applyProfileRename(selection, notice) {
+    const previous = notice?.previous_name, name = notice?.name;
+    if (state.sel !== selection || selection?.type !== "bot" || state.peer || !previous || previous !== selection.id || !name || name === previous) return false;
+    // Keep this exact object: live SSE readers and attachment uploads own it.
+    selection.id = name;
+    ++state.panelLoad; ++state.threadLoad;
+    selection.historyLoading = false;
+    selection.traceLoading = false;
+    const moveKey = (object, oldKey, newKey) => {
+      if (Object.prototype.hasOwnProperty.call(object, oldKey)) { object[newKey] = object[oldKey]; delete object[oldKey]; }
+    };
+    moveKey(state.preview, "b:" + previous, "b:" + name);
+    moveKey(state.previewAt, "b:" + previous, "b:" + name);
+    moveKey(stStatus.map, previous, name);
+    if (workDescriptions.has(previous)) { workDescriptions.set(name, workDescriptions.get(previous)); workDescriptions.delete(previous); }
+    state.bots = state.bots.map(bot => bot.name === previous ? {...bot, name} : bot);
+    state.groups = state.groups.map(group => ({...group, members:(group.members || []).map(member => member === previous ? name : member)}));
+    state.folders = state.folders.map(folder => ({...folder, bots:(folder.bots || []).map(bot => bot === previous ? name : bot)}));
+    if (state.panelData?.name === previous) state.panelData = {...state.panelData, name};
+    try {
+      const oldKey = "xbot-draft:" + previous, draft = sessionStorage.getItem(oldKey);
+      if (draft !== null) { sessionStorage.setItem("xbot-draft:" + name, draft); sessionStorage.removeItem(oldKey); }
+      sessionStorage.setItem("xbot-selected-bot", name);
+    } catch (e) {}
+    const url = new URL(location.href);
+    if (url.searchParams.get("bot") === previous) { url.searchParams.set("bot", name); history.replaceState(history.state, "", url); }
+    subagentsView?.rename(previous, name);
+    for (const form of document.querySelectorAll("[data-profile-bot]")) form.renameProfile?.(previous, name);
+    setHeader(name);
+    setComposerPlaceholder("写给 " + niceName(name));
+    renderLists();
+    paintWorkspaceIdentity();
+    return true;
+  }
+
   async function refreshSavedProfile(selection) {
+    if (state.sel !== selection || selection.type !== "bot" || state.peer) return;
     const request = ++state.panelLoad;
     const [, data] = await Promise.all([
       refreshLists(),
@@ -7828,15 +7884,9 @@
           prose = liveBubble();
           onLive(prose);
           threadStick.changed();
-        } else if (event === "profile" && payload.name === selection.id) {
-          refreshSavedProfile(selection).catch(() => {});
-        } else if (event === "result" && payload.name === "bot_update_profile") {
-          // The result arrives after persistence. Refresh faces even while the
-          // streaming poll is paused, without holding up incoming text. The
-          // selection guard keeps a delayed fetch from restoring an old header.
-          refreshLists().then(() => {
-            if (state.sel === selection && selection.type === "bot" && !state.peer) setHeader(selection.id);
-          }).catch(() => {});
+        } else if (event === "profile") {
+          applyProfileRename(selection, payload);
+          if (payload.name === selection.id) refreshSavedProfile(selection).catch(() => {});
         } else if (event === "approval" && host) {
           const status = host.querySelector(".live-status");
           if (status) status.remove();

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/tools"
 	"xbot/internal/work"
 )
@@ -111,10 +112,9 @@ func (k *Kernel) attachOutImages(ctx context.Context, refs []string, audioRefs .
 	if sent {
 		return nil, errReplySent
 	}
-	dir := work.BotDir(k.Bot.Root, k.Bot.Name())
 	var pics []outPicture
 	for _, ref := range uniq {
-		p, err := k.outPicture(ctx, dir, ref, work.PastedMaxTotalBytes-total, queued)
+		p, err := k.outPicture(ctx, "", ref, work.PastedMaxTotalBytes-total, queued)
 		if err != nil {
 			return nil, fmt.Errorf("images: %s: %w", ref, err)
 		}
@@ -152,41 +152,47 @@ func (k *Kernel) attachOutImages(ctx context.Context, refs []string, audioRefs .
 	}
 	// Validate both attachment types before either enters the reply queue.
 	queuedAudio := slices.Clone(t.outAudios)
-	audioBytes := 0
-	for _, id := range queuedAudio {
-		f, err := work.OpenVoice(dir, id)
-		if err != nil {
-			return nil, err
+	if err := k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		dir := work.BotDir(current.Root, current.Name())
+		audioBytes := 0
+		for _, id := range queuedAudio {
+			f, err := work.OpenVoice(dir, id)
+			if err != nil {
+				return err
+			}
+			st, err := f.Stat()
+			f.Close()
+			if err != nil {
+				return err
+			}
+			audioBytes += int(st.Size())
 		}
-		st, err := f.Stat()
-		f.Close()
-		if err != nil {
-			return nil, err
+		for _, a := range audios {
+			if slices.Contains(queuedAudio, a.id) {
+				continue
+			}
+			queuedAudio = append(queuedAudio, a.id)
+			audioBytes += len(a.data)
 		}
-		audioBytes += int(st.Size())
-	}
-	for _, a := range audios {
-		if slices.Contains(queuedAudio, a.id) {
-			continue
+		if len(queuedAudio) > work.VoiceMaxPerMessage || audioBytes > work.VoiceMaxBytes {
+			return errors.New("audios: at most 4 files and 10 MiB per reply")
 		}
-		queuedAudio = append(queuedAudio, a.id)
-		audioBytes += len(a.data)
-	}
-	if len(queuedAudio) > work.VoiceMaxPerMessage || audioBytes > work.VoiceMaxBytes {
-		return nil, errors.New("audios: at most 4 files and 10 MiB per reply")
-	}
-	for _, a := range audios {
-		if _, err := work.StoreVoice(dir, a.data); err != nil {
-			return nil, err
+		for _, a := range audios {
+			if _, err := work.StoreVoice(dir, a.data); err != nil {
+				return err
+			}
 		}
-	}
-	for _, p := range added {
-		if p.data == nil {
-			continue
+		for _, p := range added {
+			if p.data == nil {
+				continue
+			}
+			if err := work.WritePasted(dir, p.id, p.data); err != nil {
+				return err
+			}
 		}
-		if err := work.WritePasted(dir, p.id, p.data); err != nil {
-			return nil, err
-		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	t.outImages, t.outBytes = queued, total
 	t.outAudios = queuedAudio
@@ -203,15 +209,26 @@ func (k *Kernel) outPicture(ctx context.Context, dir, ref string, budget int, qu
 	var data []byte
 	pasted := work.ValidPastedID(ref)
 	if pasted {
-		size, err := work.PastedSize(dir, ref)
+		err := k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+			if dir == "" {
+				dir = work.BotDir(current.Root, current.Name())
+			} else {
+				dir = k.rebaseOriginalPath(dir, current)
+			}
+			size, err := work.PastedSize(dir, ref)
+			if err != nil {
+				return errors.New("no such pasted picture")
+			}
+			if size > budget && !slices.Contains(queued, ref) {
+				return errOverBudget
+			}
+			if data, err = work.ReadPasted(dir, ref); err != nil {
+				return errors.New("no such pasted picture")
+			}
+			return nil
+		})
 		if err != nil {
-			return outPicture{}, errors.New("no such pasted picture")
-		}
-		if size > budget && !slices.Contains(queued, ref) {
-			return outPicture{}, errOverBudget
-		}
-		if data, err = work.ReadPasted(dir, ref); err != nil {
-			return outPicture{}, errors.New("no such pasted picture")
+			return outPicture{}, err
 		}
 	} else {
 		var err error
@@ -252,23 +269,27 @@ func (k *Kernel) outPicture(ctx context.Context, dir, ref string, budget int, qu
 // readWorkspaceFile reads a picture at path, relative to the calling context's
 // directory. The read goes through an os.Root on the workspace root that holds
 // it, so neither a ".." nor a link can reach outside.
-func (k *Kernel) readWorkspaceFile(ctx context.Context, path string, budget int, queued []string) ([]byte, error) {
-	abs, err := tools.ResolveRoot(k.cwdFor(ctx), path)
-	if err != nil {
-		return nil, err
-	}
-	for _, root := range k.allowedRoots() {
-		real, err := filepath.EvalSymlinks(root)
-		if err != nil {
-			continue
+func (k *Kernel) readWorkspaceFile(ctx context.Context, path string, budget int, queued []string) (data []byte, err error) {
+	err = k.withMediaIO(ctx, func(current *bot.Bot, cwd string, roots []string) error {
+		abs, e := tools.ResolveRoot(cwd, k.rebaseOriginalPath(path, current))
+		if e != nil {
+			return e
 		}
-		rel, err := filepath.Rel(real, abs)
-		if err != nil || !filepath.IsLocal(rel) {
-			continue
+		for _, root := range roots {
+			real, e := filepath.EvalSymlinks(root)
+			if e != nil {
+				continue
+			}
+			rel, e := filepath.Rel(real, abs)
+			if e != nil || !filepath.IsLocal(rel) {
+				continue
+			}
+			data, err = readInRoot(real, rel, budget, queued)
+			return err
 		}
-		return readInRoot(real, rel, budget, queued)
-	}
-	return nil, errors.New("path is outside the workspace")
+		return errors.New("path is outside the workspace")
+	})
+	return
 }
 
 func readInRoot(root, rel string, budget int, queued []string) ([]byte, error) {

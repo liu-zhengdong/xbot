@@ -30,8 +30,6 @@ func CardText(tool string, args json.RawMessage, summary, machine string) (title
 		return "搜索网页", jsonString(args, "query")
 	case name == "bot_propose_persona":
 		return "修改职责", ""
-	case name == "bot_update_profile":
-		return "修改档案", ""
 	case isConnectorSend(name):
 		return "发送消息到 " + connectorName(name), ""
 	case strings.HasPrefix(name, mcpPrefix):

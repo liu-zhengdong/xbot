@@ -121,8 +121,9 @@ func TestMCP2aResourceRenameKeepsSessionAndRoutes(t *testing.T) {
 	if initializes.Load() != 1 || resources.Jobs != originalJobs || resources.MCP != originalRef {
 		t.Fatalf("identity changed: initializes=%d", initializes.Load())
 	}
-	if k.Bot.Name() != "after" || k.Inbox != resources.box || k.Inbox == stale.Inbox {
-		t.Fatal("invoking Kernel Bot/Inbox did not follow move")
+	current, err := resources.CurrentBot()
+	if err != nil || resources.Name() != "after" || current.Name() != "after" {
+		t.Fatalf("current resource route did not follow move: %v", err)
 	}
 	job, err := resources.Jobs.Status(receipt.Job.ID)
 	if err != nil || !job.Notified || job.Status != "done" || job.Output != filepath.Join(bot.Dir(root, "after"), "shell-jobs", job.ID+".log") {
@@ -134,11 +135,14 @@ func TestMCP2aResourceRenameKeepsSessionAndRoutes(t *testing.T) {
 	if got := len(resources.box.Pending()); got != 3 {
 		t.Fatalf("want two notes and one completion, got %d", got)
 	}
-	if _, err := (profileTool{stale}).Run(ctx, json.RawMessage(`{"description":"current resource path"}`)); err != nil {
+	description := "current resource path"
+	change, err := bot.ValidateProfileChange(bot.ProfileChange{Description: &description})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if stale.Bot.Name() != "after" {
-		t.Fatal("legacy profile did not resolve current resource")
+	profile, err := stale.ApplyProfileChange(change)
+	if err != nil || profile.Name != "after" || profile.Description != description {
+		t.Fatalf("typed profile did not resolve current resource: %+v %v", profile, err)
 	}
 	if _, err := os.Stat(bot.Dir(root, "before")); !os.IsNotExist(err) {
 		t.Fatalf("old directory recreated: %v", err)

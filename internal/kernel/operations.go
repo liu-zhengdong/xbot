@@ -11,9 +11,11 @@ import (
 	"xbot/internal/cliops"
 	"xbot/internal/code"
 	"xbot/internal/exec"
+	"xbot/internal/inbox"
+	"xbot/internal/link"
 )
 
-const cliProfileGuide = `资料（简介、时区、生成头像 seed）优先通过当前实例 CLI 操作：在 Shell 中用环境变量 XBOT_BIN 指向的当前二进制（按该解释器语法）先执行 profile --help，再用 --self --json。实例和当前 Bot 身份由 XBOT_* 环境提供；换头像用 profile set --self --avatar-seed；改名仍用现有 profile 工具。MCP 管理、发现和调用使用同一当前二进制的 mcp --help，再以 --self --json 执行 list/tools/describe/call；工具用远端原名，产物 file 是本机工作区相对路径；不要经 tools/links 加载 MCP schema。`
+const cliProfileGuide = `资料全部通过当前实例 CLI：在 Shell 用 XBOT_BIN 指向的二进制先执行 profile --help，再以 --self --json show/set；set 可组合 --name/--description/--timezone/--avatar-seed，avatar --file/--clear 是独立动作。改名后原 endpoint 继续认同一 Bot，XBOT_BOT 只作诊断；失败回执若已 moved/applied，要按实际结果继续，别盲重试。persona/group 仍原独立入口。MCP 同用 mcp --help 与 --self --json 的 list/tools/describe/call，工具用远端原名，本机产物 file 不经 tools/links 载入 schema。`
 
 func (k *Kernel) cliProfileGuide() string {
 	k.operations.mu.Lock()
@@ -53,7 +55,10 @@ func (k *Kernel) StartOperations() error {
 	if k.operations.server != nil {
 		return nil
 	}
-	handlers := cliops.Handlers{Profile: k.profileOperation}
+	if k.workOrigin == "" {
+		k.workOrigin = k.Bot.Name()
+	}
+	handlers := cliops.Handlers{Profile: k.profileOperation, ProfileAvatar: k.profileAvatarOperation}
 	if k.Resources != nil {
 		mcpHandlers := k.Resources.MCPHandlers()
 		handlers.MCP = &mcpHandlers
@@ -64,6 +69,7 @@ func (k *Kernel) StartOperations() error {
 	}
 	k.operations.server, k.operations.binary, k.operations.root = server, binary, root
 	for _, item := range k.snapshotLinks() {
+		k.bindCurrentPaths(item)
 		if coding, ok := item.(*code.Link); ok {
 			coding.UseEnvironment(k.CLIEnvironment, k.closeIdleOperations)
 		}
@@ -170,6 +176,19 @@ func (k *Kernel) UseBot(b *bot.Bot) {
 	k.operations.mu.Unlock()
 }
 
+func (k *Kernel) bindCurrentPaths(item link.Link) {
+	if coding, ok := item.(*code.Link); ok {
+		coding.UseCurrentIO(k.withCurrentIO)
+	}
+	// MountOrgans may have bound this object using its assembly-only Kernel.
+	// Rebind before runtime publication so the actual source owns its route.
+	if timer, ok := item.(*link.Timer); ok {
+		timer.WithDirectoryIO = func(fn func(string) error) error {
+			return k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { return fn(b.RoutineDir()) })
+		}
+	}
+}
+
 // CLIEnvironment takes identity at command start, so an old profile-tool rename
 // retains the endpoint and subsequent commands see the new diagnostic name.
 func (k *Kernel) CLIEnvironment(base []string) []string {
@@ -194,66 +213,20 @@ func (k *Kernel) CLIEnvironment(base []string) []string {
 }
 
 func (k *Kernel) profileOperation(update *cliops.Update) (cliops.Profile, error) {
-	k.operations.mu.Lock()
-	r := k.Resources
-	if r != nil {
-		r.route.RLock()
-	}
-	unlock := func() {
-		if r != nil {
-			r.route.RUnlock()
-		}
+	if update == nil {
+		k.operations.mu.Lock()
+		value, err := k.profileResult(bot.ProfileChangeResult{})
 		k.operations.mu.Unlock()
+		return value, err
 	}
-	b := k.Bot
-	var err error
-	if r != nil {
-		if r.closed {
-			unlock()
-			return cliops.Profile{}, fmt.Errorf("bot resources closed")
-		}
-		if b.Name() != r.current.Name() {
-			b, err = bot.Load(r.current.Root, r.current.Name())
-		}
-	}
-	if err == nil {
-		if update == nil {
-			err = b.RefreshProfile()
-		} else {
-			err = b.ApplyProfile(bot.ProfileUpdate{Description: update.Description, Timezone: update.Timezone, AvatarSeed: update.AvatarSeed})
-		}
-	}
+	change, err := bot.ValidateProfileChange(bot.ProfileChange{Name: update.Name, Description: update.Description, Timezone: update.Timezone, AvatarSeed: update.AvatarSeed})
 	if err != nil {
-		unlock()
 		return cliops.Profile{}, fmt.Errorf("%s", k.redactor()(err.Error()))
 	}
-	description, timezone := b.ProfileValues()
-	avatar, seed := b.AvatarState()
-	value := cliops.Profile{Name: b.Name(), Description: k.redactor()(description), Timezone: timezone, Avatar: avatar, AvatarSeed: k.redactor()(seed), Scope: "runtime", Applied: update != nil}
-	unlock()
-	// publishProfile can take another live Kernel's operations mutex or stream IO.
-	if update != nil {
-		k.publishProfile(b)
-	}
-	return value, nil
+	return k.ApplyProfileChange(change)
 }
 
-func (k *Kernel) publishProfile(b *bot.Bot) {
-	if value, ok := liveTurns.Load(botKey(b)); ok {
-		live := value.(*liveTurn)
-		// A later serve pass or web turn may own another loaded handle for the
-		// same Bot. Refresh that existing live kernel before its next environment
-		// sample. The saving kernel's operation lock has already been released.
-		live.k.operations.mu.Lock()
-		_ = live.k.Bot.RefreshProfile()
-		live.k.operations.mu.Unlock()
-		// Persistence already succeeded. A deleted/unreadable target must not
-		// turn that success into a failed-save receipt; the UI still rereads it.
-		if sink := live.t.sinkNow(); sink != nil && sink.OnProfile != nil {
-			sink.OnProfile(b.Name())
-		}
-	}
-}
+func (k *Kernel) publishProfile(b *bot.Bot) { k.publishProfileNotice(ProfileNotice{Name: b.Name()}) }
 
 // RetireOperations lets a host discard a cached Kernel while its real source
 // calls and Local/code collections retain their original listener leases.

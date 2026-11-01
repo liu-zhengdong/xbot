@@ -6,7 +6,9 @@ import (
 	"errors"
 	"strings"
 
+	"xbot/internal/bot"
 	"xbot/internal/config"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 	"xbot/internal/work"
 )
@@ -72,13 +74,18 @@ func (k *Kernel) resolveImageGen(ctx context.Context) imageGenCapability {
 			return imageGenCapability{}
 		}
 	}
-	dir := work.BotDir(k.Bot.Root, k.Bot.Name())
 	imageModel := spec.ImageGenModel
 	if p.OAuth == "xai" {
 		imageModel = ""
 	}
 	cap.gen = provider.ImageGen{Model: imageModel, Save: func(data []byte) (string, error) {
-		return work.WriteGenerated(dir, data)
+		var path string
+		err := k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+			var err error
+			path, err = work.WriteGenerated(work.BotDir(current.Root, current.Name()), data)
+			return err
+		})
+		return path, err
 	}}
 	return cap
 }

@@ -25,7 +25,7 @@ func (listBotsTool) Confirm(json.RawMessage) (bool, string, error) {
 	return false, "", nil
 }
 func (t listBotsTool) Run(context.Context, json.RawMessage) (string, error) {
-	cfgs, err := peer.VisibleBots(t.k.Bot.Root, t.k.Bot.Name())
+	cfgs, err := peer.VisibleBots(t.k.Bot.Root, t.k.currentName())
 	if err != nil {
 		return "", err
 	}
@@ -82,15 +82,15 @@ func (t messageBotTool) Run(ctx context.Context, args json.RawMessage) (string, 
 	kt := t.k.turnFor(ctx)
 	chain := kt.turnChain
 	if chain == "" {
-		chain = "ch_" + t.k.Bot.Name()
+		chain = "ch_" + t.k.currentName()
 	}
 	addr := strings.TrimSpace(in.Bot)
 	var err error
 	var queued bool
 	if strings.Contains(addr, "@") {
-		queued, err = remote.Send(ctx, t.k.Bot.Root, t.k.Bot.Name(), addr, in.Text, chain, kt.turnHops+1, t.k.now())
+		queued, err = remote.Send(ctx, t.k.Bot.Root, t.k.currentName(), addr, in.Text, chain, kt.turnHops+1, t.k.now())
 	} else {
-		err = (&peer.Bus{Root: t.k.Bot.Root, Now: t.k.now}).Message(t.k.Bot.Name(), addr, in.Text, chain, kt.turnHops+1, t.k.now())
+		err = (&peer.Bus{Root: t.k.Bot.Root, Now: t.k.now}).Message(t.k.currentName(), addr, in.Text, chain, kt.turnHops+1, t.k.now())
 	}
 	if err != nil {
 		return "", err
@@ -118,7 +118,7 @@ func (t listGroupsTool) Run(context.Context, json.RawMessage) (string, error) {
 	}
 	var b strings.Builder
 	for _, g := range groups {
-		if !hasMember(g.Members, t.k.Bot.Name()) {
+		if !hasMember(g.Members, t.k.currentName()) {
 			continue
 		}
 		b.WriteString(g.ID)
@@ -157,7 +157,7 @@ func (t createGroupTool) Run(_ context.Context, args json.RawMessage) (string, e
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
 	}
-	g, err := (&peer.Bus{Root: t.k.Bot.Root, Now: t.k.now}).CreateGroup(t.k.Bot.Name(), in.Name, in.Members)
+	g, err := (&peer.Bus{Root: t.k.Bot.Root, Now: t.k.now}).CreateGroup(t.k.currentName(), in.Name, in.Members)
 	if err != nil {
 		return "", err
 	}
@@ -190,9 +190,9 @@ func (t postGroupTool) Run(ctx context.Context, args json.RawMessage) (string, e
 	kt := t.k.turnFor(ctx)
 	chain := kt.turnChain
 	if chain == "" {
-		chain = "ch_" + t.k.Bot.Name()
+		chain = "ch_" + t.k.currentName()
 	}
-	err := (&peer.Bus{Root: t.k.Bot.Root, Now: t.k.now}).PostGroup(link.KindBot, t.k.Bot.Name(), in.ID, in.Text, chain, kt.turnHops+1, t.k.now())
+	err := (&peer.Bus{Root: t.k.Bot.Root, Now: t.k.now}).PostGroup(link.KindBot, t.k.currentName(), in.ID, in.Text, chain, kt.turnHops+1, t.k.now())
 	if err != nil {
 		return "", err
 	}
@@ -231,7 +231,7 @@ func (t groupHistoryTool) Run(_ context.Context, args json.RawMessage) (string, 
 	if err != nil {
 		return "", err
 	}
-	if !hasMember(g.Members, t.k.Bot.Name()) {
+	if !hasMember(g.Members, t.k.currentName()) {
 		return "", fmt.Errorf("you are not a member of group %s", in.GroupID)
 	}
 	lines, err := bus.Transcript(in.GroupID)

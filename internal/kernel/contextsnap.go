@@ -193,7 +193,7 @@ func (k *Kernel) ContextSnapshot() ContextSnap {
 	if k == nil || k.Bot == nil {
 		return snap
 	}
-	snap.Bot = k.Bot.Name()
+	snap.Bot = k.currentName()
 	snap.Target, snap.Ceiling = k.lines()
 	snap.Window = k.contextWindow()
 	k.context.mu.Lock()

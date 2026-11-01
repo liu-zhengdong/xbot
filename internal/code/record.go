@@ -41,6 +41,7 @@ const (
 
 // Task is one coding-agent record.
 type Task struct {
+	recordDir  string    // current read projection; never persisted or registered
 	PID        int       `json:"pid,omitempty"`
 	ProcStart  int64     `json:"proc_start,omitempty"`
 	ID         string    `json:"id"`
@@ -65,10 +66,11 @@ type Note struct {
 
 // Record is the local task store. OnTerminal runs after a task becomes done, failed, or cancelled.
 type Record struct {
-	mu         sync.Mutex
-	Dir        string
-	OnTerminal func(Task)
-	Now        func() time.Time
+	withDirectoryIO func(func(string) error) error
+	mu              sync.Mutex
+	Dir             string
+	OnTerminal      func(Task)
+	Now             func() time.Time
 }
 
 // Start records a task. It runs immediately when nothing else is running, otherwise it waits in the queue.
@@ -322,6 +324,7 @@ func (r *Record) read(id string) (Task, error) {
 	if task.ID != id {
 		return Task{}, errors.New("code: broken record")
 	}
+	task.recordDir = r.dir()
 	return task, nil
 }
 
@@ -336,20 +339,54 @@ func (r *Record) write(task Task) error {
 func (r *Record) lock(fn func() error) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return fsutil.WithLock(filepath.Join(r.dir(), ".lock"), fn)
+	f, err := r.lockFile()
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	defer fsutil.UnlockFile(f)
+	return r.directoryIO(fn)
 }
 
-// Move serializes the directory rename with every record operation.
+// Move serializes the directory rename with every record operation. The flock
+// remains held; route is released before rename may take its write lock.
 func (r *Record) Move(dir string, rename func() error) error {
+	_, err := r.move(dir, rename)
+	return err
+}
+
+func (r *Record) move(dir string, rename func() error) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return fsutil.WithLock(filepath.Join(r.dir(), ".lock"), func() error {
-		if err := rename(); err != nil {
+	f, err := r.lockFile()
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	defer fsutil.UnlockFile(f)
+	old := r.dir()
+	if err := rename(); err != nil {
+		return false, err
+	}
+	r.Dir = dir
+	err = r.directoryIO(func() error {
+		tasks, err := r.list()
+		if err != nil {
 			return err
 		}
-		r.Dir = dir
+		for _, task := range tasks {
+			work, repo := rebaseCodePath(task.WorkDir, old, r.dir()), rebaseCodePath(task.Repo, old, r.dir())
+			if work == task.WorkDir && repo == task.Repo {
+				continue
+			}
+			task.WorkDir, task.Repo = work, repo
+			if err := r.write(task); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
+	return true, err
 }
 
 func (r *Record) dir() string {

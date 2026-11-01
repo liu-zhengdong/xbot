@@ -23,7 +23,8 @@
   }
 
   function create(options) {
-    const {bot, api, el, icon, appendMarkdown, taskTitle, taskTypeLabel, taskProgress, taskAvatar, taskValue, taskSelected, updateTaskNotable, sameValue, backParent, current, visibleError} = options;
+    let bot = options.bot;
+    const {api, el, icon, appendMarkdown, taskTitle, taskTypeLabel, taskProgress, taskAvatar, taskValue, taskSelected, updateTaskNotable, sameValue, backParent, current, visibleError} = options;
     const root = el("div", "subagents-view"), overview = el("div", "sa-overview"), childHost = el("div", "sa-child-host");
     const rows = new Map(), groups = new Map();
     let tasks = [], child = null, disposed = false;
@@ -32,7 +33,23 @@
     const valid = c => !disposed && current() && child === c;
     const route = id => "/api/bots/" + encodeURIComponent(bot) + "/agents/" + encodeURIComponent(id);
     const draftKey = id => "xbot-child-draft:" + bot + ":" + id;
-    const chosenKey = "xbot-child-selected:" + bot;
+    const chosenKey = () => "xbot-child-selected:" + bot;
+    function rename(previous, next) {
+      if (disposed || bot !== previous || !next || next === previous) return;
+      try {
+        const prefix = "xbot-child-draft:" + previous + ":", keys = [];
+        for (let i = 0; i < sessionStorage.length; i++) { const key = sessionStorage.key(i); if (key.startsWith(prefix)) keys.push(key); }
+        for (const key of keys) { sessionStorage.setItem("xbot-child-draft:" + next + ":" + key.slice(prefix.length), sessionStorage.getItem(key)); sessionStorage.removeItem(key); }
+        const chosen = storage.read(chosenKey());
+        if (chosen) { storage.write("xbot-child-selected:" + next, chosen); storage.write(chosenKey(), ""); }
+      } catch (_) {}
+      bot = next;
+      if (child) {
+        child.recordSource.bot = next;
+        write(child.nodes.botName, next);
+        storage.write(draftKey(child.id), child.nodes.field.value);
+      }
+    }
     const button = (label, className = "text-btn", glyph) => {
       const b = el("button", className); b.type = "button";
       if (glyph) b.append(icon(glyph));
@@ -105,13 +122,13 @@
         // request that may already be in flight. The reader owns live status.
         if (t) { const live = child.authoritative; child.task = {...t, ...live}; syncHeader(child); }
       } else if (!root.restored) {
-        root.restored = true; const saved = storage.read(chosenKey);
+        root.restored = true; const saved = storage.read(chosenKey());
         if (tasks.some(t => t.id === saved)) open(saved);
       }
     }
     function closeChild() {
       if (child) { storage.write(draftKey(child.id), child.nodes.field.value); child.generation++; }
-      child = null; childHost.replaceChildren(); overview.hidden = false; storage.write(chosenKey, "");
+      child = null; childHost.replaceChildren(); overview.hidden = false; storage.write(chosenKey(), "");
       root.classList.remove("child-open"); rows.values().next().value?.querySelector("button")?.focus({preventScroll:true});
     }
     function open(id) {
@@ -119,7 +136,7 @@
       const task = tasks.find(t => t.id === id); if (!task) return;
       if (child) storage.write(draftKey(child.id), child.nodes.field.value);
       const c = {id, task:{...task}, entries:new Map(), rowNodes:new Map(), events:[], generation:0, query:"", selected:null, detailTab:"summary", readPending:false, sending:false, stopping:false};
-      child = c; storage.write(chosenKey, id); overview.hidden = true; root.classList.add("child-open");
+      child = c; storage.write(chosenKey(), id); overview.hidden = true; root.classList.add("child-open");
       const view = el("div", "sa-child"), head = el("header", "sa-child-head"), breadcrumb = el("div", "sa-breadcrumb");
       const back = button("子代理", "text-btn", "chevronLeft"), parent = button("回主 Bot", "text-btn", "message-circle"); back.onclick = closeChild; parent.onclick = backParent; breadcrumb.append(back, parent);
       const titleRow = el("div", "sa-title-row"), titleBox = el("div", "sa-title-copy"), title = el("h2"), meta = el("p"), type = el("span", "ty"), status = el("span"), step = el("p", "sa-child-step");
@@ -132,7 +149,8 @@
       search.oncompositionstart = () => { c.composing = true; }; search.oncompositionend = () => { c.composing = false; c.query = search.value; syncRecords(c); };
       const identity = el("details", "sa-identity"), summary = el("summary"); summary.setAttribute("aria-label", "任务信息"); summary.append(icon("ellipsis"));
       const facts = el("div", "sa-identity-pop"), resultRow = el("div"), result = el("code"), identityState = el("span"); resultRow.append(el("span", "", "结果文件"), result);
-      facts.append(el("span", "", "任务编号"), el("code", "", id), el("span", "", "所属 Bot"), el("b", "", bot), el("span", "", "状态"), identityState, resultRow, el("div", "task-notable-details")); identity.append(summary, facts);
+      const botName = el("b", "", bot);
+      facts.append(el("span", "", "任务编号"), el("code", "", id), el("span", "", "所属 Bot"), botName, el("span", "", "状态"), identityState, resultRow, el("div", "task-notable-details")); identity.append(summary, facts);
       toolbar.append(el("span", "sa-caption", "对话与工具"), searchBox, identity);
       const records = el("div", "sa-records"), inner = el("div", "sa-records-inner"), older = button("更早的记录", "text-btn sa-older"), list = el("div", "sa-record-list"), empty = el("p", "sa-no-records", "正在读取…"), range = el("p", "sa-range");
       older.hidden = true; older.onclick = () => load(c, "before"); inner.append(older, list, empty, range); records.append(inner);
@@ -147,19 +165,19 @@
       const readonly = el("p", "hint", "这是旧的只读记录，无法继续发消息。"); dock.append(pending, form, readonly);
       const detail = el("aside", "sa-detail trace-detail"); detail.hidden = true; detail.setAttribute("aria-label", "记录详情");
       column.append(toolbar, errorBox, records, dock); main.append(column, detail); view.append(head, main); childHost.replaceChildren(view);
-      c.nodes = {view, head, title, type, status, step, stop, stopLabel, main, search, records, older, list, empty, range, form, field, delivery, target, send:sendButton, pending, readonly, detail, error:errorBox, errorText, resultRow, result, identityState};
+      c.nodes = {view, head, title, type, status, step, stop, stopLabel, botName, main, search, records, older, list, empty, range, form, field, delivery, target, send:sendButton, pending, readonly, detail, error:errorBox, errorText, resultRow, result, identityState};
       c.traceUI = {selected:null, tab:"summary"}; c.traceThink = {}; c.traceNodes = {detail}; c.closeTraceDetail = () => selectRecord(c, null); c.recordSource = {bot,id};
       syncHeader(c); load(c);
     }
     async function load(c, direction = "refresh") {
       if (!valid(c) || c.readPending) return;
       c.readPending = true; c.nodes.older.disabled = true;
-      const generation = c.generation;
+      const generation = c.generation, requestBot = bot;
       const before = direction === "before" ? c.gapBefore || c.nextBefore : null;
       const previousHead = Math.min(...c.entries.keys());
       try {
         const page = await api(route(c.id) + "/transcript?limit=40" + (before ? "&before=" + before : ""));
-        if (!valid(c) || generation !== c.generation) return;
+        if (!valid(c) || generation !== c.generation || requestBot !== bot) return;
         let changed = false;
         for (const entry of page.entries || []) {
           const previous = c.entries.get(entry.seq);
@@ -191,7 +209,7 @@
         if (direction === "before") scroll.scrollTop = anchor ? top + anchor.getBoundingClientRect().top - anchorTop : top + scroll.scrollHeight - height;
         else if (follow && !taskSelected(scroll) && changed) scroll.scrollTop = scroll.scrollHeight;
       } catch (e) {
-        if (valid(c) && generation === c.generation && c.errorKind !== "action") error(c, "记录读取失败：" + visibleError(e), () => load(c, direction), "read");
+        if (valid(c) && generation === c.generation && requestBot === bot && c.errorKind !== "action") error(c, "记录读取失败：" + visibleError(e), () => load(c, direction), "read");
       } finally {
         c.readPending = false;
         if (valid(c)) { c.nodes.older.disabled = false; syncRecordsMeta(c); }
@@ -305,7 +323,7 @@
     root.addEventListener("keydown", e => { if (e.key === "Escape" && child?.selected) { e.preventDefault(); e.stopPropagation(); selectRecord(child, null); } });
     const selectionChanged = () => { if (child && valid(child) && !taskSelected(child.nodes.detail)) syncDetail(child); };
     document.addEventListener("selectionchange", selectionChanged);
-    return {root, update, open, poll:() => child && !child.sending && !child.stopping ? load(child) : Promise.resolve(),
+    return {root, update, open, rename, poll:() => child && !child.sending && !child.stopping ? load(child) : Promise.resolve(),
       dispose() { if (child) storage.write(draftKey(child.id), child.nodes.field.value); disposed = true; document.removeEventListener("selectionchange", selectionChanged); }};
   }
   window.XBotSubagents = {create, isChild};

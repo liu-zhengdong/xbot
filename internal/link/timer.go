@@ -47,9 +47,12 @@ var routineID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 
 // Timer emits routine events and stores them under a bot directory.
 type Timer struct {
-	Dir      string
-	Sender   string
-	Interval time.Duration
+	// WithDirectoryIO resolves the current routines directory for short file I/O.
+	// Bind before publishing the Timer; delivery callbacks run outside it.
+	WithDirectoryIO func(func(dir string) error) error
+	Dir             string
+	Sender          string
+	Interval        time.Duration
 	// Loc is the computer's local zone for routines with Zone "local".
 	// Nil means time.Local.
 	Loc *time.Location
@@ -296,16 +299,34 @@ func RoutineBody(id, name, prompt string) string {
 
 // List reads every routine file, sorted by id. A zone that a pre-C1 binary
 // dropped is restored from the zone index.
-func (t *Timer) List() ([]Routine, error) {
-	list, err := t.listRaw()
-	if err != nil {
-		return nil, err
+func (t *Timer) List() (out []Routine, err error) {
+	err = t.directoryIO(func(current *Timer) error {
+		list, e := current.listRaw()
+		if e != nil {
+			return e
+		}
+		zones := current.knownZones()
+		for i := range list {
+			list[i] = restoreZone(list[i], zones)
+		}
+		out = list
+		return nil
+	})
+	return
+}
+
+// directoryIO uses a private, unbound view so nested local helpers cannot
+// reacquire the route read lock while a rename is waiting for its write lock.
+func (t *Timer) directoryIO(fn func(*Timer) error) error {
+	if t.WithDirectoryIO == nil {
+		return fn(t)
 	}
-	zones := t.knownZones()
-	for i := range list {
-		list[i] = restoreZone(list[i], zones)
-	}
-	return list, nil
+	return t.WithDirectoryIO(func(dir string) error {
+		current := *t
+		current.Dir = dir
+		current.WithDirectoryIO = nil
+		return fn(&current)
+	})
 }
 
 // listRaw reads every routine file as stored, sorted by id.
@@ -333,15 +354,19 @@ func (t *Timer) listRaw() ([]Routine, error) {
 }
 
 // Load reads one routine.
-func (t *Timer) Load(id string) (Routine, error) {
+func (t *Timer) Load(id string) (out Routine, err error) {
 	if !routineID.MatchString(id) {
 		return Routine{}, fmt.Errorf("timer: bad id %q", id)
 	}
-	r, err := t.read(filepath.Join(t.Dir, id+".json"))
-	if err != nil {
-		return Routine{}, err
-	}
-	return restoreZone(r, t.knownZones()), nil
+	err = t.directoryIO(func(current *Timer) error {
+		r, e := current.read(filepath.Join(current.Dir, id+".json"))
+		if e != nil {
+			return e
+		}
+		out = restoreZone(r, current.knownZones())
+		return nil
+	})
+	return
 }
 
 // knownZones reads the zone index for restoreZone. An unreadable index only
@@ -381,7 +406,7 @@ func (t *Timer) read(path string) (Routine, error) {
 
 // Save validates the routine and writes it under the directory lock.
 func (t *Timer) Save(r Routine) error {
-	return t.withLock(func() error { return t.saveLocked(r) })
+	return t.directoryIO(func(current *Timer) error { return current.withLock(func() error { return current.saveLocked(r) }) })
 }
 
 // Update re-reads a routine under the directory lock, applies fn, and saves it.
@@ -389,15 +414,17 @@ func (t *Timer) Save(r Routine) error {
 // Expire): flock taken again from the same process on another descriptor
 // blocks forever.
 func (t *Timer) Update(id string, fn func(*Routine) error) error {
-	return t.withLock(func() error {
-		r, err := t.Load(id)
-		if err != nil {
-			return err
-		}
-		if err := fn(&r); err != nil {
-			return err
-		}
-		return t.saveLocked(r)
+	return t.directoryIO(func(current *Timer) error {
+		return current.withLock(func() error {
+			r, err := current.Load(id)
+			if err != nil {
+				return err
+			}
+			if err := fn(&r); err != nil {
+				return err
+			}
+			return current.saveLocked(r)
+		})
 	})
 }
 
@@ -474,20 +501,22 @@ func (t *Timer) Delete(id string) error {
 	if !routineID.MatchString(id) {
 		return fmt.Errorf("timer: bad id %q", id)
 	}
-	return t.withLock(func() error {
-		err := os.Remove(filepath.Join(t.Dir, id+".json"))
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		zones, err := t.loadZones()
-		if err != nil {
-			return err
-		}
-		if _, ok := zones[id]; !ok {
-			return nil
-		}
-		delete(zones, id)
-		return t.writeZones(zones)
+	return t.directoryIO(func(current *Timer) error {
+		return current.withLock(func() error {
+			err := os.Remove(filepath.Join(current.Dir, id+".json"))
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			zones, err := current.loadZones()
+			if err != nil {
+				return err
+			}
+			if _, ok := zones[id]; !ok {
+				return nil
+			}
+			delete(zones, id)
+			return current.writeZones(zones)
+		})
 	})
 }
 

@@ -61,7 +61,7 @@ func TestRegistryListsEveryToolOnceWithSource(t *testing.T) {
 	for name, source := range map[string]string{
 		"read_file":            "organ",
 		"send_message_to_user": "kernel",
-		"bot_update_profile":   "kernel",
+		"bot_propose_persona":  "kernel",
 		"desktop_click":        "organ",
 		"browser_open":         "link",
 	} {
@@ -111,7 +111,7 @@ func TestDeclaredToolsAreTheShortFixedSet(t *testing.T) {
 	if strings.Join(got, ",") != strings.Join(toolNames(toolsNamed(want)), ",") {
 		t.Fatalf("declared %v, want %v", got, want)
 	}
-	for _, name := range []string{"bot_update_profile", "routine_create", "recall", "browser_open", "desktop_click", "links"} {
+	for _, name := range []string{"bot_propose_persona", "routine_create", "recall", "browser_open", "desktop_click", "links"} {
 		if !hasToolName(list, name) || hasToolName(declared(list), name) {
 			t.Fatalf("%s must be registered and undeclared", name)
 		}
@@ -126,28 +126,59 @@ func toolsNamed(names []string) []tools.Tool {
 	return out
 }
 
+func TestProfileModelGateRetiredPersonaRemainsUsable(t *testing.T) {
+	k, b := doorKernel(t, nil)
+	if registered(k, "bot_update_profile") {
+		t.Fatal("retired profile tool remains callable")
+	}
+	for label, load := range map[string]func() ([]tools.Tool, error){"main": k.modelTools, "child": k.mountedTools} {
+		list, err := load()
+		if err != nil || hasToolName(list, "bot_update_profile") || !hasToolName(list, "bot_propose_persona") {
+			t.Fatalf("%s tools still expose profile or lost persona: %v", label, err)
+		}
+	}
+	door := toolDoor{k}
+	ctx := context.Background()
+	if _, err := door.Run(ctx, json.RawMessage(`{"action":"describe","id":"bot_update_profile"}`)); err == nil {
+		t.Fatal("retired profile schema remains describable")
+	}
+	if tool, _, err := door.Forward(ctx, json.RawMessage(`{"action":"call","id":"bot_update_profile","args":{"description":"obsolete"}}`)); err == nil || tool != nil {
+		t.Fatal("retired profile call still forwards")
+	}
+	tool, args, err := door.Forward(ctx, json.RawMessage(`{"action":"call","id":"bot_propose_persona","args":{"text":"Keep the remaining persona action working."}}`))
+	if err != nil || tool == nil {
+		t.Fatalf("persona forwarding: %v", err)
+	}
+	if _, err := tool.Run(ctx, args); err != nil {
+		t.Fatal(err)
+	}
+	if text, err := b.ReadPersona(); err != nil || text != "Keep the remaining persona action working." {
+		t.Fatalf("persona persistence: %q %v", text, err)
+	}
+}
+
 func TestDoorSearchAndDescribe(t *testing.T) {
 	k, _ := doorKernel(t, nil)
 	door := toolDoor{k}
 	ctx := context.Background()
-	out, err := door.Run(ctx, json.RawMessage(`{"action":"search","query":"avatar profile"}`))
-	if err != nil || !strings.Contains(out, "bot_update_profile [bot_profile]") {
+	out, err := door.Run(ctx, json.RawMessage(`{"action":"search","query":"persona"}`))
+	if err != nil || !strings.Contains(out, "bot_propose_persona [bot_profile]") {
 		t.Fatalf("search %q %v", out, err)
 	}
 	if strings.Contains(out, `"properties"`) {
 		t.Fatal("search dumped a schema")
 	}
-	out, err = door.Run(ctx, json.RawMessage(`{"action":"describe","id":"bot_update_profile"}`))
+	out, err = door.Run(ctx, json.RawMessage(`{"action":"describe","id":"bot_propose_persona"}`))
 	var desc struct {
 		ID, Group, Source string
 		Parameters        map[string]any
 	}
-	if err != nil || json.Unmarshal([]byte(out), &desc) != nil || desc.ID != "bot_update_profile" || desc.Group != "bot_profile" || desc.Parameters["properties"] == nil {
+	if err != nil || json.Unmarshal([]byte(out), &desc) != nil || desc.ID != "bot_propose_persona" || desc.Group != "bot_profile" || desc.Parameters["properties"] == nil {
 		t.Fatalf("describe %q %v", out, err)
 	}
 	// Describing a native group lists its tools.
 	out, err = door.Run(ctx, json.RawMessage(`{"action":"describe","id":"bot_profile"}`))
-	if err != nil || !strings.Contains(out, `"bot_update_profile"`) {
+	if err != nil || !strings.Contains(out, `"bot_propose_persona"`) {
 		t.Fatalf("describe group %q %v", out, err)
 	}
 	if _, err := door.Run(ctx, json.RawMessage(`{"action":"describe","id":"nope"}`)); err == nil || !strings.Contains(err.Error(), "search") {

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"xbot/internal/bot"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
@@ -18,6 +19,7 @@ import (
 // backend is configured, run the task. Its tools register behind the tools door.
 type Link struct {
 	pathMu      sync.RWMutex
+	currentIO   func(func(*bot.Bot, *inbox.Inbox) error) error
 	rec         *Record
 	inbox       string
 	command     string
@@ -51,12 +53,12 @@ func (l *Link) Record() *Record {
 func (l *Link) Move(botDir, inboxPath string, transcript func(string) error, rename func() error) error {
 	l.pathMu.Lock()
 	defer l.pathMu.Unlock()
-	if err := l.rec.Move(filepath.Join(botDir, "code"), rename); err != nil {
-		return err
+	moved, err := l.rec.move(filepath.Join(botDir, "code"), rename)
+	if moved {
+		l.inbox = inboxPath
+		l.transcript = transcript
 	}
-	l.inbox = inboxPath
-	l.transcript = transcript
-	return nil
+	return err
 }
 
 func (l *Link) Name() string { return link.NameCoding }
@@ -81,13 +83,6 @@ func (l *Link) post(task Task) {
 	}
 	l.pathMu.RLock()
 	defer l.pathMu.RUnlock()
-	if l.inbox == "" {
-		return
-	}
-	box, err := inbox.Open(l.inbox)
-	if err != nil {
-		return
-	}
 	text := task.Result
 	if text == "" {
 		text = task.Goal
@@ -95,6 +90,17 @@ func (l *Link) post(task Task) {
 	ev := link.NewEvent(link.NameCoding, task.Status, task.ID+"\n"+text, task.ID, task.Updated)
 	if task.Status == StatusInterrupted {
 		ev.ID = "ev_" + task.ID + "_interrupted"
+	}
+	if l.currentIO != nil {
+		_ = l.currentIO(func(_ *bot.Bot, box *inbox.Inbox) error { return box.Post(ev) })
+		return
+	}
+	if l.inbox == "" {
+		return
+	}
+	box, err := inbox.Open(l.inbox)
+	if err != nil {
+		return
 	}
 	_ = box.Post(ev)
 }

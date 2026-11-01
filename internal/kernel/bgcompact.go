@@ -10,6 +10,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/fsutil"
+	"xbot/internal/inbox"
 )
 
 const (
@@ -30,15 +31,15 @@ type compactJob struct {
 }
 
 func (k *Kernel) jobPath() string {
-	return filepath.Join(bot.Dir(k.Bot.Root, k.Bot.Name()), "compact-job.json")
+	return filepath.Join(bot.Dir(k.Bot.Root, k.currentName()), "compact-job.json")
 }
 
 func (k *Kernel) jobLockPath() string {
-	return filepath.Join(bot.Dir(k.Bot.Root, k.Bot.Name()), "compact-job.lock")
+	return filepath.Join(bot.Dir(k.Bot.Root, k.currentName()), "compact-job.lock")
 }
 
 func (k *Kernel) runLockPath() string {
-	return filepath.Join(bot.Dir(k.Bot.Root, k.Bot.Name()), "compact-run.lock")
+	return filepath.Join(bot.Dir(k.Bot.Root, k.currentName()), "compact-run.lock")
 }
 
 // maybeStartBackground opens one job when the context crosses the soft target
@@ -135,11 +136,11 @@ func (k *Kernel) finishJob() {
 	if err != nil || job.Status != jobRunning || job.To < job.From || job.From < 1 {
 		return
 	}
-	span, err := k.Bot.Slice(job.From, job.To)
+	span, err := k.currentSlice(job.From, job.To)
 	if err != nil {
 		return
 	}
-	st, err := k.Bot.LoadState()
+	st, err := k.currentState()
 	if err != nil {
 		return
 	}
@@ -182,7 +183,7 @@ func (k *Kernel) applyReadyJob(st bot.State) (bot.State, bool, error) {
 	if err != nil || job.Status != jobReady || strings.TrimSpace(job.Summary) == "" {
 		return st, false, err
 	}
-	fresh, err := k.Bot.LoadState()
+	fresh, err := k.currentState()
 	if err != nil {
 		return st, false, err
 	}
@@ -192,19 +193,19 @@ func (k *Kernel) applyReadyJob(st bot.State) (bot.State, bool, error) {
 	changed := false
 	if !hasSameRange(st.Blocks, job.From, job.To) {
 		if coveredBy(st.Blocks, job.From, job.To) {
-			_ = os.Remove(k.jobPath())
+			_ = k.removeJob()
 			return st, false, nil
 		}
-		n, err := k.Bot.Count()
+		n, err := k.currentCount()
 		if err != nil {
 			return st, false, err
 		}
-		span, err := k.Bot.Slice(job.From, job.To)
+		span, err := k.currentSlice(job.From, job.To)
 		if err != nil {
 			return st, false, err
 		}
 		if err := validateRange(span, job.From, job.From, job.To, 0, n, st.Blocks); err != nil {
-			_ = os.Remove(k.jobPath())
+			_ = k.removeJob()
 			return st, false, nil
 		}
 		st.Blocks = addBlock(st.Blocks, bot.SummaryBlock{
@@ -213,7 +214,7 @@ func (k *Kernel) applyReadyJob(st bot.State) (bot.State, bool, error) {
 		if err := k.refreshMemSnap(context.Background(), &st); err != nil {
 			return st, false, err
 		}
-		if err := k.Bot.SaveState(st); err != nil {
+		if err := k.saveCurrentState(st); err != nil {
 			return st, false, err
 		}
 		changed = true
@@ -221,7 +222,7 @@ func (k *Kernel) applyReadyJob(st bot.State) (bot.State, bool, error) {
 			return st, changed, err
 		}
 	}
-	_ = os.Remove(k.jobPath())
+	_ = k.removeJob()
 	return st, changed, nil
 }
 
@@ -234,19 +235,24 @@ func hasSameRange(blocks []bot.SummaryBlock, from, to int) bool {
 	return false
 }
 
-func (k *Kernel) readJob() (compactJob, error) {
-	raw, err := os.ReadFile(k.jobPath())
-	if errors.Is(err, os.ErrNotExist) {
-		return compactJob{}, nil
-	}
-	if err != nil {
-		return compactJob{}, err
-	}
-	var job compactJob
-	if err := json.Unmarshal(raw, &job); err != nil {
-		return compactJob{}, err
-	}
-	return job, nil
+func (k *Kernel) readJob() (job compactJob, err error) {
+	err = k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		raw, err := os.ReadFile(filepath.Join(bot.Dir(current.Root, current.Name()), "compact-job.json"))
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		return json.Unmarshal(raw, &job)
+	})
+	return
+}
+
+func (k *Kernel) removeJob() error {
+	return k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		return os.Remove(filepath.Join(bot.Dir(current.Root, current.Name()), "compact-job.json"))
+	})
 }
 
 func (k *Kernel) writeJob(job compactJob) error {
@@ -254,22 +260,32 @@ func (k *Kernel) writeJob(job compactJob) error {
 	if err != nil {
 		return err
 	}
-	return fsutil.WriteAtomic(k.jobPath(), raw, 0600)
+	return k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		return fsutil.WriteAtomic(filepath.Join(bot.Dir(current.Root, current.Name()), "compact-job.json"), raw, 0600)
+	})
 }
 
 func (k *Kernel) lockJob(nonblock bool) (func(), error) {
-	return lockPath(k.jobLockPath(), nonblock)
+	return k.lockCompact("compact-job.lock", nonblock)
 }
 
 func (k *Kernel) lockRun(nonblock bool) (func(), error) {
-	return lockPath(k.runLockPath(), nonblock)
+	return k.lockCompact("compact-run.lock", nonblock)
 }
 
-func lockPath(path string, nonblock bool) (func(), error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return nil, err
-	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+// Resolve/create the coordination inode on the current route. Flock waiting
+// and the worker's lifetime stay outside route; an open inode follows a rename.
+func (k *Kernel) lockCompact(name string, nonblock bool) (func(), error) {
+	var f *os.File
+	err := k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		path := filepath.Join(bot.Dir(current.Root, current.Name()), name)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			return err
+		}
+		var err error
+		f, err = os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -277,8 +293,5 @@ func lockPath(path string, nonblock bool) (func(), error) {
 		_ = f.Close()
 		return nil, err
 	}
-	return func() {
-		_ = fsutil.UnlockFile(f)
-		_ = f.Close()
-	}, nil
+	return func() { _ = fsutil.UnlockFile(f); _ = f.Close() }, nil
 }

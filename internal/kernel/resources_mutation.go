@@ -7,8 +7,10 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/code"
+	"xbot/internal/exec"
 	"xbot/internal/fsutil"
 	"xbot/internal/inbox"
+	"xbot/internal/peer"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 )
@@ -64,9 +66,21 @@ func (r *BotResources) AdmissionOpen() bool {
 	return err == nil
 }
 
-// MoveResources runs the existing coding and Jobs movers. The caller already
-// holds source operations and, for serve, the host's name-index lock.
-func (k *Kernel) MoveResources(next string) error {
+// MoveResources runs the existing coding, accepted Local and Jobs movers.
+// Source operations and the host name index (when present) are already held.
+func (k *Kernel) MoveResources(change bot.ProfileChange) (bot.ProfileChangeResult, error) {
+	b := k.Bot
+	if k.Resources != nil {
+		var err error
+		b, err = k.Resources.CurrentBot()
+		if err != nil {
+			return bot.ProfileChangeResult{}, err
+		}
+	}
+	previous, next := b.Name(), b.Name()
+	if change.Name != nil {
+		next = *change.Name
+	}
 	var coding *code.Link
 	k.linksMu.Lock()
 	for _, item := range k.Links {
@@ -76,58 +90,90 @@ func (k *Kernel) MoveResources(next string) error {
 		}
 	}
 	k.linksMu.Unlock()
-	var result error
+	var result bot.ProfileChangeResult
+	var after error
 	move := func() error {
-		moved, err := moveBotResources(k.Resources, k, next)
+		moved, err := exec.MoveBot(b.AgentsDir(), filepath.Join(bot.Dir(b.Root, next), "agents"), func() (bool, error) {
+			var err error
+			result, err = moveBotResources(k.Resources, k, change)
+			return result.Moved, err
+		})
 		if moved {
-			// Both movers must repoint after physical success, even when a
-			// subsequent reload or key cleanup reports an error.
-			result = err
+			after = err
 			return nil
 		}
 		return err
 	}
+	var err error
 	if coding == nil {
-		return errors.Join(move(), result)
+		err = move()
+	} else {
+		dir := bot.Dir(b.Root, next)
+		err = coding.Move(dir, filepath.Join(dir, "inbox.jsonl"), func(text string) error {
+			return k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+				return current.Append(bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)}})
+			})
+		}, move)
 	}
-	root := k.Bot.Root
-	if k.Resources != nil {
-		b, err := k.Resources.CurrentBot()
-		if err != nil {
-			return err
-		}
-		root = b.Root
+	// Every mover has returned: no route/storage/owners lock is held here.
+	if result.Moved {
+		rekeyLiveTurn(b.Root, previous, result.Name, k.Resources)
 	}
-	dir := bot.Dir(root, next)
-	err := coding.Move(dir, filepath.Join(dir, "inbox.jsonl"), func(text string) error {
-		return k.Bot.Append(bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)}})
-	}, move)
-	return errors.Join(err, result)
+	return result, errors.Join(err, after)
 }
 
-// RenameTo is the resource-only cold host path; it never constructs a Kernel.
+// RenameTo remains the name-only, resource-only cold host entry.
 func (r *BotResources) RenameTo(next string) error {
-	_, err := moveBotResources(r, nil, next)
+	change, err := bot.ValidateProfileChange(bot.ProfileChange{Name: &next})
+	if err != nil {
+		return err
+	}
+	_, err = r.ApplyProfileChange(change)
 	return err
 }
 
-func moveBotResources(r *BotResources, source *Kernel, next string) (moved bool, err error) {
+// ApplyProfileChange is the cold resource path; it never constructs a Kernel.
+// The change has already passed boundary normalization.
+func (r *BotResources) ApplyProfileChange(change bot.ProfileChange) (result bot.ProfileChangeResult, err error) {
+	b, err := r.CurrentBot()
+	if err != nil {
+		return result, err
+	}
+	if change.Name == nil || *change.Name == b.Name() {
+		err = r.WithCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+			_, result, err = current.ApplyProfileChange(change)
+			return err
+		})
+		return result, err
+	}
+	_, err = exec.MoveBot(b.AgentsDir(), filepath.Join(bot.Dir(b.Root, *change.Name), "agents"), func() (bool, error) {
+		result, err = moveBotResources(r, nil, change)
+		return result.Moved, err
+	})
+	if result.Moved {
+		rekeyLiveTurn(b.Root, b.Name(), result.Name, r)
+	}
+	return result, err
+}
+
+func moveBotResources(r *BotResources, source *Kernel, change bot.ProfileChange) (result bot.ProfileChangeResult, err error) {
 	var b *bot.Bot
 	var jobs *tools.Jobs
 	if r != nil {
 		if !r.AdmissionOpen() {
-			return false, errResourcesUnavailable
+			return result, errResourcesUnavailable
 		}
 		b, err = r.CurrentBot()
 		if err != nil {
-			return false, err
+			return result, err
 		}
 		jobs = r.Jobs
 	} else {
 		b, jobs = source.Bot, source.shellJobs()
 	}
-	if b.Name() == next {
-		return false, nil
+	next := b.Name()
+	if change.Name != nil {
+		next = *change.Name
 	}
 	var after error
 	err = jobs.Move(filepath.Join(bot.Dir(b.Root, next), "shell-jobs"), func() error {
@@ -138,29 +184,30 @@ func moveBotResources(r *BotResources, source *Kernel, next string) (moved bool,
 				return errResourcesUnavailable
 			}
 		}
-		current, didMove, renameErr := renameBotResult(b.Root, b.Name(), next)
-		if !didMove {
-			return renameErr
+		current, receipt, applyErr := b.ApplyProfileChange(change)
+		result = receipt
+		if !receipt.Moved {
+			return applyErr
 		}
-		moved = true
+		// Peer files are changed only after primary-locked target validation
+		// and an actual move. Their later errors are a truthful partial result.
+		after = errors.Join(applyErr, peer.RenameMember(b.Root, b.Name(), receipt.Name))
 		box, boxErr := inbox.Open(current.InboxPath())
-		after = errors.Join(renameErr, boxErr)
+		after = errors.Join(after, boxErr)
 		if r != nil {
 			r.current, r.box = current, box
 			if boxErr != nil {
-				// Never let a failed reload route a later post into the old path.
 				r.closed = true
 			}
 			if r.MCP != nil {
-				after = errors.Join(after, r.manager.Rekey(r.MCP, next))
+				after = errors.Join(after, r.manager.Rekey(r.MCP, receipt.Name))
 			}
-		}
-		if source != nil {
+		} else if source != nil {
 			source.Bot, source.Inbox = current, box
 		}
 		return nil
 	})
-	return moved, errors.Join(err, after)
+	return result, errors.Join(err, after)
 }
 
 // BeginDelete pauses new tool admission, keeping the same Jobs/ref and inbound

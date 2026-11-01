@@ -27,7 +27,7 @@ type BotResources struct {
 	closed      bool
 	ctx         context.Context
 	manager     *mcp.Manager
-	Rename      func(*Kernel, string) error
+	Rename      func(*Kernel, bot.ProfileChange) (bot.ProfileChangeResult, error)
 	Delete      func(context.Context, string) error
 	Redact      func(string) string
 	now         func() time.Time

@@ -91,7 +91,7 @@ type Kernel struct {
 	OnResult   func(name, output string)
 	OnFinding  func(string)
 	// OnProfile reports a saved profile through the current turn's output.
-	OnProfile func(string)
+	OnProfile func(ProfileNotice)
 	// Permissive permanently disables tool permission cards (ADR 0019).
 	// Production sets this true; only links connector key input remains.
 	Permissive bool
@@ -122,8 +122,11 @@ type Kernel struct {
 	// The main chat approver is not used: a background step cannot block on a prompt.
 	AllowBackground bool
 	WorkDir         string
-	SharedDir       string
-	SkillsDir       string
+	// workOrigin is the immutable directory component associated with WorkDir.
+	// UseBot may refresh configuration between turns without changing this path fact.
+	workOrigin string
+	SharedDir  string
+	SkillsDir  string
 	// Machine reports the local machine switch for tools that touch this
 	// machine. Nil reads machines.json under the bot root; the zero value is
 	// allow. off refuses, ask confirms each machine action, allow follows the
@@ -243,7 +246,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 		return err
 	}
 
-	existing, err := k.Bot.FindEvent(ev.ID)
+	existing, err := k.findCurrentEvent(ev.ID)
 	if err != nil {
 		return err
 	}
@@ -310,7 +313,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	// Swap a finished background summary on the way in and on the way out.
 	// Both run outside the model call, including when this event is a replay.
 	defer func() {
-		cur, loadErr := k.Bot.LoadState()
+		cur, loadErr := k.currentState()
 		if loadErr != nil {
 			return
 		}
@@ -319,7 +322,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	if err := k.repairTail(); err != nil {
 		return err
 	}
-	n, err := k.Bot.Count()
+	n, err := k.currentCount()
 	if err != nil {
 		return err
 	}
@@ -327,7 +330,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 		AnswerQuestions(k.Bot, ev.Content)
 	}
 	if existing > 0 {
-		span, err := k.Bot.Slice(seq, n)
+		span, err := k.currentSlice(seq, n)
 		if err != nil {
 			return err
 		}
@@ -341,7 +344,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 			return nil
 		}
 	}
-	st, err := k.Bot.LoadState()
+	st, err := k.currentState()
 	if err != nil {
 		return err
 	}
@@ -439,7 +442,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 		}
 	}
 	st.Usage = usage
-	if err := k.Bot.SaveState(st); err != nil {
+	if err := k.saveCurrentState(st); err != nil {
 		return err
 	}
 	p, err := k.providerFor(ctx)
@@ -546,29 +549,29 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 	if k.Inbox == nil {
 		return nil, nil
 	}
-	if err := k.Inbox.Reload(); err != nil {
+	if err := k.reloadCurrentInbox(); err != nil {
 		return nil, err
 	}
 	var out []provider.Message
-	for _, ev := range k.Inbox.Pending() {
+	for _, ev := range k.pendingCurrentEvents() {
 		if ev.ID == "" || ev.ID == k.curTurn().turnEvent {
 			continue
 		}
-		old, err := k.Bot.FindEvent(ev.ID)
+		old, err := k.findCurrentEvent(ev.ID)
 		if err != nil {
 			return nil, err
 		}
 		if old > 0 && old < k.curTurn().fromSeq {
-			n, err := k.Bot.Count()
+			n, err := k.currentCount()
 			if err != nil {
 				return nil, err
 			}
-			span, err := k.Bot.Slice(old, n)
+			span, err := k.currentSlice(old, n)
 			if err != nil {
 				return nil, err
 			}
 			if turnDone(span, 0) {
-				if err := k.Inbox.Ack(ev.ID); err != nil {
+				if err := k.ackCurrentEvent(ev.ID); err != nil {
 					return nil, err
 				}
 				continue
@@ -581,7 +584,7 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 		}
 		msg.Seq = seq
 		out = append(out, msg)
-		if err := k.Inbox.Ack(ev.ID); err != nil {
+		if err := k.ackCurrentEvent(ev.ID); err != nil {
 			return nil, err
 		}
 	}
@@ -590,7 +593,7 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 
 func (k *Kernel) providerFor(ctx context.Context) (provider.Provider, error) {
 	if k.Selector != nil {
-		p, err := k.Selector.Select(ctx, provider.Hint{Bot: k.Bot.Name()})
+		p, err := k.Selector.Select(ctx, provider.Hint{Bot: k.currentName()})
 		return k.searchProvider(p), err
 	}
 	if k.Provider == nil {
@@ -631,7 +634,7 @@ func (k *Kernel) rulesText() (string, error) {
 }
 
 func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.SectionUsage, error) {
-	persona, err := k.Bot.ComposedPersona()
+	persona, err := k.currentComposedPersona()
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
@@ -651,7 +654,7 @@ func (k *Kernel) assemble(st bot.State, mem string) ([]provider.Message, bot.Sec
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
-	lines, err := k.Bot.UncoveredLines(st.Blocks)
+	lines, err := k.currentUncoveredLines(st.Blocks)
 	if err != nil {
 		return nil, bot.SectionUsage{}, err
 	}
@@ -725,7 +728,7 @@ func (k *Kernel) newestReminderSeq(blocks []bot.SummaryBlock) (int, error) {
 	if k == nil || k.Bot == nil {
 		return 0, nil
 	}
-	lines, err := k.Bot.UncoveredLines(blocks)
+	lines, err := k.currentUncoveredLines(blocks)
 	if err != nil {
 		return 0, err
 	}
@@ -733,11 +736,13 @@ func (k *Kernel) newestReminderSeq(blocks []bot.SummaryBlock) (int, error) {
 }
 
 func (k *Kernel) pendingNotes() int {
-	notes, err := notify.Open(k.Bot.OutboxPath()).Unread()
-	if err != nil {
-		return 0
-	}
-	return len(notes)
+	count := 0
+	_ = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error {
+		notes, err := notify.Open(b.OutboxPath()).Unread()
+		count = len(notes)
+		return err
+	})
+	return count
 }
 
 // memoryPerson is the sender only when they are a person.
@@ -782,7 +787,7 @@ const memRenderVersion = 3
 func (k *Kernel) refreshMemSnap(ctx context.Context, st *bot.State) error {
 	k.envMu.Lock()
 	defer k.envMu.Unlock()
-	previous, err := k.Bot.LoadState()
+	previous, err := k.currentState()
 	if err != nil {
 		return err
 	}
@@ -829,7 +834,7 @@ func (k *Kernel) memoryText(ctx context.Context, personID string) (string, error
 			}
 			return path
 		}
-		dir := filepath.Join(k.Bot.Root, "bots", k.Bot.Name(), "memory")
+		dir := filepath.Join(k.Bot.Root, "bots", k.currentName(), "memory")
 		paths[memory.ScopeBot] = shown(filepath.Join(dir, "memory.md")) + "; " + shown(filepath.Join(dir, "log")) + "/"
 		if personID != "" {
 			paths[memory.ScopePerson] = shown(filepath.Join(k.Bot.Root, "people", personID, "memory", "memory.md"))
@@ -838,7 +843,7 @@ func (k *Kernel) memoryText(ctx context.Context, personID string) (string, error
 	if counter, ok := k.Memory.(interface {
 		LogCount(memory.Scope, string, string) (int, error)
 	}); ok && ctx.Value(publishedMemoryRead{}) == nil {
-		total, err := counter.LogCount(memory.ScopeBot, k.Bot.Name(), "")
+		total, err := counter.LogCount(memory.ScopeBot, k.currentName(), "")
 		if err != nil {
 			return "", err
 		}
@@ -854,7 +859,7 @@ func (k *Kernel) loadMemory(ctx context.Context, personID string) ([]memory.Fact
 	if k.Memory == nil {
 		return nil, nil, nil
 	}
-	botName := k.Bot.Name()
+	botName := k.currentName()
 	var personFacts []memory.Fact
 	// External senders such as webhook:github are not person ids. Bot memory still loads.
 	if memory.ValidID(personID) {
@@ -894,7 +899,7 @@ func (k *Kernel) StartEmitters(ctx context.Context) {
 					if ev.Time.IsZero() {
 						ev.Time = time.Now().UTC()
 					}
-					return k.Inbox.Post(ev)
+					return k.postCurrentEvent(ev)
 				})
 			}(em)
 		}

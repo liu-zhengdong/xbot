@@ -35,7 +35,8 @@ func TestRuntimeProfileAvoidsHandleLockAndPublishesAfterSave(t *testing.T) {
 	defer handle.Release()
 	notified := make(chan string, 1)
 	turn := &turn{}
-	k.openInterject(turn, &Sink{OnProfile: func(name string) {
+	k.openInterject(turn, &Sink{OnProfile: func(notice ProfileNotice) {
+		name := notice.Name
 		// This must be safe: publication holds neither operation nor profile lock.
 		_ = k.CLIEnvironment(nil)
 		desc, _ := b.ProfileValues()
