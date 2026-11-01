@@ -69,10 +69,9 @@ func TestCLIBotRuntimePrimaryCreateDeleteEntry(t *testing.T) {
 		return cfg
 	}
 	source, existing := readConfig(primary.Name), readConfig(peer)
-	// A legacy root seed can be the real Primary yet have no owner/link
-	// bindings. Bind this private fixture to the actual authenticated API peer
-	// before the first source wake, keeping the Primary and every existing owner.
-	if len(existing.Owners) == 0 || len(existing.Links) == 0 {
+	// Bind any missing authenticated owner before the real Primary's first
+	// source wake. Empty Links are valid defaultLinks; preserve them exactly.
+	if len(existing.Owners) == 0 {
 		t.Fatal("actual API peer lacks source fixture bindings")
 	}
 	owners := slices.Clone(source.Owners)
@@ -81,7 +80,7 @@ func TestCLIBotRuntimePrimaryCreateDeleteEntry(t *testing.T) {
 			owners = append(owners, owner)
 		}
 	}
-	if !slices.Equal(owners, source.Owners) || len(source.Links) == 0 {
+	if !slices.Equal(owners, source.Owners) {
 		path := filepath.Join(srv.Root, "bots", primary.Name, "config.json")
 		before, err := os.ReadFile(path)
 		if err != nil {
@@ -92,9 +91,6 @@ func TestCLIBotRuntimePrimaryCreateDeleteEntry(t *testing.T) {
 			t.Fatal(err)
 		}
 		cfg["owners"], _ = json.Marshal(owners)
-		if len(source.Links) == 0 {
-			cfg["links"], _ = json.Marshal(existing.Links)
-		}
 		bound, err := json.MarshalIndent(cfg, "", "  ")
 		if err != nil {
 			t.Fatal(err)
@@ -104,8 +100,8 @@ func TestCLIBotRuntimePrimaryCreateDeleteEntry(t *testing.T) {
 		}
 		source = readConfig(primary.Name)
 	}
-	if len(source.Owners) == 0 || len(source.Links) == 0 {
-		t.Fatal("actual Primary lacks required owner/link fixture bindings")
+	if len(source.Owners) == 0 {
+		t.Fatal("actual Primary lacks required owner fixture binding")
 	}
 	shared := false
 	for _, owner := range existing.Owners {
