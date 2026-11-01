@@ -583,7 +583,7 @@ func (s *Server) deleteBot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := b.Name()
-	if err := bot.Delete(s.Root, name); err != nil {
+	if err := s.DeleteRuntimeBot(r.Context(), name); err != nil {
 		if errors.Is(err, bot.ErrPrimary) || errors.Is(err, bot.ErrLast) {
 			writeErr(w, http.StatusConflict, err.Error())
 			return
@@ -591,7 +591,6 @@ func (s *Server) deleteBot(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.forgetKernel(name)
 	writeJSON(w, http.StatusOK, map[string]string{"name": name})
 }
 
@@ -1740,8 +1739,24 @@ func (s *Server) cancelQueued(w http.ResponseWriter, r *http.Request) {
 // turn. When the handle lock is taken, the turn holding it reads the inbox
 // at its next step, so there is nothing to do here.
 func (s *Server) wakeBot(b *bot.Bot) {
+	s.mu.Lock()
+	var resources *kernel.BotResources
+	if entry := s.kernels[b.Name()]; entry != nil {
+		resources = entry.Resources
+	}
+	s.mu.Unlock()
 	go func() {
-		lock, ok, err := b.TryLockHandle()
+		var lock *fsutil.FileLock
+		var ok bool
+		var err error
+		if resources != nil {
+			b, lock, ok, err = resources.TryCurrentHandle()
+		} else {
+			b, err = bot.Load(b.Root, b.Name())
+			if err == nil {
+				lock, ok, err = b.TryLockHandle()
+			}
+		}
 		if err != nil || !ok {
 			return
 		}
@@ -1752,6 +1767,16 @@ func (s *Server) wakeBot(b *bot.Bot) {
 		}
 		gate.Lock()
 		defer gate.Unlock()
+		if resources != nil {
+			b, err = resources.CurrentBot()
+			if err != nil {
+				return
+			}
+			k, _, err = s.kernel(b)
+			if err != nil {
+				return
+			}
+		}
 		k.UseBot(b)
 		_ = proc.Drain(context.Background(), k)
 	}()

@@ -5,15 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/code"
 	"xbot/internal/notify"
 	"xbot/internal/peer"
-	"xbot/internal/provider"
 	"xbot/internal/tools"
 )
 
@@ -47,19 +44,23 @@ func FlushLegacyHeld(ctx context.Context, b *bot.Bot, now time.Time, desk func(c
 // RenameBot moves the bot directory and rewrites group membership.
 // The primary file is updated when it named this bot. Pin state stays as it was.
 func RenameBot(root, from, to string) error {
-	from = strings.TrimSpace(from)
-	to = strings.TrimSpace(to)
+	_, _, err := renameBotResult(root, strings.TrimSpace(from), strings.TrimSpace(to))
+	return err
+}
+
+func renameBotResult(root, from, to string) (*bot.Bot, bool, error) {
 	if from == to {
-		return nil
+		b, err := bot.Load(root, from)
+		return b, false, err
 	}
 	if err := peer.RenameMember(root, from, to); err != nil {
-		return err
+		return nil, false, err
 	}
-	if err := bot.Rename(root, from, to); err != nil {
+	current, moved, err := bot.RenameWithResult(root, from, to)
+	if err != nil && !moved {
 		_ = peer.RenameMember(root, to, from)
-		return err
 	}
-	return nil
+	return current, moved, err
 }
 
 type profileTool struct{ k *Kernel }
@@ -90,10 +91,24 @@ func (t profileTool) Run(_ context.Context, args json.RawMessage) (string, error
 	if err != nil {
 		return "", err
 	}
-	if update != (bot.ProfileUpdate{}) {
-		if err := t.k.Bot.ApplyProfile(update); err != nil {
-			return "", err
+	// A different source may already have renamed these shared resources.
+	// Keep short profile IO on the current route, releasing it before the host.
+	if r := t.k.Resources; r != nil {
+		r.route.RLock()
+		if r.closed || r.ctx.Err() != nil {
+			r.route.RUnlock()
+			return "", errors.New("bot resources closed")
 		}
+		t.k.Bot, t.k.Inbox = r.current, r.box
+		if update != (bot.ProfileUpdate{}) {
+			err = r.current.ApplyProfile(update)
+		}
+		r.route.RUnlock()
+	} else if update != (bot.ProfileUpdate{}) {
+		err = t.k.Bot.ApplyProfile(update)
+	}
+	if err != nil {
+		return "", err
 	}
 	if name != nil {
 		next := strings.TrimSpace(*name)
@@ -109,36 +124,20 @@ func (t profileTool) Run(_ context.Context, args json.RawMessage) (string, error
 	return "profile saved", nil
 }
 
-// renameBot renames this live bot. The directory moves inside the job table's
-// Move, so calls running meanwhile, this one included, finish in the new
-// directory and nothing writes the old one once it has gone.
+// RenameRuntime is the web entry into the same source operation used by the
+// legacy profile tool. The host callback encloses both existing movers.
+func (k *Kernel) RenameRuntime(next string) error {
+	k.operations.mu.Lock()
+	defer k.operations.mu.Unlock()
+	return k.renameBot(strings.TrimSpace(next))
+}
+
+// renameBot is called with this source's operations lock already held.
 func (k *Kernel) renameBot(next string) error {
-	root, old := k.Bot.Root, k.Bot.Name()
-	newDir := bot.Dir(root, next)
-	var coding *code.Link
-	for _, l := range k.snapshotLinks() {
-		if c, ok := l.(*code.Link); ok {
-			coding = c
-			break
-		}
+	if r := k.Resources; r != nil && r.Rename != nil {
+		return r.Rename(k, next)
 	}
-	rename := func() error {
-		if err := k.shellJobs().Move(filepath.Join(newDir, "shell-jobs"), func() error { return RenameBot(root, old, next) }); err != nil {
-			return err
-		}
-		loaded, err := bot.Load(root, next)
-		if err != nil {
-			return err
-		}
-		k.Bot = loaded
-		return nil
-	}
-	if coding == nil {
-		return rename()
-	}
-	return coding.Move(newDir, filepath.Join(newDir, "inbox.jsonl"), func(text string) error {
-		return k.Bot.Append(bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)}})
-	}, rename)
+	return k.MoveResources(next)
 }
 
 func parseProfileArgs(args json.RawMessage) (*string, bot.ProfileUpdate, string, error) {

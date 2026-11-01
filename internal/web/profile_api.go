@@ -95,11 +95,10 @@ func (s *Server) patchBot(w http.ResponseWriter, r *http.Request) {
 	if in.Name != nil {
 		next := strings.TrimSpace(*in.Name)
 		if next != "" && next != b.Name() {
-			if err := kernel.RenameBot(s.Root, b.Name(), next); err != nil {
+			if err := s.RenameRuntimeBot(b.Name(), next); err != nil {
 				writeErr(w, http.StatusBadRequest, err.Error())
 				return
 			}
-			s.forgetKernel(b.Name())
 			name = next
 		}
 	}

@@ -88,11 +88,23 @@ func (t linksTool) Run(ctx context.Context, args json.RawMessage) (string, error
 	switch strings.ToLower(strings.TrimSpace(in.Action)) {
 	case "search":
 		return t.search(in.Query), nil
-	case "install":
-		return t.install(strings.TrimSpace(in.ID))
-	case "remove":
-		return t.remove(strings.TrimSpace(in.ID))
+	case "install", "remove":
+		var text string
+		var err error
+		if strings.EqualFold(strings.TrimSpace(in.Action), "install") {
+			text, err = t.install(strings.TrimSpace(in.ID))
+		} else {
+			text, err = t.remove(strings.TrimSpace(in.ID))
+		}
+		if err == nil && t.k.Resources != nil {
+			_ = t.k.Resources.manager.Reconcile(ctx)
+			t.k.snapshotLinks()
+		}
+		return text, err
 	case "load":
+		if t.k.Resources != nil {
+			_ = t.k.Resources.MCP.Reconcile(ctx)
+		}
 		return t.loadContext(ctx, strings.TrimSpace(in.ID))
 	default:
 		return "", fmt.Errorf("links: action must be search, install, remove, or load")
@@ -401,9 +413,6 @@ func (k *Kernel) snapshotLinks() []link.Link {
 	if k == nil {
 		return nil
 	}
-	if k.Resources != nil {
-		_ = k.Resources.MCP.Reconcile(context.Background())
-	}
 	k.linksMu.Lock()
 	defer k.linksMu.Unlock()
 	if k.Bot != nil {
@@ -546,7 +555,11 @@ func (k *Kernel) storeSecrets(values map[string]string) error {
 	if err != nil {
 		return err
 	}
-	return link.SetProductSecrets(backend, values)
+	err = link.SetProductSecrets(backend, values)
+	if local, ok := backend.(*vault.Store); ok && err == nil {
+		vault.Register(local)
+	}
+	return err
 }
 
 // dropSecrets removes shared link credentials.
@@ -828,7 +841,11 @@ func (k *Kernel) redactor() func(string) string {
 		base = k.Redact
 	}
 	return func(s string) string {
-		return config.RedactHeld(base(s))
+		s = config.RedactHeld(base(s))
+		if k != nil && k.Resources != nil {
+			s = k.Resources.Redact(s)
+		}
+		return s
 	}
 }
 

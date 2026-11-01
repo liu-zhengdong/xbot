@@ -29,6 +29,7 @@ type operationState struct {
 	server       *cliops.Server
 	binary, root string
 	retiring     bool
+	calls        int
 	stopContext  func() bool
 }
 
@@ -107,9 +108,26 @@ func (k *Kernel) retireOperations() {
 
 // The existing local execution sets own retained endpoints. OnIdle is called
 // only after task removal and queue drain, with no task resource lock held.
+func (k *Kernel) holdOperations() func() {
+	k.operations.mu.Lock()
+	if k.operations.server == nil {
+		k.operations.mu.Unlock()
+		return func() {}
+	}
+	k.operations.calls++
+	k.operations.mu.Unlock()
+	return func() {
+		k.operations.mu.Lock()
+		k.operations.calls--
+		k.operations.mu.Unlock()
+		k.closeIdleOperations()
+	}
+}
+
 func (k *Kernel) closeIdleOperations() {
 	k.operations.mu.Lock()
-	retiring := k.operations.retiring && k.operations.server != nil
+	server := k.operations.server
+	retiring := k.operations.retiring && server != nil && k.operations.calls == 0
 	k.operations.mu.Unlock()
 	if !retiring {
 		return
@@ -124,7 +142,19 @@ func (k *Kernel) closeIdleOperations() {
 			return
 		}
 	}
-	k.CloseOperations()
+	k.operations.mu.Lock()
+	if !k.operations.retiring || k.operations.server != server || k.operations.calls != 0 {
+		k.operations.mu.Unlock()
+		return
+	}
+	k.operations.server = nil
+	stop := k.operations.stopContext
+	k.operations.stopContext = nil
+	k.operations.mu.Unlock()
+	if stop != nil {
+		stop()
+	}
+	_ = server.Close()
 }
 
 // UseBot refreshes a host's loaded handle between turns while a local coding
@@ -142,29 +172,61 @@ func (k *Kernel) CLIEnvironment(base []string) []string {
 	defer k.operations.mu.Unlock()
 	caller := cliops.Caller{}
 	if k.operations.server != nil {
-		caller = cliops.Caller{Binary: k.operations.binary, Root: k.operations.root, Endpoint: k.operations.server.Endpoint, Bot: k.Bot.Name()}
+		name := k.Bot.Name()
+		available := true
+		if r := k.Resources; r != nil {
+			r.route.RLock()
+			name = r.current.Name()
+			available = !r.closed
+			r.route.RUnlock()
+		}
+		if available {
+			caller = cliops.Caller{Binary: k.operations.binary, Root: k.operations.root, Endpoint: k.operations.server.Endpoint, Bot: name}
+		}
 	}
+
 	return caller.Env(base)
 }
 
 func (k *Kernel) profileOperation(update *cliops.Update) (cliops.Profile, error) {
 	k.operations.mu.Lock()
+	r := k.Resources
+	if r != nil {
+		r.route.RLock()
+	}
+	unlock := func() {
+		if r != nil {
+			r.route.RUnlock()
+		}
+		k.operations.mu.Unlock()
+	}
 	b := k.Bot
 	var err error
-	if update == nil {
-		err = b.RefreshProfile()
-	} else {
-		err = b.ApplyProfile(bot.ProfileUpdate{Description: update.Description, Timezone: update.Timezone, AvatarSeed: update.AvatarSeed})
+	if r != nil {
+		if r.closed {
+			unlock()
+			return cliops.Profile{}, fmt.Errorf("bot resources closed")
+		}
+		if b.Name() != r.current.Name() {
+			b, err = bot.Load(r.current.Root, r.current.Name())
+		}
+	}
+	if err == nil {
+		if update == nil {
+			err = b.RefreshProfile()
+		} else {
+			err = b.ApplyProfile(bot.ProfileUpdate{Description: update.Description, Timezone: update.Timezone, AvatarSeed: update.AvatarSeed})
+		}
 	}
 	if err != nil {
-		k.operations.mu.Unlock()
+		unlock()
 		return cliops.Profile{}, fmt.Errorf("%s", k.redactor()(err.Error()))
 	}
 	description, timezone := b.ProfileValues()
 	avatar, seed := b.AvatarState()
 	value := cliops.Profile{Name: b.Name(), Description: k.redactor()(description), Timezone: timezone, Avatar: avatar, AvatarSeed: k.redactor()(seed), Scope: "runtime", Applied: update != nil}
-	k.operations.mu.Unlock()
-	// The business/file locks are released before a live stream can block on IO.
+	unlock()
+	// publishProfile can take another live Kernel's operations mutex or stream IO.
 	if update != nil {
 		k.publishProfile(b)
 	}
@@ -187,3 +249,7 @@ func (k *Kernel) publishProfile(b *bot.Bot) {
 		}
 	}
 }
+
+// RetireOperations lets a host discard a cached Kernel while its real source
+// calls and Local/code collections retain their original listener leases.
+func (k *Kernel) RetireOperations() { k.retireOperations() }

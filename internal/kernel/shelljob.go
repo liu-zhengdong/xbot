@@ -21,6 +21,12 @@ import (
 // Once built, the set is returned without reading k.Bot: only renameBot moves
 // it, so a caller holding a stale bot name can never point it back.
 func (k *Kernel) shellJobs() *tools.Jobs {
+	if k != nil && k.Resources != nil {
+		k.shellMu.Lock()
+		k.shell = k.Resources.Jobs
+		k.shellMu.Unlock()
+		return k.Resources.Jobs
+	}
 	if jobs := k.liveShell(); jobs != nil {
 		return jobs
 	}

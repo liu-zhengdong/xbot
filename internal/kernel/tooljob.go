@@ -9,6 +9,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/exec"
 	"xbot/internal/link"
+	"xbot/internal/review"
 	"xbot/internal/tools"
 )
 
@@ -52,10 +53,14 @@ func (k *Kernel) runToolCall(ctx context.Context, t tools.Tool, args json.RawMes
 	frozen := &turn{turnSender: owner.turnSender, turnKind: owner.turnKind, turnTrusted: owner.turnTrusted, turnSource: owner.turnSource, turnHops: owner.turnHops, turnChain: owner.turnChain, branch: owner.branch, fromSeq: owner.fromSeq}
 	replyGen := owner.replyGen
 	owner.mu.Unlock()
-	return jobs.RunCall(ctx, tools.CallRequest{Name: t.Name(), Command: summary, Dir: k.cwdFor(ctx), Wait: wait, Background: bg, Run: run, Finalize: func(job tools.Job, res tools.CallResult) (tools.Job, error) {
+	return jobs.RunCall(ctx, tools.CallRequest{Redact: func(text string) string { return scrubSecrets(k.redactor()(text), k.secretValues()) }, Forms: k.shellForms, Name: t.Name(), Command: summary, Dir: k.cwdFor(ctx), Wait: wait, Background: bg, Run: run, Finalize: func(job tools.Job, res tools.CallResult) (tools.Job, error) {
 		return exec.ToolJobReport(k.workspace(), job, res)
 	},
 		Prepare: func(ctx context.Context, id string) (context.Context, func()) {
+			release := func() {}
+			if review.IsShellTool(t.Name()) {
+				release = k.holdOperations()
+			}
 			// Copy the raw cwd so the shell can still report a missing directory.
 			k.noteScope(id, k.readScope(parentScope))
 			ctx = context.WithValue(ctx, cwdScopeKey{}, id)
@@ -63,6 +68,7 @@ func (k *Kernel) runToolCall(ctx context.Context, t tools.Tool, args json.RawMes
 			ctx = context.WithValue(ctx, callReplyGenKey{}, replyGen)
 			ctx = context.WithValue(ctx, turnKey{}, frozen)
 			return ctx, func() {
+				defer release()
 				st, err := jobs.Status(id)
 				if err == nil && !st.Background && st.Status == "done" {
 					k.storeScope(scopeOf(parentCtx), k.readScope(id))
@@ -75,6 +81,10 @@ func (k *Kernel) runToolCall(ctx context.Context, t tools.Tool, args json.RawMes
 // A finished call always posts the same ordinary inbox event, busy or idle.
 // Job.Notified is transport acknowledgement only, never a claim of user delivery.
 func (k *Kernel) onToolDone(job tools.Job) {
+	if k != nil && k.Resources != nil {
+		k.Resources.deliverToolDone(job)
+		return
+	}
 	if k == nil || k.Inbox == nil || job.Status == "running" || job.ID == "" || job.Notified {
 		return
 	}

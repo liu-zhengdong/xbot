@@ -524,9 +524,16 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		DefaultLinks: defaultLinks,
 		// Interjections no longer fork the running turn (ADR 0016): the
 		// foreground's turns are short and the work runs in subagents.
-		ForkTurns:    false,
-		App:          cfg.App,
-		NewResources: func(b *bot.Bot) (*kernel.BotResources, error) { return kernel.NewBotResources(ctx, b, manager) },
+		ForkTurns: false,
+		App:       cfg.App,
+		NewResources: func(b *bot.Bot) (*kernel.BotResources, error) {
+			resources, err := kernel.NewBotResources(ctx, b, manager, clock.Now)
+			if err == nil {
+				resources.Rename = ui.RenameResources
+				resources.Delete = ui.DeleteRuntimeBot
+			}
+			return resources, err
+		},
 		NewKernel: func(b *bot.Bot, resources *kernel.BotResources) (*kernel.Kernel, error) {
 			k, err := newServeKernelWithResources(root, b, resources, restartFromBot)
 			if err == nil {
@@ -537,6 +544,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		Updater: updater,
 	}
 	defer ui.CloseOperations()
+	defer ui.CloseResources()
 	ui.ReconcileMCP = func() {
 		cfgs, err := bot.List(root)
 		if err == nil {
