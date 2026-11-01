@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
+	"xbot/internal/config"
 	"xbot/internal/link"
+	"xbot/internal/mcp"
 )
 
 // The system prompt lists installed apps under one 连接器 heading, one 名称:描述 line each.
@@ -22,7 +24,7 @@ func TestConnectorsBlockListsGlobalInstalls(t *testing.T) {
 	if err := link.EnableConnector(b.GlobalMCPPath(), "playwright"); err != nil {
 		t.Fatal(err)
 	}
-	if err := link.AddMCP(b.GlobalMCPPath(), link.MCPServer{Name: "mine", Command: "/bin/echo"}); err != nil {
+	if err := mcp.AddMCP(b.GlobalMCPPath(), mcp.Spec{Name: "mine", Command: "/bin/echo"}, mcp.Options{IsProviderKey: config.ProviderKey}); err != nil {
 		t.Fatal(err)
 	}
 	text := systemOf(t, k)
@@ -53,14 +55,8 @@ func TestConnectorsLoadAcceptsShownName(t *testing.T) {
 		t.Fatal(err)
 	}
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}
-	k.newMCP = func(s link.MCPServer) link.Link {
-		s.Dial = fakeMCP(t, "playwright")
-		m := link.NewMCP(s)
-		t.Cleanup(func() { _ = m.Close() })
-		return m
-	}
-	if _, err := (linksTool{k: k}).load("Playwright"); err != nil {
-		t.Fatalf("load by shown name: %v", err)
+	if _, err := (linksTool{k: k}).load("Playwright"); err == nil || !strings.Contains(err.Error(), "mcp tools") {
+		t.Fatalf("MCP load must point at current CLI: %v", err)
 	}
 	if _, err := (linksTool{k: k}).load("Gmail"); err == nil {
 		t.Fatal("a coming-soon app must not load")

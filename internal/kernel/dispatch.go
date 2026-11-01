@@ -158,7 +158,7 @@ func (k *Kernel) toolsFor(req exec.StartRequest) []tools.Tool {
 		case ty.Allows(t.Name()):
 			out = append(out, t)
 		case review.IsShellTool(t.Name()) && ty.Allows(agenttype.ShellReadOnly):
-			out = append(out, readOnlyShell{t})
+			out = append(out, readOnlyShell{Tool: t, k: k})
 		}
 	}
 	return out
@@ -166,14 +166,17 @@ func (k *Kernel) toolsFor(req exec.StartRequest) []tools.Tool {
 
 // readOnlyShell is the shell for a type that may only look: a command that is
 // not a plain read is refused before it runs.
-type readOnlyShell struct{ tools.Tool }
+type readOnlyShell struct {
+	tools.Tool
+	k *Kernel
+}
 
 func (s readOnlyShell) Description() string {
-	return s.Tool.Description() + " Only plain read commands run here (ls, cat, grep, git status/log/diff/show and the like, no redirection or chaining)."
+	return s.Tool.Description() + " Plain read commands run here (ls, cat, grep, git status/log/diff/show and the like), plus verified read-only MCP CLI operations on this instance. No redirection or chaining."
 }
 
 func (s readOnlyShell) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	if !review.ShellToolIsReadOnly(s.Name(), args) {
+	if !review.ShellToolIsReadOnly(s.Name(), args) && !s.k.allowReadOnlyMCP(s.Name(), args) {
 		return "", errors.New("shell: 这个子代理只能运行单纯的读取命令，不能重定向、串联命令或写入")
 	}
 	return s.Tool.Run(ctx, args)
@@ -197,24 +200,22 @@ func (k *Kernel) subApprover() agent.Approver {
 // fitProvider keeps one subagent's requests under the context lines, the way
 // a turn's own requests are kept (fit.go): a subagent can run for hours.
 type fitProvider struct {
-	inner    provider.Provider
-	k        *Kernel
-	fit      *turnFit
-	modelKey string
+	inner provider.Provider
+	k     *Kernel
+	fit   *turnFit
 }
 
 func (p *fitProvider) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
 	raw := req
-	schemaAttempt := &mcpSchemaAttempt{k: p.k, modelKey: p.modelKey}
 	request, err := p.fitted(ctx, raw, false)
 	if err != nil {
 		return provider.Message{}, err
 	}
-	_, msg, err := schemaAttempt.chat(ctx, request, onDelta, p.inner.Chat)
+	msg, err := p.inner.Chat(ctx, request, onDelta)
 	if err != nil && provider.IsContextOverflow(err) {
 		request, err = p.fitted(ctx, raw, true)
 		if err == nil {
-			_, msg, err = schemaAttempt.chat(ctx, request, onDelta, p.inner.Chat)
+			msg, err = p.inner.Chat(ctx, request, onDelta)
 		}
 	}
 	if err == nil && p.fit.budget != nil && msg.Usage.Reported {
@@ -249,11 +250,7 @@ func (k *Kernel) wrapSub(req exec.StartRequest, p provider.Provider, pre int) pr
 		// then summarize only a safe prefix before its latest step.
 		f.pre = 1
 	}
-	wrapped := &fitProvider{inner: p, k: k, fit: f}
-	if req.Descriptor != nil {
-		wrapped.modelKey = req.Descriptor.Provider + "/" + req.Descriptor.Model
-	}
-	return wrapped
+	return &fitProvider{inner: p, k: k, fit: f}
 }
 
 func (p *fitProvider) fitted(ctx context.Context, req provider.Request, overflow bool) (provider.Request, error) {

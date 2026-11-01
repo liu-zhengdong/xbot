@@ -493,7 +493,7 @@ func (k *Kernel) continuableTools(req exec.StartRequest) []tools.Tool {
 			continue
 		}
 		if review.IsShellTool(t.Name()) && ty.Allows(agenttype.ShellReadOnly) {
-			out = append(out, readOnlyShell{t})
+			out = append(out, readOnlyShell{Tool: t, k: k})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Name() < out[j].Name() })

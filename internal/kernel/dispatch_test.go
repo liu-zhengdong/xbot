@@ -212,7 +212,7 @@ func TestReadOnlyShellRefusesWrites(t *testing.T) {
 	dir := t.TempDir()
 	sh := tools.NewShell()
 	sh.Dir = dir
-	ro := readOnlyShell{sh}
+	ro := readOnlyShell{Tool: sh}
 	for _, cmd := range []string{"echo hi > f.txt", "rm -rf x", "ls; rm x", "touch f"} {
 		args, _ := json.Marshal(map[string]any{"description": "Verify the scenario behavior", "command": cmd})
 		if _, err := ro.Run(context.Background(), args); err == nil {

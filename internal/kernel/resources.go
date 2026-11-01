@@ -71,7 +71,7 @@ func (r *BotResources) readMCPConfig() ([]mcp.Spec, error) {
 	if r.closed {
 		return nil, errors.New("bot resources closed")
 	}
-	specs, err := link.LoadMCPAll(r.current.GlobalMCPPath(), r.current.MCPPath())
+	specs, err := mcp.LoadMCPAll(mcp.Options{IsProviderKey: config.ProviderKey}, r.current.GlobalMCPPath(), r.current.MCPPath())
 	if err != nil {
 		return nil, err
 	}
@@ -103,13 +103,13 @@ func (r *BotResources) postMCP(server, text string) error {
 	return err
 }
 
-func (r *BotResources) MCPStatus(spec link.MCPServer) link.MCPStatus {
+func (r *BotResources) MCPStatus(spec mcp.Spec) mcp.Status {
 	for _, current := range r.MCP.Specs() {
-		if sameMCPSpec(current, spec) {
+		if mcp.SameSpec(current, spec) {
 			return r.MCP.Status(spec.Name)
 		}
 	}
-	return link.MCPStatus{State: "configured"}
+	return mcp.Status{State: "configured"}
 }
 
 // Close is only for the host or actual deletion, never a borrowing Kernel.

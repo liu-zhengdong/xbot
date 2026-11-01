@@ -23,7 +23,7 @@ func TestInterpreterScopesAndReadOnlyPolicy(t *testing.T) {
 		if tool == nil {
 			t.Fatal("missing scoped", sh.Name())
 		}
-		ro := readOnlyShell{tool}
+		ro := readOnlyShell{Tool: tool}
 		if _, err := ro.Run(context.Background(), json.RawMessage(`{"command":"echo x > forbidden","description":"Try writing"}`)); err == nil {
 			t.Fatal("read-only write accepted", sh.Name())
 		}
