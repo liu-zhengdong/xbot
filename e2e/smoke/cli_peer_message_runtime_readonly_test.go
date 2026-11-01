@@ -119,13 +119,13 @@ func TestCLIPeerMessageRuntimeReadOnlyAndSchemas(t *testing.T) {
 	const mainText, devText = "PEER_MAIN_ALLOWED_BODY", "PEER_DEV_ALLOWED_BODY"
 	model.add(mainCue,
 		mcpRuntimeTool("sh", map[string]string{"description": "Send locally from the actual nonprimary source Shell", "command": `"$XBOT_BIN" peer-message ` + target + ` --self --text ` + mainText + ` --json`}),
-		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "fork_bot"}),
+		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "recall_history"}),
 	)
 	cliSkillSend(t, srv, source, mainCue)
 	mainResults := model.results(mainCue)
 	mainEvent := checkSend(mainResults[0], mainText)
-	if strings.HasPrefix(mainResults[1], "error:") || !strings.Contains(mainResults[1], "fork_bot") {
-		t.Fatal("the preserved peers Tools gate lost native fork description")
+	if strings.HasPrefix(mainResults[1], "error:") || !strings.Contains(mainResults[1], "recall_history") {
+		t.Fatal("the preserved Tools gate lost native history description")
 	}
 	// Let the existing serve consumer finish its first accepted delivery before
 	// taking an exact inbox baseline; its normal ACK is not a research side effect.

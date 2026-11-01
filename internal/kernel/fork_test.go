@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -64,24 +65,34 @@ func TestForkHandoffIsNotACopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasTool(modelTools, "fork_bot") {
-		t.Fatal("fork_bot missing")
+	if hasTool(modelTools, "fork_bot") {
+		t.Fatal("retired fork_bot remains registered")
 	}
 	bare := &Kernel{Bot: src, Links: []link.Link{link.Terminal{}}}
 	bareTools, err := bare.modelTools()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasTool(bareTools, "fork_bot") {
-		t.Fatal("native fork_bot missing")
+	if hasTool(bareTools, "fork_bot") {
+		t.Fatal("retired native fork_bot remains registered")
 	}
 
-	out, err := (forkBotTool{k}).Run(ctx, []byte(`{"name":"reviewer","role":"Review pull requests."}`))
-	if err != nil {
+	if err := k.StartOperations(); err != nil {
 		t.Fatal(err)
 	}
-	if out != "forked reviewer" {
-		t.Fatalf("tool %q", out)
+	t.Cleanup(func() { k.CloseOperations(); _ = k.Close() })
+	forkEndpoint := operationEndpoint(k)
+	var out cliops.BotForkReply
+	var forkErr error
+	runRoutineSource(t, k, nil, `{"command":"\"$XBOT_BIN\" bot-fork reviewer --self --role 'Review pull requests.'","description":"hand off pull request reviews"}`, func(ctx context.Context, _ json.RawMessage) (string, error) {
+		out, forkErr = cliops.CallBotFork(ctx, forkEndpoint, root, tools.CallID(ctx), cliops.BotFork{Name: "reviewer", Role: "Review pull requests."})
+		return cliops.FormatBotFork(out), forkErr
+	})
+	if forkErr != nil {
+		t.Fatal(forkErr)
+	}
+	if out.Name != "reviewer" || !out.Created || out.Stage != "complete" || out.Error != "" || out.CreateStage != "" || out.GroupID != "" || out.UncertainMemory != nil || out.HandoffParts <= 0 || out.HandoffParts != out.HandoffTotal || !slices.Equal(out.Confirmed, []string{"owners", "binding", "rules", "handoff", "child_note", "source_note"}) {
+		t.Fatalf("fork receipt %+v", out)
 	}
 	if comp.calls != 1 || !strings.Contains(comp.prior, "Review pull requests.") {
 		t.Fatalf("compactor calls=%d prior=%q", comp.calls, comp.prior)

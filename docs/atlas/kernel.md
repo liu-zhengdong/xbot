@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/, internal/cliops/]
-verified: 2026-11-02 @ 8472a2a5 (peer-message source/record/retirement, scoped tests and static review)
+verified: 2026-11-02 @ 997baf85 (bot-fork source model chain, partial receipts and native retirement)
 ---
 # 内核：Link、Event、收件箱
 
@@ -36,7 +36,7 @@ HTTP原本没有调用turn。agent.execTool现把实际已包装approver、原Sh
 
 Create/Delete当刻当前source primary复核，Create继承全部Owners/Links（可空）与global默认binding，不继承source active model/role/budget、不新目标K或wake。原config→state→persona→owners后段以CreateCommitError/Unwrap透applied/stage，late persona32KiB仍原阶段，非整事务。资源/host/chat现回调传(removed,error)，保原同entry暂停→锁外owned Jobs join→重核→FinishDelete；removed后vaultkey错也终态清entry/hold/资源，不猜未删/恢复不存在对象，不扩大child/code/remote/MCP join。
 
-只有strict Delete经已存在live source ctx/原wrapped Shell approve，固定Delete语义不借退掉的Known名字；production permissive不增卡、不强普通操作关联。共享runtimeApprovalSource与approveRuntimeIntent服务routine、Delete与自身职责三个真正caller，冻结policy/原owner卡branch/child原回调保持，deniedBefore即使need=false也生效；Bot canonical含delete/target，routine仍typed请求/effective命令，真Run raw不改。原call/header只是关联，不新权限/确认/任务表。JSON与human共用准确formatter双32KiB，大List/Info沿当前source工作区完整结果/真实bytes，HTTP64KiB/结果20MiB。四等价模型门已退；peers仅余fork，单聊和聊天群沿下文独立CLI，research仅list/info/help。见 [ADR0052](../adr/0052-bot-runtime-cli.md)。
+只有strict Delete经已存在live source ctx/原wrapped Shell approve，固定Delete语义不借退掉的Known名字；production permissive不增卡、不强普通操作关联。共享runtimeApprovalSource与approveRuntimeIntent服务routine、Delete与自身职责三个真正caller，冻结policy/原owner卡branch/child原回调保持，deniedBefore即使need=false也生效；Bot canonical含delete/target，routine仍typed请求/effective命令，真Run raw不改。原call/header只是关联，不新权限/确认/任务表。JSON与human共用准确formatter双32KiB，大List/Info沿当前source工作区完整结果/真实bytes，HTTP64KiB/结果20MiB。四等价模型门已退；peers工具组已空并退役，交接派生、单聊和聊天群沿下文独立CLI，research仅list/info/help。见 [ADR0052](../adr/0052-bot-runtime-cli.md)。
 
 原BotHandlers另有typed Pin/Primary小写操作，平面pin/unpin NAME --self与primary set NAME --self沿同parser早分流。每次从当前source ref核fresh primary/self或可见本地目标；B已存在endpoint无需重造即下一写得权，A原endpoint不冒B资格，诊断名不参与。self pin完整短IO在route，其它目标Load/SetPinned与SetPrimary在route外；原primary.lock内pointer→ensurepinned次序保，PrimaryCommitError在真实指针写成后pin错仍Appliedtrue，source下一资格读实际pointer，不rollback/自动unpin旧A或新grant表。same-primary applied是本次指针写成，primary可unpin。两原Normal不借审批桥，短ACK人读/JSONnewline同32KiB而HTTP64KiB，不复制大结果机制；两native wrapper/空bots组/Known已退，isPrimary和其它Tools保，research只放control帮助。原配置合并、typed阶段与离线arity见 [API](../API.md#bot-运行时-cli)，决定见 [ADR0053](../adr/0053-bot-pin-primary-runtime-cli.md)。
 
@@ -52,7 +52,7 @@ Create/Delete当刻当前source primary复核，Create继承全部Owners/Links�
 
 runtimeSourceCall从原live Local/running/同listener Shell Job只抽出公共lookup/取消，保prepared冻结turnKey；runtimeApprovalSource仍给routine/Delete/Persona按原owner/child重绑动态卡片。Normal群Post不用approvalIntent/新卡，只显式读prepared原tuple，不用审批重绑ctx的turnFor或latestTurn，空chain为ch_CURRENTNAME、hops+1/KindBot/原clock；原ctx无approve函数亦可，missing/completed/foreign/nonShell/无冻结turn在rate/append前拒。read/create不强ctx；source身份仅短currentIO快照，Bus/fanout在route外，artifact实际写才持当前route，不newK/ctx表/跨源事务。
 
-原Bus.PostGroup薄error兼容至唯一PostGroupWithResult。validation/8KiB/hops≤3/8次每分钟rate后，群AppendJSONL成功才appended/message_id，逐member Load/Open/Inbox.Post成功才posted_members，skip sender/原顺序/首错停；latepartial可能群记录+B已成、C错，保failed_member/stage，不error猜没发、rollback/rate退还或自动retry。posted只是Inbox已接受，Bus无waker，原serve/proc、忙时吸收与Inbox/waker导线保持，不承诺全员已醒。四旧wrapper/Known/schema/index退、peers仅余fork_bot，其它Link工具/Emitter/Messenger消费者不动。协议见 [API](../API.md#成员聊天群运行时-cli)、决定见 [ADR0055](../adr/0055-chat-groups-runtime-cli.md)。
+原Bus.PostGroup薄error兼容至唯一PostGroupWithResult。validation/8KiB/hops≤3/8次每分钟rate后，群AppendJSONL成功才appended/message_id，逐member Load/Open/Inbox.Post成功才posted_members，skip sender/原顺序/首错停；latepartial可能群记录+B已成、C错，保failed_member/stage，不error猜没发、rollback/rate退还或自动retry。posted只是Inbox已接受，Bus无waker，原serve/proc、忙时吸收与Inbox/waker导线保持，不承诺全员已醒。四旧wrapper/Known/schema/index退、peers工具组已空并退役，其它Link工具/Emitter/Messenger消费者不动。协议见 [API](../API.md#成员聊天群运行时-cli)、决定见 [ADR0055](../adr/0055-chat-groups-runtime-cli.md)。
 
 ## Bot 单聊与远端源记录
 
@@ -60,7 +60,19 @@ runtimeSourceCall从原live Local/running/同listener Shell Job只抽出公共lo
 
 本地唯一 `MessageWithResult` 保可见 owner 交集/self/8 KiB/hops3/每分钟8次和原 KindBot 事件，仅 Inbox.Post nil 才 posted/event_id。远端唯一 `SendWithResult` 保精确配对设备、Person-owner/XKey/互发开关、原加密签名与独立 rate，不加目录 target-cache 门。Gateway accepted 仅 2xx 且响应体读成功；typed HTTPError 给实际 status，其余 transport/read 错为 unknown。只有原 atomic enqueue 成功才 queued，重试沿同 ENV/ID 与24小时期限；晚失败可能已经发送或消耗 rate，不回滚/自动重发。旧 Message/Send 签名薄适配到各自唯一 writer，原 Receive/重试导线保持。
 
-REMOTE 得到实际发送/排队结果后，在源 transcript 追加一次 OriginInternal/RoleUser/空 EventID 的 `<peer_message_outgoing>` JSON 普通事实，保完整冻结请求与实际结果。`recordTurn` 显式取 prepared `callTurnKey` 的实际 execution owner，沿其动态 branch、current ref 与原 scrub；此指针与 sender 冻结 tuple 各司其职。仅 AppendSeq 成功才 recorded:true/record_seq，记录错保 gateway/queued/envelope 事实并非0，不回滚；LOCAL 仍只从双方 recipient 事件读取，无源端新记账。精确 reader、稳定 seq ID 和 unknown 状态见 [API 私聊](../API.md#bot-私聊)。不加 Event/waker、Entry/Job 字段、伪 ToolCall 或私聊账。正文不进短 ACK/artifact；完整普通 entry 限1MiB，整JSONNL与准确human各≤32KiB/HTTP64KiB。message_bot wrapper/Known/schema/index 已退，peers只留fork，Link/Event其它作用域不变；research仅help。协议见 [API](../API.md#bot-单聊运行时-cli)，决定见 [ADR0056](../adr/0056-peer-message-runtime-cli.md)。
+REMOTE 得到实际发送/排队结果后，在源 transcript 追加一次 OriginInternal/RoleUser/空 EventID 的 `<peer_message_outgoing>` JSON 普通事实，保完整冻结请求与实际结果。`recordTurn` 显式取 prepared `callTurnKey` 的实际 execution owner，沿其动态 branch、current ref 与原 scrub；此指针与 sender 冻结 tuple 各司其职。仅 AppendSeq 成功才 recorded:true/record_seq，记录错保 gateway/queued/envelope 事实并非0，不回滚；LOCAL 仍只从双方 recipient 事件读取，无源端新记账。精确 reader、稳定 seq ID 和 unknown 状态见 [API 私聊](../API.md#bot-私聊)。不加 Event/waker、Entry/Job 字段、伪 ToolCall 或私聊账。正文不进短 ACK/artifact；完整普通 entry 限1MiB，整JSONNL与准确human各≤32KiB/HTTP64KiB。message_bot wrapper/Known/schema/index 已退，peers工具组已空并退役，Link/Event其它作用域不变；research仅help。协议见 [API](../API.md#bot-单聊运行时-cli)，决定见 [ADR0056](../adr/0056-peer-message-runtime-cli.md)。
+
+## Bot 交接派生与原 source 模型链
+
+既有 `BotHandlers.Fork` 将 `bot-fork NAME --self (--role TEXT|--role-file FILE|-) [--group NAME]` 接到同 source 的唯一 `ForkWithResult` writer。所有 Bot 含非 primary 可用，沿原 listener/root/Host/browser guard；实际 live Local/running/未 finished、同 listener 的 Shell prepared context 与冻结 turn 必需，Normal 不调用审批 intent、不要求 approver 函数，承载 Shell gate 独立。保原 ctx 取消与 `k.compactor(turnSeqOf(prepared))` 用量归属，真实 0 不改成最新轮次；不新建 Kernel/Memory 服务或调用登记表。
+
+原 `handoff` 仅在短 current IO 冻结 State migrate、UncoveredLines/projected 历史、ScopeBot/Profile facts 与非空分支的 source persona；无 turns 且无 facts 才原 fallback，有数据才要求 Compactor 并读 persona。Focused 优先/Compact fallback 的实际模型调用在 route/host/Jobs 锁外；`compact.LLM` 调原 P.Chat 且无 tools，HTTP 流式方式仍沿原 provider。模型摘要 trim/拒空/Unicode clip8KiB 后 OneLine/split960，空源 fallback 保原样，不为 profile4KiB 暗剪交接。person store 共享不复制，直接 Recall 只 ScopeBot；projected 历史可含人物资料，不加过滤或承诺模型绝无人物输入。
+
+写序保持 handoff→Create→Owners→Provider/Model/ContextLimit→源 MigrateRules/读 rules→child rules→逐 child handoff→child fork-source→source fork-NAME→可选群 meta。Owners 为 pre-LLM 快照，Links/三项 binding 在 LLM 后沿 current source fresh 读；child 默认 chat/45min，不继承 cfg.Role/dev 预算、transcript/blocks、hooks 或 person 文件，不 start/Post/wake。child 固定目标/当前 source 作者，源 note 直接在一次短 current IO 内用 b.Name 作 BotName/WrittenBy 调原 Memory.Remember；不在 route 内嵌套 current helper。group 前短读当前 source 名/root，Bus 在锁外调用，保原 RenameMember，无 CAS/跨调用事务或新 snapshot 服务。
+
+Created 仅 Create nil 或 typed CreateCommitError.Applied 的 config ACK，CreateStage 仅实际 typed stage；Confirmed 封闭为 owners/binding/rules/handoff/child_note/source_note/group 的原调用 nil ACK。HandoffParts 仅 Remember nil 次数，Total 为实际 split960 数；当前 Memory 错给实际 bot/key 的 UncertainMemory，MD 可能已成。8KiB summary 对4KiB profile 可在真实 child+若干 confirmed parts 后容量失败；原 MD→index→sync 后段错也不能猜未写。GroupID 仅 CreateGroup nil，不回滚/重试/抬容量或 error/stat 猜提交。JSONNL 与准确 human 各≤32KiB、HTTP64KiB，短 ACK 不含职责/摘要或 artifact；partial 先打印再非0并警示勿盲重跑。字段和阶段见 [API](../API.md#bot-交接派生运行时-cli)，决定见 [ADR0057](../adr/0057-bot-fork-runtime-cli.md)。
+
+`fork_bot` wrapper/Known/schema/index 与已空 peers 工具注册组已退；Link/Event 仍有其它职责。旧 native 调用历史保持，旧离线/Web `Fork` 仍经薄 adapter 在错误时返回空结果，不冒 typed partial；后台 ForkKindStart/End 修复与 bg_ 插话分叉各保原义。
 
 ## MCP 与每 Bot 进程资源
 
@@ -125,7 +137,7 @@ code/exec/Jobs mover 全部返回、route/storage/owners 锁释放后，只把 l
 
 见 [ADR 0035](../adr/0035-unified-tool-registry.md)。`toolRegistry()`（`internal/kernel/registry.go`）是本轮能调的工具的唯一来源：已挂载 Link 的工具和声明式表 `kernelTools` 的每一行各登记一次，记下 source（`kernel` / `organ` / `link`）、group 和 expose。`modelTools` 把全部登记的工具包进 review 交给 agent，但只声明代理门 `tools`、`send_message_to_user`、`todo`（开着时）和 hot 名单（各个壳、`read_file`、`write_file`、`edit_file`、`web_fetch`）；其余标成 `Undeclared`，可以调用但不进 `tools[]`。
 
-代理门的 `search` 返回 id、分组、一行摘要；`describe` 把完整说明和 schema 放在工具结果里，传分组 id 时列出成员；`call` 由 agent 层转发（`tools.Forwarder`），之后的审核、确认卡、拒绝表和后台化按被调用的工具名与参数走。三种动作都不改 `tools[]`，一轮里按字节比稳定。环境流的 `tool_index` 按分组列出 listed 的 id，`tools` 字段只列已声明的工具。资料更新与 MCP 分别走当前实例 CLI，不在模型工具表、describe 或旧前缀路由中提供执行兼容；persona沿原self CLI，空bot_profile组已退；peers仅余fork，单聊与聊天群四动作均沿CLI。
+代理门的 `search` 返回 id、分组、一行摘要；`describe` 把完整说明和 schema 放在工具结果里，传分组 id 时列出成员；`call` 由 agent 层转发（`tools.Forwarder`），之后的审核、确认卡、拒绝表和后台化按被调用的工具名与参数走。三种动作都不改 `tools[]`，一轮里按字节比稳定。环境流的 `tool_index` 按分组列出 listed 的 id，`tools` 字段只列已声明的工具。资料更新与 MCP 分别走当前实例 CLI，不在模型工具表、describe 或旧前缀路由中提供执行兼容；persona沿原self CLI，空bot_profile组已退；peers工具组已空并退役，交接派生、单聊与聊天群四动作均沿CLI。
 
 子代理没有代理门：`mountedTools` 返回注册表里不是 `deferred` 的工具（懒加载 Link 在 `links load` 之前算 deferred），全部声明。`expand_tool_group` 已删除。
 

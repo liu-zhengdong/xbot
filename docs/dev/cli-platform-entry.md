@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过，父集成待收，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过，父集成待收，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -597,11 +597,17 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 
 单聊message_bot（含bot@device/remoteoutbox≤24h）和fork及其它平台继续按新具体切片推进，仍有native消费者；不借群切片删Link.Tools/Emitter/Messenger/SendPolicy/DeliverDraft，Event/入站Link装配待逐族等价后独立切。用户root四dirtydocs/owner-SSE设计只读避冲突，guard步骤/日用边界保。
 
-## 批 peer-message：单聊切片已提炼，待父集成
+## 批 peer-message：单聊切片已提炼并合main98fba5e8
 
-5cdc具体合同单次SHAPE PASS、[ADR0056](../adr/0056-peer-message-runtime-cli.md) Accepted；首40fcf22d LOCAL、完整8472a2a5 REMOTE与唯一message_bot退门的能力已提炼 [API](../API.md#bot-单聊运行时-cli)、[多Bot](../atlas/multibot.md)、[网关](../atlas/gateway.md)，不在母dev保第二份协议/状态说明。六项所测独立端到端为40f首LOCAL与847后五项的精确phase，合同/首/末全部必要静态通过，证据见 [MILESTONES](../MILESTONES.md)；待父集成本地main，未主人日用。
+5cdc具体合同单次SHAPE PASS、[ADR0056](../adr/0056-peer-message-runtime-cli.md) Accepted；首40fcf22d LOCAL、完整8472a2a5 REMOTE与唯一message_bot退门的能力已提炼 [API](../API.md#bot-单聊运行时-cli)、[多Bot](../atlas/multibot.md)、[网关](../atlas/gateway.md)，不在母dev保第二份协议/状态说明。六项所测独立端到端为40f首LOCAL与847后五项的精确phase，合同/首/末全部必要静态通过，证据见 [MILESTONES](../MILESTONES.md)；已合本地main98fba5e8787b733f0f45e1b5804f557bdd7e2b89，未主人日用。
 
-本母路线继续保fork/其它尚未迁native与Event/Link入站装配；不因单聊已迁就删其它Emitter/Messenger/SendPolicy/DeliverDraft。下一刀须以真实main集成后另定具体合同，不预写0057或开fork实现；owner message-SSE/externalAgent send仍用户独立设计边界。
+本母路线继续保fork/其它尚未迁native与Event/Link入站装配；不因单聊已迁就删其它Emitter/Messenger/SendPolicy/DeliverDraft。下一刀bot-fork以真实main98fba5e8为基线按下节另定具体合同，结构通过前不开实现；owner message-SSE/externalAgent send仍用户独立设计边界。
+
+## 批 bot-fork：交接派生已提炼，待父集成
+
+本刀合同、首模型链与末退门必要静态均通过；七项所测独立端到端按实际source/validation phase通过，未合main/未主人日用。实际协议已提炼 [API](../API.md#bot-交接派生运行时-cli)、[内核](../atlas/kernel.md#bot-交接派生与原-source-模型链)、[多Bot](../atlas/multibot.md#bot-交接派生)、[记忆](../atlas/memory.md)，[ADR0057](../adr/0057-bot-fork-runtime-cli.md) Accepted；参数、partial字段和实际写序不在母路线复抄。逐phase与夹具修正归属见 [MILESTONES](../MILESTONES.md)。
+
+本刀仅退fork_bot与确已空的peers工具注册组，保Link/Event其它职责、oldnative历史与bg_插话分支修复；原Memory/Compactor/ctx resolver、oldoffline/WebFork与OwnerSSE边界不扩。source997冻结，父仅收最终docs与纯独立commits集成本地main，不重已绿首链、六后项或旧族。其余native/platform/EventLink沿未完成路线继续，下一族待TRUE Fork main后另定合同，不在此预写0058或开代码。
 
 ## 还没做的
 
@@ -609,7 +615,7 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 - 批 0 的后续实际操作及入站依赖清单、尚未迁族的 research 业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已提炼 atlas，固定五项独立所测端到端按各自精确版本通过，证据见 MILESTONES；原 chat loop 下一输入/Timer handle 及其 recover、回放、通知实际消费者也已以局部红绿和 reviewer24 至 `63762ae5` 连续增量 PASS 收口，已合入本地 main，尚未日用；合并时与主线持久选择的交叠补单项真实浏览器红绿，不重跑固定五项。已通过的普通字段、avatar_seed、MCP 和本刀五项不重复整批验收，母路线其它族继续在本 dev 中推进。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
-- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message本轮待父集成。fork/连接器及剩余目录管理等平台能力继续逐族迁移。
+- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork七项所测端到端通过待父集成，连接器及剩余目录管理等平台能力继续逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。
 - 各批独立冒烟、相关旅程回归、性能与上下文收益测量、主人日用验收。

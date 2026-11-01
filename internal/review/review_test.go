@@ -168,7 +168,7 @@ func TestExternalSendToolsAsk(t *testing.T) {
 }
 
 func TestRetiredBotToolsAreUnknown(t *testing.T) {
-	for _, name := range []string{"message_bot", "create_bot", "delete_bot", "list_bots", "bot_status"} {
+	for _, name := range []string{"fork_bot", "message_bot", "create_bot", "delete_bot", "list_bots", "bot_status"} {
 		if Known(name) {
 			t.Errorf("retired policy %s is still known", name)
 		}
