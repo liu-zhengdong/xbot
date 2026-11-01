@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作已实现，五项所测独立端到端分阶段通过，父集成待收；其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过，父集成待收，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -8,7 +8,7 @@
 - MCP 的管理、发现、查看说明和调用都由 `xbot mcp …` 提供；模型按需读帮助和 schema，不常驻注入整套 MCP 或平台管理工具。
 - **退役 Link 作为统一能力接入抽象**，包括模型侧 `links` 管理入口；不是只把 `links` 工具改名。
 - **保留 Event → Inbox → 唤醒这条线**：外部消息、定时器、Webhook、文件监听、MCP 通知和任务完成仍沿已有路径投递。
-- 本文保留整体迁移路线；profile 完整族、MCP CLI、skills、routine与Bot四操作已按切片提炼，其余平台族继续推进。不改旧 Accepted ADR 正文或 guard 旅程；后续继续先打通最窄端到端，再按能力切换并删除旧入口。
+- 本文保留整体迁移路线；profile 完整族、MCP CLI、skills、routine、Bot四操作及pin/primary已按切片提炼，其余平台族继续推进。不改旧 Accepted ADR 正文或 guard 旅程；后续继续先打通最窄端到端，再按能力切换并删除旧入口。
 
 ## 问题与边界
 
@@ -581,7 +581,11 @@ handlers.Skills = k.SkillHandlers() // 固定 Root、SkillsDir、动态 Redact �
 
 ## Bot四操作切片已提炼
 
-ccdc具体合同单次窄核后，原source平面list/info/new/delete、动态状态、primary管理、实际partial及原审批/四模型门退役已经提炼至 [API](../API.md#bot-运行时-cli)、[内核](../atlas/kernel.md#bot-发现与管理实例入口)、[ADR0052](../adr/0052-bot-runtime-cli.md)。首链d7、完整519增量与作者/独立各自精确phase及当前验收/合入级别只记 [MILESTONES](../MILESTONES.md)，不留完整合同重复副本。原pin/primary/fork/persona/rolebudget、peers消息/群及以下其余路线未借本刀迁移；主人cli-message-bot/SSE/send设计不在本刀内。
+ccdc具体合同单次窄核后，原source平面list/info/new/delete、动态状态、primary管理、实际partial及原审批/四模型门退役已经提炼至 [API](../API.md#bot-运行时-cli)、[内核](../atlas/kernel.md#bot-发现与管理实例入口)、[ADR0052](../adr/0052-bot-runtime-cli.md)。首链d7、完整519增量与作者/独立各自精确phase及当前验收/合入级别只记 [MILESTONES](../MILESTONES.md)，不留完整合同重复副本。pin/primary另在下节提炼，fork/persona/rolebudget、peers消息/群及以下其余路线未借本刀迁移；主人cli-message-bot/SSE/send设计不在本刀内。
+
+## pin与primary切片已提炼
+
+f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary.json真实commit后pin失败partial、原A失权/B预先endpoint得权与两模型门退役已提炼至 [API](../API.md#bot-运行时-cli)、[内核](../atlas/kernel.md#bot-发现与管理实例入口)、[ADR0053](../adr/0053-bot-pin-primary-runtime-cli.md)。586首A→B链与cc46三个边界的四项独立所测精确phase/当前合入级别只记 [MILESTONES](../MILESTONES.md)，不在母文档复制已完成合同。persona全Bot self/full职责file-stdin/原SelfEdit/nextwake是下一具体族，fork、卡、role预算、消息群和用户独立owner-SSE设计仍原边界，不借两小写动作扩展。
 
 ## 还没做的
 

@@ -9,10 +9,12 @@ const BotMaxRequest = 1 << 20
 const BotMaxReply = 64 << 10
 
 type BotHandlers struct {
-	List   func(context.Context) (BotListReply, error)
-	Info   func(context.Context, BotInfoQuery) (BotInfoReply, error)
-	Create func(context.Context, BotCreate) (BotCreateReply, error)
-	Delete func(context.Context, string) (BotDeleteReply, error)
+	List    func(context.Context) (BotListReply, error)
+	Info    func(context.Context, BotInfoQuery) (BotInfoReply, error)
+	Create  func(context.Context, BotCreate) (BotCreateReply, error)
+	Delete  func(context.Context, string) (BotDeleteReply, error)
+	Pin     func(context.Context, BotPin) (BotPinReply, error)
+	Primary func(context.Context, string) (BotPrimaryReply, error)
 }
 
 type BotInfoQuery struct {
@@ -23,6 +25,27 @@ type BotInfoQuery struct {
 type BotCreate struct {
 	Name    string `json:"name"`
 	Persona string `json:"persona"`
+}
+
+type BotPin struct {
+	Name   string
+	Pinned bool
+}
+
+type BotPinReply struct {
+	Name    string `json:"name"`
+	Pinned  bool   `json:"pinned"`
+	Applied bool   `json:"applied"`
+	Stage   string `json:"stage"`
+	Error   string `json:"error,omitempty"`
+}
+
+type BotPrimaryReply struct {
+	Name    string `json:"name"`
+	Primary string `json:"primary,omitempty"`
+	Applied bool   `json:"applied"`
+	Stage   string `json:"stage"`
+	Error   string `json:"error,omitempty"`
 }
 
 type BotListLocal struct {

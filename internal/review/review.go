@@ -110,10 +110,6 @@ var Table = map[string]Class{
 	// The bot's own task list. It does not leave XBot or destroy data.
 	"todo": Normal,
 
-	// Bot management.
-	"pin_bot":     Normal,
-	"set_primary": Normal,
-
 	// Peers and groups. A message between the owner's own bots is not egress.
 	"message_bot":               Normal,
 	"list_groups":               Readonly,

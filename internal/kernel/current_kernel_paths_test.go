@@ -240,7 +240,7 @@ func TestRetainedKernelLocalPathsFollowRename(t *testing.T) {
 	if reply, err := k.BotHandlers().List(ctx); err != nil || reply.Local == nil || len(*reply.Local) != 1 || (*reply.Local)[0].Name != "other" {
 		t.Fatal("peer identity", reply, err)
 	}
-	if _, err := (pinBotTool{k}).Run(ctx, json.RawMessage(`{"name":"after","pinned":true}`)); err != nil {
+	if reply, err := k.BotHandlers().Pin(ctx, cliops.BotPin{Name: "after", Pinned: true}); err != nil || !reply.Applied || reply.Name != "after" {
 		t.Fatal("primary/self identity", err)
 	}
 	for _, path := range []string{bot.Dir(root, "before"), oldWork} {

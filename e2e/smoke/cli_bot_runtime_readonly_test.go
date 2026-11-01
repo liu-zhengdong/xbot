@@ -144,8 +144,8 @@ func TestCLIBotRuntimeReadOnlyAndSchemas(t *testing.T) {
 		mcpRuntimeTool("read_file", map[string]string{"path": "bot-native-read-proof.txt"}),
 	)
 	model.add(mainCue,
-		mcpRuntimeTool("tools", map[string]any{"action": "call", "id": "pin_bot", "args": map[string]any{"name": peer, "pinned": true}}),
-		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "set_primary"}),
+		mcpRuntimeTool("sh", map[string]string{"description": "Pin the actual peer through the migrated source CLI", "command": `"$XBOT_BIN" pin ` + peer + ` --self --json`}),
+		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "bot_propose_persona"}),
 		mcpRuntimeTool("dispatch", map[string]string{"type": "research", "task": research}),
 		mcpRuntimeTool("dispatch", map[string]string{"type": "dev", "task": dev}),
 	)
@@ -157,11 +157,19 @@ func TestCLIBotRuntimeReadOnlyAndSchemas(t *testing.T) {
 		})
 	}
 	mainResults := model.results(mainCue)
-	if strings.HasPrefix(mainResults[0], "error:") || !strings.Contains(mainResults[0], "pinned "+peer) {
-		t.Fatal("the preserved Tools call did not execute real peer pinning")
+	// ADR0053 retires native pin/primary; retain the prior actual pinning effect
+	// via its current CLI and keep Tools describe on the still-live persona door.
+	var pinned struct {
+		Name            string
+		Pinned, Applied bool
+		Stage, Error    string
 	}
-	if strings.HasPrefix(mainResults[1], "error:") || !strings.Contains(mainResults[1], "set_primary") {
-		t.Fatal("the preserved Tools describe no longer exposes primary transfer")
+	cliBotDecode(t, mainResults[0], &pinned)
+	if pinned.Name != peer || !pinned.Pinned || !pinned.Applied || pinned.Stage != "complete" || pinned.Error != "" {
+		t.Fatal("migrated source CLI did not report the actual saved peer pin")
+	}
+	if strings.HasPrefix(mainResults[1], "error:") || !strings.Contains(mainResults[1], "bot_propose_persona") {
+		t.Fatal("the preserved Tools describe lost the unaffected persona door")
 	}
 	afterPeer := readConfig(peer)
 	if !afterPeer.Pinned || afterPeer.Name != beforePeer.Name || afterPeer.Persona != beforePeer.Persona || !slices.Equal(afterPeer.Owners, beforePeer.Owners) {
