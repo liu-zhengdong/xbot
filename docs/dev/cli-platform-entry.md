@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search具体合同待单次窄核，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search合同6e54单次SHAPE PASS，正在实施，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -609,9 +609,9 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 
 本刀仅退fork_bot与确已空的peers工具注册组，保Link/Event其它职责、oldnative历史与bg_插话分支修复；原Memory/Compactor/ctx resolver、oldoffline/WebFork与OwnerSSE边界不扩。source997冻结，父已收最终docs与纯独立commits集成本地main，复用原七有效phase未重已绿首链、六后项或旧族。其余native/platform/EventLink沿未完成路线继续，下一族仅以下经历record/search具体合同，未开代码。
 
-## 批 experience：具体合同待单次窄核
+## 批 experience：具体合同PASS，实施中
 
-L档，TRUE Fork main06daa397后仅迁experience_record与experience_search；0058先glob空再建 [Proposed ADR0058](../adr/0058-experience-runtime-cli.md)。当前ONLY两docs具体合同，不产品/测试/先猜caller红；Fork7/Message6/Group5/Persona-control-Bot-profile-routine-skillsMCP/三旧审批等有效证据封存不重，不把本刀扩成Memory/Context或全局DuckDB教训库。
+L档，TRUE Fork main06daa397后仅迁experience_record与experience_search；0058先glob空再建 [Proposed ADR0058](../adr/0058-experience-runtime-cli.md)。6e54具体合同已reviewer24 SINGLE ACTUAL CONCRETE SHAPE PASS，[0058](../adr/0058-experience-runtime-cli.md) Accepted；pure86d51596/source6e54/fullvalidationa639d399真实NativeShell entry unknown command红.95s/package2.479s封。正接首compiled原source消费链，之后同cutartifact/currentRename/FSerrNull/两门退役，不等首反馈停；Fork7/Message6/Group5/Persona-control-Bot-profile-routine-skillsMCP/三旧审批等有效证据封存不重，不把本刀扩成Memory/Context或全局DuckDB教训库。
 
 ### 选定caller与实际两种结构
 
@@ -662,7 +662,7 @@ READ actual internal/kernel/experience.go1-354（Record125/Search168/Env43/lastO
 
 同cut后续最窄验证：summary2048/2049与20Ktrim、focusFILE大输入不强加cap、raw/escaped1M、literalflag/staleRoot/endpoint、limit0负数>8回8/2000候选与Web全库不同；构造6KiB文本使JSON转义>32K，准确human也算、完整原语义Text artifact可读/脱敏/currentRename旧BOTS+WORK不复活，真实artifact路径失败非0。Add真实SQLite/FS错误仅未确认，原可能建库/插入不assert零副作用；不为LastInsertId单点强造全局可变hook/事务框架。env DB读错保旧差异、无额外Event/waker。只retire两wrapper/registry/Known/index/guide；memory组仍有recall，Context四工具与detail/Link.Tools NIL安装图不动；research仅help/search self、summary/query值literal--help不冒recordhelp。必要oldmixed只迁实际依赖，不整族，作者ctx/各种source合同不冒独立。
 
-当前only两docs未code/compile/test/audit/入口红/0058Accepted；待reviewer24 SINGLE ACTUAL SHAPE PASS才caller红→首compiling链→artifact-readonly-retire同cut，不等首反馈停。Root4USERdocs/ownerSSE/guard/main/push日用不动；MemoryRecall需原senderperson ctx留后刀，Context不并行混。
+6e54单次实际SHAPE已PASS/0058Accepted，86d入口红.95s/package2.479s封；现first compiled生产链已接原两方法与回包（go build cliops/kernel/cmd通过，无业务cases），先交0d原SQL-Web-env-search-detail真实消费链once，继续artifact-readonly-retire同cut不等首反馈停。作者完整新tests待统一最小once；两native wrapper首candidate暂保待本刀退门，不冒实现全验。Root4USERdocs/ownerSSE/guard/main/push日用不动；MemoryRecall需原senderperson ctx留后刀，Context不并行混。
 
 ## 还没做的
 
