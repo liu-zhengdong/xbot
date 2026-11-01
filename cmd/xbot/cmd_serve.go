@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -641,6 +642,12 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	// Installing an update ends this way in both modes: the window reopens
 	// (appshell.Relaunch), or serve re-execs the new binary.
 	if cfg.App {
+		if runtime.GOOS != "windows" {
+			ui.AppRestart = func() error {
+				restart("Client requested restart")
+				return nil
+			}
+		}
 		// Back to the same binary by the same arguments, once this process
 		// has let go of the data root.
 		// argv[0] is this binary, which the helper already puts first.

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -89,6 +90,19 @@ func TestRunServeApp(t *testing.T) {
 		t.Fatal("web UI unavailable")
 	}
 	t.Logf("local UI GET: %s", time.Since(start))
+	session, err := client.Get("http://" + addr + "/api/session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var capabilities struct {
+		App        bool `json:"app"`
+		CanRestart bool `json:"can_restart"`
+	}
+	err = json.NewDecoder(session.Body).Decode(&capabilities)
+	session.Body.Close()
+	if err != nil || !capabilities.App || capabilities.CanRestart != (runtime.GOOS != "windows") {
+		t.Fatalf("desktop restart capability: %+v, decode: %v", capabilities, err)
+	}
 	cancel()
 	select {
 	case err := <-done:

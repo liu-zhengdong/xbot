@@ -72,6 +72,10 @@ type Server struct {
 	// Nil accepts the theme and changes nothing; the app sets it before serving.
 	AppTheme func(theme string) error
 
+	// AppRestart accepts a request for the desktop's existing relaunch path.
+	// Nil leaves the action unavailable, including in a plain web server.
+	AppRestart func() error
+
 	// Updater answers the page's update panel and installs a downloaded
 	// version on the owner's click. Nil leaves the panel out.
 	Updater *upgrade.Updater
@@ -205,6 +209,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/owner/avatar", s.ownerAvatar)
 	mux.HandleFunc("POST /api/setup/key", s.setupKey)
 	mux.HandleFunc("POST /api/app/theme", s.appTheme)
+	mux.HandleFunc("POST /api/app/restart", s.appRestart)
 
 	mux.HandleFunc("GET /api/image-gen", s.getImageGen)
 	mux.HandleFunc("PUT /api/image-gen", s.putImageGenSettings)
@@ -414,6 +419,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 	// window. The sidebar stays the same; the bottom line names the account's
 	// devices instead of this computer.
 	out["remote"] = forwarded(r)
+	out["can_restart"] = s.App && s.AppRestart != nil
 	out["owner_avatar_url"] = s.ownerAvatarURL()
 	if s.needsKey() {
 		out["needs_key"] = true

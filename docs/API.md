@@ -55,9 +55,11 @@
 
 账号服务本身（`xbot account-api`，或 serve 里的替身）在 `/account/v1/`：`register`、`login`、`magic`、`resend`、`code`、`poll`（POST，JSON），`me`、`devices`（GET，`Authorization: Bearer <会话>`），`logout`、`devices`（POST，Bearer），`health`（GET），以及邮件链接页 `link?t=…`（GET 只显示「确认」按钮，POST 才用掉链接，邮件扫描器预取不会把它用掉）。
 
-`GET /api/session` 对无转发头的本机回环连接、回环 Host 且同源的请求签发本机用户会话；远端仍须已有用户会话。已登录时 200 `{"owner":"<id>","app":<bool>,"version":"<版本>","tip":"<构建短号或空串>"}`。`version` 是构建版本去掉开头的 `v` 和 `+` 之后的内容，例如 `0.3.1-beta.2`。开发构建短号单独通过 `tip` 返回，不参与版本比较或自动升级。
+`GET /api/session` 对无转发头的本机回环连接、回环 Host 且同源的请求签发本机用户会话；远端仍须已有用户会话。已登录时 200 `{"owner":"<id>","app":<bool>,"can_restart":<bool>,"version":"<版本>","tip":"<构建短号或空串>"}`。`can_restart` 仅在桌面运行模式且已有重启回调时为 true，不支持的实例明确返回 false。`version` 是构建版本去掉开头的 `v` 和 `+` 之后的内容，例如 `0.3.1-beta.2`。开发构建短号单独通过 `tip` 返回，不参与版本比较或自动升级。
 
 `POST /api/app/theme` 只在桌面版存在，body `{"theme":"light|dark|system"}`，让窗口的系统按钮跟随 XBot 自己的明暗主题。成功 204，没有 body；值不对 400；不是桌面版 404。
+
+`POST /api/app/restart` 不带正文，要求用户认证与同源，只在 `can_restart:true` 的桌面实例开放，其余返回 404。接收回调失败回 500 `{"error":"原因"}`；成功回 202 `{"status":"restarting"}`，表示请求已交给既有重启循环，后续等待前台轮结束并重新打开客户端，不代表 Relaunch 已经完成。当前 macOS／Linux 装配此回调，Windows 沿现有不支持的 Relaunch 边界不开放；普通 serve 不开放。
 
 ## 主人头像
 

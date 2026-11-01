@@ -46,3 +46,19 @@ func (s *Server) appTheme(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// appRestart accepts the request; the serve loop owns draining and relaunching.
+func (s *Server) appRestart(w http.ResponseWriter, r *http.Request) {
+	if !s.App || s.AppRestart == nil {
+		writeErr(w, http.StatusNotFound, "not found")
+		return
+	}
+	if !s.require(w, r) {
+		return
+	}
+	if err := s.AppRestart(); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "restarting"})
+}
