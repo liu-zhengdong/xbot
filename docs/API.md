@@ -104,7 +104,15 @@ Create/Delete每次复核当前source primary。Create复制source全部Owners/L
 
 生产permissive不增卡、不强普通Delete原callctx；strict固定Delete恒需确认，不查已退delete_bot Known掉成Normal。只strict时经原Jobs现存Local/running/未finished+同listener的原ctx，用原wrapped Shell approver/原providerID/mutex，main冻结policy+原owner动态fork卡/child原回调保持。missing/completed/foreign/noapprover在Pause前拒。approval-only原Shell args附canonical `_xbot_bot:{action:"delete",name:TARGET}`，现grant/deniedBefore同键，目标A→B不吃A，Run raw不改，无随机nonce/新确认工具或表；原回调后重验primary/可见性。
 
-读HTTP硬限64KiB；完整JSON含newline与同准确FormatBotList/Info生成的人读都须≤现Shell32KiB，任一超限则当前source Resources工作区现results写完整脱敏JSON（20MiB结果限），回 `{count,file,access:"local",bytes}`，inline数组省略；两种引用也fit，bytes=实际文件。Create/Delete小回执同双32KiB；客户端先输出真实partial再非0，无proxy/redirect/自动retry，不截数组/remote/状态伪成功。四旧模型门/schema/index/Known已退，research仅list/info/help，pin/primary/fork/persona/role/groups/messages仍原入口。决定见 [ADR0052](adr/0052-bot-runtime-cli.md)。
+读HTTP硬限64KiB；完整JSON含newline与同准确FormatBotList/Info生成的人读都须≤现Shell32KiB，任一超限则当前source Resources工作区现results写完整脱敏JSON（20MiB结果限），回 `{count,file,access:"local",bytes}`，inline数组省略；两种引用也fit，bytes=实际文件。Create/Delete小回执同双32KiB；客户端先输出真实partial再非0，无proxy/redirect/自动retry，不截数组/remote/状态伪成功。四旧模型门/schema/index/Known已退，research仅list/info/help；fork/persona/role/groups/messages仍原入口。决定见 [ADR0052](adr/0052-bot-runtime-cli.md)。
+
+置顶和主身份也使用平面source CLI：`"$XBOT_BIN" pin NAME --self [--json]`、`unpin NAME --self [--json]`、`primary set NAME --self [--json]`。同ParseBotRuntime在root/default/legacy初始化前识别，help离线；没有runtime primary查询。无self原pin/unpin恰一参数、primary零参数ensureSeed打印或set NAME恰二参数保持，不因环境有endpoint变runtime。self选source；每次用Resources当前名fresh比root Primary、目标self或原VisibleBots本地owner交集，排foreign/orphan/remote，不能拿XBOT_BOT或publish资格缓存授权。B原已存在endpoint在转交后下一写即可有权；A原endpoint仍A并下一写失权，不新建K/ref/session或wake。
+
+同原guard提供PUT `/v1/bot/pin?name=NAME&pinned=true|false`（显式单个literal bool，unpin=false）及PUT `/v1/bot/primary?name=NAME`。外部query仅一处核字段/重复/arity，内部typed BotPin，无file/stdin/通用patch。Pin回 `{name,pinned,applied,stage,error?}`，pinned是明确请求值，applied仅原SaveConfig成功，保存失败config/false；self完整SetPinned在currentroute，其它目标Load/SetPinned在route外，保原SaveConfig支持字段合并。primary自己可unpin，无强制永久置顶。
+
+Primary回 `{name,primary?,applied,stage,error?}`。原primary.lock内Load目标→WriteAtomic primary.json→仅目标未pinned再SetPinned(true)；保SetPrimary签名/原cause，PrimaryCommitError从实际写点传Applied/Stage，不stat或error字串猜。validation/target/primary之前未成false（lock入口同primary false）；pointer一旦实际写成，后pin失败仍 `{name:"B",primary:"B",applied:true,stage:"pin",error:"..."}` 并非0，A已失权/B已得权。same-primary也本次写pointer，applied不假称changed；stage=complete不代表新wake。不会自动unpin旧A、不改Owners/Links/persona/binding/rolebudget或回滚pointer，原Load潜在初始化不冒全root零写承诺。
+
+两个原Normal动作不加许可卡/CallID/原审批桥，承载Shell原gate仍独立。短ACK只共用FormatBotPin/Primary核JSON含newline与实际human各≤32KiB、HTTP64KiB，partial先输出后非0，不复制List/Info全文artifact或抬全Shell限额。两native wrapper及空bots组/schema/index/Known已退，原isPrimary/错误及其余Tools保留；research只放这些新动作help，pin/unpin/primaryset与离线primary均在解释器前拒。见 [ADR0053](adr/0053-bot-pin-primary-runtime-cli.md)。
 
 ## Bot 列表与创建
 
