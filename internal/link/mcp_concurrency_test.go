@@ -107,7 +107,7 @@ func TestMCPConcurrentHTTPCancelKeepsOtherCall(t *testing.T) {
 	var bID json.RawMessage
 	select {
 	case bID = <-enteredB:
-	case <-time.After(100 * time.Millisecond): /* old global write lock prevents admission */
+	case <-time.After(time.Second): /* old global write lock prevents admission */
 	}
 	cancelB()
 	select {

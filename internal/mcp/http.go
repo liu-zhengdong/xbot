@@ -70,9 +70,9 @@ type httpConn struct {
 
 func (h *httpConn) Read(p []byte) (int, error) { return h.pr.Read(p) }
 
-func (h *httpConn) Write(p []byte) (int, error) { return h.WriteContext(h.ctx, p) }
+func (h *httpConn) Write(p []byte) (int, error) { return h.WriteRequest(h.ctx, p) }
 
-func (h *httpConn) WriteContext(ctx context.Context, p []byte) (int, error) {
+func (h *httpConn) WriteRequest(ctx context.Context, p []byte) (int, error) {
 	h.mu.Lock()
 	if h.closed {
 		h.mu.Unlock()
@@ -81,7 +81,7 @@ func (h *httpConn) WriteContext(ctx context.Context, p []byte) (int, error) {
 	h.active.Add(1)
 	h.mu.Unlock()
 	defer h.active.Done()
-	ctx, cancel := context.WithTimeout(ctx, mcpRPCWait)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop := context.AfterFunc(h.ctx, cancel)
 	defer stop()
@@ -114,9 +114,12 @@ func (h *httpConn) WriteContext(ctx context.Context, p []byte) (int, error) {
 	if id := strings.TrimSpace(res.Header.Get("Mcp-Session-Id")); id != "" {
 		h.noteSession(id)
 	}
-	raw, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	raw, err := io.ReadAll(io.LimitReader(res.Body, (1<<20)+1))
 	if err != nil {
 		return 0, err
+	}
+	if len(raw) > 1<<20 {
+		return 0, fmt.Errorf("mcp: HTTP response exceeds 1 MiB")
 	}
 	if res.StatusCode == http.StatusAccepted || res.StatusCode == http.StatusNoContent {
 		return len(p), nil

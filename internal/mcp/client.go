@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -14,10 +15,11 @@ import (
 )
 
 const (
-	mcpProtocol = "2024-11-05"
-	mcpNoteCap  = 32
-	mcpPageCap  = 20
-	mcpRPCWait  = 15 * time.Second
+	mcpProtocol    = "2024-11-05"
+	mcpNoteCap     = 32
+	mcpPageCap     = 20
+	mcpRPCWait     = 15 * time.Second
+	mcpControlWait = 250 * time.Millisecond
 )
 
 type rpcError struct {
@@ -50,28 +52,39 @@ type rpcResult struct {
 }
 
 type mcpClient struct {
-	conn        io.ReadWriteCloser
-	wmu         sync.Mutex
-	mu          sync.Mutex
-	next        int64
-	pending     map[string]chan rpcResult
-	notes       chan string
-	closeOnce   sync.Once
-	closeErr    error
-	terminalErr error
+	conn           io.ReadWriteCloser
+	ctx            context.Context
+	frameGate      chan struct{}
+	abortFn        func(error)
+	abortOnce      sync.Once
+	controls       sync.WaitGroup
+	controlsClosed bool
+	mu             sync.Mutex
+	next           int64
+	pending        map[string]chan rpcResult
+	notes          chan string
+	closeOnce      sync.Once
+	closeErr       error
+	terminalErr    error
 }
 
-func newMCPClient(conn io.ReadWriteCloser) *mcpClient {
+func newMCPClient(conn io.ReadWriteCloser, ctx context.Context, abort func(error)) *mcpClient {
 	return &mcpClient{
-		conn:    conn,
-		next:    1,
-		pending: map[string]chan rpcResult{},
-		notes:   make(chan string, mcpNoteCap),
+		conn:      conn,
+		ctx:       ctx,
+		frameGate: make(chan struct{}, 1),
+		abortFn:   abort,
+		next:      1,
+		pending:   map[string]chan rpcResult{},
+		notes:     make(chan string, mcpNoteCap),
 	}
 }
 
 func (c *mcpClient) close() error {
 	c.closeOnce.Do(func() {
+		c.mu.Lock()
+		c.controlsClosed = true
+		c.mu.Unlock()
 		c.closeErr = c.conn.Close()
 	})
 	return c.closeErr
@@ -108,6 +121,9 @@ func (c *mcpClient) failure() error {
 func (c *mcpClient) fail(err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.terminalErr != nil {
+		return
+	}
 	c.terminalErr = err
 	for id, ch := range c.pending {
 		select {
@@ -190,24 +206,92 @@ func (c *mcpClient) replyUnsupported(id json.RawMessage) {
 	})
 }
 
-func (c *mcpClient) write(v any) error { return c.writeContext(context.Background(), v) }
+func (c *mcpClient) write(v any) error {
+	ctx, cancel := context.WithTimeout(c.ctx, mcpControlWait)
+	defer cancel()
+	_, err := c.writeContext(ctx, v)
+	return err
+}
 
-func (c *mcpClient) writeContext(ctx context.Context, v any) error {
+// writeContext reports whether the frame might have been sent. HTTP requests
+// are independent; only stdio shares a complete-frame gate.
+func (c *mcpClient) writeContext(ctx context.Context, v any) (bool, error) {
 	raw, err := json.Marshal(v)
 	if err != nil {
-		return err
+		return false, err
 	}
 	raw = append(raw, '\n')
-	c.wmu.Lock()
-	defer c.wmu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if err := c.ctx.Err(); err != nil {
+		return false, err
+	}
+	if writer, ok := c.conn.(interface {
+		WriteRequest(context.Context, []byte) (int, error)
+	}); ok {
+		_, err := writer.WriteRequest(ctx, raw)
+		return true, err
+	}
+	select {
+	case c.frameGate <- struct{}{}:
+		defer func() { <-c.frameGate }()
+	case <-ctx.Done():
+		return false, ctx.Err()
+	case <-c.ctx.Done():
+		return false, c.ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if err := c.failure(); err != nil {
+		return false, err
+	}
+	var n int
 	if writer, ok := c.conn.(interface {
 		WriteContext(context.Context, []byte) (int, error)
 	}); ok {
-		_, err = writer.WriteContext(ctx, raw)
+		n, err = writer.WriteContext(ctx, raw)
 	} else {
-		_, err = c.conn.Write(raw)
+		n, err = writeWithContext(ctx, c.conn, raw, c.abortTransport)
 	}
-	return err
+	if err == nil && n == len(raw) {
+		return true, nil
+	}
+	var canceled *zeroWriteCanceled
+	if n == 0 && errors.As(err, &canceled) && c.failure() == nil {
+		return false, canceled.cause
+	}
+	if err == nil {
+		err = io.ErrShortWrite
+	}
+	c.abortTransport(err)
+	return n > 0, c.failure()
+}
+
+func (c *mcpClient) abortTransport(cause error) {
+	c.abortOnce.Do(func() {
+		err := fmt.Errorf("mcp: transport write failed; outcome_unknown: %w", cause)
+		c.fail(err)
+		c.abortFn(err)
+	})
+}
+
+func (c *mcpClient) cancelHint(id json.RawMessage) {
+	c.mu.Lock()
+	if c.controlsClosed || c.terminalErr != nil || c.ctx.Err() != nil {
+		c.mu.Unlock()
+		return
+	}
+	c.controls.Add(1)
+	c.mu.Unlock()
+	go func() {
+		defer c.controls.Done()
+		ctx, cancel := context.WithTimeout(c.ctx, mcpControlWait)
+		defer cancel()
+		params, _ := json.Marshal(map[string]any{"requestId": id})
+		_, _ = c.writeContext(ctx, rpcMessage{JSONRPC: "2.0", Method: "notifications/cancelled", Params: params})
+	}()
 }
 
 func (c *mcpClient) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
@@ -232,16 +316,20 @@ func (c *mcpClient) call(ctx context.Context, method string, params any) (json.R
 		delete(c.pending, key)
 		c.mu.Unlock()
 	}()
-	if err := c.writeContext(ctx, rpcMessage{
-		JSONRPC: "2.0",
-		ID:      json.RawMessage(key),
-		Method:  method,
-		Params:  rawParams,
-	}); err != nil {
+	sent, err := c.writeContext(ctx, rpcMessage{
+		JSONRPC: "2.0", ID: json.RawMessage(key), Method: method, Params: rawParams,
+	})
+	if err != nil {
+		if sent && ctx.Err() != nil && method == "tools/call" {
+			c.cancelHint(json.RawMessage(key))
+		}
 		return nil, err
 	}
 	select {
 	case <-ctx.Done():
+		if method == "tools/call" {
+			c.cancelHint(json.RawMessage(key))
+		}
 		return nil, ctx.Err()
 	case res := <-ch:
 		if res.err != nil {
@@ -267,16 +355,62 @@ func (c *mcpClient) initialize(ctx context.Context) error {
 	}); err != nil {
 		return err
 	}
-	return c.writeContext(ctx, rpcMessage{JSONRPC: "2.0", Method: "notifications/initialized", Params: json.RawMessage(`{}`)})
+	_, err := c.writeContext(ctx, rpcMessage{JSONRPC: "2.0", Method: "notifications/initialized", Params: json.RawMessage(`{}`)})
+	return err
 }
 
+// ToolSpec keeps the complete remote definition alongside the typed fields
+// used by the legacy model adapter. Marshaling a received spec preserves its
+// original fields, including extensions unknown to this client.
 type ToolSpec struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
 	InputSchema json.RawMessage `json:"inputSchema"`
-	Annotations struct {
-		ReadOnlyHint bool `json:"readOnlyHint"`
-	} `json:"annotations"`
+	Annotations ToolAnnotations `json:"annotations"`
+	Raw         json.RawMessage `json:"-"`
+}
+
+type ToolAnnotations struct {
+	ReadOnlyHint bool            `json:"readOnlyHint"`
+	Raw          json.RawMessage `json:"-"`
+}
+
+func (t *ToolSpec) UnmarshalJSON(raw []byte) error {
+	type fields ToolSpec
+	var value fields
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return err
+	}
+	*t = ToolSpec(value)
+	t.Raw = append(json.RawMessage(nil), raw...)
+	return nil
+}
+
+func (t ToolSpec) MarshalJSON() ([]byte, error) {
+	if len(t.Raw) != 0 {
+		return t.Raw, nil
+	}
+	type fields ToolSpec
+	return json.Marshal(fields(t))
+}
+
+func (a *ToolAnnotations) UnmarshalJSON(raw []byte) error {
+	type fields ToolAnnotations
+	var value fields
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return err
+	}
+	*a = ToolAnnotations(value)
+	a.Raw = append(json.RawMessage(nil), raw...)
+	return nil
+}
+
+func (a ToolAnnotations) MarshalJSON() ([]byte, error) {
+	if len(a.Raw) != 0 {
+		return a.Raw, nil
+	}
+	type fields ToolAnnotations
+	return json.Marshal(fields(a))
 }
 
 func (c *mcpClient) listTools(ctx context.Context) ([]ToolSpec, error) {

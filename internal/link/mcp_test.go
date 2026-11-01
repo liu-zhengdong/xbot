@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -269,5 +270,79 @@ func TestMCPBorrowedAdapterDoesNotOwnSession(t *testing.T) {
 	}
 	if _, err := list[0].Run(ctx, []byte(`{}`)); err != nil {
 		t.Fatal("borrowed Run closed shared session", err)
+	}
+}
+
+func TestMCPBorrowedToolRejectsReplacedSpec(t *testing.T) {
+	var oldCalls, newCalls atomic.Int32
+	specFor := func(version string, calls *atomic.Int32) MCPServer {
+		return MCPServer{Name: "docs", Args: []string{version}, Dial: dialFake(t, func(msg rpcMessage) []rpcMessage {
+			switch msg.Method {
+			case "initialize":
+				return []rpcMessage{rpcOK(msg.ID, `{}`)}
+			case "tools/list":
+				if version == "old" {
+					return []rpcMessage{rpcOK(msg.ID, `{"tools":[{"name":"echo","inputSchema":{"type":"object","properties":{"old":{"type":"string"}}},"annotations":{"readOnlyHint":true}}]}`)}
+				}
+				return []rpcMessage{rpcOK(msg.ID, `{"tools":[{"name":"echo","inputSchema":{"type":"object","properties":{"new":{"type":"string"}}},"annotations":{"readOnlyHint":false}}]}`)}
+			case "tools/call":
+				calls.Add(1)
+				return []rpcMessage{rpcOK(msg.ID, `{"content":[{"type":"text","text":"`+version+`"}]}`)}
+			}
+			return nil
+		})}
+	}
+	oldSpec, newSpec := specFor("old", &oldCalls), specFor("new", &newCalls)
+	var mu sync.Mutex
+	configured := []mcp.Spec{oldSpec}
+	owner := mcp.NewManager(context.Background(), mcp.Options{})
+	defer owner.Close()
+	ref, err := owner.Bind(mcp.Binding{Key: "one", ReadConfig: func() ([]mcp.Spec, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]mcp.Spec(nil), configured...), nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	oldTools, err := NewBorrowedMCP(oldSpec, ref).LoadTools(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	configured = []mcp.Spec{newSpec}
+	mu.Unlock()
+	if err := ref.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	newTools, err := NewBorrowedMCP(newSpec, ref).LoadTools(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !oldTools[0].(interface{ ReadOnlyHint() bool }).ReadOnlyHint() || newTools[0].(interface{ ReadOnlyHint() bool }).ReadOnlyHint() {
+		t.Fatal("fixture did not change readOnly/schema across replacement")
+	}
+	if _, err := oldTools[0].Run(ctx, []byte(`{}`)); !errors.Is(err, mcp.ErrConfigChanged) {
+		t.Fatal("stale tool was redirected to the new backend", err)
+	}
+	if oldCalls.Load() != 0 || newCalls.Load() != 0 {
+		t.Fatal("stale adapter sent a request")
+	}
+	if text, err := newTools[0].Run(ctx, []byte(`{}`)); err != nil || text != "new" {
+		t.Fatalf("text=%q err=%v", text, err)
+	}
+	mu.Lock()
+	configured = nil
+	mu.Unlock()
+	if err := ref.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newTools[0].Run(ctx, []byte(`{}`)); !errors.Is(err, mcp.ErrConfigChanged) {
+		t.Fatal("removed tool remained callable", err)
+	}
+	if newCalls.Load() != 1 {
+		t.Fatal("stale/removed tool retried")
 	}
 }

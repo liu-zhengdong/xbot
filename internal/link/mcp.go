@@ -162,6 +162,7 @@ func (m *MCP) build(specs []mcp.ToolSpec) []tools.Tool {
 		}
 		out = append(out, mcpTool{
 			mcp:      m,
+			expected: m.Spec,
 			remote:   remote,
 			local:    localToolName(m.Spec.Name, remote, used),
 			desc:     desc,
@@ -174,6 +175,7 @@ func (m *MCP) build(specs []mcp.ToolSpec) []tools.Tool {
 
 type mcpTool struct {
 	mcp      *MCP
+	expected MCPServer
 	remote   string
 	local    string
 	desc     string
@@ -211,7 +213,7 @@ func (t mcpTool) Run(ctx context.Context, args json.RawMessage) (string, error) 
 	var raw json.RawMessage
 	var err error
 	if t.mcp.ref != nil {
-		raw, err = t.mcp.ref.CallTool(ctx, t.mcp.Spec.Name, t.remote, arguments)
+		raw, err = t.mcp.ref.CallToolForSpec(ctx, t.expected, t.remote, arguments)
 	} else {
 		raw, err = t.mcp.session.CallTool(ctx, t.remote, arguments)
 	}

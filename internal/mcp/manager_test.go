@@ -433,3 +433,65 @@ func TestManagerCredentialSnapshotRotationAndFailureRecovery(t *testing.T) {
 		t.Fatal("restored credentials did not recover the session")
 	}
 }
+
+func TestManagerPauseKeepsSessionDiscoveryAndNotifications(t *testing.T) {
+	var inits, calls atomic.Int32
+	notes := make(chan string, 1)
+	spec := Spec{Name: "docs", Dial: dialFake(t, func(msg rpcMessage) []rpcMessage {
+		switch msg.Method {
+		case "initialize":
+			inits.Add(1)
+			return []rpcMessage{rpcOK(msg.ID, `{}`)}
+		case "tools/list":
+			return []rpcMessage{rpcNote("notifications/message", `{"text":"still-live"}`), rpcOK(msg.ID, `{"tools":[{"name":"echo"}]}`)}
+		case "tools/call":
+			calls.Add(1)
+			return []rpcMessage{rpcOK(msg.ID, `{"content":[{"type":"text","text":"same-session"}]}`)}
+		}
+		return nil
+	})}
+	lifetime, stop := context.WithCancel(context.Background())
+	defer stop()
+	owner := NewManager(lifetime, Options{})
+	defer owner.Close()
+	ref, err := owner.Bind(Binding{Key: "one", ReadConfig: func() ([]Spec, error) { return []Spec{spec}, nil }, Notify: func(server, text string) error { notes <- server + ":" + text; return nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ref.Pause(); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := ref.LoadTools(ctx, "docs"); err != nil {
+		t.Fatal("pause blocked discovery", err)
+	}
+	if status := ref.Status("docs"); status.State != "ready" || status.ToolCount != 1 {
+		t.Fatal(status)
+	}
+	if text := awaitMCP(t, notes); text != "docs:still-live" {
+		t.Fatal("pause stopped notifications", text)
+	}
+	if _, err := ref.CallTool(ctx, "docs", "echo", map[string]any{}); !errors.Is(err, ErrPaused) {
+		t.Fatal(err)
+	}
+	if _, err := ref.CallToolForSpec(ctx, spec, "echo", map[string]any{}); !errors.Is(err, ErrPaused) {
+		t.Fatal(err)
+	}
+	if calls.Load() != 0 {
+		t.Fatal("paused reference sent tools/call")
+	}
+	if err := ref.Resume(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ref.CallToolForSpec(ctx, spec, "echo", map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 1 || inits.Load() != 1 {
+		t.Fatal("resume recreated the session or retried the call")
+	}
+	stop()
+	if err := ref.Resume(); !errors.Is(err, ErrClosed) {
+		t.Fatal("host shutdown was resumable", err)
+	}
+}

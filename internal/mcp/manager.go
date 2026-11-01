@@ -13,6 +13,7 @@ import (
 var (
 	ErrClosed        = errors.New("mcp: owner closed")
 	ErrConfigChanged = errors.New("mcp: configuration_changed")
+	ErrPaused        = errors.New("mcp: calls paused")
 )
 
 // Binding supplies short configuration IO and the existing notification route.
@@ -156,8 +157,31 @@ type BotRef struct {
 	slots     map[string]*sessionSlot
 	specs     []Spec
 	closed    bool
+	paused    bool
 	once      sync.Once
 	err       error
+}
+
+// Pause blocks new tools/call admission while keeping discovery and inbound
+// notifications on the same live sessions.
+func (r *BotRef) Pause() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed || r.manager.ctx.Err() != nil {
+		return ErrClosed
+	}
+	r.paused = true
+	return nil
+}
+
+func (r *BotRef) Resume() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed || r.manager.ctx.Err() != nil {
+		return ErrClosed
+	}
+	r.paused = false
+	return nil
 }
 
 func (r *BotRef) Specs() []Spec {
@@ -305,11 +329,43 @@ func (r *BotRef) CallTool(ctx context.Context, server, remote string, arguments 
 	if err != nil {
 		return nil, err
 	}
+	return r.callTool(ctx, server, remote, arguments, slot)
+}
+
+// CallToolForSpec admits an adapter call only against the configuration whose
+// schema and annotations the caller received. It never redirects to a new slot.
+func (r *BotRef) CallToolForSpec(ctx context.Context, expected Spec, remote string, arguments any) (json.RawMessage, error) {
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return nil, ErrClosed
+	}
+	slot := r.slots[expected.Name]
+	if slot == nil || !sameSpec(slot.spec, expected) {
+		r.mu.Unlock()
+		return nil, ErrConfigChanged
+	}
+	r.mu.Unlock()
+	return r.callTool(ctx, expected.Name, remote, arguments, slot)
+}
+
+func (r *BotRef) callTool(ctx context.Context, server, remote string, arguments any, slot *sessionSlot) (json.RawMessage, error) {
 	if err := slot.wait(ctx); err != nil {
 		return nil, err
 	}
-	if !r.current(server, slot) {
-		return nil, ErrConfigChanged
+	r.mu.Lock()
+	var admission error
+	switch {
+	case r.closed || r.manager.ctx.Err() != nil:
+		admission = ErrClosed
+	case r.paused:
+		admission = ErrPaused
+	case r.slots[server] != slot:
+		admission = ErrConfigChanged
+	}
+	r.mu.Unlock()
+	if admission != nil {
+		return nil, admission
 	}
 	raw, err := slot.session.CallTool(ctx, remote, arguments)
 	if err != nil && !r.current(server, slot) {

@@ -140,9 +140,25 @@ func (m *Session) Close() error {
 		if done != nil {
 			<-done
 		}
+		c.controls.Wait()
 		return err
 	}
 	return nil
+}
+
+// abort closes a damaged transport without joining the read loop: it may be
+// called from that same loop while replying to a server request. The owner
+// still calls Close to join the reader and control notifications.
+func (m *Session) abort(cause error) {
+	m.mu.Lock()
+	m.closed = true
+	c := m.client
+	m.mu.Unlock()
+	m.cancel()
+	if c != nil {
+		c.fail(cause)
+		_ = c.close()
+	}
 }
 
 // Connect starts and initializes the transport at most once.
@@ -163,7 +179,10 @@ func (m *Session) start(caller context.Context) error {
 	if err != nil {
 		return m.diagnostic("start", err)
 	}
-	client := newMCPClient(conn)
+	client := newMCPClient(conn, m.ctx, m.abort)
+	if stdio, ok := conn.(*stdioConn); ok {
+		stdio.abort = client.abortTransport
+	}
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
