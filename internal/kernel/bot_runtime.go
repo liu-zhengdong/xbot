@@ -116,6 +116,7 @@ func (k *Kernel) BotHandlers() *cliops.BotHandlers {
 		})
 	}
 	return &cliops.BotHandlers{
+		Persona: k.personaBotRuntime,
 		Pin:     k.pinBotRuntime,
 		Primary: k.primaryBotRuntime,
 		List: func(ctx context.Context) (cliops.BotListReply, error) {

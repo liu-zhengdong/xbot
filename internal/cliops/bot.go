@@ -15,6 +15,7 @@ type BotHandlers struct {
 	Delete  func(context.Context, string) (BotDeleteReply, error)
 	Pin     func(context.Context, BotPin) (BotPinReply, error)
 	Primary func(context.Context, string) (BotPrimaryReply, error)
+	Persona func(context.Context, BotPersona) (BotPersonaReply, error)
 }
 
 type BotInfoQuery struct {
@@ -25,6 +26,17 @@ type BotInfoQuery struct {
 type BotCreate struct {
 	Name    string `json:"name"`
 	Persona string `json:"persona"`
+}
+
+type BotPersona struct {
+	Text string `json:"text"`
+}
+
+type BotPersonaReply struct {
+	Name      string `json:"name"`
+	Written   bool   `json:"written"`
+	Effective string `json:"effective,omitempty"`
+	Error     string `json:"error,omitempty"`
 }
 
 type BotPin struct {

@@ -40,6 +40,15 @@ Existing offline commands (files/configuration only):
 Help works without a running instance. Runtime failures never fall back to offline files.
 `
 
+const personaUsage = `Usage: xbot [--root DIR] persona set --self (--text TEXT | --file FILE|-) [--json]
+  xbot persona --help
+  xbot persona set --help
+Replaces this source Bot's complete duties; effective on its next wake.
+Requires this source's XBOT_ENDPOINT and XBOT_ROOT. All source Bots can set their own duties.
+--file - reads stdin. Raw input and the final JSON request are limited to 1 MiB.
+Help works without a running instance. Runtime failures never fall back to offline files.
+`
+
 func cmdBotRuntime(rawRoot string, rootExplicit bool, args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -52,7 +61,11 @@ func runBotRuntime(ctx context.Context, rawRoot string, rootExplicit bool, args 
 		return err
 	}
 	if command.Help {
-		_, err := fmt.Fprint(out, botUsage)
+		usage := botUsage
+		if command.Action == "persona" {
+			usage = personaUsage
+		}
+		_, err := fmt.Fprint(out, usage)
 		return err
 	}
 	if command.Offline {
@@ -108,6 +121,16 @@ func runBotRuntime(ctx context.Context, rawRoot string, rootExplicit bool, args 
 			return err
 		}
 		result, text, operationErr = reply, cliops.FormatBotCreate(reply), err
+	case "persona":
+		input, err := readBotPersonaInput(command, stdin)
+		if err != nil {
+			return err
+		}
+		reply, err := cliops.CallBotPersona(ctx, endpoint, root, os.Getenv("XBOT_CALL_ID"), input)
+		if err != nil && reply.Error == "" && reply.Name == "" && !reply.Written {
+			return err
+		}
+		result, text, operationErr = reply, cliops.FormatBotPersona(reply), err
 	case "delete":
 		reply, err := cliops.CallBotDelete(ctx, endpoint, root, os.Getenv("XBOT_CALL_ID"), command.Name)
 		if err != nil && reply.Error == "" && reply.Name == "" && !reply.Removed {
@@ -133,7 +156,22 @@ func runBotRuntime(ctx context.Context, rawRoot string, rootExplicit bool, args 
 	}
 	budget := min(cliops.BotMaxReply, tools.DefaultShellOutputBytes)
 	if len(raw)+1 > budget || len(text) > budget {
-		return errors.New("bot: runtime result exceeds 32 KiB Shell output budget")
+		if reply, ok := result.(cliops.BotPersonaReply); ok {
+			// Keep the committed-write facts visible even if a receipt cannot
+			// fit. The request body never belongs in the short acknowledgement.
+			operationErr = errors.New("persona: runtime result exceeds 32 KiB Shell output budget")
+			reply.Error = operationErr.Error()
+			raw, _ = json.Marshal(reply)
+			text = cliops.FormatBotPersona(reply)
+			if len(raw)+1 > budget || len(text) > budget {
+				reply.Name = ""
+				raw, _ = json.Marshal(reply)
+				text = cliops.FormatBotPersona(reply)
+			}
+		}
+		if len(raw)+1 > budget || len(text) > budget {
+			return errors.New("bot: runtime result exceeds 32 KiB Shell output budget")
+		}
 	}
 	if command.JSON {
 		raw = append(raw, '\n')

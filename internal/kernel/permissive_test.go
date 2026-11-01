@@ -38,7 +38,7 @@ func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
 	k := &Kernel{Bot: testBot(t, link.NameTools), Permissive: true}
 	k.ensureTurn().turnTrusted = true
 	checked := 0
-	for _, tool := range []string{"mcp_x_send", "http_request", "delete_file", "bot_propose_persona"} {
+	for _, tool := range []string{"mcp_x_send", "http_request", "delete_file"} {
 		if !review.NeedsOwner(tool, json.RawMessage(`{"method":"POST","url":"https://x"}`)) {
 			continue
 		}
@@ -186,7 +186,7 @@ func TestLivePermissionSwitch(t *testing.T) {
 		if got := needsCard(t, k, "delete_file", `{"path":"a.txt"}`); got {
 			t.Fatalf("delete needsCard=%v, on=%v", got, on)
 		}
-		for _, tool := range []string{"http_request", "mcp_x_send", "bot_propose_persona", "sh"} {
+		for _, tool := range []string{"http_request", "mcp_x_send", "sh"} {
 			if needsCard(t, k, tool, `{"method":"POST","command":"rm a.txt","text":"new persona"}`) {
 				t.Fatalf("%s asked with permissions on=%v", tool, on)
 			}

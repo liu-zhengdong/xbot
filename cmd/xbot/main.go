@@ -64,6 +64,8 @@ Usage:
   xbot [--root DIR] unpin <name> [--self] [--json]
   xbot [--root DIR] primary
   xbot [--root DIR] primary set <name> [--self] [--json]
+  xbot [--root DIR] persona set --self (--text TEXT | --file FILE|-) [--json]
+  xbot persona --help
   xbot [--root DIR] profile show (--self | <name>) [--json]
   xbot [--root DIR] profile set --self [--description TEXT] [--timezone ZONE] [--avatar-seed SEED] [--json]
   xbot [--root DIR] profile set <name> [--description TEXT] [--timezone ZONE] [--avatar-seed SEED] [--role chat|dev] [--background-max-time MIN] [--name NEW]
@@ -189,7 +191,7 @@ func run(argv []string) error {
 	}
 	if len(rest) > 0 {
 		switch rest[0] {
-		case "list", "info", "new", "delete", "pin", "unpin", "primary":
+		case "list", "info", "new", "delete", "pin", "unpin", "primary", "persona":
 			command, parseErr := cliops.ParseBotRuntime(rest)
 			if parseErr != nil {
 				return parseErr

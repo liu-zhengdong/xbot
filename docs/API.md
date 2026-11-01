@@ -104,7 +104,7 @@ Create/Delete每次复核当前source primary。Create复制source全部Owners/L
 
 生产permissive不增卡、不强普通Delete原callctx；strict固定Delete恒需确认，不查已退delete_bot Known掉成Normal。只strict时经原Jobs现存Local/running/未finished+同listener的原ctx，用原wrapped Shell approver/原providerID/mutex，main冻结policy+原owner动态fork卡/child原回调保持。missing/completed/foreign/noapprover在Pause前拒。approval-only原Shell args附canonical `_xbot_bot:{action:"delete",name:TARGET}`，现grant/deniedBefore同键，目标A→B不吃A，Run raw不改，无随机nonce/新确认工具或表；原回调后重验primary/可见性。
 
-读HTTP硬限64KiB；完整JSON含newline与同准确FormatBotList/Info生成的人读都须≤现Shell32KiB，任一超限则当前source Resources工作区现results写完整脱敏JSON（20MiB结果限），回 `{count,file,access:"local",bytes}`，inline数组省略；两种引用也fit，bytes=实际文件。Create/Delete小回执同双32KiB；客户端先输出真实partial再非0，无proxy/redirect/自动retry，不截数组/remote/状态伪成功。四旧模型门/schema/index/Known已退，research仅list/info/help；fork/persona/role/groups/messages仍原入口。决定见 [ADR0052](adr/0052-bot-runtime-cli.md)。
+读HTTP硬限64KiB；完整JSON含newline与同准确FormatBotList/Info生成的人读都须≤现Shell32KiB，任一超限则当前source Resources工作区现results写完整脱敏JSON（20MiB结果限），回 `{count,file,access:"local",bytes}`，inline数组省略；两种引用也fit，bytes=实际文件。Create/Delete小回执同双32KiB；客户端先输出真实partial再非0，无proxy/redirect/自动retry，不截数组/remote/状态伪成功。四旧模型门/schema/index/Known已退，research仅list/info/help；fork/role/groups/messages仍原入口，persona见下文自身职责CLI。决定见 [ADR0052](adr/0052-bot-runtime-cli.md)。
 
 置顶和主身份也使用平面source CLI：`"$XBOT_BIN" pin NAME --self [--json]`、`unpin NAME --self [--json]`、`primary set NAME --self [--json]`。同ParseBotRuntime在root/default/legacy初始化前识别，help离线；没有runtime primary查询。无self原pin/unpin恰一参数、primary零参数ensureSeed打印或set NAME恰二参数保持，不因环境有endpoint变runtime。self选source；每次用Resources当前名fresh比root Primary、目标self或原VisibleBots本地owner交集，排foreign/orphan/remote，不能拿XBOT_BOT或publish资格缓存授权。B原已存在endpoint在转交后下一写即可有权；A原endpoint仍A并下一写失权，不新建K/ref/session或wake。
 
@@ -113,6 +113,16 @@ Create/Delete每次复核当前source primary。Create复制source全部Owners/L
 Primary回 `{name,primary?,applied,stage,error?}`。原primary.lock内Load目标→WriteAtomic primary.json→仅目标未pinned再SetPinned(true)；保SetPrimary签名/原cause，PrimaryCommitError从实际写点传Applied/Stage，不stat或error字串猜。validation/target/primary之前未成false（lock入口同primary false）；pointer一旦实际写成，后pin失败仍 `{name:"B",primary:"B",applied:true,stage:"pin",error:"..."}` 并非0，A已失权/B已得权。same-primary也本次写pointer，applied不假称changed；stage=complete不代表新wake。不会自动unpin旧A、不改Owners/Links/persona/binding/rolebudget或回滚pointer，原Load潜在初始化不冒全root零写承诺。
 
 两个原Normal动作不加许可卡/CallID/原审批桥，承载Shell原gate仍独立。短ACK只共用FormatBotPin/Primary核JSON含newline与实际human各≤32KiB、HTTP64KiB，partial先输出后非0，不复制List/Info全文artifact或抬全Shell限额。两native wrapper及空bots组/schema/index/Known已退，原isPrimary/错误及其余Tools保留；research只放这些新动作help，pin/unpin/primaryset与离线primary均在解释器前拒。见 [ADR0053](adr/0053-bot-pin-primary-runtime-cli.md)。
+
+## 自身职责运行时 CLI
+
+`"$XBOT_BIN" persona set --self (--text TEXT|--file FILE|-) [--json]`整写原source自己的完整职责。所有Bot包括非primary均可用，不接其它NAME/primary/patch/卡/role预算；没有runtime全文读取或离线setter，profile runtime JSON亦无职责正文。persona/set help离线，同ParseBotRuntime按输入flag arity识别literal --self/help与--，main在root/default/legacy初始化前分流；缺endpoint/root错不回落磁盘，XBOT_BOT只诊断。
+
+PUT `/v1/bot/persona`单JSON对象 `{text}`，拒未知字段/非对象/尾对象，沿原loopback/Host/browser/root guard；text/file/stdin raw max+1及最终转义body各≤1MiB。原Shell命令16KiB，所以完整32KiB职责有file/stdin实际入口，不能靠长argv或先截32KiB再trim。领域仍仅原WritePersona：TrimSpace后1..32KiB字节、写text+newline为0600、单WriteAtomic最终Rename；合法满职责文件可32769字节。handler冻结解码body，审批后在同Resources当前route一次WritePersona，改名跟currentpath，nil直接原source不打开无关Inbox；原Create晚persona检查、config.Persona fallback/rules/记忆/卡与owner HTTP组合applied_fields不变。
+
+短回 `{name,written,effective?,error?}`，仅原write nil时written=true/effective="next_wake"；错误false/非0，不额外造stage/primary式后段partial。FormatBotPersona同server预算和CLI实际打印，整JSON含newline与准确human各≤原Shell32KiB、HTTP64KiB，显示超限也保实际written/effective事实，不回显全文/新artifact或自动重试。原下一Handle assemble→currentComposedPersona读取完整职责并保卡段，active已组装请求不主动重拼。环境沿0021仅职责label+SHA256前6bytes的12hex hash和原卡名/指纹，不额外复制职责到Event/记忆/旧历史/版本账；原Shell调用正常追加，setter不发Event/Inbox/wake。PickedCard首次EnsureSeeds属原初始化，比卡不变须先warm取真实基线。
+
+production Permissive不加许可卡/不强原CallID；strict显式原SelfEdit恒需确认，不查退掉bot_propose_persona Known/Unknown掉Normal、不借Delete或ownerHTTP临时Permissive。可选XBOT_CALL_ID/X-XBot-Call-ID只关联原live Local/running/未finished同listener ctx，原wrapped Shell approver/name/providerID/mutex、冻结policy/动态owner fork卡/actual child原回调保，missing/completed/foreign/noapprover在写前拒。确认在route/Jobs/host锁外，approval-only原Shell args附 `_xbot_persona:{action:"set",text_sha256:64位完整小写SHA256(trim后的解码text),bytes:有效字节数}`；完整body冻结且等待时不重读file，A→B不吃A批准，grant/deniedBefore同canonical，原Shell Run raw不变，无随机nonce/新确认协议/权限账。短hash只环境用，审批使用完整64hex；代码/remote未冒认原strict上下文。personaTool/空bot_profile组/schema/index/Known退役，历史卡片与raw file SelfEdit保持；research仅persona帮助、所有setter在解释器前拒，dev/general沿原source。见 [ADR0054](adr/0054-self-persona-runtime-cli.md)。
 
 ## Bot 列表与创建
 
