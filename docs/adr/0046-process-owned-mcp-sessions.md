@@ -4,7 +4,7 @@ guard: owner
 status: Accepted
 date: 2026-11-01
 ---
-# 0045 MCP 会话由进程持有，Kernel 只借用
+# 0046 MCP 会话由进程持有，Kernel 只借用
 
 ## 背景
 

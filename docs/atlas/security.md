@@ -1,14 +1,20 @@
 ---
 kind: part
 parent: README.md
-code: [internal/vault/, internal/review/, internal/tools/guard.go]
-verified: 2026-11-01 @ feature/vault-global-shared (global Open/API/NeedsSecret/egress/askpass + binary Chrome smoke); 2026-10-31 @ feature/vault-settings-sudo (Store/API/Shell/Chrome); 2026-10-31 @ feature/always-allow-no-permission-cards (permission regression tests); 2026-10-31 @ feature/custom-provider (provider HTTP policy); 2026-10-30 @ c4d67b18 + image-gen-local-proxy (review tests); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
+code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
+verified: 2026-11-01 @ 58b2d81c (source masking/credentials race plus independent Reconcile on 704f584d; getter compile; prior vault/provider/browser evidence reused); 2026-11-01 @ feature/vault-global-shared (global Open/API/NeedsSecret/egress/askpass + binary Chrome smoke); 2026-10-31 @ feature/vault-settings-sudo (Store/API/Shell/Chrome); 2026-10-31 @ feature/always-allow-no-permission-cards (permission regression tests); 2026-10-31 @ feature/custom-provider (provider HTTP policy); 2026-10-30 @ c4d67b18 + image-gen-local-proxy (review tests); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 安全：保险箱与权限表
 
 > **30 秒版**：Bot 只知道密钥的名字，出站代理才换成真值。**生产内核永远不弹工具权限卡**（[ADR 0019](../adr/0019-no-permission-cards-by-default.md)）：`serve`/`chat` 固定 `Permissive: true`，旧 `permissions on` 不能开回卡；保险箱/密钥/配置路径、机器 ask/off、外部事件记忆写入也不弹卡。只保留 `links` 填 key 的输入卡。以下权限分类与确认条件仅描述直接构造的严格测试/评测内核，不是生产许可限制。
 
 > **现阶段（2026-10-18 起）**：先把功能调通调顺，再接安全，见 [ADR 0013](../adr/0013-features-before-security.md)。本页写的是现行代码的行为。权限表、审查入口和保险箱占位作为接口保留；不再加新的安全工作。生产工具许可已经固定放行；文件新鲜度、密钥脱敏、出站域名绑定和存储校验不受这次改动影响。
+
+## 共享慢调用的脱敏
+
+每 Bot 原 Jobs 由进程资源持有，默认脱敏/形式只装一次；实际 CallRequest 保 source 的动态 Redact/Forms，不继承后来 K 的私有状态。初始 Command、进程 Command/Description、text/error、日志、Finalize Result/Command/Description 及失败诊断在各真实出口遮盖；writeMeta 不作补救。读 Output 在原 offset 切片后叠原 source 与当前进程已知秘密，offset/cap 不变。错误文本实际变化时才包一层保 errors.Is/As 的遮盖对象。
+
+MCP 按引用名字、存在性与实际值比较输入；真实 env/HTTP header/启动 stderr 共用一次冻结快照，旧会话至少保到真实退出，仍叠当前 redactor。缺失/不可导出是 credentials 失败，不偷偷保旧 header 或降级；配置 vaultd 时不转本地/环境。无关密钥、同值与仅域名更新不全局重连。后端策略见 [生态](ecosystem.md#怎么运转)。本段验证基线 `aaa66c49`，沿定向 source/masking/credentials race 证据，不重验本页其它安全功能。
 
 ## 音频工具
 

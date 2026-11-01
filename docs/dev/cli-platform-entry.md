@@ -145,9 +145,9 @@ Agent → Shell → xbot CLI ─┐
 
 **变更与检查**：预期只改 `cmd/xbot/{main,cmd_bot}.go`、`internal/cliops/profile.go`、`internal/kernel/{operations,profile}.go`、`internal/bot/{bot,profile}.go`、`internal/web/profile_api.go` 与自有针对性单测；沿既有前端代码通知，不重写 UI。先跑自有旧句柄回滚/组合非法/并发读写红回归，审计 PASS 后实现；通过后仅跑受影响 profile/头像/模板/CLI/web 组合检查与必要 race，独立真入口由验证方跑，不全仓/三遍/真实模型。ADR 0043 的入口/生命周期决定继续有效，本刀不改变它或提前移出工具族；改名、上传 runtime 协议、research/runner、MCP 均不纳入。
 
-## 批 2a：MCP core 与进程资源 owner（2026-11-01，整体结构 PASS，实施中）
+## 批 2a：MCP core 与进程资源 owner（2026-11-01，产品与独立端到端/增量静态通过，待整合）
 
-**切片与对照**：2a 只做 core/真实会话 owner、通知 reconcile、原 Jobs 共享和源调用责任；短暂保留只借用的旧模型 adapter 供观察。2b 真 CLI 通过后同刀退 MCP adapter/装配/schema，不提前写 CLI 大接口或文件产物协议。沿已完成 164 metadata/44 相关全文与其余主题筛查，只查新冲突：ADR 0021 消息/环境、0035 剩余工具门、0043 source endpoint、0044 sender 继续有效；新所有权决定见 ADR 0045。不重新做全候选审查，不改旧 Accepted 正文。
+**切片与对照**：2a 只做 core/真实会话 owner、通知 reconcile、原 Jobs 共享和源调用责任；短暂保留只借用的旧模型 adapter 供观察。2b 真 CLI 通过后同刀退 MCP adapter/装配/schema，不提前写 CLI 大接口或文件产物协议。沿已完成 164 metadata/44 相关全文与其余主题筛查，只查新冲突：ADR 0021 消息/环境、0035 剩余工具门、0043 source endpoint、0044 sender 继续有效；新所有权决定见 ADR 0046。不重新做全候选审查，不改旧 Accepted 正文。
 
 **独立机械子步（已单独放行）**：先搬现 client/stdio/http/diagnostics/config 与有效协议测试到 internal/mcp，link 仅留薄模型/事件调用适配；保持现凭据/provider注入、连接寿命、HTTP取消和15s契约，不接进程Manager/共享Jobs/rename-delete。每提交可编译，只跑搬迁相关一次，不合 main、不宣称2a完成；后续HTTP写缝与runtime接线已获整体具体结构PASS，继续按下述形状实施。若无法纯机械拆开，不硬造兼容框架。
 
@@ -155,33 +155,38 @@ Agent → Shell → xbot CLI ─┐
 
 ### 已定：core 与会话 owner
 
-`internal/mcp` 机械接收现 stdio、mcp_client/http/diagnostics 与 config 实现，不依赖 link/bot/kernel/web/exec/tools。拟议窄接口如下，均尚未实现；配置/通知短 IO 由装配注入，不在 core 引 Event。
+`internal/mcp` 接收现 stdio、client/http/diagnostics 与 config，不依赖 link/bot/kernel/web/exec/tools。产品窄接口如下；配置/通知短 IO 由装配注入，不在 core 引 Event。
 
 ```go
 type Options struct {
     ResolveSecrets func(context.Context, []string) (map[string]string, error)
     IsProviderKey func(string) bool
     Redact func(string) string
-    Dial func(context.Context, Spec) (io.ReadWriteCloser, error) // fixture seam
 }
-type Session struct { Notifications <-chan string /* 原 client/transport */ }
-func Open(context.Context, Spec, Options) (*Session, error)
-func (*Session) Tools(context.Context) ([]Tool, error)
-func (*Session) Call(context.Context, string, json.RawMessage) (Result, error)
+func NewSession(Spec, Options) *Session
+func (*Session) Connect(context.Context) error
+func (*Session) LoadTools(context.Context) ([]ToolSpec, error)
+func (*Session) CallTool(context.Context, string, any) (json.RawMessage, error)
+func (*Session) Notifications() <-chan string
 func (*Session) Status() Status
 func (*Session) Close() error
 type Binding struct { Key string; ReadConfig func() ([]Spec, error); Notify func(server, text string) error }
 func NewManager(context.Context, Options) *Manager
 func (*Manager) Bind(Binding) (*BotRef, error)
 func (*Manager) Reconcile(context.Context) error
-func (*BotRef) Tools(context.Context, string) ([]Tool, error)
-func (*BotRef) Call(context.Context, string, string, json.RawMessage) (Result, error)
+func (*BotRef) Specs() []Spec
+func (*BotRef) LoadTools(context.Context, string) ([]ToolSpec, error)
+func (*BotRef) CallTool(context.Context, string, string, any) (json.RawMessage, error)
+func (*BotRef) CallToolForSpec(context.Context, Spec, string, any) (json.RawMessage, error)
 func (*BotRef) Status(string) Status
+func (*BotRef) Pause() error
+func (*BotRef) Resume() error
+func (*Manager) Rekey(*BotRef, string) error
 func (*Manager) Unbind(*BotRef) error
 func (*Manager) Close() error
 ```
 
-Spec 只含传输配置；Tool 保 Raw/schema/annotations，Result 保 Raw/content 未知块、structuredContent、isError。2a 仅旧 adapter 投影 text/isError 兼容，core 不丢内容；2b 再做图片/大结果产物。现 MCPServer/config 可短暂 alias/薄包装编译，但协议/client/config 只留 core 一份。
+Spec 持久字段只有传输配置，现 Dial/Secret 非序列化 probe/fixture 缝暂留；ToolSpec/ToolAnnotations 保 Raw/schema/完整 annotations，CallTool 返回原 json.RawMessage，保 content 未知块、structuredContent、isError。2a 仅旧 adapter 投影 text/isError 兼容，core 不丢内容；2b 再做图片/大结果产物。现 MCPServer/config 可短暂 alias/薄包装编译，但协议/client/config 只留 core 一份。
 
 Manager slot 持 immutable effective spec、实际 Session、短连接完成 gate。global+Bot 同名整条 override，只比较 command/args/url/secret_envs；来源变化或被 local 遮住的 global 改动不重连。ReadConfig 在资源 route 锁中读 global+当前 local 文件，不能捕获旧路径后在改名外读成“配置已删除”。Manager map/slot 锁不包 ReadConfig/Notify/Open/Close/网络；状态 GET 与 adapter 快照不探测。
 
@@ -222,9 +227,9 @@ func (c *client) cancelHint(id json.RawMessage) {
 - mount/newServeKernel 不再 New 拥有 client 的 MCP；syncMCPLocked 仅同步 borrowed adapter，adapter.Close 不关 Session。attachShellJobs/attachShell 扫 *Shell 时不得经 MCP.Tools 隐式网络；真正 LoadTools 在 host/links/operations 锁外。删除 startEmitters 中 MCP 长期 K，保其它原 Emitter。
 - `CallRequest` 增真实 `Redact func(string)string` 与 `Forms func()[]string`；runToolCall 给 source k.redactor+staged secrets、k.shellForms 动态闭包，live/writer 捕获它们，不让每 K 改共享默认。默认只绑定进程 Vault/held/current 已知秘密；Output 仍动态遮新学秘密。实际出口逐处接：RunCall writer/初始 Command；completeCall 的 result.Text **及 Err**、输出、Finalize 后 Result/错误和 writeMeta 失败诊断；runProcess 重设 Command/Description、启动/Wait/读输出错误与格式化结果。writeMeta 本身完全不脱敏，落盘前必须源 call 已遮；保原分块 Forms、输出限额和新学秘密读回。
 - Prepare/Finalize/原 turn/replyGen/sender/trust/cwd 闭包继续属 source call，不换成当前 owner K。默认 Resources.DeliverToolDone 复用 Jobs.Deliver→原稳定 shelljob_ID Event→当前 Inbox，所有锁外 wake。request.OnDone 覆盖默认的现有单选保持；exec fallback/forwardExec 用同一 Deliver，不发第二完成 Event。Deliver 实际持 metaMu，故短路由顺序为 Jobs.metaMu→route→Inbox；MCP note 为 route→Inbox。
-- 实际写口 web/mcp、apps/custom、apps/{id} DELETE、kernel links/store 与 cmd 配置成功后立即 reconcile；仅 saved/configured 不冒称 ready。现 Bot MCP API 是 GET/POST/DELETE，同 spec POST 409，无 PUT/update；DEL+POST 仅称移除/新增。真正外部原子替换 mcp.json 沿现 serve pass 频率 reconcile，无新 watcher；独立 fixture 可沿现 --interval 100ms。GET apps/runtime 只看当前 Manager 状态，不拿另一 spec 旧错误作新配置结果。
+- 实际运行写口 web/mcp、apps/custom、apps/{id} DELETE、globalSecrets 与 kernel links 成功后立即 reconcile；旧离线 cmd 配置及外部文件由现 Pass 读取，2b 尚未新增 runtime MCP CLI。snapshotLinks 只读 cached spec；Pass/API、Handle 和显式 load 在资源锁外 reconcile。runtime 摘要/search/load/adapter 统一沿 Manager 保留的有效 spec，不绕过它读坏配置；仅 saved/configured 不冒称 ready。现 Bot MCP API 是 GET/POST/DELETE，同 spec POST 409，无 PUT/update；DEL+POST 仅称移除/新增。真正外部原子替换 mcp.json 沿现 serve pass 频率 reconcile，无新 watcher；独立 fixture 可沿现 --interval 100ms。GET apps/runtime 只看当前 Manager 状态，不拿另一 spec 旧错误作新配置结果。
 
-**实际装配签名草图（尚待整体PASS）**：`Kernel.Resources *BotResources`；`web.Server.NewResources func(*bot.Bot)(*kernel.BotResources,error)`，`NewKernel func(*bot.Bot,*kernel.BotResources)(*kernel.Kernel,error)`；原缓存只一张 entry map，`ResourcesFor(b)` 复用同 entry，Pass 的 factory 先取它再 `newServeKernel(root,b,resources,restart)`。chat 直接构造同类型，不建 map/web。Resources 构造完成 Jobs.Load/一次默认投递，再注入 openKernel，后者才 RecoverTasks；binding cached/临时构造同传此指针。默认 Jobs 不捕获第一 K 的 Redact/Forms/OnDone；源 call 仍自己的闭包。MCP ReadConfig 在装配过滤原 retired catalog 项，core 不 import link 猜目录规则。Runtime rename/delete 通过 source K 的窄 host callbacks 进入同 Server entry 接缝；chat 仅当前资源闭包，未持资源的其它 Bot 无需造 K/client/table。
+**实际装配签名（产品已落并验收，待整合）**：`Kernel.Resources *BotResources`；`web.Server.NewResources func(*bot.Bot)(*kernel.BotResources,error)`，`NewKernel func(*bot.Bot,*kernel.BotResources)(*kernel.Kernel,error)`；原缓存只一张 entry map，`ResourcesFor(b)` 复用同 entry，Pass 的 factory 先取它再 `newServeKernel(root,b,resources,restart)`。chat 直接构造同类型，不建 map/web。Resources 构造完成 Jobs.Load/一次默认投递，再注入 openKernel，后者才 RecoverTasks；binding cached/临时构造同传此指针。默认 Jobs 不捕获第一 K 的 Redact/Forms/OnDone；源 call 仍自己的闭包。MCP ReadConfig 在装配过滤原 retired catalog 项，core 不 import link 猜目录规则。Runtime rename/delete 通过 source K 的窄 host callbacks 进入同 Server entry 接缝；chat 仅当前资源闭包，未持资源的其它 Bot 无需造 K/client/table。
 
 ### 已定：source listener lease
 
@@ -232,15 +237,15 @@ func (c *client) cancelHint(id json.RawMessage) {
 
 operationState 只增 calls；closeIdle 快照同 server/calls=0 后解锁查 Local.Tasks/code live，真正摘 server 前在短 operations 锁重查同 server/calls/retiring，HTTP Close 锁外。不得拿 operations 锁调 Tasks/snapshotLinks/网络；release 不等 Jobs.done（cleanup 在 done 前）。原 Local/code OnIdle 保未来 Shell 与队列交接寿命，宿主 ctx/chat 仍强关。profile callback/当前 BIN/root/endpoint/Sink 不提升为进程 profile owner。
 
-### 待整体结构审计：新增资源触及的 rename/delete/binding
+### 已审接缝：新增资源触及的 rename/delete/binding
 
 rename 两真实写口必须同一 host 接缝，不能 web 裸 RenameBot→forget 而旧 tool 另走 Move。实际安全锁序：source/current operations → host s.mu/name-index → 整个 code.Move(path/record) → 共享 Jobs.Move(meta/dir) → route → physical RenameBot；更新当前资源 Bot/Inbox、ref key/local 配置并移同 entry/Gate。NewKernel 当前在 s.mu 内 Recover code/Jobs，故不能在 Move 内反取 s.mu。route 内不调用 Jobs/host/operations/网络，所有锁外 wake；物理移动成功后不能因 reload 错误让 Jobs 仍指旧目录。调用/当前 K 的 Bot **与 Inbox** 都需更新，不据此宣称旧 exec/code/liveTurns/hold/所有 K 都已跟名。必要时 retained source profileOperation/CLIEnvironment 在 operations→route 下只解析当前名字/短 profile IO，使用局部 fresh handle而非异步改旧 k.Bot，仍不是新 endpoint owner。profileOperation 保存/读值后必须先放 route 与 source operations，再沿现 publishProfile(b)：它会拿另一 live K.operations，不能在 route 内调它或 Sink，否则与另一 K 的 operations→rename route 成反序。
 
-binding 只清 entry.Kernel，Resources/Gate 保留；cached 与临时 checker 都先借同资源（PrepareBinding 无条件 CheckBindingIdle→shellJobs），防冷路径第二表。CloseOperations 移 s.mu 外，避免 operations→host 的反序；wake 用当前 route，不让旧 captured b UseBot 回去。
+binding 只清 entry.Kernel，Resources/Gate 保留；cached 与临时 checker 都先借同资源（PrepareBinding 无条件 CheckBindingIdle→shellJobs），防冷路径第二表。CloseOperations 移 s.mu 外，避免 operations→host 的反序；wake 用当前 route，在短 route 锁内 fresh Load 当前路径配置，不让旧 captured b 或 r.current 的长期完整配置 UseBot 回去；绑定 B 后 Provider B 必须配 fresh B 的 prompt/vision/image 能力。TryCurrentHandle 的 Load 与建 handle 在同短 route 内，避免并发改名/删除复活旧目录。
 
-删除先定为分阶段草图，**尚不产品实现**：①提取现 bot.CheckDelete 初始存在/primary/last 检查，短 primary 锁即放，拒绝时不动资源；②快照/重验同 entry，临时暂停共享 Jobs 新准入（非 terminal closed）并标资源 deleting，所有 primary/map/route 锁外 cancel+join 真 owned calls（primary→Jobs 会与现 rename 的 Jobs→primary 成环，禁止）；③按现 Delete 约束重验名字/对象/primary/last 后物理删，成功才锁外 Unbind/Close MCP 与移 entry。长等待不承诺原子回滚；对象改名/保护条件改变/删除失败要如实报告，仍存在对象恢复同 entry/Jobs 准入，不 Load 第二表，不假装旧任务未取消。join 阶段保同 client，只停新工具准入，原 OnDone/MCP note 继续投既有仍存在的目录；最后短 route 写 fence 才阻止删后 Post，失败自然保同 ref，不加暂停通知队列。可恢复暂停与宿主永久 Close 分开，恢复不重开已宿主关闭表；最终物理删除在 route→primary 下重核/执行，不得 primary→route，join 则无任何全局/资源锁。具体接线交24裁决。无删除账本/marker/UUID，不把 busy 拒绝偷换现 API。
+删除按已审三段产品实施：①提取现 bot.CheckDelete 初始存在/primary/last 检查，短 primary 锁即放，拒绝时不动资源；②快照/重验同 entry，临时暂停共享 Jobs 新准入（非 terminal closed）并标资源 deleting，所有 primary/map/route 锁外 cancel+join 真 owned calls（primary→Jobs 会与现 rename 的 Jobs→primary 成环，禁止）；③按现 Delete 约束重验名字/对象/primary/last 后物理删，成功才锁外 Unbind/Close MCP 与移 entry。长等待不承诺原子回滚；对象改名/保护条件改变/删除失败要如实报告，仍存在对象恢复同 entry/Jobs 准入，不 Load 第二表，不假装旧任务未取消。join 阶段保同 client，只停新工具准入，原 OnDone/MCP note 继续投既有仍存在的目录；最后短 route 写 fence 才阻止删后 Post，失败自然保同 ref，不加暂停通知队列。可恢复暂停与宿主永久 Close 分开，恢复不重开已宿主关闭表；最终物理删除在 route→primary 下重核/执行，不得 primary→route，join 则无任何全局/资源锁。具体产品增量交24静态审。无删除账本/marker/UUID，不把 busy 拒绝偷换现 API。
 
-删除三段的拟议具体函数（待24审，不是已实现）：serve 复用现 web.Server entry callback 注入 delete_bot；chat 直接用当前 Resources 闭包，其未持资源的其它 Bot 仍走原删除，不另建 HostResources 映射。
+删除三段的实际调用形状：serve 复用现 web.Server entry callback 注入 delete_bot；chat 直接用当前 Resources 闭包，其未持资源的其它 Bot 仍走原删除，不另建 HostResources 映射。
 ```go
 func (s *Server) deleteRuntimeBot(ctx context.Context, name string) error {
     // bot.CheckDelete: 复用现 primary.lock 内存在/last/primary 判断，立即释放。
@@ -252,7 +257,7 @@ func (s *Server) deleteRuntimeBot(ctx context.Context, name string) error {
     // 释放全部全局/route锁，Jobs.Shutdown取消并等真实owned calls。
     // 此间rename hook发现closing即拒绝，不在join里等primary/host反锁；
     // 已先完成rename则在BeginDelete前报target_changed，不误删新名。
-    // 最后route写fence→原bot.Delete(primary)重验并物理删除（无Jobs锁）；
+    // 真call已join，复用原Jobs.Move(sameDir)的元数据锁→route写fence→DeleteWithResult(primary)；
     // 禁止反过来primary→route。join时原OnDone/note照常Post，
     // 仅最后fence阻止删后Post；失败保原ref/原投递，不加暂停note队列。
     // removed成功才终态Unbind MCP/关闭资源/移entry，均不持owner锁等网络。
@@ -263,6 +268,8 @@ func (s *Server) deleteRuntimeBot(ctx context.Context, name string) error {
     // 返回真实partial结果并终态收资源，现Delete的removeVaultKey在RemoveAll后。
 }
 ```
+最后的 metadata fence 来自实际写缝：原 Jobs.Deliver 在 callback 放 route 后仍写 notified meta，单 route fence 会与晚到 flush 交错；复用既有 Jobs.Move(sameDir)，不新增锁表/状态机，也不在它里面 join。
+
 Jobs 准入至少区分 open/临时 paused/宿主永久 closed，仅表达资源寿命，不是 active/drain 任务状态；Resume 仅在 shutdown实际完成、host仍活且原对象仍存在时执行。service ctx结束是不可恢复上界，不因失败删除把宿主已关资源重新打开。全段无 primary/map/route→join，既有 rename 的 Jobs→primary 锁序不被反转。
 
 **最小红与验证**：先自有 source call lease fixture，K1 两次 profile 协议调用中间 gate、同表空 K2 退休、requested cancel 未真返回、完整 cleanup 后端口关；该 unit 不冒充真实 CLI。core 搬并复用 stdio/HTTP/diagnostics 断言；补同 Bot 两 K/Pass 单 initialize、另 Bot 独立、热新增 note、override/GET 不重连、换配置 call 计数1、HTTP call ctx/原 ID cancel。共享 Jobs 两源动态 secrets/Forms、不串回调、跨 K 原 ID cancel、单 OnDone、old replyGen/附件边界；保既有 avatar/name/代理门有效断言。独立 ownership/通知/慢 call/跨 K cancel 新文件归验证方，实现方不改。按影响最小 unit/race+入口一次，不全仓/三遍/真模型；仅已单独放行的纯机械 core 子步可先提交；整体结构已经PASS，现正式继续HTTP取消修正与runtime接线；产品完成仍需实际绿证据。
@@ -318,7 +325,7 @@ Jobs 准入至少区分 open/临时 paused/宿主永久 closed，仅表达资源
 - 主人日用验收尚未开始。普通资料首刀的独立审计、真入口验证与合入已完成；后续不重复该刀设计审批，按新切片复核实际增量。
 - 批 0 的后续实际操作及入站依赖清单、research 按业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - 头像上传/clear、改名完整运行时 CLI 与其组合仍未覆盖，保留完整旧工具和原即时刷新，未整族移除。avatar_seed 的独立真入口、兼容增量审核与合入已完成，不重复该刀验收。
-- MCP 管理、发现、调用、通知、生命周期与慢调用的 CLI 通路。
+- 2a 的进程 MCP owner/通知、共享 Jobs/source lease、取消及新增资源 rename-delete 已独立端到端和增量静态通过、待整合；现状见 atlas。2b 的 MCP 管理/发现/调用 runtime CLI、完整结果产物与旧 adapter/schema 退役仍未做。
 - 技能/例程/Bot/群/连接器等平台能力逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。

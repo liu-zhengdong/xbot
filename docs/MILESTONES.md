@@ -1,8 +1,19 @@
 # XBot 里程碑与进度
 
+## 2026-11-01 MCP 2a 产品分片（独立端到端与增量静态通过，待整合）
+
+- 整体具体结构经24 PASS，`76f6df46` 在原编号上标 Accepted，整合为避让 continuation 决定迁到 [ADR 0046](adr/0046-process-owned-mcp-sessions.md)，仅本刀 owner 决定；0035 MCP schema 退役留2b。产品 `3f8e076d` owner/通知/冻结凭据，`b08afda9` HTTP/stdio取消/完整Raw/陈旧spec拒绝与Ref暂停，`c799d8ae` 逐call脱敏/Jobs准入，`aaa66c49` 共享原Jobs/sourcelease/rename-delete与真实入口接线。
+- `3f8e076d` 独立Owner真入口 PASS（validation `69e78b70`，仅21093183+9e5f3d99独立文件），1.53s/package2.675s；24对同SHA增量静态PASS。热新增在web/describe/status前收到note并启动真实轮；三Bot共3次init（旧10），Worker web/note/web计数1/2/3同session、Other独立1，untrusted Inbox单事件。
+- 精确 `aaa66c49` 的独立最终组（validation `781db024`）：Owner PASS1.60s，CallsAndSourceLease PASS22.78s。真实HTTP15.514s、调用count1；跨web原Job status/output/cancel、sourceShell两次CLI端口保留和真结束回收、空K关闭、单原event均过。该15.5s证据封存，不重复。日志由协调方保存在 `~/.xbot-build/ui-shots/cli-platform-mcp/mcp-final-781db024.log`。
+- 同组Reconcile在 INVALID_KEEPS_WORKING 实际红：installedSection现读坏磁盘绕过保留spec；24另命中正常换绑B后wake以r.current旧整配置覆盖fresh B的P1。`704f584d` 用同一mcpSpecs覆盖runtime摘要/search/load/adapter消费者，无resources才读文件；CurrentBot在短route内fresh Load当前名。最小定位先红（deepseek旧绑定覆盖replacement），修复后单项race PASS4.287s，cmd/kernel编译通过；只交独立Reconcile和修复增量静态，Owner/Calls证据复用。
+- `704f584d` 独立Reconcile复验（validation `2d59185f`）一次PASS10.96s/package12.022s：非法spec保有效会话、热换unknown不retry/单event、真实secret定向变更/删除/恢复均过；24对 `aaa66c49..704f584d` 定向修复静态PASS，无剩余2a阻塞。Owner/Calls保留上面的精确SHA，不重跑15.5s。
+- `58b2d81c` 仅导出原dirMu保护的 Directory() getter，供协调方整合新main continuation restore的实际Jobs.Dir读口；Dir兼容保留、不共享Local executor。tools仅编译通过0.708s，没有为getter另写测试或重跑旅程；本分支未拉main continuation。
+- 自有绿证据：owner/adapter5项race；取消/Raw/stale/pause11项race（半帧新fixture预读场景纠正后仅重跑该项）；tools定向race1.920s；kernel6项race2.862s含原lease红翻绿、跨K同表cancel/单完成/源mask；mutation7项race kernel1.235s/web1.339s；9项受影响旧rename/Jobs/delete/endpoint通过。最终cmd/web/pipe/e2e编译通过(.749/.899/.893/.894s)，所有job已收。相关一次绿即停，不以全仓测试代替实际入口。
+- 级别：feature产品已提交、本地unit/race及上述真实入口通过；修复后的独立Reconcile/增量静态已通过，待协调方整合，未合main/未日用。Not run：全仓/三遍、机械19项重复、Avatar/browser旅程重复、真实模型/服务与跨平台；未push/发版/改运行实例。2b runtime MCP CLI/完整产物与旧adapter/schema退役未做。
+
 ## 2026-11-01 MCP 2a 设计与独立 core 机械子步
 
-- L 档，沿已确认 CLI 路线在同份 [dev](dev/cli-platform-entry.md) 补 2a 调用方、两种结构与实际锁/回调/关闭接缝，新增 [ADR 0045](adr/0045-process-owned-mcp-sessions.md)（Proposed）。完整进程 owner/共享 Jobs/通知/取消接线仍待整体具体结构 PASS；没有提前做 2b CLI/退 schema 或完整 runtime rename。
+- L 档，沿已确认 CLI 路线在同份 [dev](dev/cli-platform-entry.md) 补 2a 调用方、两种结构与实际锁/回调/关闭接缝，新增 [ADR 0046](adr/0046-process-owned-mcp-sessions.md)（Proposed）。完整进程 owner/共享 Jobs/通知/取消接线仍待整体具体结构 PASS；没有提前做 2b CLI/退 schema 或完整 runtime rename。
 - 已单独获准的纯机械子步提交 `e4313fc3`：现 client/stdio/HTTP/diagnostics/config 与有效协议测试移到 internal/mcp，Link 保模型与 Event 投影/薄委托；core 仅 stdlib+fsutil。Provider predicate 由 Link 动态注入，lazy owner/Close、Secret fallback、HTTP 15s 与同步取消行为未改。不把此子步描述为 MCP 2a 完成。
 - 一次定向 19 项 core/Link 测试通过（11+8，3.324/3.124s）、两包 vet/格式/diff 通过；额外 `go test ./cmd/xbot -run '^$'` 编译通过（0.230s，不执行产品用例）。仅复用这批证据，不全仓重跑。
 - 实施前自有最小红分别命中旧实现：source 解释器调用尚在 gate 内而退休关闭端口（3.215s）；同 HTTP session A 长 POST 阻塞时，B cancel 等 A 响应（1.838s）。只新增自有 fixture，不改独立 E2E 文件；它们是待 owner/取消实施的红，不冒称真实 CLI/独立入口已通过。
