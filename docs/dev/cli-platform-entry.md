@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过，父集成待收，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self完整职责具体合同待单次窄核，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -586,6 +586,70 @@ ccdc具体合同单次窄核后，原source平面list/info/new/delete、动态�
 ## pin与primary切片已提炼
 
 f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary.json真实commit后pin失败partial、原A失权/B预先endpoint得权与两模型门退役已提炼至 [API](../API.md#bot-运行时-cli)、[内核](../atlas/kernel.md#bot-发现与管理实例入口)、[ADR0053](../adr/0053-bot-pin-primary-runtime-cli.md)。586首A→B链与cc46三个边界的四项独立所测精确phase/当前合入级别只记 [MILESTONES](../MILESTONES.md)，不在母文档复制已完成合同。persona全Bot self/full职责file-stdin/原SelfEdit/nextwake是下一具体族，fork、卡、role预算、消息群和用户独立owner-SSE设计仍原边界，不借两小写动作扩展。
+
+## 批 persona：完整self职责（具体合同待窄核）
+
+L档，基线TRUE main6291fae16a9c66d8835a1caf1a373dca07685e99；上一pin/primary四项业务精确phase与全部必要静态已封，不重旧Bot5/routine6/skills/profile/MCP。这里只迁原bot_propose_persona{text:FULL}，新 [ADR0054](../adr/0054-self-persona-runtime-cli.md) glob空后建Proposed，先commit交24 SINGLE actualshape；通过前不产品、不先猜CLI开红。没有独立persona CLI setter；runtime profile show/JSON没有完整职责，不把已完成普通资料/头像重做。
+
+### Caller与完整输入
+
+```sh
+"$XBOT_BIN" persona set --self --text '完整职责与边界' [--json]
+"$XBOT_BIN" persona set --self --file FILE [--json]
+cat FILE | "$XBOT_BIN" persona set --self --file - [--json]
+"$XBOT_BIN" persona --help
+"$XBOT_BIN" persona set --help
+```
+
+只replace整份职责，不patch/append，不接target NAME/--name/--primary/其它Bot/批量scope。self定位原endpoint/Resources，所有source Bot（包括非primary）都能写自己，无owner交集管理门；XBOT_BOT仅诊断，不能从它Load或用root primary冒self。persona只有set运行态动作，无新读口或离线setter；help离线，其它形状必须self及当前ROOT/ENDPOINT，入口失败不回落存储。
+
+扩既有ParseBotRuntime的persona set形状/早main dispatch，--text/--file恰一且只一份（重复、缺值、两者同时、有目标或未知flag皆纯语法拒）；--file的值可字面--self/--help，须按arity消费，--后不认flag。沿BotCommand现Persona/PersonaFile两输入槽，不造第二parser/泛Bot patch。cmd在resolveRoot/EnsureDefault/BindLegacy/HoldKeys前处理help/语法与选路；原其它平面CLI有效形状保。
+
+原Shell命令最多16KiB，因此仅长argv不能证明完整32KiB职责。text/file/stdin各raw max+1读取沿原BotMaxRequest=1MiB，最终对应JSON转义请求≤1MiB（含实际发出的换行），先核运行环境/root再读取输入，拒超限不截断。可就近抽现new与persona两真正caller共享的bounded input小段，分别按各自typed body核最终wire，不把persona伪装成BotCreate。不能在trim之前把raw先截32KiB，32KiB职责+空白raw仍按原规则trim后判；32KiB是UTF-8字节而非rune数，合法文件实际保存trimtext+newline可为32769字节。
+
+### 对照回顾与两个实际结构
+
+| 现有事实/旅程 | 本刀复用或边界 |
+|---|---|
+| 1c有限清点、当前atlas多Bot职责/卡/工作档案边界；原tools105-127 allselfWritePersona | 只职责整写，卡只口吻，rules/config.Persona fallback/记忆/卡/role预算/其它Bot不改。profile owner HTTP原组合applied_fields不迁/不降。 |
+| 原WritePersona703与WriteAtomic最终Rename | 原TrimSpace、空拒、trim后≤32KiB、0600、一次atomic写是唯一领域校验/物理提交点，无后提交业务阶段，不机械造primary式partial/事务或rollback。 |
+| ADR0019与review.SelfEdit原恒确认 | 生产Permissive无许可卡；strict必须沿明确SelfEdit恒确认，不能因退Known或Shell承载变Normal/借Delete。 |
+| ADR0021/currentComposedPersona/Handle assemble/原环境采样 | 下一正常wake组装新完整职责；当前已组装request不主动重拼。仅label+shortHash/卡指纹沿环境流，原Shell调用仍正常追加，不另存职责Event/版本账/记忆或改旧历史；setter不wake。 |
+| ADR0043/0051/0052原listener/原live source approval | 同ref/currentroute，审批沿实际原Shell providerID/mutex/frozenpolicy、动态owner fork卡/actual child，丢失原ctx严格拒，不仿ownerHTTP临时Permissive。 |
+| 六条基本旅程、长程运行与既有source改名/后台 | 不动guard步骤与验收、不重原已绿族；保追加历史、fork/原Jobs生命周期、下一wake/current路径与原工具/通知行为。 |
+
+A形状：CLI Load(root,XBOT_BOT)→WritePersona或newK再走工具。虽短，却信诊断/旧快照，丢当前ref和strict原Job审批、可能另组上下文/卡；淘汰。B形状：原BotHandlers加一个typed Persona setter，现parser/transport+原WritePersona/currentResource，strict借两现approval primitive；caller只一次CallBotPersona。选择B，原物理writer不复制、校验仍归WritePersona，不造persona库/版本存储/alias/任务授权表；既有单writer足够，不新锁事务框架。接受只短保存/下一wake回执，换来不新增全文getter及大产物层；接受原nextwake生效，换来不重拼正在执行的model request。
+
+### 选定签名、审批与提交点
+
+```go
+// internal/cliops：扩原BotHandlers，不增family dispatcher。
+type BotPersona struct { Text string `json:"text"` }
+type BotPersonaReply struct {
+    Name string `json:"name"`; Written bool `json:"written"`
+    Effective string `json:"effective,omitempty"`; Error string `json:"error,omitempty"`
+}
+// BotHandlers.Persona func(context.Context,BotPersona)(BotPersonaReply,error)
+reply, err := cliops.CallBotPersona(ctx,endpoint,root,callID,cliops.BotPersona{Text:fullText})
+// 成功written=true/effective="next_wake"，false/error非0；不回显正文，也无stage/后段partial。
+```
+
+PUT `/v1/bot/persona`单JSON对象{text}，拒未知字段/非对象/尾对象，沿原loopback/Host/browser/canonicalroot guard、1MiB请求与64KiB HTTP回包。仅此self写，不接name/caller申报权限。CallBotPersona沿原client从CLI透可选XBOT_CALL_ID/X-XBot-Call-ID，同原optionalSourceCallID；production普通写没ID也可用，strict不得凭ID另造ctx。共用FormatBotPersona纯函数同时预算与实际打印，JSON含newline与准确human各≤原Shell32KiB，短ACK无正文/全文read、无artifact/20MiB新复刻、不抬Shell限额。失败真实written=false；WriteAtomic nil才written=true，reply effective只此时为next_wake，不造applied_fields/阶段/再读stat猜成功。若显示失败发生在保存后也保真实written/生效事实，不伪报盘没写。
+
+Kernel的Persona回调始终挂所有原source，不按primary/owner挑选namespace。持原operations lease，冻结此次已解码text；TrimSpace仅得到用于canonical的同一有效表示，不在CLI/HTTP复制职责空值/32KiB领域校验，仍由原WritePersona在实际写口判（不改Create既有late persona校验）。严格确认在所有route/Jobs/host锁外；批准后回同ref当前route一次WritePersona，改名仍self当前路径，不能留旧b/路径或仿离线Load。原WritePersona不改签名/存储规则，也无新multi-stage error类，FS错误即未替换职责（不冒整个root无任何临时IO）。
+
+严格明确 !permissive()→现runtimeApprovalSource取真实Local/running/未finished同listener的prepared ctx，再取原wrapped Shell ToolArgs；approval-only附 `_xbot_persona:{action:"set",text_sha256:FULL_SHA256_OF_TRIMMED_TEXT,bytes:BYTE_LENGTH}`，按已退前SelfEdit语义need=true调用approveRuntimeIntent。不查bot_propose_persona Unknown、不借Delete类别/新确认tool或通用权限表，不把Shell正常need=false误当免SelfEdit；原Shell自身机器/保护/Memory gate另保。附加intent以完整SHA256的64位小写hex与有效字节数覆盖本次完整有效text，只是局部确定性摘要，不另存正文/版本或新grant表，也不把最多1MiB无效输入再膨胀复制进审批参数；其自身不含随机HTTP/Job/provider id、file路径诊断身份或动态name，原Shellargs仍完整保原命令。原grant/deniedBefore同canonical；same --file命令内容A→B必须重新审，相同trim值的附加intent相同而不擅自改原Shellargs的键语义。等待时不重新读file，写入冻结的被审值，不修改真Shell.Run raw。
+
+原owner冻结policy/看动态fork卡、原providerID/approvalmutex、actual child无Person身份与自己的subApprover保，不取latest turn，不造permission token。missing/completed/foreign/noapprover在WritePersona前拒；deny/park/grant仍原桥，callback后沿当前ref执行而不是新K。production serve/chat始终Permissive，不为独立验收加strict开关/hook/模拟身份，strict实际ctx只作者定向单位；任意普通HTTP请求不能因此被包装成owner自改特权。
+
+### 怎样算对与退役交接
+
+1. 合同commit→24 SINGLE actualSHAPE→Accepted再实施首compiled，立刻交0d ONLY真source Shell --file完整保存→下一真实wake model request职责正文与职责shortHash链一次；source可明确非primary，无target资格混入。旧profile/头像/四Bot/控制/routine/skills/MCP证据不重。PickedCard首次Default/EnsureSeeds会初始化卡库，先warm/seededCard实际装配后取比较基线，不将首wake原初始化误报persona副作用；不需要另hook/新K。
+2. 边界仅完整32KiB字节file与stdin可达/UTF-8/trim后32KiB合法/raw>32KiB但trim合法、empty或trim后32KiB+1拒且旧职责不替换、raw/最终escaped1MiB max+1拒；小text亦成功。真实FS写失败writtenfalse/旧正文保、原0600/text+NL及config fallback/rules/memory/card原支持字段不变，self改名currentpath/非primary可写/target或ROOT错误不回落。原下一wake组合保卡段，env只label+SHA256前6bytes的12hex短hash/原卡指纹，无额外wake/Event/历史改写/职责版本账。
+3. 作者ONLY新strict actual-source ctx单位：allow/deny/deniedBefore/park-repeat、fulltext A→B不同intent、同有效值canonical稳定、missing/finished/foreign/noapprover、冻结policy+原owner动态fork卡与actual child回调、原Shell name/providerID/rawRun/mutex不变，route锁外问且批准后currentResource写；不得把这些叫生产strict E2E。原两个approval consumer语义不改，不默认整组routine或Delete回归。
+4. 同cut仅退personaTool/bot_propose_persona、空bot_profile registry组、该Known/schema/index及指引；保raw file self-edit/category与其它persona-card/ownerHTTP/peer工具。research只同窄lexer/纯parser的persona help，全部setter在解释器前拒/零本次写，dev/general源Shell可用。原独立Bot/控制readonly曾要求persona describe live的断言只由独立owner迁失效部分，保其它业务、不产品方编辑独立用例/重旧族。按实际影响一次绿即停，不wholepackages/matrix/新概念轮。
+
+本轮只合同与Proposed0054，不产品/测试/atlas现状；假设均以以上原实际方法为底，不扩职责读取/卡SKU/role预算/fork/消息群/vault/connector。用户root独立owner-SSE设计只读避冲突，不抢步骤/命令/guard。persona本刀真正合main后才继续Event/Link剩余母路线，不遗忘/不混入；无root/main操作、push/日用或真模型。
 
 ## 还没做的
 
