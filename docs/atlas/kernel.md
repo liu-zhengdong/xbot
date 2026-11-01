@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/, internal/cliops/]
-verified: 2026-11-02 @ 997baf85 (bot-fork source model chain, partial receipts and native retirement)
+verified: 2026-11-02 @ e506d810 (experience source callbacks, nullable acknowledgement and current-workspace artifacts)
 ---
 # 内核：Link、Event、收件箱
 
@@ -73,6 +73,14 @@ REMOTE 得到实际发送/排队结果后，在源 transcript 追加一次 Origi
 Created 仅 Create nil 或 typed CreateCommitError.Applied 的 config ACK，CreateStage 仅实际 typed stage；Confirmed 封闭为 owners/binding/rules/handoff/child_note/source_note/group 的原调用 nil ACK。HandoffParts 仅 Remember nil 次数，Total 为实际 split960 数；当前 Memory 错给实际 bot/key 的 UncertainMemory，MD 可能已成。8KiB summary 对4KiB profile 可在真实 child+若干 confirmed parts 后容量失败；原 MD→index→sync 后段错也不能猜未写。GroupID 仅 CreateGroup nil，不回滚/重试/抬容量或 error/stat 猜提交。JSONNL 与准确 human 各≤32KiB、HTTP64KiB，短 ACK 不含职责/摘要或 artifact；partial 先打印再非0并警示勿盲重跑。字段和阶段见 [API](../API.md#bot-交接派生运行时-cli)，决定见 [ADR0057](../adr/0057-bot-fork-runtime-cli.md)。
 
 `fork_bot` wrapper/Known/schema/index 与已空 peers 工具注册组已退；Link/Event 仍有其它职责。旧 native 调用历史保持，旧离线/Web `Fork` 仍经薄 adapter 在错误时返回空结果，不冒 typed partial；后台 ForkKindStart/End 修复与 bg_ 插话分叉各保原义。
+
+## 经历记录与检索实例入口
+
+原 listener 的 `Handlers.Experiences` 以 Record/Search 两个 typed callback 接 `experience record/search --self`，直接复用 source 的 `RecordExperience` / `SearchExperiences`、Clock、SQLite 与内部 current IO。所有 Bot 含非 primary 可用，source 只由 endpoint/规范 root/ref 识别；旧诊断名不参与。原两方法忽略 ctx，不要求 CallID 或 prepared turn，默认 seq 取操作当时 transcript。Normal record 不调用审批 intent、不加卡或要求 approver，承载 Shell gate 独立；research 仅 help/search self。没有新 Kernel、MemorySession、source registry 或事务服务。
+
+callback 持原 operations lease，不外套 currentIO 再调已持 route 的原方法。记录只映射原返回 Entry 的 ID/range 与 nil ACK：nil 才 `recorded:true`，任意 error 为 `recorded:null`，保实际返回值，不以错误推断 SQLite 未建库或未插入。搜索仍为原 `presentHistory` 脱敏/6 KiB 文本，不换 raw rows 或 Web Page。准确共享 formatter 同时核 JSONNL/human 各 32 KiB；转义导致超限时沿原 work.WriteResult 保存完整该 Text JSON，预检 metadata 两格式后才短持 currentIO，以当前名/root 和重基后的原 WorkDir（空时当前 Bot 默认工作区）写 0600 产物，不复活旧目录。HTTP 64 KiB、结果 20 MiB，错误沿原 redactor/held secrets/Resources 脱敏，CLI 保事实先输出再非 0。
+
+下一自然 experience 环境采样及读错保旧值沿原差异流；SQLite/Web 提纲消费者与 raw seq/experience+0 起下标的完整 blob detail 均保原义，见 [记忆](memory.md#怎么运转)。两旧 record/search wrapper、Known、schema、index 与执行指引已退，旧 native 历史保持；memory 组仍有 recall，context 仍有 compact/recall_history/expand/detail，原 Link.Tools 空壳保留。不另发 Inbox/waker、MemoryOwnReceipt、假 ToolCall 或普通事实账。命令、DTO、nullable ACK 与产物协议集中见 [API](../API.md#经历记录与检索运行时-cli)。
 
 ## MCP 与每 Bot 进程资源
 

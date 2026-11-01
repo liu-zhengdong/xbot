@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
-verified: 2026-11-02 @ 997baf85 (bot-fork Normal source gate, uncertainty and native policy retirement)
+verified: 2026-11-02 @ e506d810 (experience Normal CLI, no CallID and separate research read policy)
 ---
 # 安全：保险箱与权限表
 
@@ -31,6 +31,14 @@ MCP不再有可执行mcp_模型工具；Known不为任意旧前缀兜底，历�
 `bot-fork NAME --self (--role TEXT|--role-file FILE|-)` 对所有 source Bot（含非 primary）沿原 Normal 语义，不新设工具类别。原 loopback/Host/browser/规范 root guard 与 source endpoint/ref 定位保持，XBOT_BOT 仅诊断；必须同 listener 实际 Local/running/未 finished Shell prepared context 和冻结 turn，不用 latestTurn，不要求 approver 函数，也不调用 approval intent/增加确认卡。承载 Shell 的原机器 gate 与分类独立；research 仅同窄 lexer/parser 的离线 help，参数中的字面 --help 不放行写。
 
 回执的名字、错误及不确定记忆标识沿原 source 脱敏，raw及最终转义typed请求各1MiB，准确JSONNL/human各32KiB、HTTP64KiB；短回执不回显职责/摘要或另存artifact。created仅原config ACK、confirmed/parts仅原nil返回，当前Memory错误的uncertain_memory{bot,key}明确Markdown可能已写；不把容量/index/sync晚错说成零写，不自动重试或回滚。`fork_bot` wrapper/Known/schema/index及已空peers工具组已退，旧native记录和Link/Event其它作用域保持；旧离线/Web Fork仍错误空结果adapter，不能冒用source调用身份或typed部分回执。模型/记忆及当前路径边界见 [内核](kernel.md#bot-交接派生与原-source-模型链)、完整协议见 [API](../API.md#bot-交接派生运行时-cli)与 [ADR0057](../adr/0057-bot-fork-runtime-cli.md)。
+
+## 经历记录与检索 CLI
+
+`experience record/search --self` 沿原 source endpoint/ref、规范 root 和 loopback/Host/browser guard，旧 XBOT_BOT 仅诊断；所有 Bot 含非 primary 可用，不加主人/person/project scope 资格。两原语忽略 ctx，客户端不发 CallID header，缺失或过期 CallID 不影响领域许可，header 也不是身份或权限。原 Normal record 不调用 approval intent、不加确认卡、不要求 approver；承载 Shell 的原机器 gate 与分类独立，不能把群发送/派生的 prepared context 要求套到这里。
+
+research 仅允许当前 canonical BIN 或精确受控 XBOT_BIN 的窄 POSIX 直调，经同 lexer/纯 parser 放 help 和 `experience search --self`；record 在解释器前拒绝，summary/query 值中的字面 `--help` 不冒帮助。dev/general 仍可沿原 source Shell 记录与检索。两旧 experience_record/experience_search 的 wrapper、Known、schema、index 与执行指引已退，不列入原生模型工具权限表；memory 的 recall 和 context 的 compact/recall_history/expand/detail 仍在原类别。
+
+raw 输入与最终转义请求各≤1 MiB；准确 JSONNL/human 各≤32 KiB、HTTP≤64 KiB。搜索返回原 presentHistory 已脱敏/6 KiB 文本，转义超预算才存当前 source 工作区完整该 Text JSON 的 0600 产物，先核 metadata 两格式，实际写点才短持 currentIO；错误沿原 k.redactor/held secrets/Resources 遮盖。记录仅原方法 nil ACK 为 true，原方法任意错误为 recorded:null，保返回 ID/range，不保证 SQLite 零副作用；仅显示 error 可缩短。CLI 先输出事实再非 0，不自动重试。字段与产物协议见 [API](../API.md#经历记录与检索运行时-cli)，当前路径和生命周期见 [内核](kernel.md#经历记录与检索实例入口)。
 
 ## 共享慢调用的脱敏
 
