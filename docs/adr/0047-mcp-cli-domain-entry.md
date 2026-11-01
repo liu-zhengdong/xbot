@@ -29,4 +29,4 @@ date: 2026-11-01
 
 ## 验证级别
 
-先最窄真实二进制 self add→list→tools→describe→call，再由独立验证方把2a业务 driver迁CLI，原会话计数、gate、原Job取消/单Event和source lease断言不变。实现方只做受影响最小unit/race与必要边界；不全仓、不真模型、不改独立期望。当前仅具体接口草图，待24审实际新增切口后实施，不等于2b产品通过。
+先最窄真实二进制 self add→list→tools→describe→call，再由独立验证方把2a业务 driver迁CLI，原会话计数、gate、原Job取消/单Event和source lease断言不变。实现方只做受影响最小unit/race与必要边界；不全仓、不真模型、不改独立期望。具体切口已获24结构PASS并实施；16be6d78已通过独立CLIEntry与增量静态，其余独立CLI业务组仍在验收，不等于整条平台迁移或日用通过。

@@ -242,7 +242,7 @@ type doorArgs struct {
 
 func (toolDoor) Name() string { return "tools" }
 func (toolDoor) Description() string {
-	return "Reach every tool this Bot has that is not in your tool list. The environment's tool_index names them by group. action=search with query (and optional group, limit) returns matching ids with one-line summaries. action=describe with a tool id returns its full description and JSON schema; with a group id it lists the group's tools, starting an MCP server that is not running yet. action=call with id and args (an object) runs that tool, with the same review and confirmation as a direct call. None of these change your tool list."
+	return "Reach every tool this Bot has that is not in your tool list. The environment's tool_index names them by group. action=search with query (and optional group, limit) returns matching ids with one-line summaries. action=describe with a tool id returns its full description and JSON schema; with a group id it lists the group's tools. MCP is reached through the current instance CLI, outside this tool door. action=call with id and args (an object) runs that tool, with the same review and confirmation as a direct call. None of these change your tool list."
 }
 func (toolDoor) Parameters() any {
 	return schema(map[string]any{

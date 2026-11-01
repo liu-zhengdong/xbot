@@ -1,7 +1,11 @@
 # 连接器
 
-Link 是能力与事件的现有边界：出站工具、入站事件。Bot 只能使用当前授权并挂载的能力。`links search` 查目录，`links install/remove` 改安装，`links load` 启动已授权的连接并列出工具 id；工具不进工具列表，一律经代理门 `tools`（search 找、describe 看参数、call 调用）；安装不等于已读取工具详情，也不等于实际请求已经成功。
+非 MCP Link 仍以出站工具、入站事件接入。`links search` 查目录，`links install/remove` 改安装，非 MCP 的 `links load` 列出工具 id，再经 `tools` 的 search/describe/call；安装不等于实际请求已经成功。
 
-MCP 服务器提供工具，Telegram、飞书等连接器还把外部消息投进收件箱。用户可在连接器设置中管理，或用 `xbot link list <bot>` / `xbot mcp list <bot>` 查看。需要密钥时用既有填写入口；手册和对话只称密钥名字，不能输出值。安装和授权沿内核权限/密钥流程，不另造发送通道。
+MCP 用当前实例 CLI：Shell 中先运行 `"$XBOT_BIN" mcp --help`，然后 `mcp list --self --json`、`mcp tools <服务器> --self --json`、`mcp describe <服务器> <远端原名> --self --json`、`mcp call <服务器> <远端原名> --args '<JSON object>' --self --json`。服务默认全局配置，显式 `--scope bot` 是当前 Bot 的整条覆盖；调用总用有效配置。MCP 不再注册模型 schema，不用旧 `mcp_` 工具名或 links load。research 只允许当前实例的读取命令，call 另需 `--readonly` 且远端当前工具明确只读。
 
-已安装能力与技能通常只把目录送给模型，正文或 schema 按需读取。技能是用户的技能库里的 `SKILL.md`，可以用 `read_skill` 读；它不等于一个新 Link。手册描述通用机制，连接是否就绪、外发是否成功应检查当前环境及工具实际结果。
+人用终端显式给 `--http <本机地址> --bot <名字>`，复用本机主人会话；文件配置用明确 `mcp offline list/add/remove <bot>…`。普通在线命令不隐式改客户端本地配置。`--args-file <文件或->` 与 `--args` 互斥，只收单JSON对象；默认工具调用随调用方context，timeout显式缩短。
+
+结果是有界 JSON/摘要与工作区相对文件引用；`access:local` 只表示本机可读。文本、图片、未知块和完整原结果保在本地产物，resource_link只给URI不会自动抓取。`is_error` 或结果投影错误保留可用内容，同时命令非0；不要重跑未知结果的写操作。Telegram、飞书等外部消息仍通过原收件箱路径，MCP通知也保持原不可信事件/唤醒。
+
+用户可在连接应用设置管理凭据和安装。只称密钥名字，不输出值。技能仍用 `read_skill` 按需读正文，与 MCP/Link 分开；是否就绪、是否外发成功以当前状态和实际回执为准。
