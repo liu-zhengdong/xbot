@@ -165,6 +165,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("GET /{$}", s.static("static/index.html", "text/html; charset=utf-8"))
 	mux.HandleFunc("GET /app.js", s.static("static/app.js", "text/javascript; charset=utf-8"))
+	mux.HandleFunc("GET /subagents.js", s.static("static/subagents.js", "text/javascript; charset=utf-8"))
+	mux.HandleFunc("GET /subagents.css", s.static("static/subagents.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /tokens.css", s.static("static/tokens.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /app.css", s.static("static/app.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /devices.js", s.static("static/devices.js", "text/javascript; charset=utf-8"))
