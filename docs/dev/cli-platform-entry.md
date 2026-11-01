@@ -129,6 +129,22 @@ Agent → Shell → xbot CLI ─┐
 
 **复核约束**：后续扩展沿 [ADR 0043](../adr/0043-cli-platform-runtime-entry.md) 的身份、锁和生命周期边界，先复核具体设计，再扩大产品范围；已完成的验证记录见 [MILESTONES](../MILESTONES.md)。独立冒烟为 `e2e/smoke/cli_profile_test.go`、`e2e/smoke/cli_profile_background_test.go` 和 `e2e/smoke/testdata/cli-profile.cjs`，实现方不改期望。
 
+## 批 1 下一刀：avatar_seed 实施设计（2026-11-01，独立结构审计 PASS 后实施）
+
+**范围与用法**：在既有入口上支持 `"$XBOT_BIN" profile set --self --avatar-seed '周报#3' --json`，可与 `--description/--timezone` 同次提交；`show/set --json` 加 `avatar`、`avatar_seed` 元数据，不返回图片。seed 仍沿 `ValidAvatarSeed`（trim 后 1–80 字符、无标记/引号/控制符）校验，非法组合整次不写。当前 endpoint/root/self、Sink 通知、后台入口寿命与生产放行语义不变。上传/clear 暂无 runtime 协议，旧 `profile avatar <name> --file/--clear` 在存在 endpoint 时明确拒绝，并写明只有无 endpoint 的人用离线入口；不能借旧命令绕过热操作。
+
+**两种结构**：A（选用）把头像元数据纳入已有 profileState，四个真实写口共用私有、有类型的 profile 保存函数；配置/上传文件使用原 config 文件锁协调，调用链仍是 CLI/网页/旧工具 → Bot 领域操作 → 原资源文件。B：另建 avatar service/mutex/缓存，保存后再同步 profile。B 多一份锁与头像状态，跨两 loaded handles 仍需文件锁，还会让 Agent 抄到两套写法，因此淘汰；不加通用 mutator/action 框架。
+
+**拟议形状**：`ProfileUpdate` 增 `AvatarSeed *string`，`cliops.Update` 同名 JSON 字段，`Profile` 增 avatar/seed；profileState 的构造、copyTo、set、RefreshProfile 覆盖这两个字段。`ApplyProfile(u)`、`SetAvatarSeed(seed)`、`SetAvatar(data,mime)`、`ClearAvatar()` 共用私有 `applyProfile(u ProfileUpdate, avatar avatarEdit)`，avatarEdit 是 keep/upload/clear/pinLegacySeed 的小枚举及上传 bytes/MIME/seed；pinLegacySeed 仅供既有离线 Rename 将空 seed 钉为原名字，保持 fresh avatar 模式（legacy custom 仍是 custom），不作为新 runtime 参数。只表达现有真实写意图，没有任意回调、dirty flags 或通用字段 map。SetAvatarSeed 委托 ApplyProfile；网页 PATCH 和旧模型工具把 seed/简介/时区合成一次 ApplyProfile，name/persona 仍沿旧语义，不冒称与它们整次原子。现有离线 `Rename` 在原 primary 锁内、移动目录前，以 loaded 原 Bot 调 `applyProfile({}, avatarEdit{kind:pinLegacySeed, seed:from})`；helper 在 config 文件锁内仅当 fresh seed 为空时钉原名字，保留 fresh avatar（包括 legacy custom）。随后原目录/Name/Jobs 改名路径照旧，删掉原直接 b.cfg.AvatarSeed 赋值；即使后续改名失败，这一步也只将原本按旧名字显示的空 seed 规范为同一旧名字，不改变显示模式。不新增保存头、dirty flags 或异步 rename 协议。
+
+**锁、发布与文件顺序**：所有字段和上传字节先完整校验，再拿 profileState.mu → config.json.lock，锁内读 fresh config、合并显式字段。seed 写 generated+新 seed；clear 写 generated 并保留 filelock 内 fresh seed（不能从过时 handle 的 AvatarState 复制 seed）；upload 写 custom 并保留 fresh seed。普通 SaveConfig 从磁盘保留最新 avatar/seed，不能让旧对象 SetPinned 等设置回滚头像。只有配置元数据保存成功才发布快照；seed/clear 在保存后、仍持上述原资源锁时 best-effort 清除旧 upload/MIME，避免删掉并发新上传；清理失败不伪报未保存。上传文件与 MIME 在同一资源锁中原子各自写入，元数据成功后才发布 custom；接受三文件不是崩溃事务，不加日志。失败不发布新快照。
+
+**读取与 UI**：Config/AvatarState/AvatarBytes/ExportTemplate 不再读取可异步改写的 b.cfg 头像字段，而从同一受锁快照读取；AvatarBytes/ExportTemplate 共用私有 `readAvatar`：拿 profile 快照锁 → config 文件锁后现读 fresh 磁盘元数据，用它判定 custom/seed，再在同锁中读取 custom bytes/MIME，返回同一份元数据与内容；不能以旧 loaded handle 的 custom 快照作判定。于是旧 A=custom、B 已 seed→generated 即使遗留 upload/MIME，A 也不服务旧图或误报 missing file。generated 时不读遗留文件，释放锁后才调用可选 generator。Config/AvatarState 从受锁头像快照读取，ExportTemplate 的头像种子/模式与 bytes 来自同一 readAvatar 结果，避免两次独立读取拼出混合头像。已有 publishProfile 对当前 live.k 的 RefreshProfile 将同步头像快照；原 profile SSE 令侧栏和顶栏刷新，不加组件/事件/轮询，不修改视觉。短 guide 优先 CLI 普通字段和 seed，完整旧 profile 工具及旧即时刷新分支暂留（改名/组合仍未等价）。
+
+**怎样算对与独立观察**：两个 loaded handles：A 换 seed，旧 B 的 SetPinned 不回滚；web/旧工具 seed+非法 timezone 组合均不改头像/简介；同对象上传/clear/seed 与 Config/AvatarState/AvatarBytes/ExportTemplate 的定向 race 无竞争；失败保存不发布、不删除原 upload；generated 有遗留文件也不对外服务。真 CLI 在长流未 done 时替换已上传头像，stdout avatar/seed、列表和编辑资料一致，侧栏与顶栏都已换；当前 root/Bot 外的对象不变。独立验证方拥有新的 `cli_profile_avatar_*` 文件，我不修改期望。
+
+**变更与检查**：预期只改 `cmd/xbot/{main,cmd_bot}.go`、`internal/cliops/profile.go`、`internal/kernel/{operations,profile}.go`、`internal/bot/{bot,profile}.go`、`internal/web/profile_api.go` 与自有针对性单测；沿既有前端代码通知，不重写 UI。先跑自有旧句柄回滚/组合非法/并发读写红回归，审计 PASS 后实现；通过后仅跑受影响 profile/头像/模板/CLI/web 组合检查与必要 race，独立真入口由验证方跑，不全仓/三遍/真实模型。ADR 0043 的入口/生命周期决定继续有效，本刀不改变它或提前移出工具族；改名、上传 runtime 协议、research/runner、MCP 均不纳入。
+
 ## 对照回顾
 
 回顾范围：候选索引全文、164 份候选 metadata/title 逐条、直接相关 44 篇全文与其余 120 篇主题筛查已由独立研究方核对，未新增阻止批 0/1 的前置；不是宣称全部 164 篇正文逐字读过。人用终端 PATH 的 P3 不等于本批 XBOT_BIN 已完成它；环境实体暂不开、多 Provider/子代理人工排期不阻塞首刀。旧搜索 Link/禁 hosted、expand/load/schema 旧描述和默认写跑先问方向与当前 atlas/ADR 不一致，本批不执行、不改候选状态。头像即时刷新、改名 Jobs 连续性保持；research/runner 缺口明示。下表核对 atlas、ADR、guard 与正在做的设计，不把无关 UI、供应商、评测、设备扩张条目纳入实现。

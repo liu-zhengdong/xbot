@@ -261,13 +261,14 @@ func cmdPrimary(root string, args []string) error {
 
 const profileHelp = `Usage:
   xbot profile show (--self | <name>) [--json]
-  xbot profile set --self [--description TEXT] [--timezone ZONE] [--json]
-  xbot profile set <name> [--description TEXT] [--timezone ZONE] [--role chat|dev] [--background-max-time MIN] [--name NEW] [--json]
+  xbot profile set --self [--description TEXT] [--timezone ZONE] [--avatar-seed SEED] [--json]
+  xbot profile set <name> [--description TEXT] [--timezone ZONE] [--avatar-seed SEED] [--role chat|dev] [--background-max-time MIN] [--name NEW] [--json]
   xbot profile avatar <name> (--file PATH | --clear)
 
 --self uses XBOT_ENDPOINT from the current running Bot; XBOT_ROOT selects its data root.
 Use the current binary via "$XBOT_BIN". Runtime changes save immediately without waiting for the conversation lock.
-With an endpoint, only description/timezone are supported. Without one, an explicit name edits offline configuration.
+With an endpoint, description/timezone/avatar-seed are supported. Without one, an explicit name edits offline configuration.
+profile avatar --file/--clear is offline-only and refuses an active endpoint; runtime uploads/clear are not supported.
 --json writes one result object to stdout; failures exit nonzero. Help works offline.
 `
 
@@ -323,7 +324,8 @@ func cmdProfileShow(root string, args []string) error {
 	}
 	if *asJSON {
 		cfg := b.Config()
-		return printRuntimeProfile(cliops.Profile{Name: b.Name(), Description: bot.RedactText(cfg.Description), Timezone: cfg.Timezone, Scope: "offline"}, true)
+		avatar, seed := b.AvatarState()
+		return printRuntimeProfile(cliops.Profile{Name: b.Name(), Description: bot.RedactText(cfg.Description), Timezone: cfg.Timezone, Avatar: avatar, AvatarSeed: bot.RedactText(seed), Scope: "offline"}, true)
 	}
 	persona, err := b.ReadPersona()
 	if err != nil {
@@ -349,7 +351,7 @@ func printRuntimeProfile(value cliops.Profile, asJSON bool) error {
 	if value.Applied {
 		fmt.Printf("profile saved: %s (%s)\n", value.Name, value.Scope)
 	} else {
-		fmt.Printf("name: %s\ndescription: %s\ntimezone: %s\nscope: %s\n", value.Name, value.Description, value.Timezone, value.Scope)
+		fmt.Printf("name: %s\ndescription: %s\ntimezone: %s\navatar: %s\navatar_seed: %s\nscope: %s\n", value.Name, value.Description, value.Timezone, value.Avatar, value.AvatarSeed, value.Scope)
 	}
 	return nil
 }
@@ -359,6 +361,7 @@ type profileSetOpts struct {
 	Bot         string
 	Description string
 	Timezone    string
+	AvatarSeed  string
 	Name        string
 	Role        string
 	BgTime      int
@@ -368,7 +371,7 @@ type profileSetOpts struct {
 func parseProfileSet(args []string) (profileSetOpts, error) {
 	ordered, err := reorderFlags(args, map[string]bool{
 		"description": true,
-		"timezone":    true, "name": true,
+		"timezone":    true, "name": true, "avatar-seed": true,
 		"role": true, "background-max-time": true,
 	})
 	if err != nil {
@@ -380,6 +383,7 @@ func parseProfileSet(args []string) (profileSetOpts, error) {
 	asJSON := fs.Bool("json", false, "JSON output")
 	desc := fs.String("description", "", "one-line description")
 	tz := fs.String("timezone", "", "IANA timezone, such as Asia/Shanghai")
+	seed := fs.String("avatar-seed", "", "generated avatar seed; replaces an upload")
 	name := fs.String("name", "", "new bot name")
 	role := fs.String("role", "", "runtime preset (运行档位): chat or dev; not duties/persona")
 	bgTime := fs.Int("background-max-time", 0, "minutes one background task may work (0 keeps the role default)")
@@ -392,7 +396,7 @@ func parseProfileSet(args []string) (profileSetOpts, error) {
 	opt := profileSetOpts{
 		Self: *self, JSON: *asJSON,
 		Bot: fs.Arg(0), Description: *desc,
-		Timezone: *tz, Name: *name,
+		Timezone: *tz, Name: *name, AvatarSeed: *seed,
 		Role: *role, BgTime: *bgTime, Set: map[string]bool{},
 	}
 	fs.Visit(func(f *flag.Flag) {
@@ -413,7 +417,7 @@ func cmdProfileSet(root string, args []string) error {
 	}
 	if opt.Self || os.Getenv("XBOT_ENDPOINT") != "" {
 		if opt.Set["name"] || opt.Set["role"] || opt.Set["background-max-time"] {
-			return errors.New("profile: runtime set currently supports only --description and --timezone; avatar/name remain available through existing tools")
+			return errors.New("profile: runtime set currently supports --description, --timezone and --avatar-seed; name remains available through existing tools")
 		}
 		if !opt.Self {
 			current, err := cliops.Call(context.Background(), os.Getenv("XBOT_ENDPOINT"), root, nil)
@@ -430,6 +434,9 @@ func cmdProfileSet(root string, args []string) error {
 		}
 		if opt.Set["timezone"] {
 			update.Timezone = &opt.Timezone
+		}
+		if opt.Set["avatar-seed"] {
+			update.AvatarSeed = &opt.AvatarSeed
 		}
 		value, err := cliops.Call(context.Background(), os.Getenv("XBOT_ENDPOINT"), root, update)
 		if err != nil {
@@ -449,6 +456,9 @@ func cmdProfileSet(root string, args []string) error {
 	if opt.Set["timezone"] {
 		s := opt.Timezone
 		u.Timezone = &s
+	}
+	if opt.Set["avatar-seed"] {
+		u.AvatarSeed = &opt.AvatarSeed
 	}
 	if opt.Set["role"] {
 		s := opt.Role
@@ -472,7 +482,8 @@ func cmdProfileSet(root string, args []string) error {
 	}
 	if opt.JSON {
 		cfg := b.Config()
-		return printRuntimeProfile(cliops.Profile{Name: name, Description: bot.RedactText(cfg.Description), Timezone: cfg.Timezone, Scope: "offline", Applied: true}, true)
+		avatar, seed := b.AvatarState()
+		return printRuntimeProfile(cliops.Profile{Name: name, Description: bot.RedactText(cfg.Description), Timezone: cfg.Timezone, Avatar: avatar, AvatarSeed: bot.RedactText(seed), Scope: "offline", Applied: true}, true)
 	}
 	fmt.Printf("updated %s\n", name)
 	return nil
@@ -506,6 +517,9 @@ func parseProfileAvatar(args []string) (avatarOpts, error) {
 }
 
 func cmdProfileAvatar(root string, args []string) error {
+	if os.Getenv("XBOT_ENDPOINT") != "" {
+		return errors.New("profile avatar: --file/--clear is offline-only; runtime uploads/clear are not supported (use profile set --self --avatar-seed for a generated avatar)")
+	}
 	opt, err := parseProfileAvatar(args)
 	if err != nil {
 		return err

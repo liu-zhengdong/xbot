@@ -76,6 +76,7 @@ func callGenerator(name, description string) ([]byte, error) {
 type ProfileUpdate struct {
 	Description *string
 	Timezone    *string
+	AvatarSeed  *string
 	// Role picks the working defaults (chat or dev). BackgroundMaxTime
 	// overrides it: zero uses the role default, a negative value turns the
 	// limit off.
@@ -90,20 +91,23 @@ type profileState struct {
 	mu                          sync.RWMutex
 	description, timezone, role string
 	backgroundMaxTime           int
+	avatar, avatarSeed          string
 }
 
 func newProfileState(cfg Config) *profileState {
-	return &profileState{description: cfg.Description, timezone: cfg.Timezone, role: cfg.Role, backgroundMaxTime: cfg.BackgroundMaxTime}
+	return &profileState{description: cfg.Description, timezone: cfg.Timezone, role: cfg.Role, backgroundMaxTime: cfg.BackgroundMaxTime, avatar: cfg.Avatar, avatarSeed: cfg.AvatarSeed}
 }
 
 func (p *profileState) copyTo(cfg *Config) {
 	cfg.Description, cfg.Timezone = p.description, p.timezone
 	cfg.Role, cfg.BackgroundMaxTime = p.role, p.backgroundMaxTime
+	cfg.Avatar, cfg.AvatarSeed = p.avatar, p.avatarSeed
 }
 
 func (p *profileState) set(cfg Config) {
 	p.description, p.timezone = cfg.Description, cfg.Timezone
 	p.role, p.backgroundMaxTime = cfg.Role, cfg.BackgroundMaxTime
+	p.avatar, p.avatarSeed = cfg.Avatar, cfg.AvatarSeed
 }
 
 // ProfileValues is a stable snapshot of the display fields changed while a
@@ -136,6 +140,27 @@ func (b *Bot) RefreshProfile() error {
 
 // ApplyProfile validates and stores a partial profile update.
 func (b *Bot) ApplyProfile(u ProfileUpdate) error {
+	return b.applyProfile(u, avatarEdit{})
+}
+
+type avatarEditKind uint8
+
+const (
+	keepAvatar avatarEditKind = iota
+	uploadAvatar
+	clearAvatar
+	pinLegacySeed
+)
+
+type avatarEdit struct {
+	kind avatarEditKind
+	data []byte
+	seed string
+}
+
+// applyProfile is the existing profile/resource write seam for generated,
+// uploaded and cleared avatars, including the legacy offline rename seed pin.
+func (b *Bot) applyProfile(u ProfileUpdate, avatar avatarEdit) error {
 	// Validate supplied values, then merge into the fresh file. Do not read a
 	// full in-memory Config while a different setting may be saved.
 	var cfg Config
@@ -154,6 +179,22 @@ func (b *Bot) ApplyProfile(u ProfileUpdate) error {
 			}
 		}
 		cfg.Timezone = v
+	}
+	if u.AvatarSeed != nil {
+		if !ValidAvatarSeed(*u.AvatarSeed) {
+			return fmt.Errorf("bot: avatar seed must be 1–%d characters without <>\"'&` or control characters", maxSeed)
+		}
+		cfg.AvatarSeed = strings.TrimSpace(*u.AvatarSeed)
+	}
+	var imageKind string
+	if avatar.kind == uploadAvatar {
+		imageKind = SniffImage(avatar.data)
+		if imageKind == "" {
+			return errors.New("bot: unsupported avatar type")
+		}
+		if len(avatar.data) > maxAvatar {
+			return errors.New("bot: avatar is too large")
+		}
 	}
 	if u.Role != nil {
 		v, err := oneOf(flat(*u.Role), "", RoleChat, RoleDev)
@@ -198,6 +239,28 @@ func (b *Bot) ApplyProfile(u ProfileUpdate) error {
 		if u.BackgroundMaxTime != nil {
 			fresh.BackgroundMaxTime = cfg.BackgroundMaxTime
 		}
+		if u.AvatarSeed != nil {
+			fresh.Avatar, fresh.AvatarSeed = AvatarGenerated, cfg.AvatarSeed
+		}
+		switch avatar.kind {
+		case uploadAvatar:
+			if err := fsutil.WriteAtomic(b.AvatarPath(), avatar.data, 0600); err != nil {
+				return err
+			}
+			if err := fsutil.WriteAtomic(b.avatarMIMEPath(), []byte(imageKind+"\n"), 0600); err != nil {
+				return err
+			}
+			fresh.Avatar = AvatarCustom
+		case clearAvatar:
+			fresh.Avatar = AvatarGenerated
+			if fresh.AvatarSeed == "" {
+				fresh.AvatarSeed = fresh.Name
+			}
+		case pinLegacySeed:
+			if fresh.AvatarSeed == "" {
+				fresh.AvatarSeed = avatar.seed
+			}
+		}
 		raw, err = fsutil.Marshal(fresh)
 		if err != nil {
 			return err
@@ -206,6 +269,12 @@ func (b *Bot) ApplyProfile(u ProfileUpdate) error {
 			return err
 		}
 		b.profile.set(fresh)
+		if u.AvatarSeed != nil || avatar.kind == clearAvatar {
+			// Persistence succeeded. Keep cleanup in the resource lock so a
+			// concurrent upload cannot be deleted, and do not misreport success.
+			_ = os.Remove(b.AvatarPath())
+			_ = os.Remove(b.avatarMIMEPath())
+		}
 		return nil
 	})
 }
@@ -269,7 +338,13 @@ func ValidAvatarSeed(seed string) bool {
 // AvatarState is what the UI should show. An old or unset avatar is drawn
 // from the name, so it needs no migration. av is never empty.
 func (b *Bot) AvatarState() (avatar, seed string) {
-	avatar, seed = b.cfg.Avatar, b.cfg.AvatarSeed
+	if b.profile != nil {
+		b.profile.mu.RLock()
+		avatar, seed = b.profile.avatar, b.profile.avatarSeed
+		b.profile.mu.RUnlock()
+	} else {
+		avatar, seed = b.cfg.Avatar, b.cfg.AvatarSeed
+	}
 	if avatar == "" {
 		avatar = AvatarGenerated
 	}
@@ -281,53 +356,64 @@ func (b *Bot) AvatarState() (avatar, seed string) {
 
 // SetAvatarSeed stores a generated portrait seed and drops any upload.
 func (b *Bot) SetAvatarSeed(seed string) error {
-	if !ValidAvatarSeed(seed) {
-		return fmt.Errorf("bot: avatar seed must be 1–%d characters without <>\"'&` or control characters", maxSeed)
-	}
-	_ = os.Remove(b.AvatarPath())
-	_ = os.Remove(b.avatarMIMEPath())
-	b.cfg.Avatar = AvatarGenerated
-	b.cfg.AvatarSeed = strings.TrimSpace(seed)
-	return b.SaveConfig()
+	return b.ApplyProfile(ProfileUpdate{AvatarSeed: &seed})
 }
 
 // SetAvatar stores an uploaded image and marks the avatar custom.
 // AvatarSeed stays as it was, so clearing goes back to the previous seed.
 func (b *Bot) SetAvatar(data []byte, mime string) error {
-	kind := SniffImage(data)
-	if kind == "" {
-		return errors.New("bot: unsupported avatar type")
-	}
-	if len(data) > maxAvatar {
-		return errors.New("bot: avatar is too large")
-	}
-	if err := fsutil.WriteAtomic(b.AvatarPath(), data, 0600); err != nil {
-		return err
-	}
-	if err := fsutil.WriteAtomic(b.avatarMIMEPath(), []byte(kind+"\n"), 0600); err != nil {
-		return err
-	}
-	b.cfg.Avatar = AvatarCustom
-	return b.SaveConfig()
+	return b.applyProfile(ProfileUpdate{}, avatarEdit{kind: uploadAvatar, data: data})
 }
 
 // ClearAvatar removes an upload. The portrait drawn from the seed is used again.
 func (b *Bot) ClearAvatar() error {
-	_, seed := b.AvatarState()
-	_ = os.Remove(b.AvatarPath())
-	_ = os.Remove(b.avatarMIMEPath())
-	b.cfg.Avatar = AvatarGenerated
-	b.cfg.AvatarSeed = seed
-	return b.SaveConfig()
+	return b.applyProfile(ProfileUpdate{}, avatarEdit{kind: clearAvatar})
 }
 
 // AvatarBytes returns a custom image, or a generated portrait when the seam is set.
 // ok is false when the caller should draw the portrait from the seed.
 func (b *Bot) AvatarBytes() (data []byte, mime string, ok bool, err error) {
-	if b.cfg.Avatar == AvatarCustom {
+	cfg, data, mime, err := b.readAvatar()
+	if err != nil {
+		return nil, "", false, err
+	}
+	if cfg.Avatar == AvatarCustom {
+		return data, mime, true, nil
+	}
+	// A generator may call user code: no profile/resource lock is held here.
+	data, err = callGenerator(cfg.Name, cfg.Description)
+	if err != nil || len(data) == 0 {
+		return nil, "", false, err
+	}
+	return data, "image/png", true, nil
+}
+
+// readAvatar coordinates with every loaded handle through the existing resource
+// lock. In particular an old custom handle must honor fresh generated metadata.
+func (b *Bot) readAvatar() (cfg Config, data []byte, mime string, err error) {
+	b.profile.mu.RLock()
+	defer b.profile.mu.RUnlock()
+	path := filepath.Join(b.dir(), "config.json")
+	err = fsutil.WithLock(path+".lock", func() error {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(raw, &cfg); err != nil {
+			return err
+		}
+		if cfg.Avatar == "" {
+			cfg.Avatar = AvatarGenerated
+		}
+		if cfg.AvatarSeed == "" {
+			cfg.AvatarSeed = cfg.Name
+		}
+		if cfg.Avatar != AvatarCustom {
+			return nil
+		}
 		data, err = os.ReadFile(b.AvatarPath())
 		if err != nil {
-			return nil, "", false, err
+			return err
 		}
 		mime = "application/octet-stream"
 		if raw, rerr := os.ReadFile(b.avatarMIMEPath()); rerr == nil {
@@ -338,13 +424,9 @@ func (b *Bot) AvatarBytes() (data []byte, mime string, ok bool, err error) {
 		if kind := SniffImage(data); kind != "" {
 			mime = kind
 		}
-		return data, mime, true, nil
-	}
-	data, err = callGenerator(b.Name(), b.Config().Description)
-	if err != nil || len(data) == 0 {
-		return nil, "", false, err
-	}
-	return data, "image/png", true, nil
+		return nil
+	})
+	return
 }
 
 // SniffImage returns a supported image MIME type, or empty.
@@ -402,22 +484,17 @@ func ExportTemplate(b *Bot) (Template, error) {
 	if err != nil {
 		return Template{}, err
 	}
-	tpl := Template{
-		Name:        b.Name(),
-		Description: b.Config().Description,
-		Persona:     persona,
-		Timezone:    b.Config().Timezone,
+	cfg, data, mime, err := b.readAvatar()
+	if err != nil {
+		return Template{}, err
 	}
-	_, tpl.AvatarSeed = b.AvatarState()
-	if b.cfg.Avatar == AvatarCustom {
-		data, mime, ok, err := b.AvatarBytes()
-		if err != nil {
-			return Template{}, err
-		}
-		if ok {
-			tpl.AvatarMIME = mime
-			tpl.Avatar = base64.StdEncoding.EncodeToString(data)
-		}
+	tpl := Template{
+		Name: cfg.Name, Description: cfg.Description, Persona: persona,
+		Timezone: cfg.Timezone, AvatarSeed: cfg.AvatarSeed,
+	}
+	if cfg.Avatar == AvatarCustom {
+		tpl.AvatarMIME = mime
+		tpl.Avatar = base64.StdEncoding.EncodeToString(data)
 	}
 	list, err := (&link.Timer{Dir: b.RoutineDir()}).List()
 	if err != nil {
@@ -523,7 +600,8 @@ func Rename(root, from, to string) error {
 		return nil
 	}
 	return fsutil.WithLock(primaryLock(root), func() error {
-		if _, err := Load(root, from); err != nil {
+		original, err := Load(root, from)
+		if err != nil {
 			return err
 		}
 		fromDir, toDir := Dir(root, from), Dir(root, to)
@@ -534,6 +612,12 @@ func Rename(root, from, to string) error {
 			return fmt.Errorf("bot %q: %w", to, ErrExists)
 		} else if err != nil && !errors.Is(err, ErrNotFound) {
 			return err
+		}
+		// Pin the old fallback without switching a legacy custom avatar mode.
+		if original.Config().AvatarSeed == "" {
+			if err := original.applyProfile(ProfileUpdate{}, avatarEdit{kind: pinLegacySeed, seed: from}); err != nil {
+				return err
+			}
 		}
 		closeStoreDir(fromDir)
 		// Move the vault key before the directory so a failure leaves the bot
@@ -550,11 +634,6 @@ func Rename(root, from, to string) error {
 			_ = os.Rename(toDir, fromDir)
 			_ = moveVaultKey(root, to, from)
 			return err
-		}
-		// An old bot's portrait was drawn from its name; pin that seed so the
-		// face survives the rename.
-		if b.cfg.AvatarSeed == "" {
-			b.cfg.AvatarSeed = from
 		}
 		b.cfg.Name = to
 		if err := b.SaveConfig(); err != nil {

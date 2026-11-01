@@ -13,7 +13,7 @@ import (
 	"xbot/internal/exec"
 )
 
-const cliProfileGuide = `普通资料（简介、时区）通过当前实例 CLI 操作：在 Shell 中用环境变量 XBOT_BIN 指向的当前二进制（按该解释器语法）先执行 profile --help，再用 --self --json。实例和当前 Bot 身份由 XBOT_* 环境提供；头像和改名仍用现有 profile 工具。`
+const cliProfileGuide = `资料（简介、时区、生成头像 seed）优先通过当前实例 CLI 操作：在 Shell 中用环境变量 XBOT_BIN 指向的当前二进制（按该解释器语法）先执行 profile --help，再用 --self --json。实例和当前 Bot 身份由 XBOT_* 环境提供；换头像用 profile set --self --avatar-seed；改名仍用现有 profile 工具。`
 
 func (k *Kernel) cliProfileGuide() string {
 	k.operations.mu.Lock()
@@ -154,14 +154,15 @@ func (k *Kernel) profileOperation(update *cliops.Update) (cliops.Profile, error)
 	if update == nil {
 		err = b.RefreshProfile()
 	} else {
-		err = b.ApplyProfile(bot.ProfileUpdate{Description: update.Description, Timezone: update.Timezone})
+		err = b.ApplyProfile(bot.ProfileUpdate{Description: update.Description, Timezone: update.Timezone, AvatarSeed: update.AvatarSeed})
 	}
 	if err != nil {
 		k.operations.mu.Unlock()
 		return cliops.Profile{}, fmt.Errorf("%s", k.redactor()(err.Error()))
 	}
 	description, timezone := b.ProfileValues()
-	value := cliops.Profile{Name: b.Name(), Description: k.redactor()(description), Timezone: timezone, Scope: "runtime", Applied: update != nil}
+	avatar, seed := b.AvatarState()
+	value := cliops.Profile{Name: b.Name(), Description: k.redactor()(description), Timezone: timezone, Avatar: avatar, AvatarSeed: k.redactor()(seed), Scope: "runtime", Applied: update != nil}
 	k.operations.mu.Unlock()
 	// The business/file locks are released before a live stream can block on IO.
 	if update != nil {

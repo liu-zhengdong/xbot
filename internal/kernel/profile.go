@@ -64,11 +64,6 @@ func RenameBot(root, from, to string) error {
 
 type profileTool struct{ k *Kernel }
 
-type profileChanges struct {
-	profile    bot.ProfileUpdate
-	avatarSeed *string
-}
-
 func (profileTool) Name() string { return "bot_update_profile" }
 func (profileTool) Description() string {
 	return "Update this bot's avatar/profile: name, description, timezone, or generated avatar via avatar_seed. To change avatars (换一批), set a new seed, conventionally 名字#n (e.g. XBot#3), matching Edit Profile. No image uploads. Changes are saved directly; the sidebar and header avatar refresh immediately in the current conversation."
@@ -95,13 +90,8 @@ func (t profileTool) Run(_ context.Context, args json.RawMessage) (string, error
 	if err != nil {
 		return "", err
 	}
-	if update.profile != (bot.ProfileUpdate{}) {
-		if err := t.k.Bot.ApplyProfile(update.profile); err != nil {
-			return "", err
-		}
-	}
-	if update.avatarSeed != nil {
-		if err := t.k.Bot.SetAvatarSeed(*update.avatarSeed); err != nil {
+	if update != (bot.ProfileUpdate{}) {
+		if err := t.k.Bot.ApplyProfile(update); err != nil {
 			return "", err
 		}
 	}
@@ -113,7 +103,7 @@ func (t profileTool) Run(_ context.Context, args json.RawMessage) (string, error
 			}
 		}
 	}
-	if update.avatarSeed != nil {
+	if update.AvatarSeed != nil {
 		return "profile saved; 头像已换好；侧栏与顶栏当面刷新", nil
 	}
 	return "profile saved", nil
@@ -151,16 +141,16 @@ func (k *Kernel) renameBot(next string) error {
 	}, rename)
 }
 
-func parseProfileArgs(args json.RawMessage) (*string, profileChanges, string, error) {
+func parseProfileArgs(args json.RawMessage) (*string, bot.ProfileUpdate, string, error) {
 	if len(args) == 0 {
-		return nil, profileChanges{}, "", errors.New("profile: nothing to change")
+		return nil, bot.ProfileUpdate{}, "", errors.New("profile: nothing to change")
 	}
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(args, &raw); err != nil {
-		return nil, profileChanges{}, "", err
+		return nil, bot.ProfileUpdate{}, "", err
 	}
 	if len(raw) == 0 {
-		return nil, profileChanges{}, "", errors.New("profile: nothing to change")
+		return nil, bot.ProfileUpdate{}, "", errors.New("profile: nothing to change")
 	}
 	known := []string{
 		"name", "description", "timezone", "avatar_seed",
@@ -171,10 +161,10 @@ func parseProfileArgs(args json.RawMessage) (*string, profileChanges, string, er
 	}
 	for key := range raw {
 		if !allowed[key] {
-			return nil, profileChanges{}, "", fmt.Errorf("profile: unknown field %q", key)
+			return nil, bot.ProfileUpdate{}, "", fmt.Errorf("profile: unknown field %q", key)
 		}
 	}
-	var update profileChanges
+	var update bot.ProfileUpdate
 	var name *string
 	var parts []string
 	for _, key := range known {
@@ -184,29 +174,29 @@ func parseProfileArgs(args json.RawMessage) (*string, profileChanges, string, er
 		}
 		var s string
 		if err := json.Unmarshal(val, &s); err != nil {
-			return nil, profileChanges{}, "", fmt.Errorf("profile: %s must be a string", key)
+			return nil, bot.ProfileUpdate{}, "", fmt.Errorf("profile: %s must be a string", key)
 		}
 		switch key {
 		case "name":
 			name = &s
 			parts = append(parts, "name "+quote(s))
 		case "description":
-			update.profile.Description = &s
+			update.Description = &s
 			parts = append(parts, "description "+quote(s))
 		case "timezone":
-			update.profile.Timezone = &s
+			update.Timezone = &s
 			parts = append(parts, "timezone "+quote(s))
 		case "avatar_seed":
 			if !bot.ValidAvatarSeed(s) {
-				return nil, profileChanges{}, "", errors.New("profile: invalid avatar_seed")
+				return nil, bot.ProfileUpdate{}, "", errors.New("profile: invalid avatar_seed")
 			}
 			s = strings.TrimSpace(s)
-			update.avatarSeed = &s
+			update.AvatarSeed = &s
 			parts = append(parts, "avatar_seed "+quote(s))
 		}
 	}
-	if name == nil && update == (profileChanges{}) {
-		return nil, profileChanges{}, "", errors.New("profile: nothing to change")
+	if name == nil && update == (bot.ProfileUpdate{}) {
+		return nil, bot.ProfileUpdate{}, "", errors.New("profile: nothing to change")
 	}
 	return name, update, "update profile: " + strings.Join(parts, ", "), nil
 }
