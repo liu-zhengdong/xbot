@@ -26,8 +26,9 @@ var rejectedMCPSchemas = struct {
 }{entries: make(map[[32]byte]time.Time)}
 
 type mcpSchemaAttempt struct {
-	k       *Kernel
-	retried bool
+	k        *Kernel
+	retried  bool
+	modelKey string // child route override; empty keeps the main-line binding key
 }
 
 func (a *mcpSchemaAttempt) key(td provider.ToolDef) ([32]byte, bool) {
@@ -47,7 +48,11 @@ func (a *mcpSchemaAttempt) key(td provider.ToolDef) ([32]byte, bool) {
 	if err != nil || len(raw) > 1<<20 {
 		return [32]byte{}, false
 	}
-	return sha256.Sum256([]byte(scope + "\x00" + a.k.boundModelKey() + "\x00" + td.Name + "\x00" + string(raw))), true
+	modelKey := a.modelKey
+	if modelKey == "" {
+		modelKey = a.k.boundModelKey()
+	}
+	return sha256.Sum256([]byte(scope + "\x00" + modelKey + "\x00" + td.Name + "\x00" + string(raw))), true
 }
 
 func (a *mcpSchemaAttempt) filter(req provider.Request) provider.Request {

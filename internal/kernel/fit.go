@@ -336,7 +336,8 @@ func (k *Kernel) fit(ctx context.Context, t *turn, f *turnFit, req provider.Requ
 	measure := func() int { return f.scaled(k, compact.EstimateMessages(f.view(msgs))) + f.reserve }
 	target, ceiling := k.target(), k.ceiling()
 	if f.budget != nil {
-		target, ceiling = f.budget.target, f.budget.ceiling-f.scaled(k, estimateTools(req.Tools))
+		ceiling = f.budget.ceiling - f.scaled(k, estimateTools(req.Tools))
+		target = min(f.budget.target, ceiling)
 	}
 	size := measure()
 	if size <= target && !overflow {

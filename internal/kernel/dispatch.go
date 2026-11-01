@@ -197,14 +197,15 @@ func (k *Kernel) subApprover() agent.Approver {
 // fitProvider keeps one subagent's requests under the context lines, the way
 // a turn's own requests are kept (fit.go): a subagent can run for hours.
 type fitProvider struct {
-	inner provider.Provider
-	k     *Kernel
-	fit   *turnFit
+	inner    provider.Provider
+	k        *Kernel
+	fit      *turnFit
+	modelKey string
 }
 
 func (p *fitProvider) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
 	raw := req
-	schemaAttempt := &mcpSchemaAttempt{k: p.k}
+	schemaAttempt := &mcpSchemaAttempt{k: p.k, modelKey: p.modelKey}
 	request, err := p.fitted(ctx, raw, false)
 	if err != nil {
 		return provider.Message{}, err
@@ -248,10 +249,23 @@ func (k *Kernel) wrapSub(req exec.StartRequest, p provider.Provider, pre int) pr
 		// then summarize only a safe prefix before its latest step.
 		f.pre = 1
 	}
-	return &fitProvider{inner: p, k: k, fit: f}
+	wrapped := &fitProvider{inner: p, k: k, fit: f}
+	if req.Descriptor != nil {
+		wrapped.modelKey = req.Descriptor.Provider + "/" + req.Descriptor.Model
+	}
+	return wrapped
 }
 
 func (p *fitProvider) fitted(ctx context.Context, req provider.Request, overflow bool) (provider.Request, error) {
+	if p.fit.budget != nil {
+		p.fit.mu.Lock()
+		tools := p.fit.scaled(p.k, estimateTools(req.Tools))
+		ceiling := p.fit.budget.ceiling
+		p.fit.mu.Unlock()
+		if tools >= ceiling {
+			return req, fmt.Errorf("subagent tool definitions exceed its model window (%d >= %d)", tools, ceiling)
+		}
+	}
 	out := p.k.fit(ctx, nil, p.fit, req, overflow)
 	if p.fit.budget != nil {
 		p.fit.mu.Lock()

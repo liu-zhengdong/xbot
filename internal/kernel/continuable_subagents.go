@@ -483,10 +483,10 @@ func (k *Kernel) continuableTools(req exec.StartRequest) []tools.Tool {
 			t = selfSubagentTool{Tool: t, id: req.ID}
 		}
 		if image, ok := t.(*tools.ViewImage); ok {
-			copy := *image
-			copy.Model = model
-			copy.Vision = vision
-			t = &copy
+			// scopeTools created this instance for this refresh; mounted copies
+			// were excluded by name. Do not copy its root binding mutex.
+			image.Model = model
+			image.Vision = vision
 		}
 		if ty.Allows(t.Name()) {
 			out = append(out, t)
