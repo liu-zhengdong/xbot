@@ -6137,7 +6137,7 @@
     }
     const conversation = el("div", "memory-dialogue");
     for (const turn of turns) {
-      if (["system", "tool"].includes(turn.role) || /^工具\s+\S+\s*\([^)]*\)\s*已结束[：:]/.test(turn.text)) continue;
+      if (["system", "tool"].includes(turn.role) || /^工具\s+\S+?\s*[（(][^）)]*[）)]\s*已结束[：:]/.test(turn.text)) continue;
       const text = turn.text.replace(/\s*\[tools:[^\]]*\]/g, "").replace(/(?:^|\n)(?:\[truncated\]|… \d+ more lines)\s*$/g, "").trim();
       if (!text) continue;
       const utterance = el("div", "memory-utterance"), body = el("p", "memory-turn-text");

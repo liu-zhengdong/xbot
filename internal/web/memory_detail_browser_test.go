@@ -7,7 +7,7 @@ func TestMemoryDetailReadingBrowser(t *testing.T) {
 }
 
 const memoryDetailFixture = `
-const noisyDigest='user: 工具 sh (sh_a508abb4) 已结束: done exit 0 cwd: /Users/tester/.xbot-dev/work/小鲸/longmao 0\n/Users/tester/Library/Application S\n[truncated]';
+const noisyDigest='user: 工具 sh（sh_a508abb4）已结束：done exit 0 cwd: /Users/tester/.xbot-dev/work/小鲸/longmao 0\n/Users/tester/Library/Application S\n[truncated]';
 const mixedDigest='user: 先问清真实目的再继续。\nassistant: 已确认订阅入口。 [tools: shell]\nuser: 工具 sh (sh_background) 已结束: done exit 0 cwd: /Users/tester/private\n[truncated]\nassistant: 下一步核对域名状态。\n… 4 more lines';
 memoryData.experiences={items:[
  {id:43,created_at:'2026-10-31T14:48:00Z',summary:'抓 SNI 能定位域名，但订阅路径还需要进一步确认',segment:noisyDigest},
