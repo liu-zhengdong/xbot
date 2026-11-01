@@ -79,6 +79,7 @@ window.fetch=async(path,opts={})=>{
   }
   child.meta.status='cancelled';child.meta.finished_at=childAcceptanceTime;
   child.meta.summary='这一轮已停止，原对话可以继续。';
+  child.meta.notable=[{kind:'write_outside',text:'写入了 /tmp/ACCEPT_NOTABLE.txt',objects:['/tmp/ACCEPT_NOTABLE.txt']}];
   return json({id,status:'cancelled'});
  }
  return new Response('{"error":"method"}',{status:405,headers:{'Content-Type':'application/json'}});
@@ -172,6 +173,15 @@ const selectOutput=(root,marker)=>{
  await waitFor(()=>childAcceptance.posts.length===2,'Stop POST');
  assert(childAcceptance.posts[1].kind==='stop'&&childAcceptance.posts[1].name===childAcceptance.primary&&childAcceptance.posts[1].id===childAcceptance.childID,'Stop targeted a different child');
  await waitFor(()=>/已停止|已取消/.test(primaryPanel.innerText),'returned terminal state is shown');
+ const notablePath='/tmp/ACCEPT_NOTABLE.txt';
+ await waitFor(()=>rendered(primaryPanel,'值得留意')&&rendered(primaryPanel,'写入了')&&rendered(primaryPanel,'ACCEPT_NOTABLE.txt'),'terminal child notable fact from the authoritative Task');
+ const taskInfo=primaryPanel.querySelector('summary[aria-label="任务信息"]');
+ assert(visible(taskInfo),'terminal child task information is not reachable');
+ const fullFacts=taskInfo.parentElement;if(!fullFacts.open)taskInfo.click();
+ await waitFor(()=>rendered(fullFacts,notablePath),'complete notable object in task information');
+ selectOutput(fullFacts,notablePath);
+ assert(document.getSelection().toString()===notablePath,'complete notable object cannot be selected for copying');
+ document.getSelection().removeAllRanges();taskInfo.click();
  assert(inputText(mainInput)===mainDraft&&fixture.streams.length===0,'Stop altered the main Bot conversation');
  tab('聊天').click();assert($('#input')===mainInput&&inputText(mainInput)===mainDraft,'main draft did not survive child Tab/actions');
  tab('子代理').click();
