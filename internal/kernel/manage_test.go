@@ -34,7 +34,7 @@ func TestPrimaryCanManageBots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"fork_bot", "message_bot"} {
+	for _, name := range []string{"fork_bot"} {
 		if !hasTool(tools, name) {
 			t.Fatalf("missing %s", name)
 		}
@@ -44,7 +44,7 @@ func TestPrimaryCanManageBots(t *testing.T) {
 		t.Fatal(err)
 	}
 	door := toolDoor{k}
-	for _, name := range []string{"list_groups", "get_group_message_history", "create_group", "post_group", "bot_propose_persona", "create_bot", "delete_bot", "list_bots", "bot_status", "pin_bot", "set_primary"} {
+	for _, name := range []string{"message_bot", "list_groups", "get_group_message_history", "create_group", "post_group", "bot_propose_persona", "create_bot", "delete_bot", "list_bots", "bot_status", "pin_bot", "set_primary"} {
 		if hasTool(tools, name) || hasTool(childTools, name) {
 			t.Fatalf("retired tool %s remains callable", name)
 		}

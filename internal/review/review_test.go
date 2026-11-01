@@ -31,7 +31,6 @@ func TestTableHasEveryClass(t *testing.T) {
 		"shell":          Shell,
 		"write_file":     SelfEdit,
 		"edit_file":      SelfEdit,
-		"message_bot":    Normal,
 		"code_start":     Normal,
 		"browser_stop":   Normal,
 		"todo":           Normal,
@@ -169,7 +168,7 @@ func TestExternalSendToolsAsk(t *testing.T) {
 }
 
 func TestRetiredBotToolsAreUnknown(t *testing.T) {
-	for _, name := range []string{"create_bot", "delete_bot", "list_bots", "bot_status"} {
+	for _, name := range []string{"message_bot", "create_bot", "delete_bot", "list_bots", "bot_status"} {
 		if Known(name) {
 			t.Errorf("retired policy %s is still known", name)
 		}
@@ -188,17 +187,6 @@ func TestRetiredChatGroupToolsAreUnknown(t *testing.T) {
 	for _, name := range []string{"list_groups", "get_group_message_history", "create_group", "post_group"} {
 		if Known(name) {
 			t.Errorf("retired policy %s is still known", name)
-		}
-	}
-}
-
-func TestBotToBotAreNormal(t *testing.T) {
-	for _, name := range []string{"message_bot"} {
-		if !Known(name) || ClassOf(name) != Normal {
-			t.Fatalf("%s is not classified as Normal", name)
-		}
-		if need(t, name, `{"bot":"bob","text":"hi","id":"r1"}`) {
-			t.Fatalf("%s asked", name)
 		}
 	}
 }
@@ -256,7 +244,7 @@ func TestMachineTouchingSet(t *testing.T) {
 			t.Fatalf("%s not machine-touching", name)
 		}
 	}
-	for _, name := range []string{"browser_stop", "message_bot", "http_request", "web_fetch", "web_search"} {
+	for _, name := range []string{"browser_stop", "http_request", "web_fetch", "web_search"} {
 		if MachineTouching(name) {
 			t.Fatalf("%s wrongly machine-touching", name)
 		}

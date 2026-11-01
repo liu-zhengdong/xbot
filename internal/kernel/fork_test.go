@@ -2,11 +2,13 @@ package kernel
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -58,11 +60,11 @@ func TestForkHandoffIsNotACopy(t *testing.T) {
 	}
 	comp := &scriptCompactor{text: strings.Repeat("handoff-word ", 180) + "HANDOFF-END"}
 	k := &Kernel{Bot: src, Memory: mem, Compactor: comp, Links: []link.Link{link.Peers{}}}
-	tools, err := k.modelTools()
+	modelTools, err := k.modelTools()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasTool(tools, "fork_bot") {
+	if !hasTool(modelTools, "fork_bot") {
 		t.Fatal("fork_bot missing")
 	}
 	bare := &Kernel{Bot: src, Links: []link.Link{link.Terminal{}}}
@@ -152,7 +154,7 @@ func TestForkHandoffIsNotACopy(t *testing.T) {
 	if !strings.Contains(joined, "HANDOFF-END") || !strings.Contains(joined, "handoff-word") {
 		t.Fatalf("handoff missing: %s", joined)
 	}
-	if !strings.Contains(joined, "message_bot") || !strings.Contains(joined, "ada") {
+	if !strings.Contains(joined, "peer-message") || !strings.Contains(joined, "ada") {
 		t.Fatalf("peer note missing: %s", joined)
 	}
 	if strings.Contains(joined, "SECRET-DECISION") || strings.Contains(joined, "PERSON-TEA") || strings.Contains(joined, "SOURCE-METHOD") {
@@ -170,7 +172,7 @@ func TestForkHandoffIsNotACopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	srcJoined := joinFacts(srcFacts)
-	if !strings.Contains(srcJoined, "message_bot") || !strings.Contains(srcJoined, "reviewer") {
+	if !strings.Contains(srcJoined, "peer-message") || !strings.Contains(srcJoined, "reviewer") {
 		t.Fatalf("source note missing: %s", srcJoined)
 	}
 	if strings.Contains(srcJoined, "HANDOFF-END") {
@@ -178,19 +180,27 @@ func TestForkHandoffIsNotACopy(t *testing.T) {
 	}
 
 	ck := &Kernel{Bot: child, Links: []link.Link{link.Peers{}}}
-	sent, err := (messageBotTool{ck}).Run(ctx, []byte(`{"bot":"ada","text":"what was the decision?"}`))
-	if err != nil {
+	ck.ensureTurn().turnChain, ck.ensureTurn().turnHops = "ch_fork", 1
+	if err := ck.StartOperations(); err != nil {
 		t.Fatal(err)
 	}
-	if sent != "sent to ada" {
-		t.Fatalf("sent %q", sent)
+	t.Cleanup(func() { ck.CloseOperations(); _ = ck.Close() })
+	endpoint := operationEndpoint(ck)
+	var sent cliops.PeerMessageReply
+	var sendErr error
+	runRoutineSource(t, ck, nil, `{"command":"\"$XBOT_BIN\" peer-message ada --self --text 'what was the decision?'","description":"ask the source bot for the decision"}`, func(ctx context.Context, _ json.RawMessage) (string, error) {
+		sent, sendErr = cliops.CallPeerMessage(ctx, endpoint, child.Root, tools.CallID(ctx), cliops.PeerMessage{Bot: "ada", Text: "what was the decision?"})
+		return cliops.FormatPeerMessage(sent), sendErr
+	})
+	if sendErr != nil || !sent.Posted || sent.EventID == "" || sent.Bot != "ada" || sent.Route != "local" || sent.Stage != "complete" {
+		t.Fatalf("source message %+v: %v", sent, sendErr)
 	}
 	box, err := inbox.Open(src.InboxPath())
 	if err != nil {
 		t.Fatal(err)
 	}
 	ev, ok := box.Head()
-	if !ok || !strings.Contains(ev.Content, "what was the decision?") || ev.Sender != "reviewer" {
+	if !ok || ev.ID != sent.EventID || ev.Content != "what was the decision?" || ev.Sender != "reviewer" || ev.Source != "bot:reviewer" || ev.SenderKind != link.KindBot || !ev.Untrusted || ev.Chain != "ch_fork" || ev.Hops != 2 {
 		t.Fatalf("inbox %+v ok %v", ev, ok)
 	}
 	if err := (&peer.Bus{Root: root}).Message("ada", "reviewer", "friday", "ch_fork", 1, time.Now()); err != nil {
