@@ -8,7 +8,7 @@ date: 2026-11-02
 
 ## 问题与调用方
 
-仅迁原bot_propose_persona{完整text}：所有Bot都能改自己，不要求primary，不接其它NAME、卡/role预算/通用patch。实际没有独立Persona CLI setter，profile runtime JSON没有职责全文。调用方选 `"$XBOT_BIN" persona set --self (--text TEXT | --file FILE|-) [--json]`；file/stdin为原Shell命令16KiB限下完整32KiB职责的实际输入通路。help离线，无self/endpoint不回落磁盘。新0054 glob空后建Proposed，具体caller/DTO/边界与怎样算对见 [母dev](../dev/cli-platform-entry.md#批-persona完整self职责具体合同pass实施中)。
+仅迁原bot_propose_persona{完整text}：所有Bot都能改自己，不要求primary，不接其它NAME、卡/role预算/通用patch。此前没有独立Persona CLI setter；profile runtime JSON没有职责全文。调用方选 `"$XBOT_BIN" persona set --self (--text TEXT | --file FILE|-) [--json]`；file/stdin为原Shell命令16KiB限下完整32KiB职责的实际输入通路。help离线，无self/endpoint不回落磁盘。2d9具体合同单次SHAPE PASS后Accepted；实现caller/DTO/边界见 [API](../API.md#自身职责运行时-cli)、实际接缝见 [内核](../atlas/kernel.md#自身职责与原-selfedit-审批)，[母dev](../dev/cli-platform-entry.md)保其它平台族路线。
 
 ## 两种实际形状与选择
 
@@ -24,6 +24,6 @@ strict明确原SelfEdit恒确认，不查退掉bot_propose_persona的Known/Unkno
 
 当前资源在确认锁外等待后才短IO WritePersona，不拿route/Jobs/host锁问人，不改config.Persona fallback/rules/记忆/卡/transcript，不追加管理Event/Inbox或额外wake。原下一Handle assemble经currentComposedPersona读新完整职责，active已组装请求不主动重拼；环境沿0021仅职责label+shortHash、卡名/指纹，不塞全文到Event/旧历史/记忆或版本账。PickedCard首次正常EnsureSeeds需先warm再比卡不变，不能把首wake初始化当职责写副作用。
 
-## 下一步
+## 实现与验证
 
-具体合同单次SHAPE PASS后才实现，先compiled交独立真source file完整写→原下一wake职责内容/hash链一次，继续file/stdin/字节/trim/原子失败/自身份改名/非主source/readonly退门与strict原上下文边界。仅退personaTool及空bot_profile组/Known/schema/index，保其它工具与owner HTTP原组合partial；旧族证据复用，不改guard，不操作root/main、用户独立owner-SSE、push或日用。完整验收与后续Event/Link仍在母路线。
+260首compiled已独立通过非主真source file完整写→原下一wake职责内容/hash链；546补退门与file/stdin/字节/trim/原子失败/自身份改名/非主source/readonly及strict原上下文边界，精确phase/当前独立与合入级别见 [MILESTONES](../MILESTONES.md)。仅退personaTool及空bot_profile组/Known/schema/index，保其它工具与owner HTTP原组合partial；旧族证据复用，不改guard，不操作root/main、用户独立owner-SSE、push或日用。完整验收与后续Event/Link仍在母路线。

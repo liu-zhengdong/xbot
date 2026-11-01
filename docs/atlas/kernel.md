@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/, internal/cliops/]
-verified: 2026-11-02 @ cc46ba7c
+verified: 2026-11-02 @ 5464f159
 ---
 # 内核：Link、Event、收件箱
 
@@ -16,7 +16,7 @@ verified: 2026-11-02 @ cc46ba7c
 
 `openKernel` 为已有 Kernel 绑定 `127.0.0.1` 随机端口的窄 HTTP 操作入口（`internal/cliops`），serve、桌面和独立 chat 同协议。资料 set 支持名字、简介、时区、生成头像 seed 的组合，头像 upload/clear 是独立动作；MCP 借同 Resources，不另起 Kernel。JSON profile 请求与回包各最多 64 KiB，独立头像原始二进制 body 最多 1 MiB；同用本机非浏览器、Host 与规范 root 校验。命令、字段及部分失败回执见 [多 Bot](multibot.md#运行时普通资料)。
 
-操作入口由实际持有者释放：chat 退出、web 淘汰/换绑或服务 context 取消强制关闭；serve.Pass 的 Kernel.Close 请求退役，有本机子代理或编码任务时复用原执行集合保持入口，实际任务移除并排空原队列后的无锁 OnIdle 回调关闭空闲入口。没有第二张任务表或定期寿命轮询；已关闭入口会撤销宿主 context 回调。主线和可写本机子代理沿短 CLI 指引使用当前实例资料入口，改名后原 endpoint 仍识别同一 Bot；profile 不再登记模型工具或 schema，persona 保留原独立工具。入口所有权见 [ADR 0043](../adr/0043-cli-platform-runtime-entry.md)，完整资料语义见 [ADR 0049](../adr/0049-complete-runtime-profile-entry.md)。
+操作入口由实际持有者释放：chat 退出、web 淘汰/换绑或服务 context 取消强制关闭；serve.Pass 的 Kernel.Close 请求退役，有本机子代理或编码任务时复用原执行集合保持入口，实际任务移除并排空原队列后的无锁 OnIdle 回调关闭空闲入口。没有第二张任务表或定期寿命轮询；已关闭入口会撤销宿主 context 回调。主线和可写本机子代理沿短 CLI 指引使用当前实例资料入口，改名后原 endpoint 仍识别同一 Bot；profile 不再登记模型工具或 schema，persona为下文独立self职责CLI，不并资料组合。入口所有权见 [ADR 0043](../adr/0043-cli-platform-runtime-entry.md)，完整资料语义见 [ADR 0049](../adr/0049-complete-runtime-profile-entry.md)。
 
 ## 技能实例入口
 
@@ -36,9 +36,15 @@ HTTP原本没有调用turn。agent.execTool现把实际已包装approver、原Sh
 
 Create/Delete当刻当前source primary复核，Create继承全部Owners/Links（可空）与global默认binding，不继承source active model/role/budget、不新目标K或wake。原config→state→persona→owners后段以CreateCommitError/Unwrap透applied/stage，late persona32KiB仍原阶段，非整事务。资源/host/chat现回调传(removed,error)，保原同entry暂停→锁外owned Jobs join→重核→FinishDelete；removed后vaultkey错也终态清entry/hold/资源，不猜未删/恢复不存在对象，不扩大child/code/remote/MCP join。
 
-只有strict Delete经已存在live source ctx/原wrapped Shell approve，固定Delete语义不借退掉的Known名字；production permissive不增卡、不强普通操作关联。共享runtimeApprovalSource与approveRuntimeIntent仅服务当前两个真正caller，冻结policy/原owner卡branch/child原回调保持，deniedBefore即使need=false也生效；Bot canonical含delete/target，routine仍typed请求/effective命令，真Run raw不改。原call/header只是关联，不新权限/确认/任务表。JSON与human共用准确formatter双32KiB，大List/Info沿当前source工作区完整结果/真实bytes，HTTP64KiB/结果20MiB。四等价模型门退而peers群消息fork保，research仅list/info/help。见 [ADR0052](../adr/0052-bot-runtime-cli.md)。
+只有strict Delete经已存在live source ctx/原wrapped Shell approve，固定Delete语义不借退掉的Known名字；production permissive不增卡、不强普通操作关联。共享runtimeApprovalSource与approveRuntimeIntent服务routine、Delete与自身职责三个真正caller，冻结policy/原owner卡branch/child原回调保持，deniedBefore即使need=false也生效；Bot canonical含delete/target，routine仍typed请求/effective命令，真Run raw不改。原call/header只是关联，不新权限/确认/任务表。JSON与human共用准确formatter双32KiB，大List/Info沿当前source工作区完整结果/真实bytes，HTTP64KiB/结果20MiB。四等价模型门退而peers群消息fork保，research仅list/info/help。见 [ADR0052](../adr/0052-bot-runtime-cli.md)。
 
 原BotHandlers另有typed Pin/Primary小写操作，平面pin/unpin NAME --self与primary set NAME --self沿同parser早分流。每次从当前source ref核fresh primary/self或可见本地目标；B已存在endpoint无需重造即下一写得权，A原endpoint不冒B资格，诊断名不参与。self pin完整短IO在route，其它目标Load/SetPinned与SetPrimary在route外；原primary.lock内pointer→ensurepinned次序保，PrimaryCommitError在真实指针写成后pin错仍Appliedtrue，source下一资格读实际pointer，不rollback/自动unpin旧A或新grant表。same-primary applied是本次指针写成，primary可unpin。两原Normal不借审批桥，短ACK人读/JSONnewline同32KiB而HTTP64KiB，不复制大结果机制；两native wrapper/空bots组/Known已退，isPrimary和其它Tools保，research只放control帮助。原配置合并、typed阶段与离线arity见 [API](../API.md#bot-运行时-cli)，决定见 [ADR0053](../adr/0053-bot-pin-primary-runtime-cli.md)。
+
+## 自身职责与原 SelfEdit 审批
+
+原BotHandlers.Persona为所有source Bot（含非primary）沿同ref提供persona set --self (--text TEXT|--file FILE|-)；同parser早分流/guard，完整职责file/stdin避原Shell16KiB command限，raw与escaped wire各1MiB。解码body冻结，strict在route/Jobs/host锁外沿原runtimeApprovalSource/approveRuntimeIntent显式SelfEdit needtrue，不查退名Unknown或借Delete/ownerPermissive；原actual Local/running同listener ctx、wrappedShell/providerID/mutex/冻结policy-dynamicownerfork/actualchild与deniedBefore/park/grant保持。approval-only原args附set/完整64hex SHA256(trimtext)/bytes，正文不再次复制进审批链，内容A→B不能吃A，原Run raw不变；Permissive普通写不强CallID。
+
+批准后一次currentroute WritePersona，nil直接原source不打开Inbox，currentName/path不取旧诊断。原writer仍唯一trim后1..32KiB字节/0600/textNL/最终Rename，无新阶段/事务；Written/Effective next_wake/Error短ACK双32KiB，显示错也保written事实，不造artifact。active请求不主动重拼，下一正常Handle assemble/currentComposedPersona重新读完整职责和原卡段；环境只职责label/12hex shorthash及卡指纹，不发管理Event/Inbox/wake、改旧历史/记忆/configfallback/rules或另存版本。卡初用EnsureSeeds是原行为，比较前warm。personaTool/空bot_profile组/Known退，历史卡片和raw file SelfEdit及owner HTTP原组合partial保。字段与strict边界见 [API](../API.md#自身职责运行时-cli)、决定见 [ADR0054](../adr/0054-self-persona-runtime-cli.md)。
 
 ## MCP 与每 Bot 进程资源
 
