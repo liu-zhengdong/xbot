@@ -99,9 +99,7 @@ func (s *Shell) BindMarkerIO(fn func(func(string) error) error) {
 func (s *Shell) BindStartIO(fn func(context.Context, func(string) error) error) {
 	s.sessMu.Lock()
 	defer s.sessMu.Unlock()
-	if s.startIO == nil {
-		s.startIO = fn
-	}
+	s.startIO = fn
 }
 
 func (s *Shell) session() (func(context.Context) (string, string), func(context.Context, string) (string, string), string) {

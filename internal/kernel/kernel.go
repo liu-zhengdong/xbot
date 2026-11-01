@@ -122,8 +122,11 @@ type Kernel struct {
 	// The main chat approver is not used: a background step cannot block on a prompt.
 	AllowBackground bool
 	WorkDir         string
-	SharedDir       string
-	SkillsDir       string
+	// workOrigin is the immutable directory component associated with WorkDir.
+	// UseBot may refresh configuration between turns without changing this path fact.
+	workOrigin string
+	SharedDir  string
+	SkillsDir  string
 	// Machine reports the local machine switch for tools that touch this
 	// machine. Nil reads machines.json under the bot root; the zero value is
 	// allow. off refuses, ask confirms each machine action, allow follows the

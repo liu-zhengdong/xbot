@@ -228,7 +228,9 @@ func (k *Kernel) workspace() string {
 // withShellStartIO keeps a prepared cwd current through the actual local fork,
 // then releases both locks before process waiting or any user code.
 func (k *Kernel) withShellStartIO(ctx context.Context, start func(string) error) error {
-	scope := scopeOf(ctx)
+	return k.withShellStartScopeIO(scopeOf(ctx), start)
+}
+func (k *Kernel) withShellStartScopeIO(scope string, start func(string) error) error {
 	k.cwd.mu.Lock()
 	defer k.cwd.mu.Unlock()
 	k.ensureLoadedLocked()
@@ -266,8 +268,12 @@ func (k *Kernel) rebaseOriginalPath(path string, current *bot.Bot) string {
 	if k.Resources == nil {
 		return path
 	}
-	path = rebasePath(path, bot.Dir(k.Bot.Root, k.Bot.Name()), bot.Dir(current.Root, current.Name()))
-	return rebasePath(path, work.BotDir(k.Bot.Root, k.Bot.Name()), work.BotDir(current.Root, current.Name()))
+	origin := k.workOrigin
+	if origin == "" {
+		origin = k.Bot.Name()
+	}
+	path = rebasePath(path, bot.Dir(k.Bot.Root, origin), bot.Dir(current.Root, current.Name()))
+	return rebasePath(path, work.BotDir(k.Bot.Root, origin), work.BotDir(current.Root, current.Name()))
 }
 func (k *Kernel) currentWorkspaceFor(current *bot.Bot) string {
 	return k.rebaseOriginalPath(k.WorkDir, current)

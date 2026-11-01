@@ -214,6 +214,12 @@ func (k *Kernel) scopeTools(scope string) []tools.Tool {
 		)
 		sh.SetMarkerDir(k.shellMarkerDir())
 		k.bindShellRuntime(sh)
+		sh.BindStartIO(func(ctx context.Context, start func(string) error) error {
+			if tools.CallID(ctx) != "" {
+				return k.withShellStartIO(ctx, start)
+			}
+			return k.withShellStartScopeIO(scope, start)
+		})
 		shells = append(shells, sh)
 	}
 	root := func(ctx context.Context) string {

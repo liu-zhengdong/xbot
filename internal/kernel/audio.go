@@ -38,34 +38,72 @@ func (k *Kernel) withMediaIO(ctx context.Context, fn func(*bot.Bot, string, []st
 	k.ensureLoadedLocked()
 	return k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
 		k.rebaseCwdLocked(current)
-		cwd := k.cwd.dir
-		if scope != "" {
-			cwd = k.cwd.extra[scope]
+		// Match workspace/lookupScope without recursively acquiring cwd or route.
+		fallback := ""
+		if strings.TrimSpace(k.WorkDir) != "" {
+			fallback, _ = cleanDir(k.currentWorkspaceFor(current))
 		}
-		cwd = k.rebaseOriginalPath(cwd, current)
-		if cwd == "" {
-			cwd = k.currentWorkspaceFor(current)
-		}
-		if cwd == "" {
-			cwd, _ = os.Getwd()
+		if fallback == "" {
+			if wd, err := os.Getwd(); err == nil {
+				if dir, ok := cleanDir(wd); ok {
+					fallback = dir
+				} else {
+					fallback = filepath.Clean(wd)
+				}
+			}
 		}
 		var roots []string
 		if k.WorkDir != "" {
-			roots = append(roots, k.currentWorkspaceFor(current))
+			roots = append(roots, fallback)
 		}
 		if k.SharedDir != "" {
 			roots = append(roots, k.SharedDir)
 		}
-		return fn(current, cwd, cleanRoots(roots))
+		roots = cleanRoots(roots)
+		cwdRoots := roots
+		if len(cwdRoots) == 0 && fallback != "" {
+			cwdRoots = []string{fallback}
+		}
+		want := k.cwd.dir
+		if scope != "" {
+			want = k.cwd.extra[scope]
+		}
+		inherit := scope != "" && want == ""
+		if inherit {
+			want = k.cwd.dir
+		}
+		want = k.rebaseOriginalPath(want, current)
+		if want == "" {
+			want = fallback
+		}
+		cwd, usable := usableDir(want, cwdRoots)
+		if usable && inherit {
+			if k.cwd.extra == nil {
+				k.cwd.extra = map[string]string{}
+			}
+			if _, exists := k.cwd.extra[scope]; !exists {
+				k.cwd.extra[scope] = cwd
+			}
+		}
+		if !usable {
+			cwd, _ = usableDir(fallback, cwdRoots)
+		}
+		if cwd == "" {
+			cwd = k.currentWorkspaceFor(current)
+		}
+		return fn(current, cwd, roots)
 	})
 }
 
 func (k *Kernel) readAudio(ctx context.Context, ref string) (data []byte, err error) {
-	err = k.withMediaIO(ctx, func(current *bot.Bot, cwd string, roots []string) error {
-		if work.ValidVoiceID(ref) {
+	if work.ValidVoiceID(ref) {
+		err = k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
 			data, err = work.ReadAudioFile(work.BotDir(current.Root, current.Name()), work.VoiceDir+"/"+ref)
 			return err
-		}
+		})
+		return
+	}
+	err = k.withMediaIO(ctx, func(current *bot.Bot, cwd string, roots []string) error {
 		abs, err := tools.ResolveRoot(cwd, k.rebaseOriginalPath(ref, current))
 		if err != nil {
 			return err
