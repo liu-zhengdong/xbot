@@ -59,6 +59,7 @@
     knownNotes: null,
     owner: "",
     ownerName: "",
+    ownerAvatarURL: "",
     preview: {},
     previewAt: {},
     listSig: "",
@@ -4251,7 +4252,7 @@
     const slot = $("me-avatar");
     // owner_name, never the raw id: on Windows the id carries the account SID (#210).
     const name = state.ownerName.trim();
-    if (name) slot.replaceChildren(avatar(name, null, "me"));
+    if (name || state.ownerAvatarURL) slot.replaceChildren(avatar(name, { url: state.ownerAvatarURL }, "me"));
     else {
       const face = el("span", "avatar me blob");
       face.append(icon("person"));
@@ -7100,10 +7101,10 @@
     modalFields.querySelector("[data-profile-focus]").focus();
   }
 
-  async function uploadAvatar(name, file) {
+  async function uploadAvatar(name, file, url = avatarURLOf(name)) {
     const body = new FormData();
     body.append("file", file);
-    const res = await apiFetch("/api/bots/" + encodeURIComponent(name) + "/avatar", {
+    const res = await apiFetch(url, {
       method: "POST", credentials: "same-origin", body: body,
     });
     const text = await res.text();
@@ -8193,6 +8194,7 @@
       if (!res.ok) throw new Error(res.status === 401 ? "登录码不对，重新复制终端里登录码那一行" : "登录失败，稍后再试");
       state.owner = data.owner || "";
       state.ownerName = data.owner_name || "";
+      state.ownerAvatarURL = data.owner_avatar_url || "";
       const session = await api("/api/session");
       state.version = session.version || "";
       state.tip = session.tip || "";
@@ -8451,11 +8453,43 @@
       } else if (section === "apps") {
         await window.XBotApps.mount({api, host:$("settings-apps"), isCurrent:()=>request===settingsRequest});
       } else if (section === "general") {
+        paintOwnerAvatar();
         await loadPush();
       }
     } catch (err) { if (request === settingsRequest) settingsError(err); }
   }
   window.XBotSettings = { open: openSettings, close: closeSettings, isOpen: () => !$("setpage").hidden };
+  function paintOwnerAvatar() {
+    $("settings-owner-preview").replaceChildren(avatar(state.ownerName, { url: state.ownerAvatarURL }, "xl"));
+    $("settings-owner-clear").hidden = !state.ownerAvatarURL;
+  }
+  async function changeOwnerAvatar(file) {
+    const upload = $("settings-owner-upload"), clear = $("settings-owner-clear");
+    const problem = $("settings-owner-error");
+    problem.textContent = "";
+    if (file) {
+      const bad = avatarFileProblem(file);
+      if (bad) { problem.textContent = bad; return; }
+    }
+    upload.disabled = clear.disabled = true;
+    upload.textContent = file ? "正在上传…" : "换一张";
+    try {
+      const data = file
+        ? await uploadAvatar(null, file, "/api/owner/avatar")
+        : await api("/api/owner/avatar", { method: "DELETE" });
+      state.ownerAvatarURL = data.owner_avatar_url ? data.owner_avatar_url + "?v=" + Date.now() : "";
+      renderMe();
+      paintOwnerAvatar();
+    } catch (e) { problem.textContent = avatarUploadProblem(e); }
+    finally { upload.disabled = clear.disabled = false; upload.textContent = "换一张"; }
+  }
+  $("settings-owner-upload").addEventListener("click", () => $("settings-owner-file").click());
+  $("settings-owner-file").addEventListener("change", (ev) => {
+    const file = ev.target.files[0];
+    ev.target.value = "";
+    if (file) changeOwnerAvatar(file);
+  });
+  $("settings-owner-clear").addEventListener("click", () => changeOwnerAvatar(null));
   function paintPermissions(data) {
     const on = data.confirm === "table";
     const btn = $("settings-permissions");
@@ -9026,6 +9060,7 @@
     booted = true;
     state.owner = (data && data.owner) || "";
     state.ownerName = (data && data.owner_name) || "";
+    state.ownerAvatarURL = (data && data.owner_avatar_url) || "";
     state.version = (data && data.version) || "";
     state.tip = (data && data.tip) || "";
     state.app = !!data.app;

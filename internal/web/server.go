@@ -197,6 +197,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /app/launch", s.launch)
 	mux.HandleFunc("POST /api/logout", s.logout)
 	mux.HandleFunc("GET /api/session", s.session)
+	mux.HandleFunc("GET /api/owner/avatar", s.ownerAvatar)
+	mux.HandleFunc("POST /api/owner/avatar", s.ownerAvatar)
+	mux.HandleFunc("DELETE /api/owner/avatar", s.ownerAvatar)
 	mux.HandleFunc("POST /api/setup/key", s.setupKey)
 	mux.HandleFunc("POST /api/app/theme", s.appTheme)
 
@@ -402,6 +405,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 	// window. The sidebar stays the same; the bottom line names the account's
 	// devices instead of this computer.
 	out["remote"] = forwarded(r)
+	out["owner_avatar_url"] = s.ownerAvatarURL()
 	if s.needsKey() {
 		out["needs_key"] = true
 		out["key_host"] = s.keyHost()

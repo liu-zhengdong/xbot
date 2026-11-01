@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-11-01 设置主人头像（feature/owner-avatar-settings）
+
+- M 档。通用「我的头像」复用现有 setpane/按钮/字体，无新 CSS、颜色或动效；data root `owner-avatar` 是唯一真源，GET/POST/DELETE 与 session 字段串起预览、侧栏即时更新和刷新读回。类型/大小对齐 Bot，无 localStorage 图片副本。
+- 专项 `TestOwnerAvatarSeam` / `TestOwnerAvatarBrowser` 连续三遍通过：认证/同源、上传/字节读回/重开服务对象、拒绝类型/超限不损旧图、清除幂等、预览与 me 同源、失败保留原图。deletion test：删除 POST 路由后 seam 红；恢复 me 原先无 URL 的渲染后浏览器红（me did not use saved URL）；恢复实现后三遍绿。删除旧 `avatar_owner_ui_test.go` 的源码/颜色文本断言，以接口和浏览器行为替代。
+- 真实二进制隔离 serve + Chrome 的 `internal/web/testdata/owner-avatar.cjs` 三遍通过：真上传、整页刷新读回、清除、再刷新回原线稿，不调用模型。初三遍 session GET 每遍 20 样本 p95 1.46–2.40ms，上传到 me 14.1–36.7ms；最终含浅深切换/真实图片的三遍 GET p95 1.55–58.78ms、上传到 me 21.8–47.0ms；仅本机接口/页面数字，不是生产、IPC 或持续帧率保证。浅深 1440×900 DPR2 默认/悬停/自定义/清除证据在 `~/.xbot-build/ui-shots/owner-avatar/after/{light,dark}/`，浅色改前在 before/light；局部自检，未独立设计师验收。shoot 的旧设备列表 401 是基线已有，未扩修。
+- gofmt、go vet、diff check、atlas audit（退出 0，保留既有告警）通过。全量 `go test -count=1 ./...` 未全绿：providerauth/TestLogoutStopsPendingLogin 端口占用，单独三遍通过；web 全量一遍通过，但整包三遍在 TestCLIEventQueue 临时目录清理失败，当前单独三遍和 HEAD 归档单独三遍均复现。日志 `/tmp/owner-avatar-{tests,web3,cli-baseline,vet,deletion-api,deletion-ui}.log`；不为头像扩修已有 CLI 生命周期。
+- 级别：本地分支头像专项端到端通过；未合 main、未 push，整体门禁未全绿。Not run: Linux CI、Windows 字体实测、独立评审、用户日用、生产 p95/IPC/持续帧率专项；已有旅程 smoke 的结果包含在全量测试中，不另声称全局日用通过。
+
 ## 2026-10-31 设置保险库与本机 sudo（feature/vault-settings-sudo，本地分支）
 
 - L 档，按更新后的 Grok 风格 handoff，废弃旧安静行 UI。设置「保险库」位于权限后、搜索前，per-bot 全部/出站/本机计数、名称/域名搜索、轻底圆角卡与管理；添加下拉、LOCAL_SUDO 预填、管理只改域名/重设值、D5 删除、全空与筛选/搜索无结果。没有迁移供应商/搜索密钥，没有改并行权限卡、AGENTS/CLAUDE、发版或 sudoers。

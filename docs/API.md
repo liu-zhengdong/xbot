@@ -46,6 +46,15 @@
 
 `POST /api/app/theme` 只在桌面版存在，body `{"theme":"light|dark|system"}`，让窗口的系统按钮跟随 XBot 自己的明暗主题。成功 204，没有 body；值不对 400；不是桌面版 404。
 
+## 主人头像
+
+整机一份，唯一存盘为数据根 `owner-avatar`。以下接口要求用户会话，写入沿用同源校验。
+
+- `/api/session` 增加 `owner_avatar_url`：有自定义图时为 `/api/owner/avatar`，否则为空串；`owner_name` 不变。
+- `POST /api/owner/avatar`：multipart 字段 `file`，PNG/JPEG/GIF/WebP，按字节嗅探，图片最多 1 MiB，multipart 请求最多 2 MiB。类型不支持 400、图片超限 413、multipart 无效 400；写盘失败 500，不替换旧图。成功 200 `{"owner_avatar_url":"/api/owner/avatar"}`。与 Bot 相同，不额外压缩。
+- `GET /api/owner/avatar`：返回原图字节，Content-Type 按字节定，`X-Content-Type-Options: nosniff`、`Cache-Control: private, no-cache`；没有图 404。
+- `DELETE /api/owner/avatar`：幂等删除，200 `{"owner_avatar_url":""}`，界面恢复按 `owner_name` 画线稿。
+
 ## 图片生成
 
 - `GET /api/image-gen`：返回 `{enabled,mode,provider,providers:[{id,name,logged_in}]}`；`mode` 为 `auto`（默认）或 `local`（总用设置里的家）。默认关，选择尚未保存时优先已登录的账号，否则 OpenAI；`openai` 对应 ChatGPT OAuth，`xai` 对应 xAI OAuth。只返回登录布尔值，不返回保险箱原文。
