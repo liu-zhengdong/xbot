@@ -23,6 +23,13 @@ func (b *Bot) DisabledSkills() []string {
 	return slices.Clone(b.cfg.DisabledSkills)
 }
 
+// SetSkillDisabled updates an already resolved local Bot's switch without loading
+// or migrating it. The existing writer reads and merges fresh config under its lock.
+func SetSkillDisabled(root, name, slug string, disabled bool) error {
+	b := &Bot{Root: root, cfg: Config{Name: name}}
+	return b.setSkillDisabled(slug, disabled)
+}
+
 func (b *Bot) setSkillDisabled(slug string, disabled bool) error {
 	slug = strings.TrimSpace(slug)
 	if slug == "" || strings.ContainsAny(slug, "/\\") {

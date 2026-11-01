@@ -168,6 +168,9 @@ func Start(root string, handlers Handlers) (*Server, error) {
 		}
 		ServeMCP(w, r, *handlers.MCP, strings.TrimPrefix(r.URL.Path, "/v1/mcp/"))
 	})
+	mux.HandleFunc("/v1/skill/", func(w http.ResponseWriter, r *http.Request) {
+		serveSkill(w, r, handlers.Skills)
+	})
 	guarded := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fail := func(code int, message string) {
 			w.Header().Set("Content-Type", "application/json")
@@ -232,7 +235,7 @@ func (s *Server) Close() error {
 // data from disk or falls back to another instance on failure.
 func Call(ctx context.Context, endpoint, root string, update *Update) (Profile, error) {
 	var result Profile
-	root, err := profileRoot(endpoint, root)
+	root, err := sourceRoot(endpoint, root, "profile")
 	if err != nil {
 		return result, err
 	}
@@ -261,7 +264,7 @@ func Call(ctx context.Context, endpoint, root string, update *Update) (Profile, 
 // CallAvatar streams one bounded raw upload, or sends an empty DELETE for clear.
 // It uses the same source identity, response budget and partial DTO as Call.
 func CallAvatar(ctx context.Context, endpoint, root string, data io.Reader, clear bool) (Profile, error) {
-	root, err := profileRoot(endpoint, root)
+	root, err := sourceRoot(endpoint, root, "profile")
 	if err != nil {
 		return Profile{}, err
 	}
@@ -286,24 +289,24 @@ func CallAvatar(ctx context.Context, endpoint, root string, data io.Reader, clea
 	return callProfile(req)
 }
 
-func profileRoot(endpoint, root string) (string, error) {
+func sourceRoot(endpoint, root, operation string) (string, error) {
 	if endpoint == "" {
-		return "", errors.New("profile: no runtime endpoint; --self requires an active XBot shell")
+		return "", fmt.Errorf("%s: no runtime endpoint; --self requires an active XBot shell", operation)
 	}
 	u, err := url.Parse(endpoint)
 	if err != nil || u.Scheme != "http" || u.Hostname() != "127.0.0.1" || u.Port() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" {
-		return "", errors.New("profile: invalid local runtime endpoint")
+		return "", fmt.Errorf("%s: invalid local runtime endpoint", operation)
 	}
 	root, err = CanonicalRoot(root)
 	if err != nil {
-		return "", fmt.Errorf("profile: data root: %w", err)
+		return "", fmt.Errorf("%s: data root: %w", operation, err)
 	}
 	return root, nil
 }
 
 func callProfile(req *http.Request) (Profile, error) {
 	var result Profile
-	client := &http.Client{Transport: &http.Transport{Proxy: nil}, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := LocalHTTPClient(10 * time.Second)
 	defer client.CloseIdleConnections()
 	resp, err := client.Do(req)
 	if err != nil {

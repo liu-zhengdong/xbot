@@ -10,6 +10,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/clip"
 	"xbot/internal/compact"
+	"xbot/internal/inbox"
 	"xbot/internal/manual"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -246,8 +247,13 @@ func (k *Kernel) skillInfos() ([]skill.Info, error) {
 		return nil, nil
 	}
 	disabled := map[string]bool{}
-	for _, slug := range k.Bot.DisabledSkills() {
-		disabled[strings.TrimSpace(slug)] = true
+	if err := k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		for _, slug := range current.DisabledSkills() {
+			disabled[strings.TrimSpace(slug)] = true
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	infos, err := skill.List(k.SkillsDir)
 	if err != nil || len(infos) == 0 {

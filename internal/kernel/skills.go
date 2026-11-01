@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"xbot/internal/bot"
-	"xbot/internal/fsutil"
+	"xbot/internal/cliops"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
@@ -115,32 +115,10 @@ func (t writeSkillTool) Run(_ context.Context, args json.RawMessage) (string, er
 		return "", fmt.Errorf("skill: no bot")
 	}
 	err = t.k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
-		bots, target, err := t.k.skillScopeFor(in.Scope, current.Name())
-		if err != nil {
-			return err
-		}
-		// Serialize installs in this library, including across local processes: the
-		// winning file and its per-bot defaults must come from the same write.
-		lock, err := fsutil.Lock(filepath.Join(skill.Dir(t.k.Bot.Root), ".write.lock"))
-		if err != nil {
-			return err
-		}
-		defer lock.Release()
-		if err := skill.Write(t.k.Bot.Root, in.Slug, in.Description, in.Body, in.Title); err != nil {
-			return err
-		}
-		// Apply only at write time; subsequent manual switches remain authoritative.
-		for _, b := range bots {
-			if target == "" || b.Name() == target {
-				err = b.EnableSkill(in.Slug)
-			} else {
-				err = b.DisableSkill(in.Slug)
-			}
-			if err != nil {
-				return fmt.Errorf("skill: file written but scope update incomplete: %w", err)
-			}
-		}
-		return nil
+		_, err := writeRuntimeSkill(t.k.Bot.Root, t.k.SkillsDir, current.Name(), cliops.SkillWrite{
+			Slug: in.Slug, Title: in.Title, Description: in.Description, Scope: in.Scope, Body: &in.Body,
+		})
+		return err
 	})
 	if err != nil {
 		return "", err
@@ -181,30 +159,17 @@ func (k *Kernel) skillScope(scope string) ([]*bot.Bot, string, error) {
 }
 
 func (k *Kernel) skillScopeFor(scope, currentName string) ([]*bot.Bot, string, error) {
-	cfgs, err := bot.List(k.Bot.Root)
+	names, target, err := resolveSkillScope(k.Bot.Root, scope, currentName)
 	if err != nil {
 		return nil, "", err
 	}
-	if strings.EqualFold(scope, "self") {
-		scope = currentName
-	}
 	var bots []*bot.Bot
-	target := ""
-	for _, cfg := range cfgs {
-		b, err := bot.Load(k.Bot.Root, cfg.Name)
+	for _, name := range names {
+		b, err := bot.Load(k.Bot.Root, name)
 		if err != nil {
 			return nil, "", err
 		}
 		bots = append(bots, b)
-		if scope != "" && strings.EqualFold(scope, cfg.Name) {
-			if target != "" {
-				return nil, "", fmt.Errorf("skill: ambiguous scope")
-			}
-			target = cfg.Name
-		}
-	}
-	if scope != "" && target == "" {
-		return nil, "", fmt.Errorf("skill: scope must name one of the local bots")
 	}
 	return bots, target, nil
 }
@@ -225,26 +190,12 @@ func (k *Kernel) openSkill(id string) (string, skill.Info, error) {
 	if err != nil {
 		return "", skill.Info{}, err
 	}
-	var found *skill.Info
-	for i := range infos {
-		if infos[i].Slug == id || infos[i].Name == id {
-			found = &infos[i]
-			break
-		}
-	}
-	if found == nil {
-		return "", skill.Info{}, fmt.Errorf("skill: %s not found", id)
-	}
 	var disabled []string
 	if err := k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error { disabled = current.DisabledSkills(); return nil }); err != nil {
 		return "", skill.Info{}, err
 	}
-	for _, slug := range disabled {
-		if strings.TrimSpace(slug) == found.Slug {
-			return "", skill.Info{}, fmt.Errorf("skill: disabled")
-		}
-	}
-	return dir, *found, nil
+	info, err := resolveSkillInfo(infos, id, disabled)
+	return dir, info, err
 }
 
 func redactSkillRead(m provider.Message) provider.Message {

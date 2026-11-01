@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-01
 ---
 # 0050 技能以当前实例 read/write 领域入口替换两模型工具
@@ -29,4 +29,4 @@ A 为 CLI 离线 import 再逐 Bot 设置，状态和错误会散在多次调用
 
 接受全库写锁覆盖文件与多个 config 的短 IO，换取原正文/默认范围同赢家；接受真实 IO 失败留下可观察 partial，换取不伪造跨 Bot 原子事务。接受完整 CLI read 与 routine16KiB投影两种不同消费预算，换取不暗改例程行为。离线 show/import/remove/enable/disable 保现语义；不新增人用 owner HTTP、自动 persona/role/routine 修改或下一平台族框架。
 
-本决定不修改 desktop 的0048或 profile 的0049；不替代0021环境流、0043实例协议、0046资源所有权、0047MCP或0049改名。状态在窄结构核通过后转 Accepted，再按该单一 phase contract 实现。
+本决定不修改 desktop 的0048或 profile 的0049；不替代0021环境流、0043实例协议、0046资源所有权、0047MCP或0049改名。reviewer24 对具体合同 `ca6a8530` 的窄结构核已 PASS；本决定 Accepted，按该单一 phase contract 分面实施。
