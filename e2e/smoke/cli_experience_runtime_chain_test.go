@@ -33,9 +33,6 @@ func TestCLIExperienceRuntimeSourceConsumers(t *testing.T) {
 		t.Fatal("experience fixture must use an actual nonprimary source")
 	}
 	workspace := filepath.Join(srv.Root, "work", source)
-	if err := os.WriteFile(filepath.Join(workspace, "experience-tool-body.txt"), []byte(body), 0600); err != nil {
-		t.Fatal(err)
-	}
 	dbPath := filepath.Join(srv.Root, "bots", source, "experience.sqlite")
 	const empty = "EXP_CHAIN_EMPTY_X00"
 	model.base.add(empty, mcpRuntimeTool("sh", map[string]string{"description": "Read a missing experience database through the actual source", "command": `env -u XBOT_CALL_ID "$XBOT_BIN" experience search --self --json`}))
@@ -47,6 +44,11 @@ func TestCLIExperienceRuntimeSourceConsumers(t *testing.T) {
 	}
 	if _, err := os.Stat(dbPath); !os.IsNotExist(err) {
 		t.Fatal("missing source search created a database")
+	}
+	// Original source Shell above establishes its lazy workspace. Bot creation
+	// alone does not create this native job input directory.
+	if err := os.WriteFile(filepath.Join(workspace, "experience-tool-body.txt"), []byte(body), 0600); err != nil {
+		t.Fatal(err)
 	}
 	const first, latest = "EXP_CHAIN_PREPARED_A11", "EXP_CHAIN_CURRENT_B22"
 	command := `printf '%s\n' "$XBOT_CALL_ID" > experience-original-call.txt` + "\n" + `printf 'ORIGINAL_SOURCE_JOB_READY\n' > experience-source-ready` + "\n" + `while [ ! -f experience-record-now ]; do sleep 0.025; done` + "\n" +
