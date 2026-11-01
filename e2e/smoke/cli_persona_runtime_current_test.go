@@ -49,8 +49,10 @@ func TestCLIPersonaRuntimeAtomicFailureAndCurrentRoute(t *testing.T) {
 	botDir := filepath.Join(srv.Root, "bots", original)
 	personaPath := filepath.Join(botDir, "persona.md")
 	before, err := os.ReadFile(personaPath)
-	if err != nil || strings.TrimSpace(string(before)) != oldDuty {
-		t.Fatal("actual old persona was not available before the FS fault")
+	// The existing authenticated CreateBot helper appends its BOTNAME marker.
+	// Preserve that actual complete old file, not only our input-duty fragment.
+	if err != nil || string(before) != oldDuty+"\n\nBOTNAME="+original+"\n" {
+		t.Fatal("actual complete helper-created old persona was not available before the FS fault")
 	}
 	configBefore, err := os.ReadFile(filepath.Join(botDir, "config.json"))
 	if err != nil {
