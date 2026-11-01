@@ -19,9 +19,10 @@ import (
 func TestCLIPeerMessageRuntimeRemoteAcceptedBodyConsumer(t *testing.T) {
 	f := newCLIPeerRemoteFixture(t)
 	const head, tail = "REMOTE_FILE_PUBLIC_BEGIN", "REMOTE_PUBLIC_END"
-	// U+0001 is valid UTF-8, not TrimSpace whitespace, and JSON escapes it to
-	// six bytes. The full valid8KiB request cannot be hidden in a32KiB ACK.
-	body := head + strings.Repeat("\x01", (8<<10)-len(head)-len(tail)) + tail
+	// U+0001 is valid UTF-8 and JSON escapes it to six bytes. Keep complete
+	// 8KiB body and JSON>32KiB, while leaving the original encrypted/base64
+	// envelope below the existing gateway64KiB (all-controls would exceed it).
+	body := head + strings.Repeat("\x01", 5200) + strings.Repeat("x", (8<<10)-len(head)-len(tail)-5200) + tail
 	encoded, err := json.Marshal(body)
 	if err != nil || len(body) != 8<<10 || !utf8.ValidString(body) || len(encoded) <= 32<<10 {
 		t.Fatal("accepted body fixture must be complete8KiB UTF-8 with JSON larger than32KiB")
@@ -89,6 +90,10 @@ func TestCLIPeerMessageRuntimeRemoteAcceptedBodyConsumer(t *testing.T) {
 	}
 	for i, reply := range replies {
 		env := accepted[i]
+		wire, err := json.Marshal(env)
+		if err != nil || len(wire) > gateway.MaxBody {
+			t.Fatal("actual signed encrypted envelope exceeded original gateway64KiB")
+		}
 		event, found := byID["remote_"+f.SenderID+"_"+reply.EnvelopeID]
 		// This fixture has no secret or untrusted fence to rewrite. Source fact
 		// comparison above is to the original request, independently of receive.
