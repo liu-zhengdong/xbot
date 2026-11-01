@@ -8,7 +8,7 @@ date: 2026-11-02
 
 ## 问题与调用方
 
-本刀仅迁list_groups/get_group_message_history/create_group/post_group四原模型动作。现xbot group是terminalOwner侧栏Folders的list/create/rename/delete/set，不是g_聊天群；用户root独立message设计是主人HTTPsession/SSE，send是externalAgent Event，均只读避冲突。因此新namespace选 `"$XBOT_BIN" chat-group list|history|create|post --self ...`，不接管group/message/send，不加聊天群rename/editmember/delete。0055 glob空后建Proposed，精确caller/typed字段/阶段与验收见 [母dev](../dev/cli-platform-entry.md#批-chat-group成员聊天群四动作具体合同pass实施中)。
+本刀仅迁list_groups/get_group_message_history/create_group/post_group四原模型动作。现xbot group是terminalOwner侧栏Folders的list/create/rename/delete/set，不是g_聊天群；用户root独立message设计是主人HTTPsession/SSE，send是externalAgent Event，均只读避冲突。因此新namespace选 `"$XBOT_BIN" chat-group list|history|create|post --self ...`，不接管group/message/send，不加聊天群rename/editmember/delete。7bd具体合同经单次SINGLE ACTUAL CONCRETE SHAPE PASS后Accepted；实际caller/typed字段见 [API](../API.md#成员聊天群运行时-cli)、接缝见 [内核](../atlas/kernel.md#成员聊天群与原消息链)，后续平台母路线保在 [dev](../dev/cli-platform-entry.md)。
 
 ## 两种实际结构与选择
 
@@ -16,7 +16,7 @@ A：CLI走owner Web groups HTTP（CreateGroupForOwner/KindPerson），或Load/ro
 
 ## 原调用、提交事实与预算
 
-List/History/Create无原turn业务需求，不强CallID。Post原Normal不新审批卡，却必须有效原Call-ID/live Local/running/未finished/同listener Shell prepared ctx，不能用普通HTTPctx或latestTurn假造链。拟从现runtimeApprovalSource只抽出共享runtimeSourceCall解析器，approval wrapper继续原owner动态fork/child rebinding；Post只用原prepared frozen turnKey显式取chain/hops，不调用approvalIntent、不走重绑后turnFor fallback。空chain为ch_CURRENT_SOURCE_NAME，hops为原值+1，KindBot。missing/completed/foreign/nonShell或无冻结turn写前拒；保原caller Shell gate，不造生产身份hook。
+List/History/Create无原turn业务需求，不强CallID。Post原Normal不新审批卡，却必须有效原Call-ID/live Local/running/未finished/同listener Shell prepared ctx，不能用普通HTTPctx或latestTurn假造链。从原runtimeApprovalSource只抽出共享runtimeSourceCall解析器，approval wrapper继续原owner动态fork/child rebinding；Post只用原prepared frozen turnKey显式取chain/hops，不调用approvalIntent、不走重绑后turnFor fallback。空chain为ch_CURRENT_SOURCE_NAME，hops为原值+1，KindBot。missing/completed/foreign/nonShell或无冻结turn写前拒；保原caller Shell gate，不造生产身份hook。
 
 原Bus.PostGroup先trim1..8KiB/成员/hops≤3、sender-group8/min rate，再Append群transcript，按原members顺序逐其它member Load/OpenInbox/Post；Bus本身无waker。保现PostGroup(error)签名为薄兼容入口，新PostGroupWithResult返回实际GroupPostResult并承载同一writer；appended仅原AppendJSONL成功后true，message_id取该line，posted_members仅每次Inbox.Post成功后追加，failed_member/stage在实际失败点取。后段失败可appended=true且部分posted，不能error推没发/自动重试、rollback/rate恢复/签收账或改ownerKind。create仅saveGroup原atomic meta成功后created=true，无虚构多阶段partial。
 
@@ -24,4 +24,4 @@ List/History/Create无原turn业务需求，不强CallID。Post原Normal不新�
 
 ## 验证与后续
 
-具体合同单次SHAPE PASS后，先首compiled list/history真只读入口交独立一次，再同cohesive刀完成create/post与原链/hops、可见成员、实际晚fanout失败与短回执/大产物。仅退四wrapper/Known/schema/index，保message_bot/fork与其它Link.Tools/Emitter/Messenger/DeliverDraft导线。原Inbox/serve处理与忙时吸收/waker不动，不承诺Bus即时叫醒所有生产者，不加群管理wake。代码/测试前不改atlas现状，不重旧已封族/全仓矩阵/用户日用/guard，不操作root/main、用户dirty文档、push/release；单聊remoteoutbox与fork各后刀，Event/Link装配在逐族等价之后另切。
+dfe首compiled的成员list/history已独立通过，2bed完成create/post与四门退役；五项所测独立端到端按精确phase、作者相关单位及所有必要静态通过，当前合入/验收级别只记 [MILESTONES](../MILESTONES.md)，不抬末SHA五例重跑。完整字段/晚fanout事实/当前artifact与短ACK合同见API，保message_bot/fork及其它Link.Tools/Emitter/Messenger/DeliverDraft导线。原Inbox/serve处理与忙时吸收/waker不动，不承诺Bus即时叫醒所有生产者、不加群管理wake。用户dirty文档/rootmain/guard/push/release未动，未日用；单聊remoteoutbox与fork各后刀，Event/Link装配在逐族等价之后另切。

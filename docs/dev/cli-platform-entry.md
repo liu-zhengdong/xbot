@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群四动作合同7bd单次SHAPE PASS，正在实施，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过，父集成待收，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -591,82 +591,11 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 
 2d9具体合同单次窄核后，所有原source Bot的persona set self完整text/file/stdin、原WritePersona单atomic提交、下一真实wake正文/hash与SelfEdit实际Shell原调用审批已提炼至 [API](../API.md#自身职责运行时-cli)、[内核](../atlas/kernel.md#自身职责与原-selfedit-审批)、[ADR0054](../adr/0054-self-persona-runtime-cli.md)。260首file→nextwake与546完整边界的作者/独立精确phase、当前合入级别仅记 [MILESTONES](../MILESTONES.md)，不留完成合同重复副本。卡/role预算/fork/消息群/vault连接器/用户owner-SSE原边界保；后续remaining平台与Event/Link母路线按实际下一切片继续，不借persona扩展或提前抢步骤。
 
-## 批 chat-group：成员聊天群四动作（具体合同PASS，实施中）
+## 成员聊天群切片已提炼
 
-L档，基线TRUE mainbddaf2e43c61a1552260cfa2d82fb7b80a5a6cc3；Persona已合，四项各精确phase封存。这里只迁list_groups/get_group_message_history/create_group/post_group，7bd具体合同已reviewer24 SINGLE ACTUAL CONCRETE SHAPE PASS，无结构阻断，[ADR0055](../adr/0055-chat-groups-runtime-cli.md)已Accepted，按同合同先交list/history首compiled再同cohesive create/post。原68e65d83/7bd/validationd1eb81da真实source Shell chat-group list --self --json unknown command红.93s/package2.182s已封，不重。旧Bot5/control4/profile5/persona4/routine6/skills/MCP证据复用，不另审母路线/全仓矩阵。
+7bd具体合同单次SINGLE ACTUAL CONCRETE SHAPE PASS后，原list_groups/get_group_message_history/create_group/post_group四动作沿新chat-group list/history/create/post --self提炼至 [API](../API.md#成员聊天群运行时-cli)、[内核](../atlas/kernel.md#成员聊天群与原消息链)、[ADR0055](../adr/0055-chat-groups-runtime-cli.md)。source MEMBER范围/auto-self原Bus、Post原prepared冻结chain-hops及Normal无额外审批、真实群append→Inbox逐投的partial、双32KiB与current FULLartifact边界在实际接缝一处维护，不留完成合同副本。dfe首RO与2bed后四项各精确phase/当前合入级别只记 [MILESTONES](../MILESTONES.md)，五项所测独立端到端分阶段通过，非末SHA整组重跑；owner侧栏group与用户独立owner message-SSE/externalAgent send各原义不混。
 
-### Caller与命名边界
-
-```sh
-"$XBOT_BIN" chat-group list --self [--json]
-"$XBOT_BIN" chat-group history GROUP_ID --self [--limit N] [--before-id ID] [--sender NAME] [--keyword TEXT] [--json]
-"$XBOT_BIN" chat-group create NAME --self --member BOT [--member BOT...] [--json]
-"$XBOT_BIN" chat-group post GROUP_ID --self (--text TEXT|--file FILE|-) [--json]
-"$XBOT_BIN" chat-group --help
-"$XBOT_BIN" chat-group history --help
-```
-
-chat-group是新独立namespace，无group/message/send别名：现cmdGroup走terminalOwner→Folders CRUD/SetBotFolder，不是g_聊天群；用户ROOT cli-message-bot只读核了owner session/HTTP/SSE与外Agent send，绝不拿来冒source Bot/抢步骤命令。没有群rename/edit-members/delete、新群管理/远端成员SKU；message_bot(bot@device/remoteoutbox)和fork另后刀，卡/role预算/vault/连接器/上下文/Jobs等本刀不迁。
-
-纯ParseChatGroupRuntime(args为chat-group之后)→ChatGroupCommand{Action,ID,Name,Text,TextFile,Members,Limit,Keyword,Sender,BeforeID,Self,JSON,Help}。--member是唯一可重复flag，每次一个原精确本地Bot名（不是CSV），create至少给一个，self可重复进成员值仍由原Bus去重后判2..8。其它重复/未知flag、缺值、坏action/arity/无self纯语法拒；不做owner/member/8KiB领域校验。按flag arity消费值（keyword/text/file的值可字面--help/--self），--后不再识别flag；help离线。main在resolveRoot/default/legacy初始化前单独分流，原owner group与message/send不变；所有动作只当前XBOT_ENDPOINT/规范ROOT，诊断XBOT_BOT无身份效力，runtime失败不离线/newK。text/file/stdin raw max+1与各自typed最终JSON≤1MiB，不提前截8KiB再trim；post text/file恰一，--file -读stdin，能覆盖Shell16KiB下转义膨胀的完整8KiB正文。
-
-### 对照回顾与原领域
-
-| 实际来源/约束 | 本刀保持 |
-|---|---|
-| peers四tool与peer.Bus；Web groups owner路径/侧栏Folders另义 | List仅source CURRENT name为Members者；History同member核，不Webowner allMembers/全root；Create auto self+VisibleBots本地非空owner交集其它成员，无primary/owner全群门。 |
-| CreateGroup208-246/saveGroup431原写点 | name trim1..48字节禁/反斜杠/换行，成员值不擅trim/去重排序2..8，随机g_ ID/原Created；原atomic meta成功后created=true，无额外多阶段partial。 |
-| peers history176-232原算法 | exact group id/member，before_id存在才exclusive切前，未知报错；limit≤0默认20、max50；从后往前挑exact sender/不trim的case-insensitive keyword，再翻回正序，原Line全字段不丢，text Quote为不可信数据不可伪行。 |
-| Bus PostGroup272-345与allow454 | KindBot/currentSource，trim后1..8KiB字节、hops1..3，sender→group 8/min原persistent rate（不是8分钟）；Append群记录后逐其它成员Inbox.Post，不新事务/签收账/重试去重或rate回滚。 |
-| 原runToolCall Prepare与Jobs.CallContext/turnKey frozen | Post须真实原Shell调用chain/hops+1，不能普通HTTPctx/当前另一turn或ownerKind；read/create无原turn业务需求不强CallID。 |
-| ADR0019/0021、六条/长程guard与原Bus无waker | 原Normal不增卡/确认；原Shell gate独立。消息仍普通untrusted Event/群transcript，不带私有记忆；原serve/proc与忙时吸收/Inbox waker保，不承诺Bus即时wake全部生产者、不新增管理Event/waker机制。 |
-
-两结构：A走owner HTTP groups/CreateGroupForOwner/KindPerson，或离线Load/newK/取latestTurn，改变成员范围/人Bot身份/链，淘汰。B原listener typed ChatGroupHandlers→原source current Resources短快照name/root→原Bus；Post沿真实prepared ctx，读大结果按currentResource工作区原writer。选B，不加Bus/Job注册表、权限账、alias/群生命周期框架；接受原顺序fanout的真实partial，换来不造事务/rollback；接受post必须原call ID，换来不能以另造链绕hops；接受原wake消费者边界，换来不扩即时唤醒。
-
-### 选定typed接缝与协议
-
-```go
-// internal/cliops，与peer物理类型边界显式转换；不调用旧tool Run/解析人读。
-type ChatGroup struct { ID string; Name string; Members []string; Created time.Time }
-type ChatGroupLine struct { ID string; Time time.Time; Sender string; Kind string; Text string }
-type ChatGroupHistory struct { ID string; Limit int; BeforeID string; Sender string; Keyword string }
-type ChatGroupCreate struct { Name string; Members []string }
-type ChatGroupPost struct { ID string; Text string }
-// json tags均上述小写字段（BeforeID=before_id）；数组空回[]，File引用时数组才省。
-// ListReply: groups?:*[]ChatGroup,count,file?,access?,bytes?,error?
-// HistoryReply: group?:*ChatGroup,messages?:*[]ChatGroupLine,untrusted:true,count,file?,access?,bytes?,error?
-// CreateReply: group?:*ChatGroup,created:bool,error?
-// PostReply: id,message_id?,appended:bool,posted_members:[]string,failed_member?,stage,error?
-// 原Options/Server增加ChatGroups *ChatGroupHandlers，原Kernel.ChatGroupHandlers()绑定原ref。
-// List func(ctx)(ChatGroupListReply,error); History func(ctx,ChatGroupHistory)(ChatGroupHistoryReply,error)
-// Create func(ctx,ChatGroupCreate)(ChatGroupCreateReply,error); Post func(ctx,ChatGroupPost)(ChatGroupPostReply,error)
-list, err := cliops.CallChatGroupList(ctx, endpoint, root)
-history, err := cliops.CallChatGroupHistory(ctx, endpoint, root, cliops.ChatGroupHistory{ID:id, Limit:20})
-created, err := cliops.CallChatGroupCreate(ctx, endpoint, root, cliops.ChatGroupCreate{Name:"room",Members:[]string{"B"}})
-posted, err := cliops.CallChatGroupPost(ctx, endpoint, root, callID, cliops.ChatGroupPost{ID:id,Text:"body"})
-```
-
-同原listener，不新端口；GET `/v1/chat-group/list`、GET `/v1/chat-group/history?id=G&limit=N&before_id=I&sender=S&keyword=K`、POST `/v1/chat-group/create`单对象{name,members}、POST `/v1/chat-group/post`单对象{id,text}，严格未知字段/非对象/尾对象、query单值与数字语法在外边界；Name/Members/Text原领域只Bus校验。source/member检查后才把metadata/lines写回reply，不向无member请求泄露群metadata。所有动作同loopback/Host/browser/root guard/request1MiB/HTTP64KiB；client post透原可选XBOT_CALL_ID/header，其余三动作不强原ctx。
-
-Kernel持原operations lease，source姓名只currentResource快照（nil直接原b不打开Inbox），Bus/root群文件与fanout在source route外，artifact实际写在currentResource route，不持route/host/Job锁做回调/模型或跨K调用。改名沿现RenameMember后下次查当前member，不靠旧K.Bot/XBOT_BOT/另造source；不加对原检查-写法的跨sourceCAS/锁事务。
-
-### Post真实原调用与真实写点
-
-从现runtimeApprovalSource抽出一个private runtimeSourceCall(ctx)(preparedCtx,cleanup,error)共用resolver：原SourceCallID→同Local Jobs.CallContext只live/running/未finished、same active listener/Shell原metadata、原owner或actualchild，parent取消照原ctx传递；不磁盘查Job/新增ctx表/自报chain。runtimeApprovalSource原wrapper再按原owner动态fork/child nil做审批rebind，其三consumer语义保。**Post只用resolver返回的prepared原ctx中的冻结turnKey显式取turnChain/turnHops，不走审批wrapper重绑后的turnFor，更不fallback ensureTurn/latestTurn**。actualchild同取原prepared frozen tuple，不能落当前父新turn。无frozen turn、missing/finished/foreign/nonShell ctx一律在Bus.rate/append前拒；原ctx无approve函数仍可Normal POST，不因借resolver叫approval而问卡，不调用approveRuntimeIntent。chain空才按当前source名ch_NAME，hops+1与k.now原时钟传Bus，KindBot固定；JSON/CLI不接受kind/sender/chain/hops/caller权限覆盖。
-
-保现peer.Bus.PostGroup(...)error全部原caller，用薄兼容包装调用 **PostGroupWithResult(...)(peer.GroupPostResult,error)** 同一实际实现，不第二套写法。GroupPostResult携GroupID/MessageID/Appended/PostedMembers/FailedMember/Stage，在原物理行更新：validation（kind/id/text/hops/group/member）、rate、transcript、recipient_load/open/post、complete。仅AppendJSONL返回nil后Appended=true/MessageID=实际gm_line.ID；每次Inbox.Post返回nil后才加入该member，遇失败保此前顺序与FailedMember，跳sender逻辑原样；posted表示原Inbox接受持久化，不表示已handled/woken。Append错误false不冒整root零写/rate没消耗/不可能原半行，JSONL原尾半行规则保；不stat/error串推、改fsutil全局语义或新crash框架。
-
-例 `{id:"g_...",message_id:"gm_...",appended:true,posted_members:["B"],failed_member:"C",stage:"recipient_open",error:"..."}` 是群记录和B已成、C失败，client先打印真实partial再非0，无自动retry；不能因error声称没发/回滚group与rate或补C再冒整事务。Complete仅原顺序原Inbox.Post均完成，不是全Bot已醒。Create原saveGroup原子成功时created=true，失败不新编多阶段error；原Bus Load/migration/rate等副作用不包装成全root无写。
-
-### 输出与怎样算对
-
-- Group保{id,name,members,created}，Line保{id,time,sender,kind,text}；history按上述原选取范围完整输出messages[]，明确untrusted:true。准确纯FormatChatGroupList/History/Created/Post同用于server预算和CLI实际打印；history正文strconv.Quote一条一行，不让\n\t伪造记录，群name人读也引用保控制字节。默认空真实[]/count0；JSON保原time.Time完整值，人读原RFC3339。
-- 读整JSON+newline和准确human任一>现Shell32KiB才按source当前work/results用既有work.WriteResult生成完整脱敏JSON（20MiB cap），回count/file/access:"local"/实际bytes并省inline数组，引用自身两格式也fit；不是截原records/remote/只回preview。List/History本刀两真实caller可共用就近project段，复用原常量/当前IO/文件writer，不为此改已封Bot投影或造通用结果框架。写只短ACK两格式≤32KiB，显示出错也保Appended/Posted/Created事实，不回显正文/新artifact。
-- 单次SHAPE PASS后立即首compiled list+history交0d真source Shell只读链一次（只member组/完整fields与untrusted/page/filter、foreign拒/空），同时继续create/post同刀，不等首反馈停。后实际create自含+共享owner交集/非primary/2..8/trim48字节、falseowner-Web范围/foreign-orphan-remote拒；post真Agent→Jobs→HTTP原chain/hops+1/currentName/child或background原call不串新turn/noapprove、hop4与8/min拒、empty/missing/finished/foreign请求无本次群append，普通读create没CallID照可用。
-- 实际晚fanout失败至少三成员，原群行append→B正常Inbox.Post→C完整坏Inbox行或真FS故障，断言typed Appended/MessageID/PostedB/FailedC/stage与实际群行/B事件/C未成一致、非0且无自动重复；原KindBot/Untrusted/groupSource/body/chain/hops/time及无私有记忆在真实事件/消费可见。改名当前member+artifact不复活旧paths，List/History大完整JSON和合法human超限、两个短ACK、root/arity/help/fileSTDIN/raw+wire边界；不靠mockreceipt/清路径/放宽断言。原serve proc/忙吸收的实际消费者只核所测场景，不扩所有生产者instant wake承诺。
-- 同cut仅退四wrapper及相关Known/schema/index，不删peers组中message_bot/fork_bot或其它Link.Tools/Emitter/Messenger/SendPolicy/DeliverDraft/普通EventInbox导线。research同窄lexer/纯parser允许list/history/help，create/post/离线/运营符及伪source解释器前拒；dev/general沿原可写Shell。原两个消息/fork后切，群不是native工具全部已空，不直接删Link/Event包。旧mixed driver只迁失效原native调用/索引，保有效业务，由独立owner迁独立用例、产品方不改ownedE2E；fake/scripted与最小相关一次通过即停。
-
-本轮仅合同/Proposed0055，不产品/测试/atlas现状；独立红需等本caller冻结，不猜命名先跑。Root用户owner-SSE设计只读避冲突，guard步骤/主线四dirtydocs不动。Persona后剩余平台按原母路线逐族迁，Event/入站Link装配仍待其后独立切片，不混入本刀；无真模型/日用/rootmain/push/release或旧整族/全仓矩阵。
+单聊message_bot（含bot@device/remoteoutbox≤24h）和fork及其它平台继续按新具体切片推进，仍有native消费者；不借群切片删Link.Tools/Emitter/Messenger/SendPolicy/DeliverDraft，Event/入站Link装配待逐族等价后独立切。用户root四dirtydocs/owner-SSE设计只读避冲突，guard步骤/日用边界保。
 
 ## 还没做的
 
