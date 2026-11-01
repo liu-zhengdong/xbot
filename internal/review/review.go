@@ -111,20 +111,16 @@ var Table = map[string]Class{
 	"todo": Normal,
 
 	// Bot management.
-	"create_bot":  Normal,
-	"delete_bot":  Delete,
 	"pin_bot":     Normal,
 	"set_primary": Normal,
 
 	// Peers and groups. A message between the owner's own bots is not egress.
-	"list_bots":                 Readonly,
 	"message_bot":               Normal,
 	"list_groups":               Readonly,
 	"get_group_message_history": Readonly,
 	"create_group":              Normal,
 	"post_group":                Normal,
 	"fork_bot":                  Normal,
-	"bot_status":                Readonly,
 
 	// Link catalog. install and remove ask; search and load do not.
 	"links": ExternalSend,

@@ -187,9 +187,10 @@ func TestCreateBotPersonaOccursOnlyInArgumentsAndOwnPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	persona := strings.Repeat("ROLE_BODY_专门整理项目资料。", 50)
-	args, _ := json.Marshal(map[string]string{"name": "dedup-child", "persona": persona})
-	p := &scripted{resps: []provider.Message{toolCall("create", "create_bot", string(args)), {Role: provider.RoleAssistant, Content: provider.TextContent("已创建")}}}
+	args, _ := json.Marshal(map[string]string{"command": `"$XBOT_BIN" new dedup-child --self --persona '` + persona + `' --json`, "description": "创建资料助手"})
+	p := &scripted{resps: []provider.Message{toolCall("create", "sh", string(args)), {Role: provider.RoleAssistant, Content: provider.TextContent("已创建")}}}
 	k := &Kernel{Bot: primary, Provider: p, MaxSteps: 3, Links: []link.Link{link.Peers{}}}
+	mountBotCreateSourceShell(t, k)
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "create", time.Now())); err != nil {
 		t.Fatal(err)
 	}
@@ -199,13 +200,34 @@ func TestCreateBotPersonaOccursOnlyInArgumentsAndOwnPrefix(t *testing.T) {
 			t.Fatal("persona echoed in receipt or environment")
 		}
 		for _, call := range m.Calls() {
-			if call.Function.Name == "create_bot" && call.Function.Arguments == string(args) {
+			if call.Function.Name == "sh" && call.Function.Arguments == string(args) {
 				n++
 			}
 		}
 	}
 	if n != 1 {
 		t.Fatalf("create arguments count=%d", n)
+	}
+	entries, err := primary.Entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls, results := 0, 0
+	for _, entry := range entries {
+		for _, call := range entry.Message.Calls() {
+			if call.ID == "create" && call.Function.Name == "sh" && call.Function.Arguments == string(args) {
+				calls++
+			}
+		}
+		if entry.Message.Role == provider.RoleTool && entry.Message.CallID() == "create" && entry.Message.Name == "sh" {
+			results++
+			if strings.Contains(entry.Message.Text(), persona) || !strings.Contains(entry.Message.Text(), `"applied":true`) {
+				t.Fatalf("create receipt repeated persona or lost effect: %s", entry.Message.Text())
+			}
+		}
+	}
+	if calls != 1 || results != 1 {
+		t.Fatalf("raw history lost original Shell pairing: calls=%d results=%d", calls, results)
 	}
 	child, err := bot.Load(root, "dedup-child")
 	if err != nil {

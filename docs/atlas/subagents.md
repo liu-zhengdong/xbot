@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/exec/, internal/agent/, internal/notable/]
-verified: 2026-11-02 @ 6983ac09
+verified: 2026-11-02 @ 519bb8aa
 ---
 # 后台工作与子代理
 
@@ -18,7 +18,7 @@ verified: 2026-11-02 @ 6983ac09
 - **typed 创建**：`dispatch(type,task,context?,provider?,model?,thinking?,reasoning_effort?)`。context 默认 `fresh`，只有孩子系统前缀与任务；`fork` 继承父当前轮开轮之前的已完成上下文，不带当前轮未完成工具调用或插话。父固定模型补丁不作为子补丁；即使父历史为空，子规则、类型、所选模型 overlay 与任务仍存在。工具结果按调用配对投影，原文只追加。
 - **类型与工具**：`internal/agenttype` 内置 research（20分钟，读文件/只读解释器/搜索/网页/看图）、dev（2小时，读写/解释器/搜索/看图/本机技能库）、general（45分钟，挂载目录内全部）。`bots/<name>/agents/types/<name>.md` 可覆盖或新增，头部为 when/tools/budget/report，坏文件跳过；没有类型默认模型字段。每一步从当前挂载目录刷新工具，再用创建时白名单过滤，懒加载 Link 可在后续步出现。research 的 `shell:readonly` 是权限标记，按集中分类器包装实际解释器，cmd/PowerShell 不放行 POSIX 读命令。
 - 孩子不持有 dispatch/spawn、父/兄弟控制或给主人直发工具；只有 scoped `send_message_to_parent(text)`，没有任意 target。read_subagent/expand_subagent 在孩子内限定自己的记录。工具仍沿原工具确认和 Jobs 行为；本批未把整套子工具升级为主线 reviewedTool。
-- **单次选模**：省略沿父当前绑定，只给 model 沿父 provider，只给 provider 取其已配置首模型。显式组合和推理值沿既有 config.Resolve/协议校验；创建时固定有效身份，继续时重新解析当前凭据与能力，不换绑父 Bot，不保存密钥、Endpoint 或旧 listener。孩子实际 route 决定 overlay、vision、hosted/本地搜索互斥、T/H、工具定义预算和摘要器。fit/overflow ratio 每激活独立，派生摘要只在请求投影，冷恢复从原文重新 fit；超 H 无法压入时明确失败。MCP、资料更新、技能read/write与例程CRUD不再进入子模型schema，沿当前实例CLI；dev/general保原可写Shell，research只用共用窄lexer/纯parser允许self skill read、routine list及help，写与离线动作不放行；普通 provider/fit 错误不增加旧工具专用重试。协议见 [供应商](providers.md)。
+- **单次选模**：省略沿父当前绑定，只给 model 沿父 provider，只给 provider 取其已配置首模型。显式组合和推理值沿既有 config.Resolve/协议校验；创建时固定有效身份，继续时重新解析当前凭据与能力，不换绑父 Bot，不保存密钥、Endpoint 或旧 listener。孩子实际 route 决定 overlay、vision、hosted/本地搜索互斥、T/H、工具定义预算和摘要器。fit/overflow ratio 每激活独立，派生摘要只在请求投影，冷恢复从原文重新 fit；超 H 无法压入时明确失败。MCP、资料更新、技能read/write、例程CRUD及Bot list/info/new/delete不再进入子模型schema，沿当前实例CLI；dev/general保原可写Shell，research只用共用窄lexer/纯parser允许self skill read、routine list、平面Bot list/info及help，写与离线动作不放行；普通 provider/fit 错误不增加旧工具专用重试。协议见 [供应商](providers.md)。
 
 ## 身份、执行与消息
 
@@ -40,7 +40,7 @@ verified: 2026-11-02 @ 6983ac09
 - **工具 Job 独立**：慢调用2秒或插话后交还等待，实际工具继续，不占子代理3+8。父任务结束/取消不杀已后台化调用；输出、图片和副作用在真实结束时整理，沿原事件回报。详情见 [内核](kernel.md)「慢工具后台化」。Agent主循环与收尾共用[输出截断续写](providers.md#输出截断)，续写时不执行本地工具。
 - **值得留意**：`internal/notable` 记录实际删除、对外发送、工作区外写入、全局安装，不拦操作。shell只认明确exit0的简单命令，展开/管道/预演不猜。每任务对象明细最多64KiB，超限标不完整；meta.notable、父结算和UI读同一事实。界面规则见 [ui](ui.md)。
 
-例程非空precheck另取本次真实Shell Job的原ctx/approver，actualLocal.RunTool明确nested review为untrusted/no-person，使用原subApprover而不借主线可信turn；调用结束即清ctx，旧record不可复用。无命令CRUD不需此bridge，code/remote无原ctx不能声称支持非空precheck审批。原fork/park与canonical重试键见 [内核](kernel.md#例程实例与原调用审批)。
+例程非空precheck与strict Bot Delete共用本次真实Shell Job的原ctx/approver，actualLocal.RunTool明确nested review为untrusted/no-person，使用原subApprover而不借主线可信turn；调用结束即清ctx，旧record不可复用。无命令CRUD不需此bridge，code/remote无原ctx不能声称支持非空precheck审批。原fork/park与canonical重试键见 [内核](kernel.md#例程实例与原调用审批)。
 
 ## 读取与界面
 

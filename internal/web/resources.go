@@ -248,9 +248,9 @@ func (s *Server) releaseNameHoldLocked(name string) {
 
 // DeleteRuntimeBot keeps all global/resource locks free during cancellation and
 // the true owned-call join. Original completions and MCP notes can still arrive.
-func (s *Server) DeleteRuntimeBot(ctx context.Context, name string) error {
+func (s *Server) DeleteRuntimeBot(ctx context.Context, name string) (removed bool, err error) {
 	if err := bot.CheckDelete(s.Root, name); err != nil {
-		return err
+		return false, err
 	}
 	s.mu.Lock()
 	entry := s.kernels[name]
@@ -269,26 +269,26 @@ func (s *Server) DeleteRuntimeBot(ctx context.Context, name string) error {
 			cached.CloseOperations()
 			cached.CancelBackgrounds()
 		}
-		return err
+		return removed, err
 	}
 	resources := entry.Resources
 	if err := resources.BeginDelete(name); err != nil {
 		s.mu.Unlock()
-		return err
+		return false, err
 	}
 	s.mu.Unlock()
 
 	resources.Jobs.Shutdown()
 	if err := ctx.Err(); err != nil {
-		return errors.Join(err, resources.ResumeAdmission())
+		return false, errors.Join(err, resources.ResumeAdmission())
 	}
 
 	s.mu.Lock()
 	if s.kernels[name] != entry || resources.Name() != name {
 		s.mu.Unlock()
-		return errors.Join(errors.New("bot delete: target changed"), resources.ResumeAdmission())
+		return false, errors.Join(errors.New("bot delete: target changed"), resources.ResumeAdmission())
 	}
-	removed, err := resources.FinishDelete(name)
+	removed, err = resources.FinishDelete(name)
 	cached := entry.Kernel
 	if removed {
 		delete(s.kernels, name)
@@ -304,5 +304,5 @@ func (s *Server) DeleteRuntimeBot(ctx context.Context, name string) error {
 	} else {
 		err = errors.Join(err, resources.ResumeAdmission())
 	}
-	return err
+	return removed, err
 }

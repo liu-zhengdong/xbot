@@ -2,10 +2,13 @@ package kernel
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
+	"xbot/internal/config"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 )
@@ -16,26 +19,54 @@ func TestPrimaryCanManageBots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defaults := primary.Config()
+	if err := primary.SetOwners([]string{"u1", "u2"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.Add(root, config.Provider{Name: "source-only", BaseURL: "https://example.invalid/v1", APIKeyEnv: "XBOT_DRIVER_SOURCE_TEST_KEY"}, config.ModelSpec{Name: "source-model", Context: 8192}); err != nil {
+		t.Fatal(err)
+	}
+	if err := primary.SetBinding("source-only", "source-model"); err != nil {
+		t.Fatal(err)
+	}
 	k := &Kernel{Bot: primary, Memory: memory.Open(root), Links: []link.Link{link.Peers{}}}
 	tools, err := k.modelTools()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"create_bot", "delete_bot", "pin_bot", "set_primary", "fork_bot"} {
+	for _, name := range []string{"pin_bot", "set_primary", "fork_bot", "message_bot", "list_groups", "create_group", "post_group", "bot_propose_persona"} {
 		if !hasTool(tools, name) {
 			t.Fatalf("missing %s", name)
 		}
 	}
-	out, err := (createBotTool{k}).Run(context.Background(), []byte(`{"name":"ada","persona":"Take notes."}`))
+	childTools, err := k.mountedTools()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out != "created ada" {
-		t.Fatalf("%q", out)
+	door := toolDoor{k}
+	for _, name := range []string{"create_bot", "delete_bot", "list_bots", "bot_status"} {
+		if hasTool(tools, name) || hasTool(childTools, name) {
+			t.Fatalf("retired tool %s remains callable", name)
+		}
+		if _, err := door.Run(context.Background(), []byte(`{"action":"describe","id":"`+name+`"}`)); err == nil {
+			t.Fatalf("retired tool %s remains describable", name)
+		}
+		if tool, _, err := door.Forward(context.Background(), []byte(`{"action":"call","id":"`+name+`","args":{}}`)); err == nil || tool != nil {
+			t.Fatalf("retired tool %s still forwards", name)
+		}
+	}
+	handlers := k.BotHandlers()
+	out, err := handlers.Create(context.Background(), cliops.BotCreate{Name: "ada", Persona: "Take notes."})
+	if err != nil || out.Name != "ada" || !out.Applied || out.Stage != "complete" || out.Error != "" {
+		t.Fatalf("create %+v: %v", out, err)
 	}
 	ada, err := bot.Load(root, "ada")
 	if err != nil {
 		t.Fatal(err)
+	}
+	created, source := ada.Config(), primary.Config()
+	if !slices.Equal(created.Owners, source.Owners) || !slices.Equal(created.Links, source.Links) || created.Provider != defaults.Provider || created.Model != defaults.Model {
+		t.Fatalf("create did not retain source owners/links and global defaults: %+v", created)
 	}
 	entries, err := ada.Entries()
 	if err != nil || len(entries) != 0 {
@@ -48,7 +79,7 @@ func TestPrimaryCanManageBots(t *testing.T) {
 	if name, err := bot.Primary(root); err != nil || name != bot.SeedName {
 		t.Fatalf("primary moved to %q %v", name, err)
 	}
-	if _, err := (deleteBotTool{k}).Run(context.Background(), []byte(`{"name":"`+bot.SeedName+`"}`)); err == nil {
-		t.Fatal("deleted the primary")
+	if reply, err := handlers.Delete(context.Background(), bot.SeedName); err == nil || reply.Removed {
+		t.Fatalf("deleted the primary: %+v %v", reply, err)
 	}
 }

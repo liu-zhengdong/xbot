@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/clip"
 	"xbot/internal/inbox"
 	"xbot/internal/peer"
 	"xbot/internal/provider"
@@ -34,7 +33,6 @@ const (
 	stepRingCap    = 20
 	statusPreview  = 80
 	stepSummaryCap = 120
-	botStatusCap   = 4 << 10
 	tailRead       = 5
 	tailHydrate    = 512
 )
@@ -59,7 +57,7 @@ type BotStatus struct {
 }
 
 // Step is one tool step in a turn, kept in a small ring for the web and the
-// bot_status tool.
+// runtime status view.
 type Step struct {
 	callID      string // private correlation key; never sent to the UI
 	description string
@@ -457,50 +455,6 @@ func (k *Kernel) BotSteps(name string, n int) []Step {
 		return k.Steps(n)
 	}
 	return nil
-}
-
-// botStatusText renders statuses and optional steps for the bot_status tool.
-func botStatusText(list []BotStatus, steps []Step) string {
-	var b strings.Builder
-	for _, st := range list {
-		b.WriteString(st.State)
-		b.WriteByte('\t')
-		b.WriteString(st.Bot)
-		if st.Since != "" {
-			b.WriteString("\tsince ")
-			b.WriteString(st.Since)
-		}
-		if st.Tool != "" {
-			b.WriteString("\ttool ")
-			b.WriteString(st.Tool)
-		}
-		if st.Backgrounds > 0 {
-			b.WriteString("\tbackgrounds ")
-			b.WriteString(strconv.Itoa(st.Backgrounds))
-		}
-		if st.LastMessage != "" {
-			b.WriteString("\tlast: ")
-			b.WriteString(st.LastMessage)
-		}
-		b.WriteByte('\n')
-	}
-	for _, s := range steps {
-		b.WriteString("step\t")
-		b.WriteString(s.State)
-		b.WriteByte('\t')
-		b.WriteString(s.Tool)
-		if s.Summary != "" {
-			b.WriteString("\t")
-			b.WriteString(s.Summary)
-		}
-		b.WriteByte('\n')
-	}
-	out := strings.TrimRight(b.String(), "\n")
-	if out == "" {
-		return "no bots"
-	}
-	clipped, _ := clip.Bytes(out, botStatusCap)
-	return clipped
 }
 
 // failedExit reports a shell result whose first line is "exit N" with N != 0,

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
 	"xbot/internal/exec"
 	"xbot/internal/link"
 	"xbot/internal/manual"
@@ -67,6 +68,50 @@ func TestBatchCManualReadBeforeAnswer(t *testing.T) {
 	}
 }
 
+// Replace only process execution: Handle still calls the original Shell through
+// Agent -> Jobs, and the parsed command reaches the actual source HTTP handler.
+func mountBotCreateSourceShell(t *testing.T, k *Kernel) {
+	t.Helper()
+	k.Links = append(k.Links, c1Link{tool: routineSourceShell{run: func(ctx context.Context, raw json.RawMessage) (string, error) {
+		var input struct{ Command string }
+		if err := json.Unmarshal(raw, &input); err != nil {
+			return "", err
+		}
+		env := map[string]string{}
+		for _, item := range k.cliCallEnvironment(ctx, nil) {
+			key, value, _ := strings.Cut(item, "=")
+			env[key] = value
+		}
+		if env["XBOT_CALL_ID"] == "" || env["XBOT_CALL_ID"] != tools.CallID(ctx) {
+			return "", fmt.Errorf("source Shell has no bound live Job")
+		}
+		if _, ok := k.liveShell().CallContext(env["XBOT_CALL_ID"]); !ok {
+			return "", fmt.Errorf("source Shell Job is not live")
+		}
+		argv, ok := review.DirectXBotArgs(input.Command, env["XBOT_BIN"])
+		if !ok {
+			return "", fmt.Errorf("fixture requires a direct source CLI command")
+		}
+		command, err := cliops.ParseBotRuntime(argv)
+		if err != nil {
+			return "", err
+		}
+		if command.Action != "new" || !command.Self || command.PersonaFile != "" {
+			return "", fmt.Errorf("fixture requires new --self --persona")
+		}
+		reply, err := cliops.CallBotCreate(ctx, env["XBOT_ENDPOINT"], env["XBOT_ROOT"], cliops.BotCreate{Name: command.Name, Persona: command.Persona})
+		encoded, encodeErr := json.Marshal(reply)
+		if err != nil {
+			return string(encoded), err
+		}
+		return string(encoded), encodeErr
+	}}})
+	if err := k.StartOperations(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(k.CloseOperations)
+}
+
 func TestBatchCCreateBotPurposeScripts(t *testing.T) {
 	for _, tc := range []struct {
 		name, input string
@@ -85,9 +130,11 @@ func TestBatchCCreateBotPurposeScripts(t *testing.T) {
 			if tc.ask {
 				responses = append(responses, batchCall("ask", "ask_user", `{"question":"叫什么、负责什么，要现在创建吗？可直接回复用途和名字。","options":["先不建，补充用途和名字","取消"],"recommended":"先不建，补充用途和名字"}`), batchReply("等你补充用途和名字后再建。"))
 			}
-			responses = append(responses, batchCall("create", "create_bot", `{"name":"日报助手","persona":"汇总邮件；未经授权不对外发送。"}`), batchReply("已建好日报助手。"))
+			createArgs, _ := json.Marshal(map[string]string{"command": `"$XBOT_BIN" new 日报助手 --self --persona '汇总邮件；未经授权不对外发送。' --json`, "description": "创建日报助手"})
+			responses = append(responses, batchCall("create", "sh", string(createArgs)), batchReply("已建好日报助手。"))
 			p := &scripted{resps: responses}
 			k := &Kernel{Bot: b, Provider: p, Links: []link.Link{link.Web{}}, Permissive: true, MaxSteps: 5}
+			mountBotCreateSourceShell(t, k)
 			t.Cleanup(func() {
 				questionsMu.Lock()
 				defer questionsMu.Unlock()
@@ -124,13 +171,21 @@ func TestBatchCCreateBotPurposeScripts(t *testing.T) {
 			if !strings.Contains(prompt, "可撤销不等于可以替 Bot 编造用途") {
 				t.Fatal("creation constraint missing")
 			}
-			// The description reaches the model through the tools door.
-			e, ok := k.toolRegistry().find("create_bot")
-			if !ok || !strings.Contains(e.tool.Description(), "Do not call when its purpose or duties are unclear") {
-				t.Fatal("creation schema/description not delivered")
+			if registered(k, "create_bot") {
+				t.Fatal("retired creation tool remains callable")
 			}
-			if review.ClassOf("create_bot") != review.Normal {
-				t.Fatal("creation became a permission gate")
+			entries, err := b.Entries()
+			if err != nil {
+				t.Fatal(err)
+			}
+			paired := false
+			for _, entry := range entries {
+				if entry.Message.Role == provider.RoleTool && entry.Message.CallID() == "create" && entry.Message.Name == "sh" && strings.Contains(entry.Message.Text(), `"applied":true`) {
+					paired = true
+				}
+			}
+			if !paired {
+				t.Fatal("source CLI create result lost its original Shell call pairing")
 			}
 		})
 	}
@@ -141,18 +196,20 @@ func TestBatchCCreateRejectsEmptyPurposeWithoutSideEffects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	k := &Kernel{Bot: b}
-	for _, args := range []string{`{"name":"newbot"}`, `{"name":"newbot","persona":"  "}`} {
-		if _, err := (createBotTool{k}).Run(context.Background(), json.RawMessage(args)); err == nil {
-			t.Fatal("empty purpose accepted")
+	asks := 0
+	k := &Kernel{Bot: b, Approve: func(context.Context, string, string) (bool, error) { asks++; return false, nil }}
+	handlers := k.BotHandlers()
+	for _, persona := range []string{"", "  "} {
+		if reply, err := handlers.Create(context.Background(), cliops.BotCreate{Name: "newbot", Persona: persona}); err == nil || reply.Applied || reply.Stage != "validation" {
+			t.Fatalf("empty purpose accepted: %+v %v", reply, err)
 		}
 		if _, err := os.Stat(bot.Dir(b.Root, "newbot")); !os.IsNotExist(err) {
 			t.Fatalf("partial creation: %v", err)
 		}
 	}
-	// With permissions enabled this is still a normal action, never a card.
-	if need, _, err := (reviewedTool{Tool: createBotTool{k}, k: k}).Confirm(json.RawMessage(`{"name":"newbot","persona":"take notes"}`)); err != nil || need {
-		t.Fatalf("unexpected card: %v %v", need, err)
+	// Create remains a normal action even on a strict source with an approver.
+	if reply, err := handlers.Create(context.Background(), cliops.BotCreate{Name: "newbot", Persona: "take notes"}); err != nil || !reply.Applied || asks != 0 {
+		t.Fatalf("unexpected creation card: %+v asks=%d %v", reply, asks, err)
 	}
 }
 
