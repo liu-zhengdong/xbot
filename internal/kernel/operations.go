@@ -53,7 +53,7 @@ func (k *Kernel) StartOperations() error {
 	if k.operations.server != nil {
 		return nil
 	}
-	handlers := cliops.Handlers{Profile: k.profileOperation}
+	handlers := cliops.Handlers{Profile: k.profileOperation, ProfileAvatar: k.profileAvatarOperation}
 	if k.Resources != nil {
 		mcpHandlers := k.Resources.MCPHandlers()
 		handlers.MCP = &mcpHandlers
@@ -194,66 +194,20 @@ func (k *Kernel) CLIEnvironment(base []string) []string {
 }
 
 func (k *Kernel) profileOperation(update *cliops.Update) (cliops.Profile, error) {
-	k.operations.mu.Lock()
-	r := k.Resources
-	if r != nil {
-		r.route.RLock()
-	}
-	unlock := func() {
-		if r != nil {
-			r.route.RUnlock()
-		}
+	if update == nil {
+		k.operations.mu.Lock()
+		value, err := k.profileResult(bot.ProfileChangeResult{})
 		k.operations.mu.Unlock()
+		return value, err
 	}
-	b := k.Bot
-	var err error
-	if r != nil {
-		if r.closed {
-			unlock()
-			return cliops.Profile{}, fmt.Errorf("bot resources closed")
-		}
-		if b.Name() != r.current.Name() {
-			b, err = bot.Load(r.current.Root, r.current.Name())
-		}
-	}
-	if err == nil {
-		if update == nil {
-			err = b.RefreshProfile()
-		} else {
-			err = b.ApplyProfile(bot.ProfileUpdate{Description: update.Description, Timezone: update.Timezone, AvatarSeed: update.AvatarSeed})
-		}
-	}
+	change, err := bot.ValidateProfileChange(bot.ProfileChange{Name: update.Name, Description: update.Description, Timezone: update.Timezone, AvatarSeed: update.AvatarSeed})
 	if err != nil {
-		unlock()
 		return cliops.Profile{}, fmt.Errorf("%s", k.redactor()(err.Error()))
 	}
-	description, timezone := b.ProfileValues()
-	avatar, seed := b.AvatarState()
-	value := cliops.Profile{Name: b.Name(), Description: k.redactor()(description), Timezone: timezone, Avatar: avatar, AvatarSeed: k.redactor()(seed), Scope: "runtime", Applied: update != nil}
-	unlock()
-	// publishProfile can take another live Kernel's operations mutex or stream IO.
-	if update != nil {
-		k.publishProfile(b)
-	}
-	return value, nil
+	return k.ApplyProfileChange(change)
 }
 
-func (k *Kernel) publishProfile(b *bot.Bot) {
-	if value, ok := liveTurns.Load(botKey(b)); ok {
-		live := value.(*liveTurn)
-		// A later serve pass or web turn may own another loaded handle for the
-		// same Bot. Refresh that existing live kernel before its next environment
-		// sample. The saving kernel's operation lock has already been released.
-		live.k.operations.mu.Lock()
-		_ = live.k.Bot.RefreshProfile()
-		live.k.operations.mu.Unlock()
-		// Persistence already succeeded. A deleted/unreadable target must not
-		// turn that success into a failed-save receipt; the UI still rereads it.
-		if sink := live.t.sinkNow(); sink != nil && sink.OnProfile != nil {
-			sink.OnProfile(b.Name())
-		}
-	}
-}
+func (k *Kernel) publishProfile(b *bot.Bot) { k.publishProfileNotice(ProfileNotice{Name: b.Name()}) }
 
 // RetireOperations lets a host discard a cached Kernel while its real source
 // calls and Local/code collections retain their original listener leases.

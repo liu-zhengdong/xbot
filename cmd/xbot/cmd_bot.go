@@ -261,13 +261,13 @@ func cmdPrimary(root string, args []string) error {
 
 const profileHelp = `Usage:
   xbot profile show (--self | <name>) [--json]
-  xbot profile set --self [--description TEXT] [--timezone ZONE] [--avatar-seed SEED] [--json]
+  xbot profile set --self [--name NEW] [--description TEXT] [--timezone ZONE] [--avatar-seed SEED] [--json]
   xbot profile set <name> [--description TEXT] [--timezone ZONE] [--avatar-seed SEED] [--role chat|dev] [--background-max-time MIN] [--name NEW] [--json]
   xbot profile avatar <name> (--file PATH | --clear)
 
 --self uses XBOT_ENDPOINT from the current running Bot; XBOT_ROOT selects its data root.
 Use the current binary via "$XBOT_BIN". Runtime changes save immediately without waiting for the conversation lock.
-With an endpoint, description/timezone/avatar-seed are supported. Without one, an explicit name edits offline configuration.
+With an endpoint, name/description/timezone/avatar-seed can be combined. Without one, an explicit name edits offline configuration.
 profile avatar --file/--clear is offline-only and refuses an active endpoint; runtime uploads/clear are not supported.
 --json writes one result object to stdout; failures exit nonzero. Help works offline.
 `
@@ -348,7 +348,9 @@ func printRuntimeProfile(value cliops.Profile, asJSON bool) error {
 	if asJSON {
 		return json.NewEncoder(os.Stdout).Encode(value)
 	}
-	if value.Applied {
+	if value.PreviousName != "" || value.Error != "" {
+		fmt.Printf("name: %s\nprevious_name: %s\nmoved: %t\napplied_fields: %s\nscope: %s\n", value.Name, value.PreviousName, value.Moved, strings.Join(value.AppliedFields, ","), value.Scope)
+	} else if value.Applied {
 		fmt.Printf("profile saved: %s (%s)\n", value.Name, value.Scope)
 	} else {
 		fmt.Printf("name: %s\ndescription: %s\ntimezone: %s\navatar: %s\navatar_seed: %s\nscope: %s\n", value.Name, value.Description, value.Timezone, value.Avatar, value.AvatarSeed, value.Scope)
@@ -416,8 +418,8 @@ func cmdProfileSet(root string, args []string) error {
 		return err
 	}
 	if opt.Self || os.Getenv("XBOT_ENDPOINT") != "" {
-		if opt.Set["name"] || opt.Set["role"] || opt.Set["background-max-time"] {
-			return errors.New("profile: runtime set currently supports --description, --timezone and --avatar-seed; name remains available through existing tools")
+		if opt.Set["role"] || opt.Set["background-max-time"] {
+			return errors.New("profile: runtime set supports --name, --description, --timezone and --avatar-seed; role and time budget are offline-only")
 		}
 		if !opt.Self {
 			current, err := cliops.Call(context.Background(), os.Getenv("XBOT_ENDPOINT"), root, nil)
@@ -429,6 +431,9 @@ func cmdProfileSet(root string, args []string) error {
 			}
 		}
 		update := &cliops.Update{}
+		if opt.Set["name"] {
+			update.Name = &opt.Name
+		}
 		if opt.Set["description"] {
 			update.Description = &opt.Description
 		}
@@ -439,10 +444,10 @@ func cmdProfileSet(root string, args []string) error {
 			update.AvatarSeed = &opt.AvatarSeed
 		}
 		value, err := cliops.Call(context.Background(), os.Getenv("XBOT_ENDPOINT"), root, update)
-		if err != nil {
-			return err
+		if value.Name != "" {
+			err = errors.Join(err, printRuntimeProfile(value, opt.JSON))
 		}
-		return printRuntimeProfile(value, opt.JSON)
+		return err
 	}
 	b, err := bot.Load(root, opt.Bot)
 	if err != nil {

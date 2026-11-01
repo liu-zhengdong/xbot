@@ -13,6 +13,7 @@ import (
 
 	"xbot/internal/agent"
 	"xbot/internal/exec"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -44,6 +45,9 @@ func (k *Kernel) ensureExec() exec.Executor {
 					loc.ReleaseScope = func(req exec.StartRequest) { k.dropScope(req.ID) }
 				}
 				loc.OnIdle = k.closeIdleOperations
+				loc.WithCurrentIO = func(fn func(string, string, string) error) error {
+					return k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { return fn(b.Name(), b.AgentsDir(), k.currentWorkspaceFor(b)) })
+				}
 				loc.RunTool = func(req exec.StartRequest, ctx context.Context, t tools.Tool, args json.RawMessage, run func(context.Context) tools.CallResult) tools.CallResult {
 					ctx = context.WithValue(ctx, cwdScopeKey{}, req.ID)
 					return k.runToolCall(ctx, t, args, run)

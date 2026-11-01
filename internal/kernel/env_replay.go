@@ -278,7 +278,7 @@ func (k *Kernel) appendEnvironment(text string) (provider.Message, error) {
 		return provider.Message{}, nil
 	}
 	m := provider.Message{Role: provider.RoleUser, Internal: true, Content: provider.TextContent(text)}
-	seq, err := k.Bot.AppendSeq(bot.Entry{Time: k.now(), Origin: bot.OriginInternal, Message: provider.Message{Role: m.Role, Content: provider.TextContent(m.Text())}})
+	seq, err := k.appendCurrentSeq(bot.Entry{Time: k.now(), Origin: bot.OriginInternal, Message: provider.Message{Role: m.Role, Content: provider.TextContent(m.Text())}})
 	m.Seq = seq
 	return m, err
 }
@@ -420,7 +420,7 @@ func (k *Kernel) publishEnvironment(st bot.State, prev environment, full bool, b
 	return k.appendEnvironmentPrompts(context.Background(), environmentDelta(prev, next, basis, st.MemSnap), full)
 }
 func (k *Kernel) receiveEnvironment(ev link.Event, seq int) error {
-	st, err := k.Bot.LoadState()
+	st, err := k.currentState()
 	if err != nil {
 		return err
 	}
@@ -469,7 +469,7 @@ func (k *Kernel) syncEnv(st bot.State, _ link.Event, _ string) (bot.State, error
 	if err != nil {
 		return st, err
 	}
-	return st, k.Bot.SaveState(st)
+	return st, k.saveCurrentState(st)
 }
 func (k *Kernel) ensureSnapshot(st bot.State) error {
 	k.envMu.Lock()
@@ -537,7 +537,7 @@ func (r *turnRun) finishEnvironment(ctx context.Context, raw, fitted provider.Re
 	if err := ctx.Err(); err != nil {
 		return fitted, err
 	}
-	st, err := k.Bot.LoadState()
+	st, err := k.currentState()
 	if err != nil {
 		return fitted, err
 	}

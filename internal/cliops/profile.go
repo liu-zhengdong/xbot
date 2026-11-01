@@ -45,19 +45,24 @@ func CanonicalRoot(root string) (string, error) {
 }
 
 type Update struct {
+	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
 	Timezone    *string `json:"timezone,omitempty"`
 	AvatarSeed  *string `json:"avatar_seed,omitempty"`
 }
 
 type Profile struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Timezone    string `json:"timezone"`
-	Avatar      string `json:"avatar"`
-	AvatarSeed  string `json:"avatar_seed"`
-	Scope       string `json:"scope"`
-	Applied     bool   `json:"applied"`
+	Name          string   `json:"name"`
+	Description   string   `json:"description"`
+	Timezone      string   `json:"timezone"`
+	Avatar        string   `json:"avatar"`
+	AvatarSeed    string   `json:"avatar_seed"`
+	Scope         string   `json:"scope"`
+	Applied       bool     `json:"applied"`
+	PreviousName  string   `json:"previous_name,omitempty"`
+	AppliedFields []string `json:"applied_fields,omitempty"`
+	Moved         bool     `json:"moved"`
+	Error         string   `json:"error,omitempty"`
 }
 
 // Server is owned by the Kernel whose profile callback it serves.
@@ -109,7 +114,7 @@ func Start(root string, handlers Handlers) (*Server, error) {
 				fail(400, "invalid profile request")
 				return
 			}
-			if update.Description == nil && update.Timezone == nil && update.AvatarSeed == nil {
+			if update.Name == nil && update.Description == nil && update.Timezone == nil && update.AvatarSeed == nil {
 				fail(400, "profile: nothing to change")
 				return
 			}
@@ -118,11 +123,7 @@ func Start(root string, handlers Handlers) (*Server, error) {
 			return
 		}
 		value, err := handlers.Profile(update)
-		if err != nil {
-			fail(400, err.Error())
-			return
-		}
-		_ = json.NewEncoder(w).Encode(value)
+		writeProfile(w, value, err)
 	})
 	mux.HandleFunc("/v1/mcp/", func(w http.ResponseWriter, r *http.Request) {
 		if handlers.MCP == nil {
@@ -155,6 +156,31 @@ func Start(root string, handlers Handlers) (*Server, error) {
 	s.http = &http.Server{Handler: guarded, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second}
 	go func() { defer close(s.done); _ = s.http.Serve(ln) }()
 	return s, nil
+}
+
+// writeProfile preserves the domain's actual result even when a later step
+// fails. No domain result is fabricated for errors rejected before a change.
+func writeProfile(w http.ResponseWriter, value Profile, problem error) {
+	status := http.StatusOK
+	if problem != nil {
+		status = http.StatusBadRequest
+		value.Error = problem.Error()
+		if len(value.Error) > 4096 {
+			value.Error = value.Error[:4096] + "…"
+		}
+	}
+	var response any = value
+	if problem != nil && value.Name == "" {
+		response = map[string]string{"error": value.Error}
+	}
+	raw, err := json.Marshal(response)
+	if err != nil || len(raw)+1 > maxBody {
+		status = http.StatusInternalServerError
+		raw = []byte(`{"error":"profile: runtime response too large"}`)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write(append(raw, '\n'))
 }
 
 func (s *Server) Close() error {
@@ -211,17 +237,14 @@ func Call(ctx context.Context, endpoint, root string, update *Update) (Profile, 
 	if err != nil || len(raw) > maxBody {
 		return result, errors.New("profile: invalid runtime response")
 	}
-	if resp.StatusCode != http.StatusOK {
-		var failure struct {
-			Error string `json:"error"`
-		}
-		if json.Unmarshal(raw, &failure) == nil && failure.Error != "" {
-			return result, fmt.Errorf("profile: %s", failure.Error)
-		}
-		return result, fmt.Errorf("profile: runtime returned HTTP %d", resp.StatusCode)
-	}
 	if err := json.Unmarshal(raw, &result); err != nil {
-		return result, errors.New("profile: invalid runtime response")
+		return Profile{}, errors.New("profile: invalid runtime response")
+	}
+	if result.Error != "" {
+		return result, fmt.Errorf("profile: %s", result.Error)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return result, fmt.Errorf("profile: runtime returned HTTP %d", resp.StatusCode)
 	}
 	return result, nil
 }

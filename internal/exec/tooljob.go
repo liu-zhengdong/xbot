@@ -48,21 +48,24 @@ func ToolJobReport(workspace string, job tools.Job, res tools.CallResult) (tools
 }
 
 func (j *job) runToolCall(ctx context.Context, t tools.Tool, args json.RawMessage, run func(context.Context) tools.CallResult) tools.CallResult {
+	req := j.requestSnapshot()
 	if j.parent.RunTool != nil {
-		return j.parent.RunTool(j.request, ctx, t, args, run)
+		return j.parent.RunTool(req, ctx, t, args, run)
 	}
 	if j.parent.JobsFor == nil {
 		return run(ctx)
 	}
-	jobs, err := j.parent.JobsFor(j.request)
+	jobs, err := j.parent.JobsFor(req)
 	if err != nil {
 		return tools.CallResult{Err: err}
 	}
 	wait, bg := tools.CallWait(t, args)
 	summary := agent.ToolSummary(ctx)
-	return jobs.RunCall(ctx, tools.CallRequest{Name: t.Name(), Command: summary, Dir: j.workspace, Wait: wait, Background: bg, Run: run,
+	return jobs.RunCall(ctx, tools.CallRequest{Name: t.Name(), Command: summary, Dir: req.Workspace, Wait: wait, Background: bg, Run: run,
 		Finalize: func(job tools.Job, res tools.CallResult) (tools.Job, error) {
-			return ToolJobReport(j.workspace, job, res)
+			var out tools.Job
+			err := j.withStorageIO(func() error { var e error; out, e = ToolJobReport(j.workspace, job, res); return e })
+			return out, err
 		},
 		OnDone: func(job tools.Job) {
 			j.parent.emit(Event{ID: "shelljob_" + job.ID, AgentID: j.id, Kind: tools.JobEventType, Text: job.Result, Images: job.Images})

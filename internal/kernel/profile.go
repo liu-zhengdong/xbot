@@ -127,17 +127,22 @@ func (t profileTool) Run(_ context.Context, args json.RawMessage) (string, error
 // RenameRuntime is the web entry into the same source operation used by the
 // legacy profile tool. The host callback encloses both existing movers.
 func (k *Kernel) RenameRuntime(next string) error {
-	k.operations.mu.Lock()
-	defer k.operations.mu.Unlock()
-	return k.renameBot(strings.TrimSpace(next))
+	change, err := bot.ValidateProfileChange(bot.ProfileChange{Name: &next})
+	if err != nil {
+		return err
+	}
+	_, err = k.ApplyProfileChange(change)
+	return err
 }
 
 // renameBot is called with this source's operations lock already held.
 func (k *Kernel) renameBot(next string) error {
-	if r := k.Resources; r != nil && r.Rename != nil {
-		return r.Rename(k, next)
+	change, err := bot.ValidateProfileChange(bot.ProfileChange{Name: &next})
+	if err != nil {
+		return err
 	}
-	return k.MoveResources(next)
+	_, err = k.changeProfileLocked(change)
+	return err
 }
 
 func parseProfileArgs(args json.RawMessage) (*string, bot.ProfileUpdate, string, error) {

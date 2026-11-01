@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -161,45 +160,42 @@ type avatarEdit struct {
 // applyProfile is the existing profile/resource write seam for generated,
 // uploaded and cleared avatars, including the legacy offline rename seed pin.
 func (b *Bot) applyProfile(u ProfileUpdate, avatar avatarEdit) error {
+	_, err := b.applyProfileResult(u, avatar)
+	return err
+}
+
+func (b *Bot) applyProfileResult(u ProfileUpdate, avatar avatarEdit) (result ProfileChangeResult, err error) {
+	result = ProfileChangeResult{Name: b.Name(), PreviousName: b.Name(), AppliedFields: []string{}}
 	// Validate supplied values, then merge into the fresh file. Do not read a
 	// full in-memory Config while a different setting may be saved.
+	change, err := ValidateProfileChange(ProfileChange{Description: u.Description, Timezone: u.Timezone, AvatarSeed: u.AvatarSeed})
+	if err != nil {
+		return result, err
+	}
 	var cfg Config
-	if u.Description != nil {
-		d, err := limitText(*u.Description, 160)
-		if err != nil {
-			return fmt.Errorf("bot: description: %w", err)
-		}
-		cfg.Description = d
+	if change.Description != nil {
+		cfg.Description = *change.Description
 	}
-	if u.Timezone != nil {
-		v := flat(*u.Timezone)
-		if v != "" {
-			if _, err := time.LoadLocation(v); err != nil {
-				return fmt.Errorf("bot: timezone: %w", err)
-			}
-		}
-		cfg.Timezone = v
+	if change.Timezone != nil {
+		cfg.Timezone = *change.Timezone
 	}
-	if u.AvatarSeed != nil {
-		if !ValidAvatarSeed(*u.AvatarSeed) {
-			return fmt.Errorf("bot: avatar seed must be 1–%d characters without <>\"'&` or control characters", maxSeed)
-		}
-		cfg.AvatarSeed = strings.TrimSpace(*u.AvatarSeed)
+	if change.AvatarSeed != nil {
+		cfg.AvatarSeed = *change.AvatarSeed
 	}
 	var imageKind string
 	if avatar.kind == uploadAvatar {
 		imageKind = SniffImage(avatar.data)
 		if imageKind == "" {
-			return errors.New("bot: unsupported avatar type")
+			return result, errors.New("bot: unsupported avatar type")
 		}
 		if len(avatar.data) > maxAvatar {
-			return errors.New("bot: avatar is too large")
+			return result, errors.New("bot: avatar is too large")
 		}
 	}
 	if u.Role != nil {
 		v, err := oneOf(flat(*u.Role), "", RoleChat, RoleDev)
 		if err != nil {
-			return fmt.Errorf("bot: role: %w", err)
+			return result, fmt.Errorf("bot: role: %w", err)
 		}
 		cfg.Role = v
 	}
@@ -211,14 +207,14 @@ func (b *Bot) applyProfile(u ProfileUpdate, avatar avatarEdit) error {
 		if v < 0 {
 			v = -1
 		} else if err := checkRange("background_max_time", v, 0, 24*3600); err != nil {
-			return err
+			return result, err
 		}
 		cfg.BackgroundMaxTime = v
 	}
 	b.profile.mu.Lock()
 	defer b.profile.mu.Unlock()
 	path := filepath.Join(b.dir(), "config.json")
-	return fsutil.WithLock(path+".lock", func() error {
+	err = fsutil.WithLock(path+".lock", func() error {
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			return err
@@ -247,9 +243,11 @@ func (b *Bot) applyProfile(u ProfileUpdate, avatar avatarEdit) error {
 			if err := fsutil.WriteAtomic(b.AvatarPath(), avatar.data, 0600); err != nil {
 				return err
 			}
+			result.AppliedFields = append(result.AppliedFields, "avatar_file")
 			if err := fsutil.WriteAtomic(b.avatarMIMEPath(), []byte(imageKind+"\n"), 0600); err != nil {
 				return err
 			}
+			result.AppliedFields = append(result.AppliedFields, "avatar_mime")
 			fresh.Avatar = AvatarCustom
 		case clearAvatar:
 			fresh.Avatar = AvatarGenerated
@@ -269,6 +267,18 @@ func (b *Bot) applyProfile(u ProfileUpdate, avatar avatarEdit) error {
 			return err
 		}
 		b.profile.set(fresh)
+		if u.Description != nil {
+			result.AppliedFields = append(result.AppliedFields, "description")
+		}
+		if u.Timezone != nil {
+			result.AppliedFields = append(result.AppliedFields, "timezone")
+		}
+		if u.AvatarSeed != nil {
+			result.AppliedFields = append(result.AppliedFields, "avatar_seed")
+		}
+		if avatar.kind == uploadAvatar || avatar.kind == clearAvatar {
+			result.AppliedFields = append(result.AppliedFields, "avatar")
+		}
 		if u.AvatarSeed != nil || avatar.kind == clearAvatar {
 			// Persistence succeeded. Keep cleanup in the resource lock so a
 			// concurrent upload cannot be deleted, and do not misreport success.
@@ -277,6 +287,7 @@ func (b *Bot) applyProfile(u ProfileUpdate, avatar avatarEdit) error {
 		}
 		return nil
 	})
+	return result, err
 }
 
 // checkRange validates one working-limit override. A value of 0 means "use the
@@ -594,74 +605,8 @@ func ReadTemplate(path string) (Template, error) {
 // primary.json is rewritten when it pointed at the old name. Pin state is left as it is.
 // The work directory moves with the bot when it exists.
 func Rename(root, from, to string) error {
-	from = flat(from)
-	to = flat(to)
-	if !ValidName(from) || !ValidName(to) || !fsutil.PortableName(to) {
-		return fmt.Errorf("bot: invalid name %q", to)
-	}
-	if from == to {
-		return nil
-	}
-	return fsutil.WithLock(primaryLock(root), func() error {
-		original, err := Load(root, from)
-		if err != nil {
-			return err
-		}
-		fromDir, toDir := Dir(root, from), Dir(root, to)
-		// On a case-insensitive file system (macOS, Windows) a rename that only
-		// changes case finds the bot itself under the new name. That is not a
-		// collision; os.Rename changes the case in place.
-		if _, err := Load(root, to); err == nil && !samePath(fromDir, toDir) {
-			return fmt.Errorf("bot %q: %w", to, ErrExists)
-		} else if err != nil && !errors.Is(err, ErrNotFound) {
-			return err
-		}
-		// Pin the old fallback without switching a legacy custom avatar mode.
-		if original.Config().AvatarSeed == "" {
-			if err := original.applyProfile(ProfileUpdate{}, avatarEdit{kind: pinLegacySeed, seed: from}); err != nil {
-				return err
-			}
-		}
-		closeStoreDir(fromDir)
-		// Move the vault key before the directory so a failure leaves the bot
-		// and its key under the same name. A missing key is fine.
-		if err := moveVaultKey(root, from, to); err != nil {
-			return err
-		}
-		if err := os.Rename(fromDir, toDir); err != nil {
-			_ = moveVaultKey(root, to, from)
-			return err
-		}
-		b, err := Load(root, to)
-		if err != nil {
-			_ = os.Rename(toDir, fromDir)
-			_ = moveVaultKey(root, to, from)
-			return err
-		}
-		b.cfg.Name = to
-		if err := b.SaveConfig(); err != nil {
-			_ = os.Rename(toDir, fromDir)
-			_ = moveVaultKey(root, to, from)
-			return err
-		}
-		if err := rewritePrimaryName(root, from, to); err != nil {
-			b.cfg.Name = from
-			_ = b.SaveConfig()
-			_ = os.Rename(toDir, fromDir)
-			_ = moveVaultKey(root, to, from)
-			return err
-		}
-		if err := moveWork(root, from, to); err != nil {
-			_ = rewritePrimaryName(root, to, from)
-			b.cfg.Name = from
-			_ = b.SaveConfig()
-			_ = os.Rename(toDir, fromDir)
-			_ = moveVaultKey(root, to, from)
-			return err
-		}
-		migrateShellJobs(fromDir, toDir)
-		return nil
-	})
+	_, _, err := RenameWithResult(root, from, to)
+	return err
 }
 
 // migrateShellJobs repoints the old bot directory embedded in shell job
@@ -745,8 +690,10 @@ func moveWork(root, from, to string) error {
 	if !st.IsDir() {
 		return nil
 	}
-	if _, err := os.Stat(dst); err == nil {
+	if _, err := os.Stat(dst); err == nil && !samePath(src, dst) {
 		return fmt.Errorf("bot: work directory %q already exists", to)
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0700); err != nil {
 		return err

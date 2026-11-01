@@ -49,7 +49,7 @@ func TestRuntimeProfileRefreshesOtherLiveHandleBeforeNextRequest(t *testing.T) {
 		sampled <- text.String()
 		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")}, nil
 	})
-	live := &Kernel{Bot: current, Provider: p, MaxSteps: 4, OnProfile: func(name string) { notified <- name }}
+	live := &Kernel{Bot: current, Provider: p, MaxSteps: 4, OnProfile: func(notice ProfileNotice) { notified <- notice.Name }}
 	defer live.Close()
 	done := make(chan error, 1)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

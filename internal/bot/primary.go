@@ -226,27 +226,21 @@ func DeleteWithResult(root, name string) (removed bool, err error) {
 // best-effort rollback. The returned handle always names the moved directory,
 // even if reloading its configuration fails after the move.
 func RenameWithResult(root, from, to string) (current *Bot, moved bool, err error) {
-	original, err := Load(root, from)
+	from = flat(from)
+	change, err := ValidateProfileChange(ProfileChange{Name: &to})
 	if err != nil {
 		return nil, false, err
 	}
-	err = Rename(root, from, to)
-	moved = err == nil
-	if !moved {
-		_, oldErr := os.Stat(Dir(root, from))
-		_, newErr := os.Stat(Dir(root, to))
-		moved = errors.Is(oldErr, os.ErrNotExist) && newErr == nil
+	if err := CheckProfileChange(root, from, change); err != nil {
+		return nil, false, err
 	}
-	if !moved {
-		return original, false, err
+	cfg, err := readProfileConfig(root, from)
+	if err != nil {
+		return nil, false, err
 	}
-	current, loadErr := Load(root, to)
-	if loadErr != nil || current.Name() != to {
-		cfg := original.Config()
-		cfg.Name = to
-		current = &Bot{Root: root, cfg: cfg, profile: newProfileState(cfg)}
-	}
-	return current, true, errors.Join(err, loadErr)
+	original := &Bot{Root: root, cfg: cfg, profile: newProfileState(cfg)}
+	current, result, err := original.ApplyProfileChange(change)
+	return current, result.Moved, err
 }
 
 // PostUnaddressed delivers an event that named no bot into the primary inbox.

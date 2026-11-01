@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 )
 
@@ -78,37 +80,101 @@ func (s *Server) patchBot(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "bad request")
 		return
 	}
+	change, err := bot.ValidateProfileChange(bot.ProfileChange{Name: in.Name, Description: in.Description, Timezone: in.Timezone, AvatarSeed: in.AvatarSeed})
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, bot.RedactText(err.Error()))
+		return
+	}
+	// Persona and folders remain separate writes, but their predictable input
+	// failures must not occur after a successful profile change.
 	if in.Persona != nil {
-		if err := b.WritePersona(*in.Persona); err != nil {
-			writeErr(w, http.StatusBadRequest, err.Error())
+		persona := strings.TrimSpace(*in.Persona)
+		if persona == "" || len(persona) > 32<<10 {
+			writeErr(w, http.StatusBadRequest, "bot: invalid persona")
 			return
 		}
-	}
-	u := bot.ProfileUpdate{Description: in.Description, Timezone: in.Timezone, AvatarSeed: in.AvatarSeed}
-	if u != (bot.ProfileUpdate{}) {
-		if err := b.ApplyProfile(u); err != nil {
-			writeErr(w, http.StatusBadRequest, err.Error())
-			return
-		}
-	}
-	name := b.Name()
-	if in.Name != nil {
-		next := strings.TrimSpace(*in.Name)
-		if next != "" && next != b.Name() {
-			if err := s.RenameRuntimeBot(b.Name(), next); err != nil {
-				writeErr(w, http.StatusBadRequest, err.Error())
-				return
-			}
-			name = next
-		}
+		in.Persona = &persona
 	}
 	if in.Group != nil {
-		if err := bot.SetBotFolder(s.Root, s.owner, name, *in.Group); err != nil {
+		group := strings.TrimSpace(*in.Group)
+		order, err := bot.LoadOrder(s.Root, s.owner)
+		if err != nil {
 			writeFolderErr(w, err)
 			return
 		}
+		found := group == ""
+		for _, name := range order {
+			found = found || name == group
+		}
+		if group == bot.UngroupedName {
+			writeErr(w, http.StatusBadRequest, "bot: reserved group name")
+			return
+		}
+		if !found {
+			writeFolderErr(w, bot.ErrFolderMissing)
+			return
+		}
+		in.Group = &group
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"name": name})
+	if err := bot.CheckProfileChange(s.Root, b.Name(), change); err != nil {
+		writeErr(w, http.StatusBadRequest, bot.RedactText(err.Error()))
+		return
+	}
+	resources, err := s.ResourcesFor(b)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, bot.RedactText(err.Error()))
+		return
+	}
+	value, err := s.applyProfileRuntime(b.Name(), change)
+	if err != nil {
+		writeProfileResult(w, value, err)
+		return
+	}
+	if in.Persona != nil || in.Group != nil {
+		save := func(current *bot.Bot, _ *inbox.Inbox) error {
+			value.Name = current.Name()
+			if in.Persona != nil {
+				if err := current.WritePersona(*in.Persona); err != nil {
+					return err
+				}
+				value.AppliedFields = append(value.AppliedFields, "persona")
+				value.Applied = true
+			}
+			if in.Group != nil {
+				if err := bot.SetBotFolder(s.Root, s.owner, current.Name(), *in.Group); err != nil {
+					return err
+				}
+				value.AppliedFields = append(value.AppliedFields, "group")
+				value.Applied = true
+			}
+			return nil
+		}
+		if resources != nil {
+			err = resources.WithCurrentIO(save)
+		} else {
+			var current *bot.Bot
+			current, err = bot.Load(s.Root, value.Name)
+			if err == nil {
+				err = save(current, nil)
+			}
+		}
+	}
+	writeProfileResult(w, value, err)
+}
+
+// A domain error can follow a real save or move. Keep the full receipt so a
+// client can adopt the actual name before displaying the failure.
+func writeProfileResult(w http.ResponseWriter, value cliops.Profile, err error) {
+	status := http.StatusOK
+	if err != nil {
+		status = http.StatusBadRequest
+		if value.Error == "" {
+			value.Error = bot.RedactText(err.Error())
+		}
+	} else if value.Error != "" {
+		status = http.StatusBadRequest
+	}
+	writeJSON(w, status, value)
 }
 
 func (s *Server) getAvatar(w http.ResponseWriter, r *http.Request) {
@@ -154,7 +220,8 @@ func (s *Server) postAvatar(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "bad avatar")
 		return
 	}
-	f, hdr, err := r.FormFile("file")
+	defer r.MultipartForm.RemoveAll()
+	f, _, err := r.FormFile("file")
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "bad avatar")
 		return
@@ -165,15 +232,12 @@ func (s *Server) postAvatar(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "bad avatar")
 		return
 	}
-	mime := ""
-	if hdr != nil {
-		mime = hdr.Header.Get("Content-Type")
-	}
-	if err := b.SetAvatar(data, mime); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+	if len(data) > 1<<20 {
+		writeErr(w, http.StatusBadRequest, "bot: avatar exceeds 1 MiB")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"name": b.Name(), "avatar": "custom", "avatar_seed": b.Config().AvatarSeed})
+	value, err := s.applyAvatarRuntime(b.Name(), data, false)
+	writeProfileResult(w, value, err)
 }
 
 func (s *Server) deleteAvatar(w http.ResponseWriter, r *http.Request) {
@@ -185,12 +249,8 @@ func (s *Server) deleteAvatar(w http.ResponseWriter, r *http.Request) {
 		writeMissing(w, err)
 		return
 	}
-	if err := b.ClearAvatar(); err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	avatar, seed := b.AvatarState()
-	writeJSON(w, http.StatusOK, map[string]string{"name": b.Name(), "avatar": avatar, "avatar_seed": seed})
+	value, err := s.applyAvatarRuntime(b.Name(), nil, true)
+	writeProfileResult(w, value, err)
 }
 
 func (s *Server) exportTemplate(w http.ResponseWriter, r *http.Request) {

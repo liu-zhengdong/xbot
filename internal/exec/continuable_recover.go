@@ -14,6 +14,10 @@ func interruptContinuable(dir string, m Meta, metaErr error) (Meta, error) {
 	if _, ok := ActiveTask(dir); ok {
 		return m, nil
 	}
+	return interruptContinuableIO(dir, m, metaErr)
+}
+
+func interruptContinuableIO(dir string, m Meta, metaErr error) (Meta, error) {
 	if metaErr == nil && ((m.Status != statusRunning && m.Status != statusQueued && m.Status != "stopping") || tools.SameProcess(m.PID, m.ProcStart)) {
 		return m, nil
 	}
@@ -45,18 +49,21 @@ func interruptContinuable(dir string, m Meta, metaErr error) (Meta, error) {
 	for i := len(entries) - 1; i >= 0; i-- {
 		e := entries[i]
 		if e.Kind == "turn_end" && e.TurnSeq == m.TurnSeq {
-			m.Status, m.ResultPath, m.FinishedAt = e.Status, e.ResultPath, e.Time
+			m.Status, m.FinishedAt = e.Status, e.Time
+			if e.ResultPath != "" {
+				m.ResultPath = filepath.Join(dir, "results", fmt.Sprintf("%d.txt", e.TurnSeq))
+			}
 			return m, writeMeta(dir, m)
 		}
 	}
 	j := &job{id: m.ID, dir: dir, turnSeq: m.TurnSeq, recordSeq: len(entries)}
-	if err := j.sealCalls(); err != nil {
+	if err := j.sealCallsLocked(); err != nil {
 		return m, err
 	}
 	// Walk in original order for deterministic cancellation markers.
 	for _, e := range entries {
 		if pending[e.Seq] {
-			if err := j.markInput("message_dropped", pendingInput{seq: e.Seq}); err != nil {
+			if _, err := j.recordLocked(SeqEntry{Entry: bot.Entry{Origin: bot.OriginInternal}, Kind: "message_dropped", InputSeq: e.Seq, TurnSeq: j.turnSeq}); err != nil {
 				return m, err
 			}
 		}
@@ -76,7 +83,7 @@ func interruptContinuable(dir string, m Meta, metaErr error) (Meta, error) {
 		}
 		m.ResultPath = path
 	}
-	if _, err := j.record(SeqEntry{Entry: bot.Entry{Origin: bot.OriginInternal}, Kind: "turn_end", TurnSeq: m.TurnSeq, Status: m.Status, ResultPath: m.ResultPath}); err != nil {
+	if _, err := j.recordLocked(SeqEntry{Entry: bot.Entry{Origin: bot.OriginInternal}, Kind: "turn_end", TurnSeq: m.TurnSeq, Status: m.Status, ResultPath: m.ResultPath}); err != nil {
 		return m, err
 	}
 	return m, writeMeta(dir, m)

@@ -1448,7 +1448,9 @@ func (rs *replyStream) result(name, output string) {
 	rs.send("result", payload)
 }
 
-func (rs *replyStream) profile(name string) { rs.send("profile", map[string]string{"name": name}) }
+func (rs *replyStream) profile(notice kernel.ProfileNotice) {
+	rs.send("profile", map[string]string{"name": notice.Name, "previous_name": notice.PreviousName})
+}
 
 func (rs *replyStream) reply() string {
 	rs.mu.Lock()

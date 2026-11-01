@@ -91,7 +91,7 @@ type Kernel struct {
 	OnResult   func(name, output string)
 	OnFinding  func(string)
 	// OnProfile reports a saved profile through the current turn's output.
-	OnProfile func(string)
+	OnProfile func(ProfileNotice)
 	// Permissive permanently disables tool permission cards (ADR 0019).
 	// Production sets this true; only links connector key input remains.
 	Permissive bool
@@ -243,7 +243,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 		return err
 	}
 
-	existing, err := k.Bot.FindEvent(ev.ID)
+	existing, err := k.findCurrentEvent(ev.ID)
 	if err != nil {
 		return err
 	}
@@ -310,7 +310,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	// Swap a finished background summary on the way in and on the way out.
 	// Both run outside the model call, including when this event is a replay.
 	defer func() {
-		cur, loadErr := k.Bot.LoadState()
+		cur, loadErr := k.currentState()
 		if loadErr != nil {
 			return
 		}
@@ -319,7 +319,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	if err := k.repairTail(); err != nil {
 		return err
 	}
-	n, err := k.Bot.Count()
+	n, err := k.currentCount()
 	if err != nil {
 		return err
 	}
@@ -327,7 +327,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 		AnswerQuestions(k.Bot, ev.Content)
 	}
 	if existing > 0 {
-		span, err := k.Bot.Slice(seq, n)
+		span, err := k.currentSlice(seq, n)
 		if err != nil {
 			return err
 		}
@@ -341,7 +341,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 			return nil
 		}
 	}
-	st, err := k.Bot.LoadState()
+	st, err := k.currentState()
 	if err != nil {
 		return err
 	}
@@ -439,7 +439,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 		}
 	}
 	st.Usage = usage
-	if err := k.Bot.SaveState(st); err != nil {
+	if err := k.saveCurrentState(st); err != nil {
 		return err
 	}
 	p, err := k.providerFor(ctx)
@@ -554,16 +554,16 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 		if ev.ID == "" || ev.ID == k.curTurn().turnEvent {
 			continue
 		}
-		old, err := k.Bot.FindEvent(ev.ID)
+		old, err := k.findCurrentEvent(ev.ID)
 		if err != nil {
 			return nil, err
 		}
 		if old > 0 && old < k.curTurn().fromSeq {
-			n, err := k.Bot.Count()
+			n, err := k.currentCount()
 			if err != nil {
 				return nil, err
 			}
-			span, err := k.Bot.Slice(old, n)
+			span, err := k.currentSlice(old, n)
 			if err != nil {
 				return nil, err
 			}
@@ -782,7 +782,7 @@ const memRenderVersion = 3
 func (k *Kernel) refreshMemSnap(ctx context.Context, st *bot.State) error {
 	k.envMu.Lock()
 	defer k.envMu.Unlock()
-	previous, err := k.Bot.LoadState()
+	previous, err := k.currentState()
 	if err != nil {
 		return err
 	}

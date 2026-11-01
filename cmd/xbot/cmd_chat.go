@@ -110,7 +110,9 @@ func cmdChat(root string, args []string) error {
 		return err
 	}
 	defer resources.Close()
-	resources.Rename = func(source *kernel.Kernel, next string) error { return source.MoveResources(next) }
+	resources.Rename = func(source *kernel.Kernel, change bot.ProfileChange) (bot.ProfileChangeResult, error) {
+		return source.MoveResources(change)
+	}
 	resources.Delete = func(ctx context.Context, name string) error {
 		if name == resources.Name() {
 			return resources.DeleteRuntime(ctx, name)

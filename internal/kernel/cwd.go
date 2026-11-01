@@ -10,6 +10,8 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/fsutil"
+	"xbot/internal/inbox"
+	"xbot/internal/work"
 )
 
 // cwdState is the working directory of each execution context. The foreground
@@ -19,6 +21,7 @@ import (
 type cwdState struct {
 	mu     sync.Mutex
 	loaded bool
+	atName string
 	dir    string
 	extra  map[string]string
 }
@@ -34,8 +37,11 @@ func (k *Kernel) shellMarkerDir() string {
 	if k == nil || k.Bot == nil || k.Bot.Root == "" || k.Bot.Name() == "" {
 		return ""
 	}
-	dir := filepath.Join(bot.Dir(k.Bot.Root, k.Bot.Name()), "cwd-markers")
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	var dir string
+	if err := k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error {
+		dir = filepath.Join(bot.Dir(b.Root, b.Name()), "cwd-markers")
+		return os.MkdirAll(dir, 0700)
+	}); err != nil {
 		return ""
 	}
 	return dir
@@ -66,15 +72,14 @@ func (k *Kernel) ensureLoadedLocked() {
 		return
 	}
 	k.cwd.loaded = true
-	path := k.cwdPath()
-	if path == "" {
-		return
-	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return
-	}
-	k.cwd.dir = strings.TrimSpace(string(b))
+	_ = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error {
+		k.cwd.atName = b.Name()
+		data, err := os.ReadFile(filepath.Join(bot.Dir(b.Root, b.Name()), "cwd"))
+		if err == nil {
+			k.cwd.dir = strings.TrimSpace(string(data))
+		}
+		return err
+	})
 }
 
 func (k *Kernel) readScope(scope string) string {
@@ -84,6 +89,7 @@ func (k *Kernel) readScope(scope string) string {
 	k.cwd.mu.Lock()
 	defer k.cwd.mu.Unlock()
 	k.ensureLoadedLocked()
+	_ = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { k.rebaseCwdLocked(b); return nil })
 	if scope == "" {
 		return k.cwd.dir
 	}
@@ -145,22 +151,31 @@ func (k *Kernel) storeScope(scope, dir string) {
 	k.cwd.mu.Lock()
 	defer k.cwd.mu.Unlock()
 	k.ensureLoadedLocked()
-	if scope != "" {
-		if k.cwd.extra == nil {
-			k.cwd.extra = map[string]string{}
+	_ = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error {
+		previous := k.cwd.atName
+		if previous == "" {
+			previous = k.Bot.Name()
 		}
-		k.cwd.extra[scope] = dir
-		return
-	}
-	if k.cwd.dir == dir {
-		return
-	}
-	k.cwd.dir = dir
-	path := k.cwdPath()
-	if path == "" || dir == "" {
-		return
-	}
-	_ = fsutil.WriteAtomic(path, []byte(dir+"\n"), 0600)
+		dir = rebasePath(dir, bot.Dir(b.Root, previous), bot.Dir(b.Root, b.Name()))
+		dir = rebasePath(dir, work.BotDir(b.Root, previous), work.BotDir(b.Root, b.Name()))
+		dir = k.rebaseOriginalPath(dir, b)
+		k.rebaseCwdLocked(b)
+		if scope != "" {
+			if k.cwd.extra == nil {
+				k.cwd.extra = map[string]string{}
+			}
+			k.cwd.extra[scope] = dir
+			return nil
+		}
+		if k.cwd.dir == dir {
+			return nil
+		}
+		k.cwd.dir = dir
+		if dir == "" {
+			return nil
+		}
+		return fsutil.WriteAtomic(filepath.Join(bot.Dir(b.Root, b.Name()), "cwd"), []byte(dir+"\n"), 0600)
+	})
 }
 
 // dropScope forgets a background branch's or subagent's directory once it has
@@ -181,7 +196,7 @@ func (k *Kernel) allowedRoots() []string {
 	var in []string
 	if k != nil {
 		if k.WorkDir != "" {
-			in = append(in, k.WorkDir)
+			in = append(in, k.workspace())
 		}
 		if k.SharedDir != "" {
 			in = append(in, k.SharedDir)
@@ -194,7 +209,9 @@ func (k *Kernel) allowedRoots() []string {
 // when one is set, otherwise the process working directory.
 func (k *Kernel) workspace() string {
 	if k != nil && strings.TrimSpace(k.WorkDir) != "" {
-		if dir, ok := cleanDir(k.WorkDir); ok {
+		var current string
+		_ = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { current = k.currentWorkspaceFor(b); return nil })
+		if dir, ok := cleanDir(current); ok {
 			return dir
 		}
 	}
@@ -206,6 +223,46 @@ func (k *Kernel) workspace() string {
 		return dir
 	}
 	return filepath.Clean(wd)
+}
+
+// Only paths within the old Bot/workspace move; external working directories
+// remain intact. These helpers do not acquire route recursively.
+func rebasePath(path, previous, next string) string {
+	if path == "" || previous == next {
+		return path
+	}
+	rel, err := filepath.Rel(previous, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return path
+	}
+	return filepath.Join(next, rel)
+}
+func (k *Kernel) rebaseOriginalPath(path string, current *bot.Bot) string {
+	if k.Resources == nil {
+		return path
+	}
+	path = rebasePath(path, bot.Dir(k.Bot.Root, k.Bot.Name()), bot.Dir(current.Root, current.Name()))
+	return rebasePath(path, work.BotDir(k.Bot.Root, k.Bot.Name()), work.BotDir(current.Root, current.Name()))
+}
+func (k *Kernel) currentWorkspaceFor(current *bot.Bot) string {
+	return k.rebaseOriginalPath(k.WorkDir, current)
+}
+func (k *Kernel) rebaseCwdLocked(current *bot.Bot) {
+	previous := k.cwd.atName
+	if previous == "" {
+		previous = k.Bot.Name()
+	}
+	if previous != current.Name() {
+		mapPath := func(path string) string {
+			path = rebasePath(path, bot.Dir(current.Root, previous), bot.Dir(current.Root, current.Name()))
+			return rebasePath(path, work.BotDir(current.Root, previous), work.BotDir(current.Root, current.Name()))
+		}
+		k.cwd.dir = mapPath(k.cwd.dir)
+		for scope, path := range k.cwd.extra {
+			k.cwd.extra[scope] = mapPath(path)
+		}
+	}
+	k.cwd.atName = current.Name()
 }
 
 func cleanDir(path string) (string, bool) {

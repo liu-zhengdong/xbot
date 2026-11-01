@@ -75,12 +75,12 @@ type job struct {
 func runLoop(j *job) {
 	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), executingJobKey{}, j), j.timeout)
 	defer cancel()
-	if err := os.MkdirAll(j.dir, 0700); err != nil {
+	if err := j.withStorageIO(func() error { return os.MkdirAll(j.dir, 0700) }); err != nil {
 		j.finish(statusFailed, EvFailed, err.Error())
 		return
 	}
 	msgs := initialMessages(j)
-	if j.request.Descriptor != nil {
+	if j.isContinuable() {
 		var err error
 		msgs, err = j.beginContinuable()
 		if err != nil {
@@ -89,7 +89,7 @@ func runLoop(j *job) {
 		}
 	} else {
 		for _, m := range msgs {
-			if err := appendEntry(j.dir, bot.Entry{Time: time.Now().UTC(), Message: m}); err != nil {
+			if err := j.appendLegacy(bot.Entry{Time: time.Now().UTC(), Message: m}); err != nil {
 				j.finish(statusFailed, EvFailed, err.Error())
 				return
 			}
@@ -127,7 +127,7 @@ func runLoop(j *job) {
 		j.stepCancel = stepCancel
 		j.mu.Unlock()
 		var appendErr error
-		produced, err := agent.Run(notable.With(stepCtx, j.workspace, &j.notable), j.provider, j.tools, msgs, agent.Options{
+		produced, err := agent.Run(notable.With(stepCtx, j.requestSnapshot().Workspace, &j.notable), j.provider, j.tools, msgs, agent.Options{
 			MaxSteps: 1,
 			RunTool:  j.runToolCall,
 			OneRound: true,
@@ -145,10 +145,10 @@ func runLoop(j *job) {
 				if appendErr != nil {
 					return
 				}
-				if j.request.Descriptor != nil {
+				if j.isContinuable() {
 					_, appendErr = j.record(SeqEntry{Entry: bot.Entry{Message: m}, TurnSeq: j.turnSeq})
 				} else {
-					appendErr = appendEntry(j.dir, bot.Entry{Time: time.Now().UTC(), Message: m})
+					appendErr = j.appendLegacy(bot.Entry{Time: time.Now().UTC(), Message: m})
 				}
 			},
 		})
@@ -189,7 +189,7 @@ func runLoop(j *job) {
 			stepsLeft = j.maxSteps
 			continue
 		}
-		if err != nil && j.request.Descriptor != nil && errors.Is(err, context.Canceled) && ctx.Err() == nil {
+		if err != nil && j.isContinuable() && errors.Is(err, context.Canceled) && ctx.Err() == nil {
 			if j.resumeInterrupt(&msgs, &stepsLeft) {
 				continue
 			}
@@ -202,7 +202,9 @@ func runLoop(j *job) {
 			j.finish(statusFailed, EvFailed, err.Error())
 			return
 		}
+		j.mu.Lock()
 		j.steps++
+		j.mu.Unlock()
 		stepsLeft--
 		j.writeStatus(statusRunning, "")
 		stop, steered := j.drain(&msgs, &stepsLeft, &queued)
@@ -246,7 +248,7 @@ func runLoop(j *job) {
 				}
 				continue
 			}
-			if j.request.Descriptor != nil && !j.closeReady(&msgs, &stepsLeft) {
+			if j.isContinuable() && !j.closeReady(&msgs, &stepsLeft) {
 				continue
 			}
 			summary := text
@@ -275,7 +277,7 @@ func (j *job) startQueued(msgs *[]provider.Message, stepsLeft *int, queued *[]st
 }
 
 func (j *job) wait(ctx context.Context) error {
-	if j.request.Descriptor != nil {
+	if j.isContinuable() {
 		return j.waitContinuable(ctx)
 	}
 	if len(j.held) > 0 {
@@ -291,7 +293,7 @@ func (j *job) wait(ctx context.Context) error {
 }
 
 func (j *job) drain(msgs *[]provider.Message, stepsLeft *int, queued *[]string) (stop bool, steered bool) {
-	if j.request.Descriptor != nil {
+	if j.isContinuable() {
 		return j.drainContinuable(msgs, stepsLeft)
 	}
 	for len(j.held) > 0 {
@@ -344,7 +346,7 @@ func (j *job) applyOne(c Control, msgs *[]provider.Message, stepsLeft *int, queu
 
 func (j *job) appendUser(msgs *[]provider.Message, text string) error {
 	m := provider.Message{Role: provider.RoleUser, Content: provider.TextContent(text)}
-	if err := appendEntry(j.dir, bot.Entry{Time: time.Now().UTC(), Message: m}); err != nil {
+	if err := j.appendLegacy(bot.Entry{Time: time.Now().UTC(), Message: m}); err != nil {
 		return err
 	}
 	*msgs = append(*msgs, m)
@@ -352,7 +354,7 @@ func (j *job) appendUser(msgs *[]provider.Message, text string) error {
 }
 
 func (j *job) finish(status, kind, text string) {
-	if j.request.Descriptor != nil {
+	if j.isContinuable() {
 		j.finishContinuable(status, kind, text)
 		return
 	}
@@ -365,18 +367,24 @@ func (j *job) finish(status, kind, text string) {
 	}
 	summary := clipText(text, reportBytes)
 	line := notable.Line(j.notable.Items())
-	report, err := ResultText(j.dir, text, line)
-	if err != nil {
-		status, kind, report = statusFailed, EvFailed, "保存任务结果失败："+err.Error()
-		summary = report
-		if line != "" {
-			report += "\n\n" + line
+	var report string
+	var steps int
+	err := j.withStorageIO(func() error {
+		var e error
+		report, e = ResultText(j.dir, text, line)
+		if e != nil {
+			status, kind, report = statusFailed, EvFailed, "saving task result failed: "+e.Error()
+			summary = report
+			if line != "" {
+				report += "\n\n" + line
+			}
 		}
+		steps = j.steps
+		return j.writeStatusLocked(status, summary)
+	})
+	if err != nil {
+		status, kind, report = statusFailed, EvFailed, err.Error()
 	}
-	j.writeStatus(status, summary)
-	j.mu.Lock()
-	steps := j.steps
-	j.mu.Unlock()
 	report = fmt.Sprintf("任务 %s 结束：%s，%d 步。\n", j.id, status, steps) + report
 	j.parent.emit(Event{AgentID: j.id, Kind: kind, Text: report})
 }
@@ -457,12 +465,14 @@ func statusText(ctx context.Context) string {
 }
 
 func (j *job) writeStatus(status, summary string) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
+	_ = j.withStorageIO(func() error { return j.writeStatusLocked(status, summary) })
+}
+
+func (j *job) writeStatusLocked(status, summary string) error {
 	pid, start := tools.CurrentProcess()
 	meta := Meta{PID: pid, ProcStart: start, ID: j.id, Status: status, Summary: summary, Task: j.task, Mode: j.mode, Type: j.kind, Steps: j.steps, StartedAt: j.startedAt, CurrentStep: j.currentStep, Notable: j.notable.Items(), Blocked: j.blocked, Continuable: j.request.Descriptor != nil, TurnSeq: j.turnSeq, ResultPath: j.resultPath}
 	if status != statusRunning && status != statusQueued {
 		meta.FinishedAt = time.Now().UTC()
 	}
-	_ = writeMeta(j.dir, meta)
+	return writeMeta(j.dir, meta)
 }
