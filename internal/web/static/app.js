@@ -4681,6 +4681,7 @@
     clearQuote();
     state.sel = { type: "bot", id: name };
     try { sessionStorage.setItem("xbot-selected-bot", name); } catch (e) {}
+    try { localStorage.setItem("xbot-selected-bot", name); } catch (e) {}
     resetConversation();
     try {
       const draft = sessionStorage.getItem("xbot-draft:" + name);
@@ -8596,6 +8597,7 @@
     state.knownNotes = null;
     state.listSig = "";
     try { sessionStorage.removeItem("xbot-selected-bot"); } catch (e) {}
+    try { localStorage.removeItem("xbot-selected-bot"); } catch (e) {}
   }
   const SIDE = { min: 210, max: 360, def: 232, snap: 200, rail: 72 };
   function readSide() {
@@ -9270,7 +9272,9 @@
     await loadPush().catch(() => {});
     renderMe();
     let remembered = "";
+    // Keep this window's choice on reload; new windows resume the last opened Bot.
     try { remembered = sessionStorage.getItem("xbot-selected-bot") || ""; } catch (e) {}
+    if (!remembered) { try { remembered = localStorage.getItem("xbot-selected-bot") || ""; } catch (e) {} }
     const home = state.bots.find((b) => b.name === remembered) || state.bots.find((b) => b.primary) || state.bots[0];
     if (!state.sel && home) await selectBot(home.name);
     else if (!state.sel) {

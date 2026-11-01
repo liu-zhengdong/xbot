@@ -1,5 +1,11 @@
 # XBot 里程碑与进度
 
+## 2026-11-01 重开窗口恢复上次 Bot
+
+- S 档。原先选择只写 sessionStorage，关闭窗口后丢失；打开 Bot 现在同时持久保存到 localStorage，刷新仍优先用本窗口选择，新窗口恢复上次打开的 Bot。已删除 Bot 沿主 Bot、列表首项回退，账号退出清除持久记录；没有新增设置或视觉变化。现状见 [网页界面](atlas/ui.md)。
+- 独立浏览器回归先在旧实现复现：选 Focus、关闭页面再开，实际回到 Home。修复后 `go test ./internal/web -run '^TestSelectedBot.*Browser$' -count=1 -v` 通过，覆盖关闭新开、同 profile 浏览器进程重启、多窗口刷新、缺失 Bot 的 primary/first 两级回退；断言侧栏、标题和实际聊天内容。首次绿测仅因测试观察脚本在 about:blank 访问 storage 产生错误，限定测试 HTTP origin 后原业务断言全部通过（10.087s）。
+- 级别：浏览器真实页面与进程生命周期验证通过；运行中的 8788 桌面服务所发脚本与工作区一致，刷新即可载入。未重启用户日用进程，原生 WebView 重启与用户日用待验。Not run：全仓、真模型、无关旅程、跨平台和原生窗口实机重启；不 push、不发版。
+
 ## 2026-11-01 Bot 控机 · Mac / Windows 无障碍树
 
 - L 档，按本轮用户直接授权自行设计、实现及设置自检，不等设计师或用户代合。唯一装配仍为 `link.Organs → kernel desktop.Open(root) → Link.Tools`，Mac/Windows 薄适配官方 CLI，Linux 旧像素驱动保留；没有平行 Link、商店项、应用名单或 UI 指纹。Windows npm shim 按官方安装布局定位原生 exe，不经过 shell。决策见 [ADR 0048](adr/0048-desktop-a11y-adapter.md)，合同见 [机器与设备](atlas/machines.md)。

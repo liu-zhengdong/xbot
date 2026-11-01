@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-01 @ cc521eb3 (device authorization row; prior evidence retained)
+verified: 2026-11-01 @ 8357afa8 (window selection persistence; prior evidence retained)
 
 ---
 # 网页界面
@@ -118,6 +118,8 @@ Bot 菜单「查看生成的图片」保留为可选工作区定位功能，打�
 窗口没有单独的标题栏，内容铺到窗口顶，每一栏顶部约 40 是拖动区，按钮不参与拖动。Mac 的红绿灯内嵌在侧栏左上，侧栏顶部让出 46，主卡片四周留 8。Windows 的最小化、最大化、关闭按钮由 MyGo 原生画在右上（46×32），主卡片贴着右边和下边、只有左上圆角，面板操作行下移到 36，避开系统按钮。版本号在设置的「关于」里。
 
 窗口分为侧栏和主区。侧栏可拖宽、双击复位、拖窄后进入只留头像的 rail，宽度记在本机 `xbot.side`；rail 保留未读点、忙碌指示和悬停名字，隐藏问候、预览与分区文字。原右侧信息抽屉已由顶部主视图标签替代，不再恢复旧 `xbot-panel-open` 偏好。
+
+打开 Bot 时，`xbot-selected-bot` 同时写入窗口的 sessionStorage 与同源的 localStorage。刷新优先恢复本窗口选择；关闭窗口或退出进程后再开，从持久记录恢复上次打开的 Bot。记录中的 Bot 已不存在时，沿用主 Bot、列表首项的回退顺序；账号退出清除两处选择。行为守护为 `selected_bot_browser_test.go`，覆盖真实页面关闭、同浏览器 profile 进程重启、多窗口刷新及两级回退。
 
 身份区位于主区左上，显示真实头像、名字和模型副标，资料编辑、主题、搜索与更新靠右。点击身份或更多里的资料项进入 Bot 资料，群组身份进入成员；往来时身份入口禁用。主视图直接从内容开始，页面名称由顶部标签表达；各 Tab 内不再重复大标题或保留其占位，分区标题与操作照常保留。窄屏保留侧栏入口，页面标签横向滚动，更多固定可达。桌面身份栏保留拖动区，按钮和标签明确 no-drag，Windows/Linux 顶部避让系统按钮。⌘\ / Ctrl+\ 在聊天与资料间切换，Escape 先关闭菜单、搜索与弹窗。
 ### 对话
