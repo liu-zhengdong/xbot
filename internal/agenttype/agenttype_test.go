@@ -33,15 +33,21 @@ func TestBuiltinTypes(t *testing.T) {
 	}
 }
 
-func TestBuiltinDevAllowsSkills(t *testing.T) {
-	dev, ok := Find(Builtin(), "dev")
-	if !ok {
-		t.Fatal("missing dev type")
-	}
-	for _, name := range []string{"read_skill", "write_skill"} {
-		if !dev.Allows(name) {
-			t.Errorf("dev cannot use %s", name)
+func TestBuiltinSkillsUseCLI(t *testing.T) {
+	for _, name := range []string{"research", "dev"} {
+		ty, ok := Find(Builtin(), name)
+		if !ok {
+			t.Fatalf("missing %s type", name)
 		}
+		for _, tool := range []string{"read_skill", "write_skill"} {
+			if ty.Allows(tool) {
+				t.Errorf("%s retains retired skill tool %s", name, tool)
+			}
+		}
+	}
+	dev, _ := Find(Builtin(), "dev")
+	if !dev.Allows("read_file") || !dev.Allows("write_file") {
+		t.Fatal("dev lost its working tools")
 	}
 }
 

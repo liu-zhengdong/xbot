@@ -162,11 +162,6 @@ var kernelTools = []struct {
 		}
 		return []tools.Tool{start, steerTool{k}, queueTool{k}, interruptTool{k}, cancelTool{k}, readSubTool{k}, expandSubTool{k}}
 	}, nil},
-	// Skills are native tools, including when the library is empty.
-	{"skills", always, func(k *Kernel) []tools.Tool {
-		return []tools.Tool{skillTool{k}}
-	}, nil},
-	{"skills", always, func(k *Kernel) []tools.Tool { return []tools.Tool{writeSkillTool{k}} }, nil},
 }
 
 func always(*Kernel, []link.Link) bool { return true }

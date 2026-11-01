@@ -66,8 +66,9 @@ func (k *Kernel) SkillHandlers() *cliops.SkillHandlers {
 			}
 			var disabled []string
 			if err := currentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
-				disabled = current.DisabledSkills()
-				return nil
+				cfg, err := readSkillBotConfig(current.Root, current.Name())
+				disabled = cfg.DisabledSkills
+				return err
 			}); err != nil {
 				return cliops.SkillReadReply{}, failure(err)
 			}
@@ -188,7 +189,7 @@ func resolveSkillScope(root, scope, currentName string) ([]string, string, error
 		if !entry.IsDir() {
 			continue
 		}
-		name, err := readSkillBotName(root, entry.Name())
+		cfg, err := readSkillBotConfig(root, entry.Name())
 		if os.IsNotExist(err) {
 			continue
 		}
@@ -197,7 +198,7 @@ func resolveSkillScope(root, scope, currentName string) ([]string, string, error
 			log.Printf("bot: skip %q: %v", entry.Name(), err)
 			continue
 		}
-		configuredNames = append(configuredNames, name)
+		configuredNames = append(configuredNames, cfg.Name)
 	}
 	sort.Strings(configuredNames)
 	var names []string
@@ -205,11 +206,11 @@ func resolveSkillScope(root, scope, currentName string) ([]string, string, error
 	for _, configuredName := range configuredNames {
 		// The original scope path loaded each listed config by cfg.Name again.
 		// Keep that identity check without invoking Load's legacy migrations.
-		name, err := readSkillBotName(root, configuredName)
+		cfg, err := readSkillBotConfig(root, configuredName)
 		if err != nil {
 			return nil, "", err
 		}
-		names = append(names, name)
+		names = append(names, cfg.Name)
 		if scope != "" && strings.EqualFold(scope, configuredName) {
 			if target != "" {
 				return nil, "", fmt.Errorf("skill: ambiguous scope")
@@ -223,22 +224,22 @@ func resolveSkillScope(root, scope, currentName string) ([]string, string, error
 	return names, target, nil
 }
 
-func readSkillBotName(root, name string) (string, error) {
+func readSkillBotConfig(root, name string) (bot.Config, error) {
+	var cfg bot.Config
 	if !bot.ValidName(name) {
-		return "", fmt.Errorf("bot: invalid name %q", name)
+		return cfg, fmt.Errorf("bot: invalid name %q", name)
 	}
 	raw, err := os.ReadFile(filepath.Join(bot.Dir(root, name), "config.json"))
 	if err != nil {
-		return "", err
+		return cfg, err
 	}
-	var cfg bot.Config
 	if err := json.Unmarshal(raw, &cfg); err != nil {
-		return "", err
+		return cfg, err
 	}
 	if cfg.Name == "" {
 		cfg.Name = name
 	}
-	return cfg.Name, nil
+	return cfg, nil
 }
 
 func writeRuntimeSkill(root, configuredDir, currentName string, in cliops.SkillWrite) (cliops.SkillWriteReply, error) {

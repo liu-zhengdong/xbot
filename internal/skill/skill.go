@@ -27,7 +27,7 @@ const PromptCap = 1024
 const Precedence = "User skills override this bot's default habits."
 
 // ReadWith tells the model which tool reads a skill and which id to pass.
-const ReadWith = "Call read_skill with id set to the skill id on each line."
+const ReadWith = `Read a skill with "$XBOT_BIN" skill read ID --self --json, using the skill id on each line. Large bodies return a local file.`
 
 var (
 	slugRe           = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}(?:__from_[A-Za-z0-9][A-Za-z0-9_-]{0,63})*(?:__[0-9]+)?$`)

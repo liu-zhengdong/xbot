@@ -206,47 +206,6 @@ func TestInstalledPromptGrowsOneLine(t *testing.T) {
 	}
 }
 
-func TestLinksLoadDoesNotPersist(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameSkills)
-	p := &scripted{resps: []provider.Message{
-		linksCall("load", "skills"),
-		{Role: provider.RoleAssistant, Content: provider.TextContent("loaded")},
-	}}
-	k := &Kernel{
-		Bot: b, Provider: p, MaxSteps: 4,
-		Links: []link.Link{link.Terminal{}, link.Skills{}},
-	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "load skills", time.Unix(1, 0).UTC())); err != nil {
-		t.Fatal(err)
-	}
-	if len(p.reqs) < 2 {
-		t.Fatalf("calls %d", len(p.reqs))
-	}
-	// Loading never declares a schema; the tools stay behind the door.
-	for _, req := range p.reqs {
-		if hasDef(req.Tools, "read_skill") || hasDef(req.Tools, "write_skill") {
-			t.Fatal("skill schema declared in tools[]")
-		}
-	}
-	if !k.isLoaded(link.NameSkills) || !hasToolName(mustMounted(t, k), "write_skill") {
-		t.Fatal("write_skill not loaded for this turn")
-	}
-	if e, ok := k.toolRegistry().find("read_skill"); !ok || !strings.Contains(e.tool.Description(), "Pass id, the skill id") {
-		t.Fatal("read_skill not registered")
-	}
-	if strings.Contains(p.reqs[0].Messages[0].Text(), "Read the body of a shared skill") || strings.Contains(p.reqs[1].Messages[0].Text(), "Skill slug") {
-		t.Fatal("schema leaked into the system prompt")
-	}
-	p2 := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("next")}}}
-	k.Provider = p2
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", time.Unix(2, 0).UTC())); err != nil {
-		t.Fatal(err)
-	}
-	if len(p2.reqs) == 0 || k.isLoaded(link.NameSkills) || !hasToolName(mustMounted(t, k), "write_skill") {
-		t.Fatal("native write_skill missing or link load persisted")
-	}
-}
-
 func TestLinksSearchMatchesEnglish(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	k := &Kernel{Bot: b}
@@ -348,7 +307,7 @@ func TestLinksInstallMountsToolsImmediately(t *testing.T) {
 	if err != nil || !strings.Contains(out, "telegram_send") || strings.Contains(out, "no tools") {
 		t.Fatalf("load %q %v", out, err)
 	}
-	for _, name := range []string{"read_skill", "write_skill", "code_start"} {
+	for _, name := range []string{"bot_propose_persona", "routine_create", "code_start"} {
 		if !registered(k, name) {
 			t.Fatalf("native tool %s missing", name)
 		}

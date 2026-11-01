@@ -363,12 +363,6 @@ func (t linksTool) loadedNamesContext(ctx context.Context, id string) (string, e
 
 func (k *Kernel) toolsForLoaded(ctx context.Context, id string) ([]tools.Tool, error) {
 	links := k.snapshotLinks()
-	if id == link.NameSkills || id == "skills" {
-		if namedLink(links, link.NameSkills) {
-			return []tools.Tool{skillTool{k}, writeSkillTool{k}}, nil
-		}
-		return nil, nil
-	}
 	var out []tools.Tool
 	for _, l := range links {
 		if l == nil {

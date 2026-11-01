@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
 	"xbot/internal/config"
 	"xbot/internal/mcp"
 	"xbot/internal/memory"
@@ -229,10 +230,11 @@ func TestRetainedKernelLocalPathsFollowRename(t *testing.T) {
 	if _, _, own := k.memoryFolder(filepath.Join(bot.Dir(root, "after"), "memory", "memory.md")); !own {
 		t.Fatal("memory guard lost self identity")
 	}
-	if _, err := (writeSkillTool{k}).Run(ctx, json.RawMessage(`{"slug":"route-fixture","description":"route fixture","body":"fixture body","scope":"self"}`)); err != nil {
+	body := "fixture body"
+	if _, err := k.SkillHandlers().Write(ctx, cliops.SkillWrite{Slug: "route-fixture", Description: "route fixture", Body: &body, Scope: "self"}); err != nil {
 		t.Fatal("scoped skill write", err)
 	}
-	if _, err := k.readSkill("route-fixture"); err != nil {
+	if _, err := k.SkillHandlers().Read(ctx, "route-fixture"); err != nil {
 		t.Fatal("current skill switch", err)
 	}
 	if text, err := (listBotsTool{k}).Run(ctx, nil); err != nil || !strings.Contains(text, "other") {

@@ -52,8 +52,26 @@ func (b *Bot) setSkillDisabled(slug string, disabled bool) error {
 		} else {
 			fresh.cfg.DisabledSkills = slices.DeleteFunc(fresh.cfg.DisabledSkills, func(s string) bool { return s == slug })
 		}
-		fresh.skillsSet = true
-		if err := fresh.saveConfig(); err != nil {
+		// Change only the switch field. A nonmigrating caller must preserve
+		// legacy style until the normal loader can commit its memory migration.
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return err
+		}
+		if fields == nil {
+			fields = make(map[string]json.RawMessage)
+		}
+		fields["name"], _ = json.Marshal(fresh.cfg.Name)
+		if len(fresh.cfg.DisabledSkills) == 0 {
+			delete(fields, "disabled_skills")
+		} else {
+			fields["disabled_skills"], _ = json.Marshal(fresh.cfg.DisabledSkills)
+		}
+		updated, err := fsutil.Marshal(fields)
+		if err != nil {
+			return err
+		}
+		if err := fsutil.WriteAtomic(filepath.Join(b.dir(), "config.json"), updated, 0600); err != nil {
 			return err
 		}
 		b.cfg.DisabledSkills = slices.Clone(fresh.cfg.DisabledSkills)
