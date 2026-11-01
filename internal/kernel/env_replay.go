@@ -14,6 +14,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/link"
 	"xbot/internal/memory"
+	"xbot/internal/person"
 	"xbot/internal/provider"
 )
 
@@ -28,9 +29,25 @@ type environment struct {
 	Basis  string
 }
 type environmentSource struct {
-	Name   string `json:"name"`
-	Sender string `json:"sender,omitempty"`
-	Input  int    `json:"input,omitempty"`
+	Name     string `json:"name"`
+	Sender   string `json:"sender,omitempty"`
+	SenderID string `json:"sender_id,omitempty"`
+	Input    int    `json:"input,omitempty"`
+}
+
+func (s environmentSource) personID() string {
+	if s.SenderID != "" {
+		return s.SenderID
+	}
+	return s.Sender // Older environment records used sender for the person id.
+}
+
+func (s *environmentSource) refreshName(root string) {
+	s.SenderID = s.personID()
+	s.Sender = s.SenderID
+	if p, err := person.Load(root, s.SenderID); err == nil && strings.TrimSpace(p.DisplayName) != "" {
+		s.Sender = strings.TrimSpace(p.DisplayName)
+	}
 }
 
 type memoryChange struct {
@@ -361,7 +378,10 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 		environmentSet(&next, "task:"+task.ID, task)
 	}
 	ctx := context.WithValue(context.Background(), publishedMemoryRead{}, true)
-	if id := environmentGet[environmentSource](next, "source").Sender; id != "" {
+	source := environmentGet[environmentSource](next, "source")
+	if id := source.personID(); id != "" {
+		source.refreshName(k.Bot.Root)
+		environmentSet(&next, "source", source)
 		text, err := k.personText(ctx, link.Event{Sender: id, SenderKind: link.KindPerson})
 		if err != nil && !errors.Is(err, memory.ErrBusy) {
 			return next, err
@@ -388,7 +408,7 @@ func (k *Kernel) publishEnvironment(st bot.State, prev environment, full bool, b
 	if full {
 		// Only the current person's full profile is restored. Other people establish
 		// their baseline on their next appearance after their records are covered.
-		current := environmentGet[environmentSource](next, "source").Sender
+		current := environmentGet[environmentSource](next, "source").personID()
 		for key := range next.Fields {
 			if strings.HasPrefix(key, "person:") && (current == "" || key != "person:"+current) {
 				delete(next.Fields, key)
@@ -418,9 +438,10 @@ func (k *Kernel) receiveEnvironment(ev link.Event, seq int) error {
 	}
 	source := environmentSource{Name: ev.Source, Input: seq}
 	if personEvent(ev) {
-		source.Sender = ev.Sender
+		source.SenderID = ev.Sender
+		source.refreshName(k.Bot.Root)
 	}
-	if source.Name == previous.Name && source.Sender == previous.Sender {
+	if source.Name == previous.Name && source.personID() == previous.personID() {
 		source.Input = previous.Input
 	}
 	environmentSet(&next, "source", source)
@@ -550,7 +571,7 @@ func (r *turnRun) finishEnvironment(ctx context.Context, raw, fitted provider.Re
 		return fitted, err
 	}
 	if full {
-		current := environmentGet[environmentSource](next, "source").Sender
+		current := environmentGet[environmentSource](next, "source").personID()
 		for key := range next.Fields {
 			if strings.HasPrefix(key, "person:") && key != "person:"+current {
 				delete(next.Fields, key)
