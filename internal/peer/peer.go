@@ -267,36 +267,54 @@ func (b *Bus) CreateGroupForOwner(owner, name string, members []string) (Group, 
 	return b.CreateGroup(members[0], name, members)
 }
 
+// GroupPostResult records the successful writes and the stage reached by a post.
+type GroupPostResult struct {
+	GroupID       string
+	MessageID     string
+	Appended      bool
+	PostedMembers []string
+	FailedMember  string
+	Stage         string
+}
+
 // PostGroup appends to the group transcript and fans the text out to member inboxes.
 // hops is the count stored on each delivered event.
 func (b *Bus) PostGroup(kind, sender, groupID, text, chain string, hops int, now time.Time) error {
+	_, err := b.PostGroupWithResult(kind, sender, groupID, text, chain, hops, now)
+	return err
+}
+
+// PostGroupWithResult reports each successful write while preserving member order
+// and stopping at the first failure. hops is stored on each delivered event.
+func (b *Bus) PostGroupWithResult(kind, sender, groupID, text, chain string, hops int, now time.Time) (GroupPostResult, error) {
+	result := GroupPostResult{GroupID: groupID, PostedMembers: []string{}, Stage: "validation"}
 	if kind != link.KindPerson && kind != link.KindBot {
-		return errors.New("peer: bad sender kind")
+		return result, errors.New("peer: bad sender kind")
 	}
 	if !groupIDRe.MatchString(groupID) {
-		return errors.New("peer: bad group id")
+		return result, errors.New("peer: bad group id")
 	}
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return errors.New("peer: empty message")
+		return result, errors.New("peer: empty message")
 	}
 	if len(text) > MaxText {
-		return errors.New("peer: message too long")
+		return result, errors.New("peer: message too long")
 	}
 	if hops < 1 || hops > MaxHops {
-		return fmt.Errorf("peer: hop limit %d", MaxHops)
+		return result, fmt.Errorf("peer: hop limit %d", MaxHops)
 	}
 	g, err := b.LoadGroup(groupID)
 	if err != nil {
-		return err
+		return result, err
 	}
 	if kind == link.KindBot && !contains(g.Members, sender) {
-		return errors.New("peer: bot is not in the group")
+		return result, errors.New("peer: bot is not in the group")
 	}
 	if kind == link.KindPerson {
 		owned, err := OwnerBots(b.Root, sender)
 		if err != nil {
-			return err
+			return result, err
 		}
 		ownedNames := map[string]bool{}
 		for _, cfg := range owned {
@@ -304,45 +322,58 @@ func (b *Bus) PostGroup(kind, sender, groupID, text, chain string, hops int, now
 		}
 		for _, m := range g.Members {
 			if !ownedNames[m] {
-				return errors.New("peer: group is not yours")
+				return result, errors.New("peer: group is not yours")
 			}
 		}
 	}
 	if now.IsZero() {
 		now = b.now()
 	}
+	result.Stage = "rate"
 	if err := b.allow(kind+":"+sender+"->group:"+groupID, now); err != nil {
-		return err
+		return result, err
 	}
 	if chain == "" {
 		chain = newID("ch_")
 	}
 	line := Line{ID: newID("gm_"), Time: now.UTC(), Sender: sender, Kind: kind, Text: text}
+	result.Stage = "transcript"
 	if err := fsutil.AppendJSONL(b.transcript(groupID), line); err != nil {
-		return err
+		return result, err
 	}
+	result.Appended = true
+	result.MessageID = line.ID
 	body := fmt.Sprintf("<group id=%q from=%q kind=%q>\n%s\n</group>", g.ID, sender, kind, text)
 	for _, member := range g.Members {
 		if kind == link.KindBot && member == sender {
 			continue
 		}
+		result.Stage = "recipient_load"
 		target, err := bot.Load(b.Root, member)
 		if err != nil {
-			return err
+			result.FailedMember = member
+			return result, err
 		}
 		ev := link.NewEvent("group:"+g.ID, link.TypeMessage, body, sender, now)
 		ev.SenderKind = kind
 		ev.Hops = hops
 		ev.Chain = chain
+		result.Stage = "recipient_open"
 		box, err := inbox.Open(target.InboxPath())
 		if err != nil {
-			return err
+			result.FailedMember = member
+			return result, err
 		}
+		result.Stage = "recipient_post"
 		if err := box.Post(ev); err != nil {
-			return err
+			result.FailedMember = member
+			return result, err
 		}
+		result.PostedMembers = append(result.PostedMembers, member)
 	}
-	return nil
+	result.Stage = "complete"
+	result.FailedMember = ""
+	return result, nil
 }
 
 // LoadGroup reads one group.

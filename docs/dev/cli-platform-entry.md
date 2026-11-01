@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群四动作具体合同待单次窄核，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群四动作合同7bd单次SHAPE PASS，正在实施，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -591,9 +591,9 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 
 2d9具体合同单次窄核后，所有原source Bot的persona set self完整text/file/stdin、原WritePersona单atomic提交、下一真实wake正文/hash与SelfEdit实际Shell原调用审批已提炼至 [API](../API.md#自身职责运行时-cli)、[内核](../atlas/kernel.md#自身职责与原-selfedit-审批)、[ADR0054](../adr/0054-self-persona-runtime-cli.md)。260首file→nextwake与546完整边界的作者/独立精确phase、当前合入级别仅记 [MILESTONES](../MILESTONES.md)，不留完成合同重复副本。卡/role预算/fork/消息群/vault连接器/用户owner-SSE原边界保；后续remaining平台与Event/Link母路线按实际下一切片继续，不借persona扩展或提前抢步骤。
 
-## 批 chat-group：成员聊天群四动作（具体合同待窄核）
+## 批 chat-group：成员聊天群四动作（具体合同PASS，实施中）
 
-L档，基线TRUE mainbddaf2e43c61a1552260cfa2d82fb7b80a5a6cc3；Persona已合，四项各精确phase封存。这里只迁list_groups/get_group_message_history/create_group/post_group，新 [ADR0055](../adr/0055-chat-groups-runtime-cli.md) glob空后建Proposed，具体合同commit→24 SINGLE actualSHAPE前不产品/测试、不猜caller开红。旧Bot5/control4/profile5/persona4/routine6/skills/MCP证据复用，不另审母路线/全仓矩阵。
+L档，基线TRUE mainbddaf2e43c61a1552260cfa2d82fb7b80a5a6cc3；Persona已合，四项各精确phase封存。这里只迁list_groups/get_group_message_history/create_group/post_group，7bd具体合同已reviewer24 SINGLE ACTUAL CONCRETE SHAPE PASS，无结构阻断，[ADR0055](../adr/0055-chat-groups-runtime-cli.md)已Accepted，按同合同先交list/history首compiled再同cohesive create/post。原68e65d83/7bd/validationd1eb81da真实source Shell chat-group list --self --json unknown command红.93s/package2.182s已封，不重。旧Bot5/control4/profile5/persona4/routine6/skills/MCP证据复用，不另审母路线/全仓矩阵。
 
 ### Caller与命名边界
 

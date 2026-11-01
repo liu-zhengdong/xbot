@@ -1,14 +1,14 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0055 成员 Bot 的聊天群沿原 Bus 与真实调用链进入 CLI
 
 ## 问题与调用方
 
-本刀仅迁list_groups/get_group_message_history/create_group/post_group四原模型动作。现xbot group是terminalOwner侧栏Folders的list/create/rename/delete/set，不是g_聊天群；用户root独立message设计是主人HTTPsession/SSE，send是externalAgent Event，均只读避冲突。因此新namespace选 `"$XBOT_BIN" chat-group list|history|create|post --self ...`，不接管group/message/send，不加聊天群rename/editmember/delete。0055 glob空后建Proposed，精确caller/typed字段/阶段与验收见 [母dev](../dev/cli-platform-entry.md#批-chat-group成员聊天群四动作具体合同待窄核)。
+本刀仅迁list_groups/get_group_message_history/create_group/post_group四原模型动作。现xbot group是terminalOwner侧栏Folders的list/create/rename/delete/set，不是g_聊天群；用户root独立message设计是主人HTTPsession/SSE，send是externalAgent Event，均只读避冲突。因此新namespace选 `"$XBOT_BIN" chat-group list|history|create|post --self ...`，不接管group/message/send，不加聊天群rename/editmember/delete。0055 glob空后建Proposed，精确caller/typed字段/阶段与验收见 [母dev](../dev/cli-platform-entry.md#批-chat-group成员聊天群四动作具体合同pass实施中)。
 
 ## 两种实际结构与选择
 

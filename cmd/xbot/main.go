@@ -28,6 +28,11 @@ Usage:
   xbot [--root DIR] fork <src> <name> --role TEXT [--group NAME]
   xbot [--root DIR] delete <name>
   xbot [--root DIR] list
+  xbot chat-group --help
+  xbot [--root DIR] chat-group list --self [--json]
+  xbot [--root DIR] chat-group history GROUP_ID --self [--limit N] [--before-id ID] [--sender NAME] [--keyword TEXT] [--json]
+  xbot [--root DIR] chat-group create NAME --self --member BOT [--member BOT...] [--json]
+  xbot [--root DIR] chat-group post GROUP_ID --self (--text TEXT | --file FILE|-) [--json]
   xbot [--root DIR] group list
   xbot [--root DIR] group create <name>
   xbot [--root DIR] group rename <old> <new>
@@ -188,6 +193,9 @@ func run(argv []string) error {
 	}
 	if err != nil {
 		return err
+	}
+	if len(rest) > 0 && rest[0] == "chat-group" {
+		return cmdChatGroupRuntime(root, len(argv) > len(rest), rest[1:])
 	}
 	if len(rest) > 0 {
 		switch rest[0] {
