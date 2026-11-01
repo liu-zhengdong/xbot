@@ -46,6 +46,10 @@ func (k *Kernel) allowReadOnlyPlatform(interpreter string, args json.RawMessage)
 		parsed, err := cliops.ParseBotRuntime(argv)
 		return err == nil && (parsed.Help || parsed.Self && !parsed.Offline && (parsed.Action == "list" || parsed.Action == "info"))
 	}
+	if argv[0] == "bot-fork" {
+		parsed, err := cliops.ParseBotForkRuntime(argv[1:])
+		return err == nil && parsed.Help
+	}
 	if argv[0] == "peer-message" {
 		parsed, err := cliops.ParsePeerMessageRuntime(argv[1:])
 		return err == nil && parsed.Help

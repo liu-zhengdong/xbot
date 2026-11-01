@@ -2,7 +2,6 @@ package kernel
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -370,37 +369,4 @@ func splitBoundary(s string, n int) int {
 		return i
 	}
 	return end
-}
-
-type forkBotTool struct{ k *Kernel }
-
-func (forkBotTool) Name() string { return "fork_bot" }
-func (forkBotTool) Description() string {
-	return "Create a bot with its own role and an empty transcript. You write a handoff (project background, key decisions, context for that role) into its bot-scope memory. Person memory is not copied. It cannot read your transcript and will ask you with peer-message TARGET --self --text TEXT. Pass group to also create a group containing both of you."
-}
-func (forkBotTool) Parameters() any {
-	return schema(map[string]any{
-		"name":  stringProp("new bot name"),
-		"role":  stringProp("the new bot's role and persona"),
-		"group": stringProp("optional group name for both bots"),
-	}, []string{"name", "role"})
-}
-func (forkBotTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
-func (t forkBotTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		Name  string `json:"name"`
-		Role  string `json:"role"`
-		Group string `json:"group"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	res, err := t.k.Fork(ctx, ForkRequest{Name: in.Name, Role: in.Role, Group: in.Group})
-	if err != nil {
-		return "", err
-	}
-	if res.GroupID != "" {
-		return fmt.Sprintf("forked %s group %s", res.Name, res.GroupID), nil
-	}
-	return "forked " + res.Name, nil
 }

@@ -221,24 +221,24 @@ func TestReviewedToolHTTPReview(t *testing.T) {
 	}
 }
 
-// fakeNormalTool stands in for the live fork_bot tool. The central review
+// fakeNormalTool stands in for the live todo tool. The central review
 // policy must leave a known Normal tool free of confirmation cards.
 type fakeNormalTool struct{}
 
-func (fakeNormalTool) Name() string                                         { return "fork_bot" }
+func (fakeNormalTool) Name() string                                         { return "todo" }
 func (fakeNormalTool) Description() string                                  { return "" }
 func (fakeNormalTool) Parameters() any                                      { return map[string]any{} }
 func (fakeNormalTool) Confirm(json.RawMessage) (bool, string, error)        { return false, "", nil }
-func (fakeNormalTool) Run(context.Context, json.RawMessage) (string, error) { return "forked", nil }
+func (fakeNormalTool) Run(context.Context, json.RawMessage) (string, error) { return "saved", nil }
 
 func TestReviewedToolDoesNotForceNormalTool(t *testing.T) {
 	tool := fakeNormalTool{}
 	if !review.Known(tool.Name()) || review.ClassOf(tool.Name()) != review.Normal {
 		t.Fatalf("%s is not a known Normal tool", tool.Name())
 	}
-	need, _, err := reviewedTool{Tool: tool}.Confirm(json.RawMessage(`{"name":"bob","role":"Review changes."}`))
+	need, _, err := reviewedTool{Tool: tool}.Confirm(json.RawMessage(`{"items":[]}`))
 	if err != nil || need {
-		t.Fatalf("fork_bot need=%v err=%v", need, err)
+		t.Fatalf("todo need=%v err=%v", need, err)
 	}
 }
 
@@ -357,12 +357,12 @@ func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
 	}
 	for _, want := range []string{"sh", "read_file", "write_file", "edit_file", "web_fetch", "web_search", "view_image", "http_request", "list_secrets",
 		"links", "telegram_send", "lark_send", "code_start", "desktop_click", "browser_open",
-		"fork_bot", "recall_history"} {
+		"recall_history"} {
 		if !seen[want] {
 			t.Fatalf("expected tool %q was not registered", want)
 		}
 	}
-	for _, name := range []string{"message_bot", "list_groups", "get_group_message_history", "create_group", "post_group", "bot_propose_persona", "create_bot", "delete_bot", "list_bots", "bot_status"} {
+	for _, name := range []string{"fork_bot", "message_bot", "list_groups", "get_group_message_history", "create_group", "post_group", "bot_propose_persona", "create_bot", "delete_bot", "list_bots", "bot_status"} {
 		if seen[name] || review.Known(name) {
 			t.Fatalf("retired tool %s remains registered or classified", name)
 		}
