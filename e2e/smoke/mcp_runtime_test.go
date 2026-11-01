@@ -3,9 +3,12 @@
 package smoke
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -48,13 +51,72 @@ type mcpRuntimeValue struct {
 	Label   string `json:"label"`
 }
 
+type mcpRuntimeArtifact struct {
+	Type     string `json:"type"`
+	MIMEType string `json:"mime_type"`
+	File     string `json:"file"`
+	Access   string `json:"access"`
+}
+type mcpRuntimeContent struct {
+	Type, Text, Preview, URI, File, Access string
+	MIMEType                               string `json:"mime_type"`
+	ProjectionError                        string `json:"projection_error"`
+}
+type mcpRuntimeCLIReply struct {
+	Data             json.RawMessage     `json:"data"`
+	Content          []mcpRuntimeContent `json:"content"`
+	Raw              *mcpRuntimeArtifact `json:"raw"`
+	Structured       *mcpRuntimeArtifact `json:"structured_content"`
+	Artifact         *mcpRuntimeArtifact `json:"artifact"`
+	IsError          bool                `json:"is_error"`
+	Saved            bool                `json:"saved"`
+	ProjectionErrors []string            `json:"projection_errors"`
+}
+
+func mcpRuntimeJSON(t *testing.T, raw string) mcpRuntimeCLIReply {
+	t.Helper()
+	if len(raw) > 64<<10 {
+		t.Fatalf("MCP stdout exceeded 64KiB: %d bytes", len(raw))
+	}
+	var out mcpRuntimeCLIReply
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		t.Fatalf("MCP stdout must be one complete JSON reply: %v", err)
+	}
+	return out
+}
+func mcpRuntimeReply(t *testing.T, result string) mcpRuntimeCLIReply {
+	t.Helper()
+	if !strings.HasPrefix(result, "exit 0\n") {
+		t.Fatalf("runtime CLI Shell did not exit successfully: %s", result)
+	}
+	return mcpRuntimeJSON(t, commandOutput(result))
+}
+func mcpRuntimeReadArtifact(t *testing.T, srv *Server, artifact *mcpRuntimeArtifact) []byte {
+	t.Helper()
+	if artifact == nil || artifact.File == "" || artifact.Access != "local" || filepath.IsAbs(artifact.File) {
+		t.Fatalf("missing local workspace artifact: %+v", artifact)
+	}
+	path := filepath.Join(srv.Root, "work", "Worker", artifact.File)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("MCP artifact permissions: %v", info.Mode())
+	}
+	return raw
+}
+
 var mcpRuntimeResultRE = regexp.MustCompile(`RUNTIME_RESULT (\{[^\n]*\})`)
 
-func mcpRuntimeResult(t *testing.T, model *mcpRuntimeModel, cue string) mcpRuntimeValue {
+func mcpRuntimeCounter(t *testing.T, reply mcpRuntimeCLIReply) mcpRuntimeValue {
 	t.Helper()
-	for _, text := range model.results(cue) {
-		match := mcpRuntimeResultRE.FindStringSubmatch(text)
-		if len(match) == 2 {
+	for _, content := range reply.Content {
+		if match := mcpRuntimeResultRE.FindStringSubmatch(content.Text); len(match) == 2 {
 			var out mcpRuntimeValue
 			if err := json.Unmarshal([]byte(match[1]), &out); err != nil {
 				t.Fatal(err)
@@ -62,8 +124,13 @@ func mcpRuntimeResult(t *testing.T, model *mcpRuntimeModel, cue string) mcpRunti
 			return out
 		}
 	}
-	t.Fatalf("real MCP result absent for %s: %v", cue, model.results(cue))
+	t.Fatal("real remote counter absent from CLI projected content")
 	return mcpRuntimeValue{}
+}
+func mcpRuntimeResult(t *testing.T, model *mcpRuntimeModel, cue string) mcpRuntimeValue {
+	t.Helper()
+	results := model.results(cue)
+	return mcpRuntimeCounter(t, mcpRuntimeReply(t, results[len(results)-1]))
 }
 
 // Records are observed on disk, not injected through an internal Inbox or
@@ -90,28 +157,79 @@ func mcpRuntimeInbox(t *testing.T, srv *Server, bot string) []map[string]any {
 	return out
 }
 
-// The narrow 2b red starts with the one already specified runtime CLI entry.
-// It deliberately does not run the accepted 2a adapter cases or invent the
-// forthcoming discovery/result DTO shape. The full add-to-call path will use
-// the finalized CLI contract when that design has landed.
+// Full 2b path after the independently captured narrow list-entry red.
 func TestMCPRuntimeCLIEntry(t *testing.T) {
 	cliProfileIsolation(t)
+	peer := newMCPRuntimePeer(t)
 	model := newMCPRuntimeModel(t)
 	const cue = "MCP_RUNTIME_CLI_ENTRY"
-	model.add(cue, mcpRuntimeTool("sh", map[string]string{
-		"description": "List current Bot MCP configuration through the running binary",
-		"command":     `"$XBOT_BIN" mcp list --self --json`,
-	}))
+	model.add(cue,
+		mcpRuntimeCLI("add runtime-fixture --url "+shellQuote(peer.server.URL+"/cli-entry")),
+		mcpRuntimeCLI("list"),
+		mcpRuntimeCLI("tools runtime-fixture"),
+		mcpRuntimeCLI("describe runtime-fixture "+shellQuote(mcpRuntimeRawName)),
+		mcpRuntimeCLI("call runtime-fixture "+shellQuote(mcpRuntimeRawName)+" --args "+shellQuote(`{"label":"entry-first"}`)),
+		mcpRuntimeShell(`XBOT_BOT=deliberately-stale "$XBOT_BIN" mcp call runtime-fixture `+shellQuote(mcpRuntimeRawName)+` --args '{"label":"entry-second"}' --self --json`),
+		mcpRuntimeTool("tools", map[string]any{"action": "call", "id": "list_bots", "args": map[string]any{}}),
+	)
 	srv := Start(t, &Stub{srv: model.server})
 	srv.CreateBot("Worker", "Independent MCP runtime CLI entry acceptance.")
 	srv.Send("Worker", cue)
-	result := model.results(cue)[0]
-	if !strings.HasPrefix(result, "exit 0\n") {
-		t.Fatalf("runtime MCP CLI did not complete successfully in its real source Shell: %s", result)
+	results := model.results(cue)
+	added := mcpRuntimeReply(t, results[0])
+	var receipt struct{ Scope, Name, State string }
+	if err := json.Unmarshal(added.Data, &receipt); err != nil {
+		t.Fatal(err)
 	}
-	if !json.Valid([]byte(commandOutput(result))) {
-		t.Fatalf("MCP --json stdout is not one JSON document: %s", result)
+	if !added.Saved || receipt.Scope != "global" || receipt.Name != "runtime-fixture" || receipt.State != "configured" {
+		t.Fatalf("CLI add did not distinguish saved configuration from readiness: %s", added.Data)
 	}
+	var list struct {
+		Scope   string
+		Servers []struct {
+			Name, Source string
+			Runtime      struct{ State string }
+		}
+	}
+	if err := json.Unmarshal(mcpRuntimeReply(t, results[1]).Data, &list); err != nil {
+		t.Fatal(err)
+	}
+	if list.Scope != "global" || len(list.Servers) != 1 || list.Servers[0].Name != "runtime-fixture" || list.Servers[0].Source != "global" || list.Servers[0].Runtime.State == "" {
+		t.Fatalf("runtime CLI list metadata: %+v", list)
+	}
+	var tools struct {
+		Server string
+		Tools  []map[string]json.RawMessage
+	}
+	if err := json.Unmarshal(mcpRuntimeReply(t, results[2]).Data, &tools); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, tool := range tools.Tools {
+		if string(tool["name"]) == `"`+mcpRuntimeRawName+`"` {
+			found = true
+		}
+	}
+	if tools.Server != "runtime-fixture" || !found {
+		t.Fatal("CLI tools lost the exact remote name containing slash/dot")
+	}
+	var description map[string]json.RawMessage
+	if err := json.Unmarshal(mcpRuntimeReply(t, results[3]).Data, &description); err != nil {
+		t.Fatal(err)
+	}
+	if string(description["name"]) != `"`+mcpRuntimeRawName+`"` || string(description["x-independent-spec"]) != `"retained"` || !bytes.Contains(description["annotations"], []byte("x-independent-hint")) {
+		t.Fatal("describe discarded the exact name or unknown ToolSpec/annotation fields")
+	}
+	first := mcpRuntimeCounter(t, mcpRuntimeReply(t, results[4]))
+	second := mcpRuntimeCounter(t, mcpRuntimeReply(t, results[5]))
+	if first.Count != 1 || second.Count != 2 || first.Session != second.Session {
+		t.Fatalf("real CLI calls did not borrow one session: %+v %+v", first, second)
+	}
+	if !strings.Contains(results[6], "Worker") {
+		t.Fatal("non-MCP Tools call stopped working after MCP adapter retirement")
+	}
+	mcpRuntimeNoSchemas(t, model, cue, callerForeground)
+	t.Log("real source CLI add/list/tools/describe/exact-name call passed; diagnostic Bot name did not route self; non-MCP Tools call remains functional")
 }
 
 func TestMCPRuntimeOwner(t *testing.T) {
@@ -371,8 +489,12 @@ func TestMCPRuntimeCallsAndSourceLease(t *testing.T) {
 		t.Fatalf("slow-call proof invalid: elapsed=%s calls=%d", elapsed, peer.callCount("over-fifteen"))
 	}
 	finished := mcpRuntimeInspect(t, srv, model, "MCP_WEB_OUTPUT_SLOW", slowID, false)
-	if !strings.Contains(finished[0], slowID+" done") || !strings.Contains(finished[1], `"label":"over-fifteen"`) {
-		t.Fatalf("original job output unavailable from later web Kernel: %v", finished)
+	if !strings.Contains(finished[0], slowID+" done") {
+		t.Fatalf("original job state unavailable from later web Kernel: %v", finished)
+	}
+	actual := mcpRuntimeCounter(t, mcpRuntimeOutputReply(t, finished[1]))
+	if actual.Label != "over-fifteen" || actual.Count != 1 {
+		t.Fatalf("original CLI call result missing from later web output: %+v", actual)
 	}
 	mcpRuntimeOneJobEvent(t, srv, slowID)
 
@@ -534,11 +656,11 @@ func TestMCPRuntimeReconcile(t *testing.T) {
 	// No drain: old held action must terminate without releasing its gate.
 	mcpRuntimeWait(t, hot.canceled, 8*time.Second, "spec replacement waited for old action to drain")
 	mcpRuntimeClosed(t, peer, local.Session)
-	if job := mcpRuntimeJobEnded(t, srv, hotID, 8*time.Second); job["status"] != "failed" {
-		t.Fatalf("configuration-changed job did not fail explicitly: %v", job)
+	if job := mcpRuntimeJobEnded(t, srv, hotID, 8*time.Second); job["status"] != "done" && job["status"] != "failed" {
+		t.Fatalf("configuration-changed source Shell did not reach an original terminal job: %v", job)
 	}
 	unknown := strings.ToLower(strings.Join(mcpRuntimeInspect(t, srv, model, "MCP_SPEC_OLD_OUTPUT", hotID, false), "\n"))
-	if !strings.Contains(unknown, "configuration_changed") || !strings.Contains(unknown, "outcome_unknown") {
+	if !regexp.MustCompile(`(?m)^exit [1-9][0-9]*\n`).MatchString(unknown) || !strings.Contains(unknown, "configuration_changed") || !strings.Contains(unknown, "outcome_unknown") {
 		t.Fatalf("sent action did not report configuration change and unknown side effects: %s", unknown)
 	}
 	if peer.callCount("spec-changed") != 1 {
@@ -598,4 +720,322 @@ func TestMCPRuntimeReconcile(t *testing.T) {
 		t.Fatal("credential setting changes restarted a Bot that did not reference that key")
 	}
 	t.Log("same-spec and shadowed-global edits preserve sessions; invalid config preserves working session; hot replacement closes the old call once without retry; real secret POST/DELETE changes only referencing sessions")
+}
+
+func mcpRuntimeOutputReply(t *testing.T, text string) mcpRuntimeCLIReply {
+	t.Helper()
+	start := strings.Index(text, "{")
+	if start < 0 {
+		t.Fatal("original job output lacks the CLI JSON reply")
+	}
+	var out mcpRuntimeCLIReply
+	if err := json.NewDecoder(strings.NewReader(text[start:])).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+func mcpRuntimeNoSchemas(t *testing.T, model *mcpRuntimeModel, cue, caller string) {
+	t.Helper()
+	model.mu.Lock()
+	defer model.mu.Unlock()
+	script := model.scripts[cue]
+	if script.mcpSchema {
+		t.Fatal("actual provider tool parameters contain remote MCP schema")
+	}
+	if !script.callers[caller] || !script.declared["sh"] {
+		t.Fatalf("actual %s provider request missing for %s", caller, cue)
+	}
+	for name := range script.declared {
+		if name == "mcp" || strings.HasPrefix(name, "mcp_") || strings.HasPrefix(name, "mcp:") || name == mcpRuntimeRawName || name == "counter" || name == "held" || name == "mixed-result" || name == "remote-error" || name == "bad-image" {
+			t.Fatalf("actual provider request declared MCP schema %q", name)
+		}
+	}
+}
+
+func TestMCPRuntimeCLIBoundaries(t *testing.T) {
+	cliProfileIsolation(t)
+	clientHome := t.TempDir()
+	ghostRoot := filepath.Join(t.TempDir(), "not-created")
+	env := envWith(os.Environ(), "HOME="+clientHome, "XBOT_ROOT="+ghostRoot, "XBOT_ENDPOINT=")
+	out, diagnostic, err := mcpRuntimeExternal(t, env, "", "mcp", "--help")
+	if err != nil || !strings.Contains(out, "mcp") || diagnostic != "" {
+		t.Fatalf("offline help was not successful stdout help: err=%v stderr=%s", err, diagnostic)
+	}
+	for _, args := range [][]string{{"mcp", "list", "--self", "--json"}, {"mcp", "list", "--json"}} {
+		out, _, err = mcpRuntimeExternal(t, env, "", args...)
+		if err == nil || json.Valid([]byte(out)) {
+			t.Fatal("unavailable or unspecified runtime silently succeeded/fell back to files")
+		}
+	}
+	if _, err := os.Stat(ghostRoot); !os.IsNotExist(err) {
+		t.Fatal("online/help created the client root")
+	}
+	entries, err := os.ReadDir(clientHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatal("offline help/online failure initialized local credentials or default config")
+	}
+
+	peer := newMCPRuntimePeer(t)
+	model := newMCPRuntimeModel(t)
+	srv := Start(t, &Stub{srv: model.server})
+	srv.CreateBot("Worker", "Independent human MCP CLI and JSON boundary acceptance.")
+	mcpRuntimeAPI(t, srv, http.MethodPost, "/api/bots/Worker/mcp", map[string]string{"name": "runtime-fixture", "url": peer.server.URL + "/human"}, 200)
+	wrongRoot := t.TempDir()
+	humanEnv := envWith(srv.env, "HOME="+clientHome, "XBOT_ROOT="+ghostRoot, "XBOT_ENDPOINT=http://127.0.0.1:1", "XBOT_BOT=not-the-selected-Bot")
+	target := []string{"--http", srv.URL, "--bot", "Worker", "--json"}
+	args := append([]string{"mcp", "list"}, target...)
+	out, diagnostic, err = mcpRuntimeExternal(t, humanEnv, "", args...)
+	if err != nil {
+		t.Fatalf("explicit human dev instance was blocked by implicit client root/env: %s", diagnostic)
+	}
+	var list struct{ Scope string }
+	if err := json.Unmarshal(mcpRuntimeJSON(t, out).Data, &list); err != nil {
+		t.Fatal(err)
+	}
+	if list.Scope != "global" {
+		t.Fatal("human command did not reach selected instance")
+	}
+	wrongArgs := append([]string{"--root", wrongRoot}, args...)
+	out, diagnostic, err = mcpRuntimeExternal(t, humanEnv, "", wrongArgs...)
+	if err == nil || out != "" || strings.TrimSpace(diagnostic) == "" {
+		t.Fatal("explicit wrong human root was not rejected")
+	}
+	entries, err = os.ReadDir(wrongRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatal("wrong-root failure wrote local config")
+	}
+	if _, err := os.Stat(ghostRoot); !os.IsNotExist(err) {
+		t.Fatal("human explicit HTTP initialized an implicit root")
+	}
+
+	call := append([]string{"mcp", "call", "runtime-fixture", mcpRuntimeRawName}, target...)
+	stdin := `{"label":"stdin-number","integer":9007199254740993}`
+	out, diagnostic, err = mcpRuntimeExternal(t, humanEnv, stdin, append(append([]string(nil), call...), "--args-file", "-")...)
+	if err != nil {
+		t.Fatalf("real stdin JSON call failed: %s", diagnostic)
+	}
+	if mcpRuntimeCounter(t, mcpRuntimeJSON(t, out)).Label != "stdin-number" {
+		t.Fatal("stdin arguments did not reach remote tool")
+	}
+	peer.mu.Lock()
+	rawArgs := string(peer.arguments["stdin-number"])
+	peer.mu.Unlock()
+	if !strings.Contains(rawArgs, "9007199254740993") {
+		t.Fatal("CLI/HTTP/core changed the exact integer through float conversion")
+	}
+	file := filepath.Join(t.TempDir(), "args.json")
+	if err := os.WriteFile(file, []byte(`{"label":"file-args"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out, diagnostic, err = mcpRuntimeExternal(t, humanEnv, "", append(append([]string(nil), call...), "--args-file", file)...)
+	if err != nil || mcpRuntimeCounter(t, mcpRuntimeJSON(t, out)).Label != "file-args" {
+		t.Fatalf("real args-file call failed: %s", diagnostic)
+	}
+	validRPCs := peer.rpcCount()
+	for _, bad := range []struct {
+		flags []string
+		stdin string
+	}{
+		{[]string{"--args", "[]"}, ""},
+		{[]string{"--args", `{} {}`}, ""},
+		{[]string{"--args", "{}", "--args-file", "-"}, "{}"},
+		{[]string{"--args-file", "-"}, "null"},
+	} {
+		out, diagnostic, err = mcpRuntimeExternal(t, humanEnv, bad.stdin, append(append([]string(nil), call...), bad.flags...)...)
+		if err == nil || out != "" || strings.TrimSpace(diagnostic) == "" {
+			t.Fatal("invalid/ambiguous/non-object JSON did not fail before invocation")
+		}
+	}
+	if peer.rpcCount() != validRPCs || peer.callCount("") != 0 {
+		t.Fatal("invalid input reached tools/call")
+	}
+}
+
+func TestMCPRuntimeCLIResults(t *testing.T) {
+	cliProfileIsolation(t)
+	peer := newMCPRuntimePeer(t)
+	model := newMCPRuntimeModel(t)
+	const cue = "MCP_CLI_MIXED_RESULT"
+	model.add(cue, mcpRuntimeCLI(`call runtime-fixture mixed-result --args '{"label":"mixed"}'`))
+	srv := Start(t, &Stub{srv: model.server})
+	srv.CreateBot("Worker", "Independent MCP JSON projection and real artifact acceptance.")
+	mcpRuntimeAPI(t, srv, http.MethodPost, "/api/bots/Worker/mcp", map[string]string{"name": "runtime-fixture", "url": peer.server.URL + "/results"}, 200)
+	srv.Send("Worker", cue)
+	result := model.results(cue)[0]
+	reply := mcpRuntimeReply(t, result)
+	stdout := commandOutput(result)
+	if strings.Contains(stdout, base64.StdEncoding.EncodeToString(peer.image)) || strings.Contains(stdout, strings.Repeat("COMPLETE_TEXT_", 300)) {
+		t.Fatal("CLI printed image base64 or a large result instead of artifact references")
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(mcpRuntimeReadArtifact(t, srv, reply.Raw), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if string(raw["x-independent-raw"]) != `"RAW_EXTENSION_RETAINED"` {
+		t.Fatal("raw unknown result fields were discarded")
+	}
+	structured := mcpRuntimeReadArtifact(t, srv, reply.Structured)
+	if !json.Valid(structured) || !bytes.Contains(structured, []byte("STRUCTURED_RETAINED")) || !bytes.Contains(structured, []byte("9007199254740993")) {
+		t.Fatal("structured result was not preserved completely")
+	}
+	seen := map[string]bool{}
+	for _, part := range reply.Content {
+		seen[part.Type] = true
+		switch part.Type {
+		case "text":
+			if part.Text != "" || len(part.Preview) > 2048 {
+				t.Fatal("large text did not use a bounded preview")
+			}
+			file := mcpRuntimeReadArtifact(t, srv, &mcpRuntimeArtifact{File: part.File, Access: part.Access})
+			if string(file) != strings.Repeat("COMPLETE_TEXT_", 8000) {
+				t.Fatal("large text artifact was truncated")
+			}
+		case "image":
+			data := mcpRuntimeReadArtifact(t, srv, &mcpRuntimeArtifact{File: part.File, Access: part.Access})
+			config, format, err := image.DecodeConfig(bytes.NewReader(data))
+			if err != nil || format != "png" || config.Width != 4 || config.Height != 3 || part.MIMEType != "image/png" || !bytes.Equal(data, peer.image) {
+				t.Fatal("known image is not the actual decoded PNG artifact")
+			}
+		case "independent-unknown":
+			data := mcpRuntimeReadArtifact(t, srv, &mcpRuntimeArtifact{File: part.File, Access: part.Access})
+			if !json.Valid(data) || !bytes.Contains(data, []byte("UNKNOWN_BLOCK_RETAINED")) {
+				t.Fatal("unknown result block did not survive as full JSON")
+			}
+		case "resource_link":
+			if part.URI != peer.server.URL+"/resource-must-not-fetch" {
+				t.Fatal("resource link URI was discarded")
+			}
+		}
+	}
+	for _, kind := range []string{"text", "image", "independent-unknown", "resource_link"} {
+		if !seen[kind] {
+			t.Fatalf("projected content type %s was discarded", kind)
+		}
+	}
+	peer.mu.Lock()
+	fetches := peer.fetches
+	peer.mu.Unlock()
+	if fetches != 0 {
+		t.Fatal("resource_link was fetched")
+	}
+
+	human := func(tool string) (mcpRuntimeCLIReply, error) {
+		t.Helper()
+		out, diagnostic, err := mcpRuntimeExternal(t, srv.env, "", "mcp", "call", "runtime-fixture", tool, "--http", srv.URL, "--bot", "Worker", "--json")
+		if out == "" {
+			t.Fatalf("business error did not preserve JSON content: %s", diagnostic)
+		}
+		return mcpRuntimeJSON(t, out), err
+	}
+	failed, err := human("remote-error")
+	if err == nil || !failed.IsError || len(failed.Content) == 0 || failed.Content[0].Text != "REMOTE_ERROR_CONTENT_RETAINED" {
+		t.Fatal("isError did not return preserved content and a nonzero CLI exit")
+	}
+	if !bytes.Contains(mcpRuntimeReadArtifact(t, srv, failed.Raw), []byte("REMOTE_ERROR_CONTENT_RETAINED")) {
+		t.Fatal("isError lost the raw result")
+	}
+	bad, err := human("bad-image")
+	if err == nil || len(bad.ProjectionErrors) == 0 || len(bad.Content) == 0 || bad.Content[0].ProjectionError == "" {
+		t.Fatal("image projection failure was silent or reported successful exit")
+	}
+	original := mcpRuntimeReadArtifact(t, srv, &mcpRuntimeArtifact{File: bad.Content[0].File, Access: bad.Content[0].Access})
+	if !json.Valid(original) || !bytes.Contains(original, []byte("not-valid-base64")) {
+		t.Fatal("failed image projection discarded its original block")
+	}
+
+	// Metadata too large for stdout must retain complete schemas in a file.
+	oldSession := peer.firstSession()
+	spec, _ := json.Marshal(map[string]any{"servers": []any{map[string]string{"name": "runtime-fixture", "url": peer.server.URL + "/large-tools"}}})
+	mcpRuntimeReplace(t, filepath.Join(srv.Root, "bots", "Worker", "mcp.json"), spec)
+	mcpRuntimeClosed(t, peer, oldSession)
+	for _, command := range [][]string{{"tools", "runtime-fixture"}, {"describe", "runtime-fixture", mcpRuntimeRawName}} {
+		args := append([]string{"mcp"}, command...)
+		args = append(args, "--http", srv.URL, "--bot", "Worker", "--json")
+		out, diagnostic, err := mcpRuntimeExternal(t, srv.env, "", args...)
+		if err != nil {
+			t.Fatalf("large metadata CLI failed: %s", diagnostic)
+		}
+		metadata := mcpRuntimeJSON(t, out)
+		complete := mcpRuntimeReadArtifact(t, srv, metadata.Artifact)
+		if !json.Valid(complete) || !bytes.Contains(complete, []byte(strings.Repeat("COMPLETE_SCHEMA_", 6000))) || !bytes.Contains(complete, []byte(mcpRuntimeRawName)) || !bytes.Contains(complete, []byte("inputSchema")) {
+			t.Fatal("large tools/describe metadata did not preserve complete schema JSON")
+		}
+	}
+}
+
+func TestMCPRuntimeCLIResearch(t *testing.T) {
+	cliProfileIsolation(t)
+	peer := newMCPRuntimePeer(t)
+	model := newMCPRuntimeModel(t)
+	srv := Start(t, &Stub{srv: model.server})
+	srv.CreateBot("Worker", "Independent MCP research CLI acceptance.")
+	mcpRuntimeAPI(t, srv, http.MethodPost, "/api/bots/Worker/mcp", map[string]string{"name": "runtime-fixture", "url": peer.server.URL + "/research"}, 200)
+	model.add("MCP_CLI_MAIN_WARM", mcpRuntimeCall("counter", "main-warm")...)
+	srv.Send("Worker", "MCP_CLI_MAIN_WARM")
+	warm := mcpRuntimeResult(t, model, "MCP_CLI_MAIN_WARM")
+	sentinel := filepath.Join(srv.Root, "research-injection-must-not-run")
+	const child = "MCP_CLI_RESEARCH_A"
+	model.add(child,
+		mcpRuntimeCLI("list"), mcpRuntimeCLI("tools runtime-fixture"), mcpRuntimeCLI("describe runtime-fixture "+shellQuote(mcpRuntimeRawName)),
+		mcpRuntimeCLI("call runtime-fixture "+shellQuote(mcpRuntimeRawName)+` --readonly --args '{"label":"research-positive"}'`),
+		mcpRuntimeCLI(`call runtime-fixture held --readonly --args '{"label":"unhinted"}'`),
+		mcpRuntimeShell(`"$XBOT_BIN" mcp list --self --json; printf injected > `+shellQuote(sentinel)),
+	)
+	model.add("MCP_CLI_PARENT_PLAN", mcpRuntimeTool("dispatch", map[string]string{"type": "research", "task": child}))
+	srv.Send("Worker", "MCP_CLI_PARENT_PLAN")
+	WaitFor(t, 12*time.Second, "research real CLI steps", func() (bool, string) {
+		r := model.results(child)
+		return r[len(r)-1] != "", "child has not completed its CLI sequence"
+	})
+	results := model.results(child)
+	for _, result := range results[:4] {
+		mcpRuntimeReply(t, result)
+	}
+	read := mcpRuntimeCounter(t, mcpRuntimeReply(t, results[3]))
+	if read.Session != warm.Session || read.Count != warm.Count+1 {
+		t.Fatal("research CLI did not use the same Bot session")
+	}
+	rejected := strings.ToLower(results[4])
+	if !regexp.MustCompile(`^exit [1-9][0-9]*\n`).MatchString(results[4]) || peer.callCount("unhinted") != 0 || !(strings.Contains(rejected, "read") || strings.Contains(rejected, "hint") || strings.Contains(rejected, "只读")) {
+		t.Fatal("readonly call did not reject the exact false hint before RPC")
+	}
+	if _, err := os.Stat(sentinel); !os.IsNotExist(err) {
+		t.Fatal("research accepted a shell operator instead of one literal CLI call")
+	}
+	if strings.HasPrefix(results[5], "exit 0\n") {
+		t.Fatal("research operator command was reported successful")
+	}
+	mcpRuntimeNoSchemas(t, model, "MCP_CLI_PARENT_PLAN", callerForeground)
+	mcpRuntimeNoSchemas(t, model, child, callerSubagent)
+
+	// Hold the same session's actual discovery request, replace its spec,
+	// then require zero call RPC on both the old and new session.
+	beforeSwapRPCs := peer.rpcCount()
+	listGate := peer.gate("readonly-list", 0)
+	defer listGate.allow()
+	path := filepath.Join(srv.Root, "bots", "Worker", "mcp.json")
+	replace := func(endpoint string) {
+		t.Helper()
+		raw, _ := json.Marshal(map[string]any{"servers": []any{map[string]string{"name": "runtime-fixture", "url": peer.server.URL + endpoint}}})
+		mcpRuntimeReplace(t, path, raw)
+	}
+	replace("/hint-check")
+	const changedChild = "MCP_CLI_RESEARCH_B"
+	model.add(changedChild, mcpRuntimeCLI("call runtime-fixture "+shellQuote(mcpRuntimeRawName)+` --readonly --args '{"label":"readonly-swap"}'`))
+	model.add("MCP_CLI_PARENT_SWAP", mcpRuntimeTool("dispatch", map[string]string{"type": "research", "task": changedChild}))
+	srv.Send("Worker", "MCP_CLI_PARENT_SWAP")
+	mcpRuntimeWait(t, listGate.entered, 10*time.Second, "readonly did not inspect its actual session tool list")
+	replace("/hint-replacement")
+	mcpRuntimeWait(t, listGate.canceled, 8*time.Second, "spec change did not stop the old readonly discovery")
+	WaitFor(t, 10*time.Second, "readonly CLI observes spec-change failure", func() (bool, string) { return model.results(changedChild)[0] != "", "child CLI still running" })
+	if strings.HasPrefix(model.results(changedChild)[0], "exit 0\n") || peer.rpcCount() != beforeSwapRPCs || peer.callCount("readonly-swap") != 0 {
+		t.Fatal("readonly discovery and call were routed to different sessions after replacement")
+	}
+	mcpRuntimeNoSchemas(t, model, changedChild, callerSubagent)
 }
