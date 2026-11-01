@@ -26,18 +26,19 @@ type mcpRuntimePeer struct {
 }
 
 type mcpRuntimeSession struct {
-	id, path string
-	count    int
-	notes    chan string
-	closed   chan struct{}
+	id, path   string
+	credential string // fixture-only; never serialized or printed
+	count      int
+	notes      chan string
+	closed     chan struct{}
 }
 
 type mcpRuntimeGate struct {
-	entered, release, canceled, finished chan struct{}
-	once                                 sync.Once
-	minimum                              time.Duration
-	endpoint                             string
-	started                              time.Time
+	entered, release, canceled, finished    chan struct{}
+	once, enterOnce, cancelOnce, finishOnce sync.Once
+	minimum                                 time.Duration
+	endpoint                                string
+	started                                 time.Time
 }
 
 func newMCPRuntimePeer(t *testing.T) *mcpRuntimePeer {
@@ -58,17 +59,19 @@ func (p *mcpRuntimePeer) gate(label string, minimum time.Duration) *mcpRuntimeGa
 func (g *mcpRuntimeGate) allow() { g.once.Do(func() { close(g.release) }) }
 
 func (p *mcpRuntimePeer) waitGate(w http.ResponseWriter, r *http.Request, g *mcpRuntimeGate) bool {
-	defer close(g.finished)
-	p.mu.Lock()
-	g.started, g.endpoint = time.Now(), r.URL.Query().Get("endpoint")
-	p.mu.Unlock()
-	close(g.entered)
+	defer g.finishOnce.Do(func() { close(g.finished) })
+	g.enterOnce.Do(func() {
+		p.mu.Lock()
+		g.started, g.endpoint = time.Now(), r.URL.Query().Get("endpoint")
+		p.mu.Unlock()
+		close(g.entered)
+	})
 	timer := time.NewTimer(g.minimum)
 	defer timer.Stop()
 	select {
 	case <-timer.C:
 	case <-r.Context().Done():
-		close(g.canceled)
+		g.cancelOnce.Do(func() { close(g.canceled) })
 		return false
 	case <-p.stopping:
 		return false
@@ -77,7 +80,7 @@ func (p *mcpRuntimePeer) waitGate(w http.ResponseWriter, r *http.Request, g *mcp
 	case <-g.release:
 		return true
 	case <-r.Context().Done():
-		close(g.canceled)
+		g.cancelOnce.Do(func() { close(g.canceled) })
 		return false
 	case <-p.stopping:
 		return false
@@ -151,7 +154,7 @@ func (p *mcpRuntimePeer) handle(w http.ResponseWriter, r *http.Request) {
 	case "initialize":
 		p.mu.Lock()
 		id = fmt.Sprintf("%s-%d", strings.Trim(r.URL.Path, "/"), len(p.sessions)+1)
-		session = &mcpRuntimeSession{id: id, path: r.URL.Path, notes: make(chan string, 16), closed: make(chan struct{})}
+		session = &mcpRuntimeSession{id: id, path: r.URL.Path, credential: r.Header.Get("MCP_RUNTIME_TOKEN"), notes: make(chan string, 16), closed: make(chan struct{})}
 		p.sessions[id] = session
 		p.mu.Unlock()
 		w.Header().Set("Mcp-Session-Id", id)
@@ -196,6 +199,19 @@ func (p *mcpRuntimePeer) note(t *testing.T, id, text string) {
 		t.Fatalf("no session %q", id)
 	}
 	s.notes <- text
+}
+func (p *mcpRuntimePeer) session(id string) *mcpRuntimeSession {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.sessions[id]
+}
+func (p *mcpRuntimePeer) firstSession() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for id := range p.sessions {
+		return id
+	}
+	return ""
 }
 func (p *mcpRuntimePeer) callCount(label string) int {
 	p.mu.Lock()
