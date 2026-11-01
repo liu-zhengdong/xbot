@@ -210,7 +210,12 @@ func cliFullAbsent(t *testing.T, root, name string) {
 	t.Helper()
 	for _, path := range []string{filepath.Join(root, "bots", name), filepath.Join(root, "work", name)} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
-			t.Fatalf("old runtime directory reappeared: %s (%v)", path, err)
+			entries, _ := os.ReadDir(path)
+			var names []string
+			for _, entry := range entries[:min(len(entries), 16)] {
+				names = append(names, entry.Name())
+			}
+			t.Fatalf("old runtime directory reappeared: %s (%v); first entries=%v", path, err, names)
 		}
 	}
 }
