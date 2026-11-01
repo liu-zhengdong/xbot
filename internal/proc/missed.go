@@ -22,18 +22,36 @@ const watermarkEvery = 15 * time.Second
 
 // NoticeMissed posts one summary of skipped slots and advances the shared watermark.
 func NoticeMissed(tm *link.Timer, post func(link.Event) error, now time.Time) error {
-	dir := filepath.Dir(tm.Dir)
-	path := filepath.Join(dir, "timer-watermark")
+	read := func() (wm time.Time, ok bool, err error) {
+		err = withWatermarkIO(tm, func(dir string) error {
+			wm, ok, err = readWatermark(filepath.Join(dir, "timer-watermark"))
+			return err
+		})
+		return
+	}
 	now = now.UTC()
-	if wm, ok, err := readWatermark(path); err == nil && ok && !now.Before(wm) && now.Sub(wm) < watermarkEvery {
+	if wm, ok, err := read(); err == nil && ok && !now.Before(wm) && now.Sub(wm) < watermarkEvery {
 		return nil
 	}
-	lock, err := fsutil.Lock(filepath.Join(dir, "timer-watermark.lock"))
+	// The coordination inode follows a move. Open it on the current route,
+	// then wait/hold flock outside route while listing and posting notices.
+	var lock *os.File
+	err := withWatermarkIO(tm, func(dir string) error {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return err
+		}
+		var err error
+		lock, err = os.OpenFile(filepath.Join(dir, "timer-watermark.lock"), os.O_CREATE|os.O_RDWR, 0600)
+		return err
+	})
 	if err != nil {
 		return err
 	}
-	defer lock.Release()
-	wm, ok, err := readWatermark(path)
+	defer lock.Close()
+	if err := fsutil.LockFile(lock, true, true); err != nil {
+		return err
+	}
+	wm, ok, err := read()
 	if err != nil {
 		return err
 	}
@@ -55,7 +73,14 @@ func NoticeMissed(tm *link.Timer, post func(link.Event) error, now time.Time) er
 			}
 		}
 	}
-	return writeWatermark(path, now)
+	return withWatermarkIO(tm, func(dir string) error { return writeWatermark(filepath.Join(dir, "timer-watermark"), now) })
+}
+
+func withWatermarkIO(tm *link.Timer, fn func(string) error) error {
+	if tm.WithDirectoryIO == nil {
+		return fn(filepath.Dir(tm.Dir))
+	}
+	return tm.WithDirectoryIO(func(dir string) error { return fn(filepath.Dir(dir)) })
 }
 
 func routineName(name string) string {

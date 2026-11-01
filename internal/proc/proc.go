@@ -9,7 +9,9 @@ import (
 	"errors"
 	"time"
 
+	"xbot/internal/bot"
 	"xbot/internal/inbound"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 )
@@ -65,10 +67,8 @@ func Run(ctx context.Context, cfg Config) error {
 		if err := ctx.Err(); err != nil {
 			return nil
 		}
-		if cfg.K.Inbox != nil {
-			if err := cfg.K.Inbox.Reload(); err != nil {
-				return err
-			}
+		if err := reloadInbox(cfg.K); err != nil {
+			return err
 		}
 		if !cfg.SkipDeliver {
 			if err := DeliverDue(cfg.K, now()); err != nil {
@@ -87,11 +87,9 @@ func Run(ctx context.Context, cfg Config) error {
 			if err != nil {
 				return err
 			}
-			if cfg.K.Inbox != nil {
-				if err := cfg.K.Inbox.Reload(); err != nil {
-					_ = lock.Release()
-					return err
-				}
+			if err := reloadInbox(cfg.K); err != nil {
+				_ = lock.Release()
+				return err
 			}
 			ev, ok = head(cfg.K)
 			if !ok {
@@ -99,11 +97,9 @@ func Run(ctx context.Context, cfg Config) error {
 				continue
 			}
 			handleErr := cfg.K.Handle(ctx, ev)
-			if cfg.K.Inbox != nil {
-				if err := cfg.K.Inbox.Ack(ev.ID); err != nil {
-					_ = lock.Release()
-					return err
-				}
+			if err := ackInbox(cfg.K, ev.ID); err != nil {
+				_ = lock.Release()
+				return err
 			}
 			if cfg.After != nil {
 				cfg.After(ev, handleErr)
@@ -130,9 +126,7 @@ func Run(ctx context.Context, cfg Config) error {
 			lines = cfg.Lines
 		}
 		var wake <-chan struct{}
-		if cfg.K.Inbox != nil {
-			wake = cfg.K.Inbox.Wait()
-		}
+		_ = withInboxIO(cfg.K, func(box *inbox.Inbox) error { wake = box.Wait(); return nil })
 		select {
 		case <-ctx.Done():
 			return nil
@@ -156,21 +150,42 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 }
 
-func head(k *kernel.Kernel) (link.Event, bool) {
-	if k.Inbox == nil {
-		return link.Event{}, false
+// Select the current Inbox for each short operation. No Handle, delivery
+// callback, or channel wait runs under the resource route.
+func withInboxIO(k *kernel.Kernel, fn func(*inbox.Inbox) error) error {
+	if k.Resources != nil {
+		return k.Resources.WithCurrentIO(func(_ *bot.Bot, box *inbox.Inbox) error { return fn(box) })
 	}
-	return k.Inbox.Head()
+	if k.Inbox == nil {
+		return nil
+	}
+	return fn(k.Inbox)
+}
+
+func reloadInbox(k *kernel.Kernel) error {
+	return withInboxIO(k, func(box *inbox.Inbox) error { return box.Reload() })
+}
+
+func ackInbox(k *kernel.Kernel, id string) error {
+	return withInboxIO(k, func(box *inbox.Inbox) error { return box.Ack(id) })
+}
+
+func head(k *kernel.Kernel) (ev link.Event, ok bool) {
+	_ = withInboxIO(k, func(box *inbox.Inbox) error { ev, ok = box.Head(); return nil })
+	return
 }
 
 // DeliverDue posts timer events that are due. It does not handle them.
 // A repeated slot is one event id, so a second poster does not double-wake.
 func DeliverDue(k *kernel.Kernel, now time.Time) error {
-	if k == nil || k.Inbox == nil {
+	if k == nil || (k.Resources == nil && k.Inbox == nil) {
 		return nil
 	}
 	if now.IsZero() {
 		now = time.Now()
+	}
+	post := func(ev link.Event) error {
+		return withInboxIO(k, func(box *inbox.Inbox) error { return box.Post(ev) })
 	}
 	for _, l := range k.Links {
 		tm, ok := l.(*link.Timer)
@@ -179,13 +194,13 @@ func DeliverDue(k *kernel.Kernel, now time.Time) error {
 		}
 		// Best effort: a failed notice leaves the watermark for the next poll to
 		// retry, and Expire waits so the retry still sees the missed one-shot.
-		noticeErr := NoticeMissed(tm, k.Inbox.Post, now)
+		noticeErr := NoticeMissed(tm, post, now)
 		evs, err := tm.Due(now)
 		if err != nil {
 			return err
 		}
 		for _, ev := range evs {
-			if err := tm.Deliver(context.Background(), ev, k.Inbox.Post); err != nil {
+			if err := tm.Deliver(context.Background(), ev, post); err != nil {
 				return err
 			}
 		}
@@ -201,22 +216,22 @@ func DeliverDue(k *kernel.Kernel, now time.Time) error {
 // Drain handles every pending event. The caller must hold the handle lock.
 // A handle error is acked, then returned, so a poison event is not retried forever.
 func Drain(ctx context.Context, k *kernel.Kernel) error {
-	if k == nil || k.Inbox == nil {
+	if k == nil || (k.Resources == nil && k.Inbox == nil) {
 		return nil
 	}
-	if err := k.Inbox.Reload(); err != nil {
+	if err := reloadInbox(k); err != nil {
 		return err
 	}
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		ev, ok := k.Inbox.Head()
+		ev, ok := head(k)
 		if !ok {
 			return nil
 		}
 		handleErr := k.Handle(ctx, ev)
-		if err := k.Inbox.Ack(ev.ID); err != nil {
+		if err := ackInbox(k, ev.ID); err != nil {
 			return err
 		}
 		if handleErr != nil {
