@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -36,7 +37,12 @@ func (k *Kernel) closeDangling(reason string, skipRunning bool) error {
 	if reason == "" {
 		reason = DangleInterrupt
 	}
-	open, err := k.Bot.OpenTools()
+	var open []bot.OpenTool
+	err := k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		var err error
+		open, err = current.OpenTools()
+		return err
+	})
 	if err != nil || len(open) == 0 {
 		return err
 	}

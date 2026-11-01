@@ -7,9 +7,12 @@ package proc
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/fsutil"
 	"xbot/internal/inbound"
 	"xbot/internal/inbox"
 	"xbot/internal/kernel"
@@ -83,28 +86,53 @@ func Run(ctx context.Context, cfg Config) error {
 			if cfg.K.Bot == nil {
 				return errors.New("proc: nil bot")
 			}
-			lock, err := cfg.K.Bot.LockHandle()
-			if err != nil {
-				return err
+			var release func() error
+			if r := cfg.K.Resources; r != nil {
+				var file *os.File
+				err := r.WithCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+					path := filepath.Join(bot.Dir(current.Root, current.Name()), "handle.lock")
+					if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+						return err
+					}
+					var err error
+					file, err = os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+					return err
+				})
+				if err != nil {
+					return err
+				}
+				// An open coordination inode follows rename; waiting and Handle
+				// must not keep the resource route locked.
+				if err := fsutil.LockFile(file, true, true); err != nil {
+					_ = file.Close()
+					return err
+				}
+				release = file.Close
+			} else {
+				lock, err := cfg.K.Bot.LockHandle()
+				if err != nil {
+					return err
+				}
+				release = lock.Release
 			}
 			if err := reloadInbox(cfg.K); err != nil {
-				_ = lock.Release()
+				_ = release()
 				return err
 			}
 			ev, ok = head(cfg.K)
 			if !ok {
-				_ = lock.Release()
+				_ = release()
 				continue
 			}
 			handleErr := cfg.K.Handle(ctx, ev)
 			if err := ackInbox(cfg.K, ev.ID); err != nil {
-				_ = lock.Release()
+				_ = release()
 				return err
 			}
 			if cfg.After != nil {
 				cfg.After(ev, handleErr)
 			}
-			_ = lock.Release()
+			_ = release()
 			if handleErr != nil && errors.Is(handleErr, context.Canceled) {
 				return nil
 			}

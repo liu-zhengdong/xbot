@@ -81,14 +81,21 @@ func TestProcRetainedInboxFollowsHandleRename(t *testing.T) {
 			} else {
 				runCtx, stop := context.WithCancel(ctx)
 				defer stop()
-				handled := false
-				err := Run(runCtx, Config{K: k, SkipDeliver: true, After: func(_ link.Event, err error) {
+				handled := 0
+				err := Run(runCtx, Config{K: k, SkipDeliver: true, After: func(ev link.Event, err error) {
 					if err != nil {
 						t.Error(err)
 					}
-					handled = true
-				}, Idle: func() {
-					if handled {
+					handled++
+					if handled == 1 {
+						if err := DeliverDue(k, at); err != nil {
+							t.Error(err)
+							stop()
+						}
+					} else {
+						if ev.ID == seed.ID || ev.Source != link.NameTimer {
+							t.Error("next timer event not handled", ev.ID)
+						}
 						stop()
 					}
 				}})
@@ -100,14 +107,19 @@ func TestProcRetainedInboxFollowsHandleRename(t *testing.T) {
 				t.Fatal("fixture did not retain the original Kernel handles")
 			}
 			if _, err := os.Stat(bot.Dir(root, "before")); !os.IsNotExist(err) {
-				t.Fatal("proc ack/reload revived the old Inbox directory", err)
+				entries, readErr := os.ReadDir(bot.Dir(root, "before"))
+				t.Fatalf("proc handling revived the old directory: entries=%v stat=%v read=%v", entries, err, readErr)
 			}
 			// A second drain must reload the moved log and observe its actual ack.
 			if err := Drain(ctx, k); err != nil {
 				t.Fatal(err)
 			}
-			if model.calls != 1 {
-				t.Fatal("acked event replayed after rename", model.calls)
+			wantCalls := 1
+			if mode == "run" {
+				wantCalls = 2
+			}
+			if model.calls != wantCalls {
+				t.Fatal("unexpected handled events after rename", model.calls)
 			}
 			current, err := resources.CurrentBot()
 			if err != nil {
@@ -125,7 +137,11 @@ func TestProcRetainedInboxFollowsHandleRename(t *testing.T) {
 				t.Fatal(err)
 			}
 			pending := box.Pending()
-			if len(pending) != 1 || pending[0].Source != link.NameTimer {
+			if mode == "run" {
+				if len(pending) != 0 {
+					t.Fatal("handled timer was not acked", pending)
+				}
+			} else if len(pending) != 1 || pending[0].Source != link.NameTimer {
 				t.Fatal("timer post missed current Inbox", pending)
 			}
 			if _, err := os.Stat(bot.Dir(root, "before")); !os.IsNotExist(err) {
