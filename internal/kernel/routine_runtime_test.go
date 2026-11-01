@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -209,7 +210,7 @@ func TestRuntimeRoutinePartialAndUnavailable(t *testing.T) {
 			t.Fatalf("partial delete %s: %+v %v", id, reply, err)
 		}
 	}
-	missing := (&Kernel{Bot: b}).RoutineHandlers()
+	missing := (&Kernel{}).RoutineHandlers()
 	listed, err := missing.List(context.Background())
 	if err == nil || listed.Error != "timer: link is not mounted" {
 		t.Fatalf("missing timer list: %+v %v", listed, err)
@@ -228,6 +229,59 @@ func TestRuntimeRoutinePartialAndUnavailable(t *testing.T) {
 			t.Fatalf("missing timer write: %+v %v", reply, err)
 		}
 	}
+}
+
+func TestRuntimeRoutineHumanListBudgetArtifact(t *testing.T) {
+	b := testBot(t, link.NameTimer)
+	tm := &link.Timer{Dir: b.RoutineDir()}
+	k := &Kernel{Bot: b, Links: []link.Link{tm}}
+	const count = 300
+	const at = "2026-11-02T00:00:00Z"
+	views := make([]cliops.RoutineView, 0, count)
+	var human strings.Builder
+	fmt.Fprintf(&human, "count: %d\n", count)
+	for i := 0; i < count; i++ {
+		id := fmt.Sprintf("once%03d", i)
+		if err := tm.Save(link.Routine{ID: id, Prompt: "p", At: at, Enabled: false}); err != nil {
+			t.Fatal(err)
+		}
+		views = append(views, cliops.RoutineView{ID: id, Prompt: "p", At: at, Enabled: false, Skills: []string{}})
+		fmt.Fprintf(&human, "id: %s\nname: \nprompt: p\nprecheck: \nskills: []\ncron: \nat: %s\nenabled: false\nlast_slot: \nzone: \n", id, at)
+	}
+	compact, err := json.Marshal(cliops.RoutineListReply{Routines: &views, Count: count})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compact)+1 >= tools.DefaultShellOutputBytes || human.Len() <= tools.DefaultShellOutputBytes || human.Len() >= cliops.RoutineMaxReply {
+		t.Fatalf("fixture must fit compact JSON but overflow human Shell output: json=%d human=%d", len(compact)+1, human.Len())
+	}
+	if formatted := cliops.FormatRoutineList(cliops.RoutineListReply{Routines: &views, Count: count}); formatted != human.String() {
+		t.Fatal("shared formatter changed the complete human list output")
+	}
+	listed, err := k.RoutineHandlers().List(context.Background())
+	if err != nil || listed.File == "" || listed.Routines != nil || listed.Count != count || listed.Access != "local" {
+		t.Fatalf("human output requires complete artifact: file=%q inline=%t count=%d json=%d human=%d error=%v", listed.File, listed.Routines != nil, listed.Count, len(compact)+1, human.Len(), err)
+	}
+	metadata, err := json.Marshal(listed)
+	formatted := cliops.FormatRoutineList(listed)
+	wantReference := fmt.Sprintf("count: %d\n%s (access: local, bytes: %d)\n", count, listed.File, listed.Bytes)
+	if err != nil || len(metadata)+1 > tools.DefaultShellOutputBytes || len(formatted) > tools.DefaultShellOutputBytes || formatted != wantReference {
+		t.Fatalf("artifact metadata must fit both formats and retain the full reference: json=%d human=%q error=%v", len(metadata)+1, formatted, err)
+	}
+	raw, err := os.ReadFile(filepath.Join(work.BotDir(b.Root, b.Name()), filepath.FromSlash(listed.File)))
+	if err != nil || int64(len(raw)) != listed.Bytes {
+		t.Fatalf("full artifact bytes=%d declared=%d error=%v", len(raw), listed.Bytes, err)
+	}
+	var full cliops.RoutineListReply
+	if err := json.Unmarshal(raw, &full); err != nil || full.Count != count || full.Routines == nil || len(*full.Routines) != count {
+		t.Fatalf("full artifact count/records lost: count=%d error=%v", full.Count, err)
+	}
+	for i, view := range *full.Routines {
+		if view.ID != views[i].ID || view.Prompt != "p" || view.At != at || view.Enabled || view.Name != "" || view.Precheck != "" || view.Cron != "" || view.Zone != "" || view.LastSlot != "" || len(view.Skills) != 0 {
+			t.Fatalf("artifact record %d lost fields: %+v", i, view)
+		}
+	}
+	t.Logf("compact JSON=%d human=%d reference=%d artifact=%d records=%d", len(compact)+1, human.Len(), len(formatted), len(raw), full.Count)
 }
 
 func TestRuntimeRoutinePrecheckNeedsOriginalSource(t *testing.T) {

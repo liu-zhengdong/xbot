@@ -157,7 +157,8 @@ func (k *Kernel) RoutineHandlers() *cliops.RoutineHandlers {
 				return fail(err)
 			}
 			raw = append(raw, '\n')
-			if len(raw) <= min(cliops.RoutineMaxReply, tools.DefaultShellOutputBytes) {
+			limit := min(cliops.RoutineMaxReply, tools.DefaultShellOutputBytes)
+			if len(raw) <= limit && len(cliops.FormatRoutineList(reply)) <= limit {
 				return reply, nil
 			}
 			if len(raw) > work.ResultMaxBytes {
@@ -169,7 +170,7 @@ func (k *Kernel) RoutineHandlers() *cliops.RoutineHandlers {
 			if err != nil {
 				return fail(err)
 			}
-			if len(metadata)+1 > min(cliops.RoutineMaxReply, tools.DefaultShellOutputBytes) {
+			if len(metadata)+1 > limit || len(cliops.FormatRoutineList(reply)) > limit {
 				return fail(errors.New("routine: metadata exceeds response budget"))
 			}
 			// Timer.List has released its route before artifact workspace selection.

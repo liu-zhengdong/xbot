@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"xbot/internal/cliops"
+	"xbot/internal/tools"
 )
 
 const routineUsage = `Usage: xbot [--root DIR] routine ACTION
@@ -108,19 +109,7 @@ func runRoutineRuntime(ctx context.Context, rawRoot string, rootExplicit bool, a
 		}
 		result, operationErr = reply, err
 		if !command.JSON {
-			fmt.Fprintf(&text, "count: %d\n", reply.Count)
-			if reply.Routines != nil {
-				for _, routine := range *reply.Routines {
-					skills, _ := json.Marshal(routine.Skills)
-					fmt.Fprintf(&text, "id: %s\nname: %s\nprompt: %s\nprecheck: %s\nskills: %s\ncron: %s\nat: %s\nenabled: %t\nlast_slot: %s\nzone: %s\n", routine.ID, routine.Name, routine.Prompt, routine.Precheck, skills, routine.Cron, routine.At, routine.Enabled, routine.LastSlot, routine.Zone)
-				}
-			}
-			if reply.File != "" {
-				fmt.Fprintf(&text, "%s (access: %s, bytes: %d)\n", reply.File, reply.Access, reply.Bytes)
-			}
-			if reply.Error != "" {
-				fmt.Fprintf(&text, "error: %s\n", reply.Error)
-			}
+			text.WriteString(cliops.FormatRoutineList(reply))
 		}
 	} else {
 		var reply cliops.RoutineWriteReply
@@ -163,6 +152,9 @@ func runRoutineRuntime(ctx context.Context, rawRoot string, rootExplicit bool, a
 		raw = append(raw, '\n')
 	} else {
 		raw = text.Bytes()
+		if command.Action == "list" && len(raw) > min(cliops.RoutineMaxReply, tools.DefaultShellOutputBytes) {
+			return errors.New("routine: human list exceeds Shell output budget")
+		}
 		if len(raw) > cliops.RoutineMaxReply {
 			return errors.New("routine: runtime result exceeds 64 KiB output budget")
 		}

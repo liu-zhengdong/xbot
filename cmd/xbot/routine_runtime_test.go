@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"xbot/internal/cliops"
+	"xbot/internal/tools"
 )
 
 func TestRoutineRuntimeCLIEarlyDispatch(t *testing.T) {
@@ -121,6 +122,26 @@ func TestRoutineRuntimeCLIRequestsAndPartial(t *testing.T) {
 	out.Reset()
 	if err := runRoutineRuntime(context.Background(), t.TempDir(), true, []string{"list", "--self"}, nil, &out); err == nil || len(calls) != 4 || out.Len() != 0 {
 		t.Fatalf("mismatched root reached runtime: requests=%d stdout=%s error=%v", len(calls), out.String(), err)
+	}
+}
+
+func TestRoutineRuntimeCLIHumanListShellBudget(t *testing.T) {
+	t.Setenv("XBOT_ROOT", t.TempDir())
+	views := make([]cliops.RoutineView, 300)
+	for i := range views {
+		views[i] = cliops.RoutineView{ID: "once", Prompt: "p", At: "2026-11-02T00:00:00Z", Enabled: false}
+	}
+	reply := cliops.RoutineListReply{Routines: &views, Count: len(views)}
+	compact, _ := json.Marshal(reply)
+	if len(compact)+1 >= tools.DefaultShellOutputBytes {
+		t.Fatalf("compact fixture must fit Shell output: %d", len(compact)+1)
+	}
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(compact) }))
+	defer source.Close()
+	t.Setenv("XBOT_ENDPOINT", source.URL)
+	var out bytes.Buffer
+	if err := runRoutineRuntime(context.Background(), "", false, []string{"list", "--self"}, nil, &out); err == nil || out.Len() != 0 {
+		t.Fatalf("oversized human output must fail before writing: stdout bytes=%d error=%v", out.Len(), err)
 	}
 }
 
