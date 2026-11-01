@@ -903,7 +903,7 @@ func (k *Kernel) Close() error {
 	if k == nil {
 		return nil
 	}
-	k.CloseOperations()
+	k.retireOperations()
 	k.shellMu.Lock()
 	jobs := k.shell
 	k.shellMu.Unlock()

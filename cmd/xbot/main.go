@@ -61,7 +61,8 @@ Usage:
   xbot [--root DIR] unpin <name>
   xbot [--root DIR] primary
   xbot [--root DIR] primary set <name>
-  xbot [--root DIR] profile show <name>
+  xbot [--root DIR] profile show (--self | <name>) [--json]
+  xbot [--root DIR] profile set --self [--description TEXT] [--timezone ZONE] [--json]
   xbot [--root DIR] profile set <name> [--description TEXT] [--timezone ZONE] [--role chat|dev] [--background-max-time MIN] [--name NEW]
   xbot [--root DIR] profile avatar <name> (--file PATH | --clear)
   xbot [--root DIR] template export <name> --out FILE
@@ -121,6 +122,10 @@ Terminology:
   profile set --role chat|dev: runtime preset (运行档位), not duties.
 
 Environment:
+  XBOT_BIN        current runtime executable (in Agent shells)
+  XBOT_ROOT       data root, used when --root is omitted
+  XBOT_ENDPOINT   local runtime profile endpoint (in Agent shells)
+  XBOT_BOT        diagnostic Bot name; --self resolves at the endpoint
   XBOT_API_KEY    API key of the deepseek provider entry
   XBOT_BASE_URL   base_url the deepseek entry is first created with (default https://api.deepseek.com/v1)
   XBOT_MODEL       model the deepseek entry is first created with (default deepseek-flash)

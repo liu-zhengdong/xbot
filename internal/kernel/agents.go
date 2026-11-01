@@ -38,6 +38,7 @@ func (k *Kernel) ensureExec() exec.Executor {
 					loc.ToolsFor = k.toolsFor
 					loc.Wrap = k.wrapSub
 				}
+				loc.OnIdle = k.closeIdleOperations
 				loc.RunTool = func(req exec.StartRequest, ctx context.Context, t tools.Tool, args json.RawMessage, run func(context.Context) tools.CallResult) tools.CallResult {
 					ctx = context.WithValue(ctx, cwdScopeKey{}, req.ID)
 					return k.runToolCall(ctx, t, args, run)

@@ -1,6 +1,7 @@
 package kernel
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,9 +9,11 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
+	"xbot/internal/code"
+	"xbot/internal/exec"
 )
 
-const cliProfileGuide = `普通资料（简介、时区）通过当前实例 CLI 操作：在 Shell 中先运行 "$XBOT_BIN" profile --help，再用 --self --json。实例和当前 Bot 身份由 XBOT_* 环境提供；头像和改名仍用现有 profile 工具。`
+const cliProfileGuide = `普通资料（简介、时区）通过当前实例 CLI 操作：在 Shell 中用环境变量 XBOT_BIN 指向的当前二进制（按该解释器语法）先执行 profile --help，再用 --self --json。实例和当前 Bot 身份由 XBOT_* 环境提供；头像和改名仍用现有 profile 工具。`
 
 func (k *Kernel) cliProfileGuide() string {
 	k.operations.mu.Lock()
@@ -25,6 +28,8 @@ type operationState struct {
 	mu           sync.Mutex // independent of turn/processing locks; also coordinates old-tool rename
 	server       *cliops.Server
 	binary, root string
+	retiring     bool
+	stopContext  func() bool
 }
 
 // StartOperations binds the local CLI to this existing kernel. Call it last in
@@ -52,6 +57,11 @@ func (k *Kernel) StartOperations() error {
 		return err
 	}
 	k.operations.server, k.operations.binary, k.operations.root = server, binary, root
+	for _, item := range k.snapshotLinks() {
+		if coding, ok := item.(*code.Link); ok {
+			coding.UseEnvironment(k.CLIEnvironment, k.closeIdleOperations)
+		}
+	}
 	return nil
 }
 
@@ -63,11 +73,58 @@ func (k *Kernel) CloseOperations() {
 	}
 	k.operations.mu.Lock()
 	server := k.operations.server
-	k.operations.server = nil
+	stopContext := k.operations.stopContext
+	k.operations.server, k.operations.stopContext = nil, nil
 	k.operations.mu.Unlock()
+	if stopContext != nil {
+		stopContext()
+	}
 	if server != nil {
 		_ = server.Close()
 	}
+}
+
+// BindOperationsContext makes the real host lifetime an upper bound even when
+// a short serve pass leaves local tasks running. Closing removes the callback.
+func (k *Kernel) BindOperationsContext(ctx context.Context) {
+	k.operations.mu.Lock()
+	defer k.operations.mu.Unlock()
+	if k.operations.server == nil {
+		return
+	}
+	if k.operations.stopContext != nil {
+		k.operations.stopContext()
+	}
+	k.operations.stopContext = context.AfterFunc(ctx, k.CloseOperations)
+}
+
+func (k *Kernel) retireOperations() {
+	k.operations.mu.Lock()
+	k.operations.retiring = true
+	k.operations.mu.Unlock()
+	k.closeIdleOperations()
+}
+
+// The existing local execution sets own retained endpoints. OnIdle is called
+// only after task removal and queue drain, with no task resource lock held.
+func (k *Kernel) closeIdleOperations() {
+	k.operations.mu.Lock()
+	retiring := k.operations.retiring && k.operations.server != nil
+	k.operations.mu.Unlock()
+	if !retiring {
+		return
+	}
+	if local, ok := k.execSnapshot().(*exec.Local); ok {
+		if tasks, _ := local.Tasks(); len(tasks) > 0 {
+			return
+		}
+	}
+	for _, item := range k.snapshotLinks() {
+		if coding, ok := item.(*code.Link); ok && coding.HasLiveTasks() {
+			return
+		}
+	}
+	k.CloseOperations()
 }
 
 // UseBot refreshes a host's loaded handle between turns while a local coding

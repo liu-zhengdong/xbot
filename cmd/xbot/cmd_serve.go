@@ -182,11 +182,6 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		_ = k.Close()
 		return nil, person.Person{}, err
 	}
-	for _, item := range links {
-		if coding, ok := item.(*code.Link); ok {
-			coding.UseEnvironment(k.CLIEnvironment)
-		}
-	}
 	return k, who, nil
 }
 
@@ -330,7 +325,7 @@ func startEmitters(ctx context.Context, root string, seen map[string]bool) {
 			continue
 		}
 		k.StartEmitters(ctx)
-		context.AfterFunc(ctx, k.CloseOperations)
+		k.BindOperationsContext(ctx)
 		seen[cfg.Name] = true
 	}
 }
@@ -511,7 +506,11 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		ForkTurns: false,
 		App:       cfg.App,
 		NewKernel: func(b *bot.Bot) (*kernel.Kernel, error) {
-			return newServeKernel(root, b, restartFromBot)
+			k, err := newServeKernel(root, b, restartFromBot)
+			if err == nil {
+				k.BindOperationsContext(ctx)
+			}
+			return k, err
 		},
 		Updater: updater,
 	}
@@ -760,7 +759,11 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		}
 		startEmitters(ctx, root, seen)
 		err := serve.Pass(ctx, root, clock.Now(), func(b *bot.Bot) (*kernel.Kernel, error) {
-			return newServeKernel(root, b, restartFromBot)
+			k, err := newServeKernel(root, b, restartFromBot)
+			if err == nil {
+				k.BindOperationsContext(ctx)
+			}
+			return k, err
 		})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "xbot:", err)

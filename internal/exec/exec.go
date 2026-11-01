@@ -150,6 +150,9 @@ type Local struct {
 	Prov    provider.Provider
 	Approve agent.Approver
 	ToolSet func(id, dir string) []tools.Tool
+	// OnIdle runs after the final task really returns and leaves admission.
+	// It is called with no executor lock held.
+	OnIdle func()
 	// ToolsFor, when set, wins over ToolSet: it sees the whole request, so the
 	// set can follow the subagent's type.
 	ToolsFor func(req StartRequest) []tools.Tool
@@ -314,9 +317,13 @@ func (l *Local) launchLocked(j *job) {
 	go func() {
 		runLoop(j)
 		l.mu.Lock()
-		defer l.mu.Unlock()
 		delete(l.jobs, j.id)
 		l.drainLocked()
+		idle := len(l.jobs) == 0 && len(l.waiting) == 0
+		l.mu.Unlock()
+		if idle && l.OnIdle != nil {
+			l.OnIdle()
+		}
 	}()
 }
 
@@ -382,8 +389,12 @@ func (l *Local) Control(ctx context.Context, id string, c Control) error {
 			if c.Kind == KindCancel {
 				// It never started: nothing to stop, only the queue entry.
 				l.waiting = append(l.waiting[:i], l.waiting[i+1:]...)
+				idle := len(l.jobs) == 0 && len(l.waiting) == 0
 				l.mu.Unlock()
 				w.finish(statusCancelled, EvFailed, "cancelled before it started")
+				if idle && l.OnIdle != nil {
+					l.OnIdle()
+				}
 				return nil
 			}
 			j = w

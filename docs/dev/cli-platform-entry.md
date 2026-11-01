@@ -121,7 +121,7 @@ Agent → Shell → xbot CLI ─┐
 
 **身份传播**：主线、dev/general scoped Shell 共用同一个绑定函数，在最终 commandEnv 加上述环境，覆盖父进程残留值；外部编码命令用其既有白名单环境装配加同一份 caller 环境，内置编码 Shell 同样接入。research 只读包装沿原分类器，首批不开放 profile CLI（不得把任意 xbot 当 readonly），留待按业务动作分类；runner 在其他进程/机器，当前 endpoint 不能直接透传为可达能力。本刀明确保留 research 与远端 runner 缺口，不假报全部执行路径端到端支持，不把回环地址发给远端冒充可用。
 
-**生命周期与发布锁**：入口在 openKernel 全部可能失败的装配完成后最后创建；创建失败关闭该 Kernel 已有资源。提供窄 `CloseOperations`，由 Kernel.Close、chat 返回、web forget/binding rebuild、长期 startEmitters 的 service ctx 取消调用；不为释放 endpoint 重做 Jobs 生命周期。profile 领域写锁/配置文件锁均在通知前释放，SSE 写出经原 replyStream 的锁；不拿资源锁等网络。活轮次 Sink 在插话时随原路移交，通知归当前持有者，不广播、不追加另一条账本。
+**生命周期与发布锁**：入口在 openKernel 全部可能失败的装配完成后最后创建；创建失败关闭该 Kernel 已有资源。提供窄 `CloseOperations`，由 chat 返回、web forget/binding rebuild、service ctx 取消强制关闭。短命 serve.Pass 的 Kernel.Close 仅在已有 exec.Local/code.Link 活任务清空后退役入口：复用现有 live 集合与真正结束后的 OnIdle 回调，不造任务表、不轮询、不常驻空闲 Kernel；服务 ctx 的可撤销回调在入口关闭后移除。不为释放 endpoint 重做 Jobs 生命周期。profile 领域写锁/配置文件锁均在通知前释放，SSE 写出经原 replyStream 的锁；不拿资源锁等网络。活轮次 Sink 在插话时随原路移交，通知归当前持有者，不广播、不追加另一条账本。
 
 **预计变更**：`cmd/xbot/{main,cmd_bot,cmd_serve,cmd_chat}.go`（命令/装配/关闭）；新增窄包 `internal/cliops`（定位契约、handler/client）；`internal/bot/{bot,profile}.go` 及必要配置访问点（共享配置写入与快照）；`internal/kernel/{kernel,shelljob,agents}.go`（caller 绑定与生命周期）；`internal/tools/shell.go`、`internal/code/{link,run}.go`（共用环境）；`internal/kernel/interject.go` 与 `internal/web/server.go`（原 Sink 的窄 profile 通知）；`internal/web/static/app.js`（收到业务变更后立即刷新）；相关定向单测、atlas、多 Bot/UI/生态节点、MILESTONES。正式决定另写 ADR 0043；旧 Accepted 正文不动，仅说明实际切换普通 profile/UI 刷新范围，尚无工具族整体退役。
 

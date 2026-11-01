@@ -78,7 +78,17 @@ func (l *Link) UseRunner(baseURL, token string) {
 
 // UseEnvironment binds local coding processes to their originating runtime.
 // Remote runners intentionally do not receive a loopback endpoint.
-func (l *Link) UseEnvironment(fn func([]string) []string) { l.environment = fn }
+func (l *Link) UseEnvironment(fn func([]string) []string, onIdle func()) {
+	l.environment, l.onIdle = fn, onIdle
+}
+
+// HasLiveTasks uses the existing execution set, including its original queue
+// drain, rather than a second task registry for the runtime endpoint.
+func (l *Link) HasLiveTasks() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.live) > 0
+}
 
 // UseProvider runs tasks in this process with the bot's model.
 func (l *Link) UseProvider(p provider.Provider) {
@@ -150,10 +160,14 @@ func (l *Link) execute(ctx context.Context, run *liveRun, task Task) {
 		delete(l.live, task.ID)
 		l.mu.Unlock()
 		cur, err := l.rec.Get(task.ID)
-		if err == nil && cur.Status == StatusRunning {
-			return
+		if err != nil || cur.Status != StatusRunning {
+			l.wake()
 		}
-		l.wake()
+		// wake drains the existing queue before endpoint ownership is released.
+		// No code/path/record lock is held while notifying the host.
+		if l.onIdle != nil && !l.HasLiveTasks() {
+			l.onIdle()
+		}
 	}()
 	var out outcome
 	switch {

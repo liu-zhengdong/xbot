@@ -7408,12 +7408,18 @@
   }
 
   async function refreshSavedProfile(selection) {
-    await refreshLists();
-    if (state.sel !== selection || selection.type !== "bot" || state.peer) return;
-    setHeader(selection.id);
+    const request = ++state.panelLoad;
+    const [, data] = await Promise.all([
+      refreshLists(),
+      api("/api/bots/" + encodeURIComponent(selection.id)),
+    ]);
+    if (state.sel !== selection || request !== state.panelLoad || selection.type !== "bot" || state.peer) return;
     // Refresh the saved details used when Edit Profile next opens. An already
     // open editing form owns its draft and is not replaced by this read.
-    await loadPanel();
+    state.panelData = data;
+    state.panelError = false;
+    setHeader(selection.id);
+    if (state.tab === "details") paintPanel();
   }
 
   async function readSSE(res, selection, prose, onQueued, onLive) {
