@@ -130,7 +130,7 @@ func TestForkBotAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	mem := memory.Open(root)
-	s.NewKernel = func(bot *bot.Bot) (*kernel.Kernel, error) {
+	s.NewKernel = func(bot *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		return &kernel.Kernel{Bot: bot, Memory: mem, Compactor: handoffCompactor{text: "UI-HANDOFF keep the friday decision"}}, nil
 	}
 	srv := httptest.NewServer(muxOf(s))

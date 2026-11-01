@@ -194,7 +194,7 @@ func pasteTestServer(t *testing.T, vision bool) (string, *httptest.Server, *http
 		t.Fatal(err)
 	}
 	client := &provider.Client{BaseURL: model.URL + "/v1", APIKey: "test", Model: "mock", HTTPClient: model.Client()}
-	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
+	s.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		return &kernel.Kernel{
 			Bot: b, Provider: client, Memory: memory.Open(root), MaxSteps: 2,
 			Budget: compact.DefaultBudget(), WorkDir: dir,

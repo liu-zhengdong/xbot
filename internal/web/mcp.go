@@ -46,6 +46,7 @@ func (s *Server) addMCP(w http.ResponseWriter, r *http.Request) {
 		writeMCPErr(w, err)
 		return
 	}
+	s.refreshMCP()
 	list, err := link.LoadMCP(b.MCPPath())
 	if err != nil {
 		writeMCPErr(w, err)
@@ -75,6 +76,7 @@ func (s *Server) removeMCP(w http.ResponseWriter, r *http.Request) {
 		writeMCPErr(w, err)
 		return
 	}
+	s.refreshMCP()
 	writeJSON(w, http.StatusOK, map[string]string{"name": name})
 }
 

@@ -5,15 +5,37 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
 	"time"
 )
 
-// Options supplies the provider credential check shared by config and transports.
+// Options supplies credential inputs and diagnostic redaction without tying the
+// protocol core to the application's credential store.
 type Options struct {
-	IsProviderKey func(string) bool
+	IsProviderKey  func(string) bool
+	ResolveSecrets func(context.Context, []string) (map[string]string, error)
+	Redact         func(string) string
+
+	lifetime context.Context
+	secrets  map[string]string // non-nil means a frozen, authoritative snapshot
+}
+
+func (o Options) secretLookup(spec Spec) func(string) (string, bool) {
+	if o.secrets == nil {
+		return spec.secretLookup()
+	}
+	return func(name string) (string, bool) {
+		for _, declared := range spec.SecretEnvs {
+			if name == declared {
+				value, ok := o.secrets[name]
+				return value, ok
+			}
+		}
+		return os.LookupEnv(name)
+	}
 }
 
 // Session owns one lazily connected MCP server and its transport.
@@ -29,18 +51,26 @@ type Session struct {
 	once    sync.Once
 	onceErr error
 
-	mu     sync.Mutex
-	cancel context.CancelFunc
-	client *mcpClient
-	listed bool
-	tools  []ToolSpec
+	mu       sync.Mutex
+	ctx      context.Context
+	closed   bool
+	readDone chan struct{}
+	cancel   context.CancelFunc
+	client   *mcpClient
+	listed   bool
+	tools    []ToolSpec
 }
 
 // NewSession returns a session that connects on Connect or LoadTools.
 func NewSession(s Spec, options Options) *Session {
 	s.Args = nonNil(s.Args)
 	s.SecretEnvs = nonNil(s.SecretEnvs)
-	return &Session{Spec: s, options: options}
+	parent := options.lifetime
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parent)
+	return &Session{Spec: s, options: options, ctx: ctx, cancel: cancel}
 }
 
 func (m *Session) Name() string { return "mcp:" + m.Spec.Name }
@@ -99,13 +129,18 @@ func (m *Session) Close() error {
 	m.mu.Lock()
 	cancel := m.cancel
 	c := m.client
-	m.cancel = nil
+	done := m.readDone
+	m.closed = true
 	m.mu.Unlock()
 	if cancel != nil {
 		cancel()
 	}
 	if c != nil {
-		return c.close()
+		err := c.close()
+		if done != nil {
+			<-done
+		}
+		return err
 	}
 	return nil
 }
@@ -120,18 +155,26 @@ func (m *Session) Connect(ctx context.Context) error {
 
 func (m *Session) start(caller context.Context) error {
 	m.redact = m.diagnosticRedactor()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := m.ctx
+	if err := ctx.Err(); err != nil {
+		return m.diagnostic("start", err)
+	}
 	conn, err := m.open(ctx)
 	if err != nil {
-		cancel()
 		return m.diagnostic("start", err)
 	}
 	client := newMCPClient(conn)
 	m.mu.Lock()
-	m.cancel = cancel
+	if m.closed {
+		m.mu.Unlock()
+		_ = conn.Close()
+		return m.diagnostic("start", context.Canceled)
+	}
 	m.client = client
+	done := make(chan struct{})
+	m.readDone = done
 	m.mu.Unlock()
-	go client.readLoop()
+	go func() { defer close(done); client.readLoop() }()
 	initCtx, initCancel := context.WithTimeout(caller, mcpRPCWait)
 	defer initCancel()
 	if err := client.initialize(initCtx); err != nil {
@@ -152,7 +195,7 @@ func (m *Session) open(ctx context.Context) (io.ReadWriteCloser, error) {
 		return nil, err
 	}
 	cmd := exec.CommandContext(ctx, m.Spec.Command, m.Spec.Args...)
-	cmd.Env = spawnEnv(m.Spec.SecretEnvs, m.Spec.secretLookup(), m.options.providerKey)
+	cmd.Env = spawnEnv(m.Spec.SecretEnvs, m.options.secretLookup(m.Spec), m.options.providerKey)
 	cmd.Stderr = &m.stderr
 	cmd.WaitDelay = time.Second
 	stdin, err := cmd.StdinPipe()

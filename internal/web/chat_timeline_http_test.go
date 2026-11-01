@@ -38,7 +38,7 @@ func TestChatTimelineNewSayThroughHTTPKernel(t *testing.T) {
 		})},
 		{Role: provider.RoleAssistant, Content: provider.TextContent("hidden final prose")},
 	}}
-	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
+	s.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		return &kernel.Kernel{Bot: b, Provider: model, Memory: memory.NopStore{}, MaxSteps: 4}, nil
 	}
 	server := httptest.NewServer(muxOf(s))

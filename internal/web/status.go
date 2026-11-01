@@ -28,8 +28,8 @@ func (s *Server) botStatuses() []kernel.BotStatus {
 	}
 	s.mu.Lock()
 	kernels := make(map[string]*kernel.Kernel, len(s.kernels))
-	for name, k := range s.kernels {
-		kernels[name] = k
+	for name, entry := range s.kernels {
+		kernels[name] = entry.Kernel
 	}
 	holds := make(map[string]bool, len(s.holds))
 	for name := range s.holds {
@@ -76,7 +76,7 @@ func (s *Server) botSteps(name string, n int) []kernel.Step {
 		n = statusStepsMax
 	}
 	s.mu.Lock()
-	k := s.kernels[name]
+	k := s.cachedKernelLocked(name)
 	s.mu.Unlock()
 	if k != nil {
 		return k.Steps(n)

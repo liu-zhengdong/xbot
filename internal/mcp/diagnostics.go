@@ -66,7 +66,7 @@ func (m *Session) diagnostic(stage string, cause error) error {
 // by this process. Redact before truncating the returned diagnostic.
 func (m *Session) diagnosticRedactor() func(string) string {
 	var values []string
-	lookup := m.Spec.secretLookup()
+	lookup := m.options.secretLookup(m.Spec)
 	for _, name := range m.Spec.SecretEnvs {
 		if v, ok := lookup(name); ok && v != "" {
 			values = append(values, v)
@@ -78,7 +78,13 @@ func (m *Session) diagnosticRedactor() func(string) string {
 		pairs = append(pairs, v, "[secret]")
 	}
 	replacer := strings.NewReplacer(pairs...)
-	return func(s string) string { return replacer.Replace(s) }
+	return func(s string) string {
+		s = replacer.Replace(s)
+		if m.options.Redact != nil {
+			s = m.options.Redact(s)
+		}
+		return s
+	}
 }
 
 // Keep a bounded prefix. On overflow, discard the incomplete final line so a

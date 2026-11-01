@@ -31,6 +31,7 @@ import (
 	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
+	"xbot/internal/mcp"
 	"xbot/internal/memory"
 	"xbot/internal/notify"
 	"xbot/internal/person"
@@ -61,14 +62,22 @@ const legacyNodeGrant = "node"
 const loginTokenLine = "登录码（login token）: %s\n"
 
 func newServeKernel(root string, b *bot.Bot, restart ...func(string) error) (*kernel.Kernel, error) {
-	k, _, err := openKernel(root, b, serveSteps, nil, nil, false, runnerSpec{})
+	return newServeKernelWithResources(root, b, nil, restart...)
+}
+
+func newServeKernelWithResources(root string, b *bot.Bot, resources *kernel.BotResources, restart ...func(string) error) (*kernel.Kernel, error) {
+	k, _, err := openKernel(root, b, serveSteps, nil, nil, false, runnerSpec{}, resources)
 	if err == nil && len(restart) > 0 {
 		k.Restart = restart[0]
 	}
 	return k, err
 }
 
-func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context, string, string) (bool, error), pr *printer, allowBackground bool, runner runnerSpec) (*kernel.Kernel, person.Person, error) {
+func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context, string, string) (bool, error), pr *printer, allowBackground bool, runner runnerSpec, resources ...*kernel.BotResources) (*kernel.Kernel, person.Person, error) {
+	var runtime *kernel.BotResources
+	if len(resources) > 0 {
+		runtime = resources[0]
+	}
 	// Migrate always returns nil. A bad legacy directory is logged and left in
 	// place; it must not stop the kernel from opening.
 	_ = memory.Migrate(root)
@@ -80,7 +89,7 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	if err != nil {
 		return nil, person.Person{}, err
 	}
-	links, err := mount(b, runner)
+	links, err := mount(b, runner, runtime)
 	if err != nil {
 		return nil, person.Person{}, err
 	}
@@ -146,6 +155,7 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	work := b.Config().Working()
 	k := &kernel.Kernel{
 		Bot:             b,
+		Resources:       runtime,
 		Provider:        client,
 		Selector:        selector,
 		Links:           links,
@@ -205,7 +215,7 @@ func attachConnectors(links []link.Link, backend vault.Backend) {
 	}
 }
 
-func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
+func mount(b *bot.Bot, runner runnerSpec, resources ...*kernel.BotResources) ([]link.Link, error) {
 	var out []link.Link
 	seen := map[string]bool{}
 	for _, name := range b.EffectiveLinks() {
@@ -253,13 +263,19 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 		}
 		out = append(out, link.Runner{BaseURL: runner.URL, Token: runner.Token})
 	}
-	servers, err := link.LoadMCPAll(b.GlobalMCPPath(), b.MCPPath())
-	if err != nil {
-		return nil, err
-	}
-	for i := range servers {
-		servers[i].Secret = link.GlobalSecretLookup(b.Root)
-		out = append(out, link.NewMCP(servers[i]))
+	if len(resources) > 0 && resources[0] != nil {
+		for _, spec := range resources[0].MCP.Specs() {
+			out = append(out, link.NewBorrowedMCP(spec, resources[0].MCP))
+		}
+	} else {
+		servers, err := link.LoadMCPAll(b.GlobalMCPPath(), b.MCPPath())
+		if err != nil {
+			return nil, err
+		}
+		for _, spec := range servers {
+			spec.Secret = link.GlobalSecretLookup(b.Root)
+			out = append(out, link.NewMCP(spec))
+		}
 	}
 	if _, _, err := work.Open(b.Root, b.Name()); err != nil {
 		return nil, err
@@ -295,12 +311,9 @@ func noteLegacyNodeGrant(name string) bool {
 	return true
 }
 
-// startEmitters keeps one long-lived kernel for each bot that has an MCP server
-// so notifications reach the inbox while serve is up. The kernel serve.Pass
-// builds every interval is short-lived and must not open another connection.
-// The first server is picked up on a later pass. After that, mcp.json edits
-// need a restart.
-func startEmitters(ctx context.Context, root string, seen map[string]bool) {
+// startEmitters retains the original non-MCP connector emitters. MCP sessions
+// and their notification pumps belong to the process Manager.
+func startEmitters(ctx context.Context, root string, seen map[string]bool, factory func(*bot.Bot) (*kernel.Kernel, error)) {
 	if ctx.Err() != nil {
 		return
 	}
@@ -316,11 +329,16 @@ func startEmitters(ctx context.Context, root string, seen map[string]bool) {
 		if err != nil {
 			continue
 		}
-		servers, err := link.LoadMCPAll(b.GlobalMCPPath(), b.MCPPath())
-		if err != nil || len(servers) == 0 {
+		needed := false
+		for _, grant := range b.EffectiveLinks() {
+			if grant == link.NameTelegram || grant == link.NameLark {
+				needed = true
+			}
+		}
+		if !needed {
 			continue
 		}
-		k, err := newServeKernel(root, b)
+		k, err := factory(b)
 		if err != nil {
 			continue
 		}
@@ -498,15 +516,19 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	hub := &inbound.Server{Root: root, Window: inbound.DefaultWindow, Debounce: inbound.DefaultDebounce, OpenVault: func(b *bot.Bot) (vault.Backend, error) {
 		return vault.OpenGlobal(b.Root)
 	}}
-	ui := &web.Server{
+	manager := mcp.NewManager(ctx, mcpOptions(root))
+	defer manager.Close()
+	var ui *web.Server
+	ui = &web.Server{
 		Root:         root,
 		DefaultLinks: defaultLinks,
 		// Interjections no longer fork the running turn (ADR 0016): the
 		// foreground's turns are short and the work runs in subagents.
-		ForkTurns: false,
-		App:       cfg.App,
-		NewKernel: func(b *bot.Bot) (*kernel.Kernel, error) {
-			k, err := newServeKernel(root, b, restartFromBot)
+		ForkTurns:    false,
+		App:          cfg.App,
+		NewResources: func(b *bot.Bot) (*kernel.BotResources, error) { return kernel.NewBotResources(ctx, b, manager) },
+		NewKernel: func(b *bot.Bot, resources *kernel.BotResources) (*kernel.Kernel, error) {
+			k, err := newServeKernelWithResources(root, b, resources, restartFromBot)
 			if err == nil {
 				k.BindOperationsContext(ctx)
 			}
@@ -515,6 +537,35 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		Updater: updater,
 	}
 	defer ui.CloseOperations()
+	ui.ReconcileMCP = func() {
+		cfgs, err := bot.List(root)
+		if err == nil {
+			for _, cfg := range cfgs {
+				b, loadErr := bot.Load(root, cfg.Name)
+				if loadErr == nil {
+					_, loadErr = ui.ResourcesFor(b)
+				}
+				if loadErr != nil {
+					fmt.Fprintln(os.Stderr, "xbot:", mcpOptions(root).Redact(loadErr.Error()))
+				}
+			}
+		}
+		if err := manager.Reconcile(ctx); err != nil {
+			fmt.Fprintln(os.Stderr, "xbot:", mcpOptions(root).Redact(err.Error()))
+		}
+	}
+	factory := func(b *bot.Bot) (*kernel.Kernel, error) {
+		resources, err := ui.ResourcesFor(b)
+		if err != nil {
+			return nil, err
+		}
+		k, err := newServeKernelWithResources(root, b, resources, restartFromBot)
+		if err == nil {
+			k.BindOperationsContext(ctx)
+		}
+		return k, err
+	}
+
 	if api := strings.TrimSpace(os.Getenv("XBOT_ACCOUNT_API")); api != "" {
 		// The hosted Account API; without it the local stand-in runs.
 		ui.Account = account.NewRemote(api)
@@ -757,14 +808,9 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 			return reexecService(ln, ui, exe, argv, env, reason, cleanup)
 		default:
 		}
-		startEmitters(ctx, root, seen)
-		err := serve.Pass(ctx, root, clock.Now(), func(b *bot.Bot) (*kernel.Kernel, error) {
-			k, err := newServeKernel(root, b, restartFromBot)
-			if err == nil {
-				k.BindOperationsContext(ctx)
-			}
-			return k, err
-		})
+		ui.ReconcileMCP()
+		startEmitters(ctx, root, seen, factory)
+		err := serve.Pass(ctx, root, clock.Now(), factory)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "xbot:", err)
 		}

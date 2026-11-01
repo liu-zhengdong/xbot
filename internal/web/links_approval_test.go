@@ -39,7 +39,7 @@ func TestLinksApprovalCarriesSecretNames(t *testing.T) {
 		}})},
 		{Role: provider.RoleAssistant, Content: provider.TextContent("stopped")},
 	}}
-	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
+	s.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		return &kernel.Kernel{Bot: b, Provider: p, MaxSteps: 4, Links: []link.Link{link.Terminal{}}}, nil
 	}
 	ui := httptest.NewServer(muxOf(s))

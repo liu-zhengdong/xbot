@@ -80,7 +80,7 @@ func TestThinkingToolTurnReplaysReasoningAndHidesIt(t *testing.T) {
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
+	s.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		return &kernel.Kernel{Bot: b, Provider: &provider.Client{BaseURL: model.URL, APIKey: "fake", Model: "deepseek-flash"}, Memory: memory.NopStore{}, MaxSteps: 4}, nil
 	}
 	ui := httptest.NewServer(muxOf(s))

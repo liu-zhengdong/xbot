@@ -59,6 +59,7 @@ func ValidateMCP(s MCPServer) error {
 type MCP struct {
 	Spec    MCPServer
 	session *mcp.Session
+	ref     *mcp.BotRef
 }
 
 // NewMCP returns a link that connects on Tools or Run, not at construction.
@@ -66,6 +67,14 @@ func NewMCP(s MCPServer) *MCP {
 	session := mcp.NewSession(s, mcp.Options{IsProviderKey: providerKey})
 	return &MCP{Spec: session.Spec, session: session}
 }
+
+// NewBorrowedMCP adapts the host's existing session without owning its lifetime
+// or consuming notifications. The Manager owns the sole notification pump.
+func NewBorrowedMCP(spec MCPServer, ref *mcp.BotRef) *MCP {
+	return &MCP{Spec: spec, ref: ref}
+}
+
+func (m *MCP) Borrowed() bool { return m.ref != nil }
 
 func (m *MCP) Name() string { return "mcp:" + m.Spec.Name }
 
@@ -84,18 +93,38 @@ func (m *MCP) Tools() []tools.Tool {
 
 // LoadTools projects the core protocol specs into model tools.
 func (m *MCP) LoadTools(ctx context.Context) ([]tools.Tool, error) {
-	specs, err := m.session.LoadTools(ctx)
+	var specs []mcp.ToolSpec
+	var err error
+	if m.ref != nil {
+		specs, err = m.ref.LoadTools(ctx, m.Spec.Name)
+	} else {
+		specs, err = m.session.LoadTools(ctx)
+	}
 	if err != nil {
 		return nil, err
 	}
 	return m.build(specs), nil
 }
 
-func (m *MCP) Status() MCPStatus { return m.session.Status() }
-func (m *MCP) Close() error      { return m.session.Close() }
+func (m *MCP) Status() MCPStatus {
+	if m.ref != nil {
+		return m.ref.Status(m.Spec.Name)
+	}
+	return m.session.Status()
+}
+func (m *MCP) Close() error {
+	if m.ref != nil {
+		return nil
+	}
+	return m.session.Close()
+}
 
 // Run reads optional inbound notifications until ctx ends, then stops the process.
 func (m *MCP) Run(ctx context.Context, emit func(Event) error) error {
+	if m.ref != nil {
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	if err := m.session.Connect(context.Background()); err != nil {
 		return err
 	}
@@ -167,8 +196,10 @@ func (t mcpTool) Confirm(json.RawMessage) (bool, string, error) {
 }
 
 func (t mcpTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	if err := t.mcp.session.Connect(context.Background()); err != nil {
-		return "", err
+	if t.mcp.ref == nil {
+		if err := t.mcp.session.Connect(context.Background()); err != nil {
+			return "", err
+		}
 	}
 	var arguments any
 	trimmed := strings.TrimSpace(string(args))
@@ -177,7 +208,13 @@ func (t mcpTool) Run(ctx context.Context, args json.RawMessage) (string, error) 
 	} else if err := json.Unmarshal(args, &arguments); err != nil {
 		return "", err
 	}
-	raw, err := t.mcp.session.CallTool(ctx, t.remote, arguments)
+	var raw json.RawMessage
+	var err error
+	if t.mcp.ref != nil {
+		raw, err = t.mcp.ref.CallTool(ctx, t.mcp.Spec.Name, t.remote, arguments)
+	} else {
+		raw, err = t.mcp.session.CallTool(ctx, t.remote, arguments)
+	}
 	if err != nil {
 		return "", err
 	}

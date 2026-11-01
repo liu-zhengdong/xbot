@@ -77,7 +77,7 @@ func parkServer(t *testing.T, permissive bool, wait ...time.Duration) (*httptest
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
+	s.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		box, err := inbox.Open(b.InboxPath())
 		if err != nil {
 			return nil, err

@@ -100,15 +100,21 @@ func (s *Server) appRows() ([]appJSON, error) {
 	// Snapshot references only; querying the store must never start MCP processes.
 	s.mu.Lock()
 	kernels := make(map[string]*kernel.Kernel, len(cfgs))
+	resources := make(map[string]*kernel.BotResources, len(cfgs))
 	for _, cfg := range cfgs {
-		kernels[cfg.Name] = s.kernels[cfg.Name]
+		kernels[cfg.Name] = s.cachedKernelLocked(cfg.Name)
+		if entry := s.kernels[cfg.Name]; entry != nil {
+			resources[cfg.Name] = entry.Resources
+		}
 	}
 	s.mu.Unlock()
 	runtime := func(spec link.MCPServer) map[string]link.MCPStatus {
 		states := make(map[string]link.MCPStatus, len(cfgs))
 		for _, cfg := range cfgs {
 			state := link.MCPStatus{State: "configured"}
-			if k := kernels[cfg.Name]; k != nil {
+			if r := resources[cfg.Name]; r != nil {
+				state = r.MCPStatus(spec)
+			} else if k := kernels[cfg.Name]; k != nil {
 				state = k.MCPStatus(spec)
 			}
 			states[cfg.Name] = state
@@ -235,6 +241,7 @@ func (s *Server) installApp(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "没能添加，请稍后再试。")
 		return
 	}
+	s.refreshMCP()
 	writeJSON(w, http.StatusOK, map[string]any{"id": a.ID, "state": "connected"})
 }
 
@@ -484,6 +491,7 @@ func (s *Server) removeApp(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	s.refreshMCP()
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "state": "available"})
 }
 
@@ -563,5 +571,6 @@ func (s *Server) addCustomApp(w http.ResponseWriter, r *http.Request) {
 		writeMCPErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"id": name, "state": "connected"})
+	s.refreshMCP()
+	writeJSON(w, http.StatusOK, map[string]any{"id": name, "state": "configured", "saved": true})
 }

@@ -88,7 +88,7 @@ func TestWebInterruptForksAndAnswersFast(t *testing.T) {
 	}
 	slow := &slowTool{started: make(chan struct{}), release: make(chan struct{})}
 	var k *kernel.Kernel
-	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
+	s.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		box, err := inbox.Open(b.InboxPath())
 		if err != nil {
 			return nil, err

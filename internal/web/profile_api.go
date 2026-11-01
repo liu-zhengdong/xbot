@@ -21,9 +21,10 @@ func paintBot(b *bot.Bot) (url, bg, ink, initial string) {
 
 func (s *Server) forgetKernel(name string) {
 	s.mu.Lock()
-	k := s.kernels[name]
-	delete(s.kernels, name)
-	delete(s.gate, name)
+	k := s.cachedKernelLocked(name)
+	if entry := s.kernels[name]; entry != nil {
+		entry.Kernel = nil
+	}
 	if h := s.holds[name]; h != nil {
 		// The bot is gone or renamed: drop the held lock so nothing keeps the old name.
 		delete(s.holds, name)
@@ -41,8 +42,10 @@ func (s *Server) forgetKernel(name string) {
 func (s *Server) CloseOperations() {
 	s.mu.Lock()
 	list := make([]*kernel.Kernel, 0, len(s.kernels))
-	for _, k := range s.kernels {
-		list = append(list, k)
+	for _, entry := range s.kernels {
+		if entry.Kernel != nil {
+			list = append(list, entry.Kernel)
+		}
 	}
 	s.mu.Unlock()
 	for _, k := range list {

@@ -25,7 +25,7 @@ func openStreamable(ctx context.Context, spec Spec, options Options) (io.ReadWri
 		ctx:     ctx,
 		url:     strings.TrimSpace(spec.URL),
 		hc:      &http.Client{},
-		headers: secretHeaders(spec.SecretEnvs, spec.secretLookup(), options.providerKey),
+		headers: secretHeaders(spec.SecretEnvs, options.secretLookup(spec), options.providerKey),
 		pr:      pr,
 		pw:      pw,
 	}
@@ -61,6 +61,8 @@ type httpConn struct {
 	mu        sync.Mutex
 	session   string
 	listen    bool
+	closed    bool
+	active    sync.WaitGroup
 	pushMu    sync.Mutex
 	closeOnce sync.Once
 	closeErr  error
@@ -71,6 +73,14 @@ func (h *httpConn) Read(p []byte) (int, error) { return h.pr.Read(p) }
 func (h *httpConn) Write(p []byte) (int, error) { return h.WriteContext(h.ctx, p) }
 
 func (h *httpConn) WriteContext(ctx context.Context, p []byte) (int, error) {
+	h.mu.Lock()
+	if h.closed {
+		h.mu.Unlock()
+		return 0, io.ErrClosedPipe
+	}
+	h.active.Add(1)
+	h.mu.Unlock()
+	defer h.active.Done()
 	ctx, cancel := context.WithTimeout(ctx, mcpRPCWait)
 	defer cancel()
 	stop := context.AfterFunc(h.ctx, cancel)
@@ -135,11 +145,14 @@ func (h *httpConn) WriteContext(ctx context.Context, p []byte) (int, error) {
 func (h *httpConn) noteSession(id string) {
 	h.mu.Lock()
 	h.session = id
-	start := !h.listen
+	start := !h.listen && !h.closed
 	h.listen = true
+	if start {
+		h.active.Add(1)
+	}
 	h.mu.Unlock()
 	if start {
-		go h.listenGET()
+		go func() { defer h.active.Done(); h.listenGET() }()
 	}
 }
 
@@ -214,7 +227,11 @@ func (h *httpConn) pushJSON(raw []byte) error {
 
 func (h *httpConn) Close() error {
 	h.closeOnce.Do(func() {
+		h.mu.Lock()
+		h.closed = true
+		h.mu.Unlock()
 		h.closeErr = h.pw.Close()
+		h.active.Wait()
 	})
 	return h.closeErr
 }

@@ -70,6 +70,7 @@ import (
 // Kernel is the bot's turn runner.
 type Kernel struct {
 	Bot       *bot.Bot
+	Resources *BotResources
 	Provider  provider.Provider
 	Links     []link.Link
 	Inbox     *inbox.Inbox
@@ -879,6 +880,9 @@ func (k *Kernel) StartEmitters(ctx context.Context) {
 			return
 		}
 		for _, l := range k.snapshotLinks() {
+			if m, ok := l.(*link.MCP); ok && m.Borrowed() {
+				continue
+			}
 			em, ok := l.(link.Emitter)
 			if !ok {
 				continue

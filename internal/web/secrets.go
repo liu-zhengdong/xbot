@@ -48,12 +48,20 @@ func (s *Server) globalSecrets(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 400, "没能保存，请填写名称和密钥")
 			return
 		}
+		if local, ok := backend.(*vault.Store); ok {
+			vault.Register(local)
+		}
+		s.refreshMCP()
 		writeJSON(w, 200, map[string]bool{"ok": true})
 	case http.MethodDelete:
 		if err := backend.Remove(r.PathValue("secret")); err != nil {
 			writeErr(w, 500, "没能删除密钥")
 			return
 		}
+		if local, ok := backend.(*vault.Store); ok {
+			vault.Register(local)
+		}
+		s.refreshMCP()
 		writeJSON(w, 200, map[string]bool{"ok": true})
 	}
 }

@@ -48,7 +48,9 @@ type Server struct {
 	Root         string
 	Owner        string
 	DefaultLinks []string
-	NewKernel    func(*bot.Bot) (*kernel.Kernel, error)
+	NewKernel    func(*bot.Bot, *kernel.BotResources) (*kernel.Kernel, error)
+	NewResources func(*bot.Bot) (*kernel.BotResources, error)
+	ReconcileMCP func()
 
 	// SkillHome is the home directory whose Agent, Codex and Claude skill libraries
 	// the import list reads. Empty means the serving user's own home.
@@ -106,8 +108,7 @@ type Server struct {
 	PollInterval time.Duration
 
 	mu        sync.Mutex
-	kernels   map[string]*kernel.Kernel
-	gate      map[string]*sync.Mutex
+	kernels   map[string]*kernelEntry
 	completed map[string]completionCount
 	holds     map[string]*handleHold
 	approvals map[string]*pendingApproval
@@ -1624,27 +1625,18 @@ func (s *Server) kernel(b *bot.Bot) (*kernel.Kernel, *sync.Mutex, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.kernels == nil {
-		s.kernels = map[string]*kernel.Kernel{}
-		s.gate = map[string]*sync.Mutex{}
-		if !s.ForkTurns {
-			// A late decision on a parked card wakes the bot at once.
-			kernel.SetWaker(s.Root, s.wakeBot)
-		}
+	entry, err := s.entryLocked(b)
+	if err != nil {
+		return nil, nil, err
 	}
-	if s.gate[b.Name()] == nil {
-		s.gate[b.Name()] = &sync.Mutex{}
-	}
-	k := s.kernels[b.Name()]
+	k := entry.Kernel
 	if k == nil {
-		// A profile may have been read before a concurrent binding update.
-		// Refresh under the same mutex that removes the previous cache entry.
 		fresh, err := bot.Load(b.Root, b.Name())
 		if err != nil {
 			return nil, nil, err
 		}
 		*b = *fresh
-		k, err = s.NewKernel(b)
+		k, err = s.NewKernel(b, entry.Resources)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1652,13 +1644,11 @@ func (s *Server) kernel(b *bot.Bot) (*kernel.Kernel, *sync.Mutex, error) {
 		k.AllowFork = s.ForkTurns
 		k.Statuses = statusSource{s}
 		if s.ForkTurns || k.Dispatch {
-			// A background's or a subagent's confirmation becomes a card in the
-			// transcript for the owner.
 			k.BackgroundApprove = s.webApprove(b, k, func(string, any) {})
 		}
-		s.kernels[b.Name()] = k
+		entry.Kernel = k
 	}
-	return k, s.gate[b.Name()], nil
+	return k, entry.Gate, nil
 }
 
 func (s *Server) cursorPath() string { return filepath.Join(s.Root, "web-cursor.json") }

@@ -29,7 +29,7 @@ func TestAppsExposeMCPRuntimeWithoutProbing(t *testing.T) {
 	m := link.NewMCP(spec)
 	defer m.Close()
 	k := &kernel.Kernel{Bot: b, Links: []link.Link{m}}
-	s := &Server{Root: root, Owner: "u1", kernels: map[string]*kernel.Kernel{"ada": k}}
+	s := &Server{Root: root, Owner: "u1", kernels: map[string]*kernelEntry{"ada": {Kernel: k}}}
 	token, _, err := s.EnsureToken()
 	if err != nil {
 		t.Fatal(err)

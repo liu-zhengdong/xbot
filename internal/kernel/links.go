@@ -401,6 +401,9 @@ func (k *Kernel) snapshotLinks() []link.Link {
 	if k == nil {
 		return nil
 	}
+	if k.Resources != nil {
+		_ = k.Resources.MCP.Reconcile(context.Background())
+	}
 	k.linksMu.Lock()
 	defer k.linksMu.Unlock()
 	if k.Bot != nil {
@@ -470,9 +473,15 @@ func MountOrgans(b *bot.Bot, links []link.Link) []link.Link {
 // one whose definition changed is replaced by a fresh instance. An unreadable
 // file leaves the mounted set as it is.
 func (k *Kernel) syncMCPLocked(links []link.Link) []link.Link {
-	servers, err := link.LoadMCPAll(k.Bot.GlobalMCPPath(), k.Bot.MCPPath())
-	if err != nil {
-		return links
+	var servers []link.MCPServer
+	if k.Resources != nil {
+		servers = k.Resources.MCP.Specs()
+	} else {
+		var err error
+		servers, err = link.LoadMCPAll(k.Bot.GlobalMCPPath(), k.Bot.MCPPath())
+		if err != nil {
+			return links
+		}
 	}
 	want := make(map[string]link.MCPServer, len(servers))
 	for _, s := range servers {
@@ -504,7 +513,12 @@ func (k *Kernel) syncMCPLocked(links []link.Link) []link.Link {
 		s.Secret = link.GlobalSecretLookup(k.Bot.Root)
 		mk := k.newMCP
 		if mk == nil {
-			mk = func(s link.MCPServer) link.Link { return link.NewMCP(s) }
+			mk = func(s link.MCPServer) link.Link {
+				if k.Resources != nil {
+					return link.NewBorrowedMCP(s, k.Resources.MCP)
+				}
+				return link.NewMCP(s)
+			}
 		}
 		out = append(out, mk(s))
 	}

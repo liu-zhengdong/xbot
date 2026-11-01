@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"xbot/internal/mcp"
 	"xbot/internal/tools"
 )
 
@@ -203,4 +204,70 @@ func callReply(params json.RawMessage) string {
 	}
 	q, _ := in.Arguments["q"].(string)
 	return `{"content":[{"type":"image","data":"xx"},{"type":"text","text":"` + q + `"},{"type":"text","text":"tail"}]}`
+}
+
+func TestMCPBorrowedAdapterDoesNotOwnSession(t *testing.T) {
+	var initialized atomic.Int32
+	notes := make(chan string, 1)
+	spec := MCPServer{Name: "docs", Dial: dialFake(t, func(msg rpcMessage) []rpcMessage {
+		switch msg.Method {
+		case "initialize":
+			initialized.Add(1)
+			return []rpcMessage{rpcOK(msg.ID, `{}`)}
+		case "notifications/initialized":
+			return []rpcMessage{rpcNote("notifications/message", `{"text":"host-owned"}`)}
+		case "tools/list":
+			return []rpcMessage{rpcOK(msg.ID, `{"tools":[{"name":"echo","annotations":{"readOnlyHint":true}}]}`)}
+		case "tools/call":
+			return []rpcMessage{rpcOK(msg.ID, `{"content":[{"type":"text","text":"kept"}]}`)}
+		}
+		return nil
+	})}
+	owner := mcp.NewManager(context.Background(), mcp.Options{})
+	defer owner.Close()
+	ref, err := owner.Bind(mcp.Binding{Key: "one", ReadConfig: func() ([]mcp.Spec, error) { return []mcp.Spec{spec}, nil }, Notify: func(server, text string) error { notes <- server + ":" + text; return nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, next := NewBorrowedMCP(spec, ref), NewBorrowedMCP(spec, ref)
+	if !first.Borrowed() {
+		t.Fatal("adapter did not report borrowing")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	list, err := first.LoadTools(ctx)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("tools=%d error=%v", len(list), err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	list, err = next.LoadTools(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, err := list[0].Run(ctx, []byte(`{}`))
+	if err != nil || text != "kept" || initialized.Load() != 1 {
+		t.Fatalf("text=%q initialized=%d err=%v", text, initialized.Load(), err)
+	}
+	select {
+	case text := <-notes:
+		if text != "docs:host-owned" {
+			t.Fatal(text)
+		}
+	case <-ctx.Done():
+		t.Fatal("notification did not reach host")
+	}
+	runCtx, stopRun := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() {
+		done <- next.Run(runCtx, func(Event) error { t.Error("borrowed adapter consumed host notification"); return nil })
+	}()
+	stopRun()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if _, err := list[0].Run(ctx, []byte(`{}`)); err != nil {
+		t.Fatal("borrowed Run closed shared session", err)
+	}
 }

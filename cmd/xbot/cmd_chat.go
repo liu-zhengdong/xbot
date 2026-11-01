@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/kernel"
 	"xbot/internal/link"
+	"xbot/internal/mcp"
 	"xbot/internal/proc"
 	"xbot/internal/provider"
 )
@@ -100,7 +102,13 @@ func cmdChat(root string, args []string) error {
 	defer stop()
 	lines := make(chan proc.Line)
 	pr := &printer{yes: opt.Yes, lines: lines}
-	k, who, err := openKernel(root, b, 0, pr.Approve, pr, opt.Yes, runnerSpec{opt.RunnerURL, opt.RunnerToken})
+	manager := mcp.NewManager(ctx, mcpOptions(root))
+	defer manager.Close()
+	resources, err := kernel.NewBotResources(ctx, b, manager)
+	if err != nil {
+		return err
+	}
+	k, who, err := openKernel(root, b, 0, pr.Approve, pr, opt.Yes, runnerSpec{opt.RunnerURL, opt.RunnerToken}, resources)
 	if err != nil {
 		return err
 	}

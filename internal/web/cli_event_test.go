@@ -38,7 +38,7 @@ func (m *cliEventModel) Chat(_ context.Context, req provider.Request, _ func(str
 func TestCLIEventWake(t *testing.T) {
 	s, ui, cookie, b := questionServer(t, time.Second)
 	model := &cliEventModel{}
-	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
+	s.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		box, err := inbox.Open(b.InboxPath())
 		if err != nil {
 			return nil, err
@@ -143,7 +143,7 @@ func TestCLIEventWake(t *testing.T) {
 func TestCLIEventVisibleNotification(t *testing.T) {
 	s, ui, cookie, _ := questionServer(t, time.Second)
 	model := &cliEventModel{notify: true}
-	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
+	s.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		box, err := inbox.Open(b.InboxPath())
 		if err != nil {
 			return nil, err
@@ -168,7 +168,7 @@ func TestCLIEventVisibleNotification(t *testing.T) {
 func TestCLIEventQueue(t *testing.T) {
 	s, ui, cookie, b := questionServer(t, time.Second)
 	model := &cliEventModel{started: make(chan struct{})}
-	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
+	s.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		box, err := inbox.Open(b.InboxPath())
 		if err != nil {
 			return nil, err

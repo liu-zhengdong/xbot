@@ -145,8 +145,14 @@ func (s *Server) bindModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer lock.Release()
+	resources, err := s.ResourcesFor(b)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
 	s.mu.Lock()
-	k := s.kernels[b.Name()]
+	entry := s.kernels[b.Name()]
+	k := entry.Kernel
 	s.mu.Unlock()
 	if k != nil {
 		if err := k.CheckBindingIdle(); err != nil {
@@ -156,9 +162,9 @@ func (s *Server) bindModel(w http.ResponseWriter, r *http.Request) {
 	}
 	checker := k
 	if checker == nil {
-		checker = &kernel.Kernel{Bot: b}
+		checker = &kernel.Kernel{Bot: b, Resources: resources}
 		if s.NewKernel != nil && checker.BindingShrinksWindow(window) {
-			checker, err = s.NewKernel(b)
+			checker, err = s.NewKernel(b, resources)
 			if err != nil {
 				writeErr(w, 500, err.Error())
 				return
@@ -171,17 +177,18 @@ func (s *Server) bindModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.kernels[b.Name()] != k {
+	if s.kernels[b.Name()] != entry || entry.Kernel != k {
+		s.mu.Unlock()
 		writeErr(w, 409, "Bot 状态已变化，请重试")
 		return
 	}
 	if err := b.SetBinding(in.Provider, in.Model); err != nil {
+		s.mu.Unlock()
 		writeErr(w, 400, err.Error())
 		return
 	}
+	entry.Kernel = nil
+	s.mu.Unlock()
 	k.CloseOperations()
-	delete(s.kernels, b.Name())
-	delete(s.gate, b.Name())
 	writeJSON(w, 200, map[string]string{"provider": in.Provider, "model": in.Model})
 }
