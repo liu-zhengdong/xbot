@@ -12,6 +12,7 @@ import (
 	"xbot/internal/cliops"
 	"xbot/internal/config"
 	"xbot/internal/inbox"
+	"xbot/internal/link"
 	"xbot/internal/peer"
 	"xbot/internal/tools"
 	"xbot/internal/work"
@@ -188,6 +189,70 @@ func (k *Kernel) ChatGroupHandlers() *cliops.ChatGroupHandlers {
 				reply.Messages, reply.File, reply.Bytes, reply.Access = nil, file, size, "local"
 			}
 			return reply, nil
+		},
+		Create: func(ctx context.Context, in cliops.ChatGroupCreate) (cliops.ChatGroupCreateReply, error) {
+			release := k.holdOperations()
+			defer release()
+			reply := cliops.ChatGroupCreateReply{}
+			name, root, err := snapshotSourceNameRoot(ctx)
+			if err == nil {
+				var group peer.Group
+				group, err = (&peer.Bus{Root: root, Now: k.now}).CreateGroup(name, in.Name, in.Members)
+				if err == nil {
+					view := groupView(group)
+					reply.Group, reply.Created = &view, true
+				}
+			}
+			if err != nil {
+				err = failure(err)
+				reply.Error = err.Error()
+			}
+			if !fits(reply, cliops.FormatChatGroupCreate(reply)) {
+				err = errors.New("chat-group: receipt exceeds response budget")
+				reply.Group, reply.Error = nil, err.Error()
+			}
+			return reply, err
+		},
+		Post: func(ctx context.Context, in cliops.ChatGroupPost) (cliops.ChatGroupPostReply, error) {
+			release := k.holdOperations()
+			defer release()
+			// The decoded body is fixed before resolving the original Shell call.
+			id, text := in.ID, in.Text
+			result := peer.GroupPostResult{GroupID: id, PostedMembers: []string{}, Stage: "validation"}
+			prepared, cleanup, err := k.runtimeSourceCall(ctx)
+			if err == nil {
+				defer cleanup()
+				frozen, ok := prepared.Value(turnKey{}).(*turn)
+				if !ok || frozen == nil {
+					err = errors.New("chat-group: source frozen turn unavailable")
+				} else {
+					frozen.mu.Lock()
+					chain, hops := frozen.turnChain, frozen.turnHops
+					frozen.mu.Unlock()
+					var name, root string
+					name, root, err = snapshotSourceNameRoot(prepared)
+					if err == nil {
+						if chain == "" {
+							chain = "ch_" + name
+						}
+						result, err = (&peer.Bus{Root: root, Now: k.now}).PostGroupWithResult(link.KindBot, name, id, text, chain, hops+1, k.now())
+					}
+				}
+			}
+			posted := make([]string, 0, len(result.PostedMembers))
+			for _, member := range result.PostedMembers {
+				posted = append(posted, redact(member))
+			}
+			reply := cliops.ChatGroupPostReply{ID: redact(result.GroupID), MessageID: redact(result.MessageID), Appended: result.Appended, PostedMembers: posted, FailedMember: redact(result.FailedMember), Stage: result.Stage}
+			if err != nil {
+				err = failure(err)
+				reply.Error = err.Error()
+			}
+			if !fits(reply, cliops.FormatChatGroupPost(reply)) {
+				err = errors.New("chat-group: receipt exceeds response budget")
+				reply.Error = err.Error()
+			}
+			return reply, err
 		},
 	}
 }
