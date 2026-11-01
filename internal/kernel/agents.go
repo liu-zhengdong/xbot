@@ -37,6 +37,11 @@ func (k *Kernel) ensureExec() exec.Executor {
 					loc = exec.NewLocal(exec.Limits{MaxConcurrent: k.forkCap(), MaxSteps: maxStepsGuard, Timeout: k.maxTypeBudget()})
 					loc.ToolsFor = k.toolsFor
 					loc.Wrap = k.wrapSub
+					loc.AgentsDir = k.Bot.AgentsDir()
+					loc.Restore = k.restoreSubagent
+					loc.ProviderFor = k.subagentProvider
+					loc.CurrentCWD = func(req exec.StartRequest) string { return k.cwdScope(req.ID) }
+					loc.ReleaseScope = func(req exec.StartRequest) { k.dropScope(req.ID) }
 				}
 				loc.OnIdle = k.closeIdleOperations
 				loc.RunTool = func(req exec.StartRequest, ctx context.Context, t tools.Tool, args json.RawMessage, run func(context.Context) tools.CallResult) tools.CallResult {
@@ -84,7 +89,7 @@ func (e modelExecutor) Start(ctx context.Context, req exec.StartRequest) (exec.T
 	if jobs := e.k.shellJobs(); jobs != nil {
 		req.JobDir = jobs.Dir
 	}
-	if req.Mode != exec.ModeFork {
+	if req.Descriptor == nil && req.Mode != exec.ModeFork {
 		_, overlay, err := e.k.modelOverlay()
 		if err != nil {
 			return exec.Task{}, err
@@ -179,6 +184,11 @@ func (k *Kernel) allocScope(ctx context.Context) string {
 // from the parent at creation. Calls ignore the context's branch: the scope
 // id is the subagent, not whatever turn happens to be running the tool.
 func (k *Kernel) toolsForScope(scope string) []tools.Tool {
+	return k.bindingTools(k.scopeTools(scope))
+}
+
+// scopeTools leaves model-specific filtering to the actual caller's route.
+func (k *Kernel) scopeTools(scope string) []tools.Tool {
 	var shells []tools.Tool
 	for _, sh := range tools.NewShells() {
 		sh.Dir = k.WorkDir
@@ -222,7 +232,7 @@ func (k *Kernel) toolsForScope(scope string) []tools.Tool {
 	k.configureWeb(view)
 	k.configureWeb(fetch)
 	k.configureWeb(search)
-	return k.bindingTools(append(shells, read, memoryGuarded{write, k}, memoryGuarded{edit, k}, fetch, search, view))
+	return append(shells, read, memoryGuarded{write, k}, memoryGuarded{edit, k}, fetch, search, view)
 }
 
 // memoryGuarded runs a subagent's file edit through the memory guard. The
@@ -252,8 +262,9 @@ func (k *Kernel) forwardExec(ch <-chan exec.Event) {
 			continue
 		}
 
-		if ev.Kind == exec.EvDone || ev.Kind == exec.EvFailed {
-			// A subagent's tools use its id as their cwd scope.
+		if ev.TurnSeq == 0 && (ev.Kind == exec.EvDone || ev.Kind == exec.EvFailed) {
+			// Continuable scope release is synchronous, before admission hands the
+			// id to another turn. Only old one-shot events clean up here.
 			k.dropScope(ev.AgentID)
 		}
 		if k.Inbox == nil || ev.AgentID == "" || ev.Kind == "" {
@@ -402,7 +413,23 @@ func (k *Kernel) control(ctx context.Context, id, kind, text string) (string, er
 	if kind != exec.KindCancel && strings.TrimSpace(text) == "" {
 		return "", errors.New("exec: text is empty")
 	}
-	if err := k.ensureExec().Control(ctx, id, exec.Control{Kind: kind, Text: text}); err != nil {
+	if _, err := exec.ReadDescriptor(k.Bot.AgentDir(id)); err == nil {
+		switch kind {
+		case exec.KindSteer, exec.KindQueue:
+			task, err := k.MessageSubagent(ctx, id, text, kind)
+			if err != nil {
+				return "", err
+			}
+			return subagentReceipt(task)
+		case exec.KindCancel:
+			task, err := k.StopSubagent(ctx, id)
+			if err != nil {
+				return "", err
+			}
+			return subagentReceipt(task)
+		}
+	}
+	if err := k.ensureExec().Control(ctx, id, exec.Control{Kind: kind, Text: text, Sender: "owner"}); err != nil {
 		return "", err
 	}
 	return kind + " " + id, nil

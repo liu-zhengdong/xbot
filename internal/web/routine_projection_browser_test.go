@@ -28,15 +28,25 @@ const waitFor=async(fn,label)=>{for(let i=0;i<1000;i++){if(fn())return;await sle
  for(const record of ['早报','看看新闻','巡检','检查服务','周报','错过','叫我出发','定时','timer','SILENT','没什么要说的'])
   if(chat.includes(record))throw Error('chat shows routine record: '+record);
 
- await waitFor(()=>[...document.querySelectorAll('#workspace-tabs [role=tab]')].some(n=>n.textContent==='任务'),'tabs');
- [...document.querySelectorAll('#workspace-tabs [role=tab]')].find(n=>n.textContent==='任务').click();
- await waitFor(()=>$('.task-record.finished')&&$('.task-routine'),'task tab');
- const finished=[...document.querySelectorAll('.task-record.finished')];
- if(finished.length!==1||!finished[0].textContent.includes('检查任务'))throw Error('finished list should hold only the subagent: '+finished.map(n=>n.textContent).join(' | '));
- if(!document.querySelector('#panel [data-section="进行中"] [data-agent="sa_running0000000001"]'))throw Error('in-progress subagent disappeared');
- if(!document.querySelector('#panel [data-section="排队中"] [data-agent="sa_queued0000000002"]'))throw Error('queued subagent disappeared');
- if(!document.querySelector('#panel [data-section="webhook"]'))throw Error('Webhook section disappeared');
- if(!$('.task-routine [role=switch]'))throw Error('routine settings lost');
+ const tab=name=>[...document.querySelectorAll('#workspace-tabs [role=tab]')].find(n=>n.textContent===name);
+ const view=name=>document.getElementById(tab(name).getAttribute('aria-controls'));
+ await waitFor(()=>tab('任务')&&tab('子代理'),'peer task and child tabs');
+ tab('任务').click();
+ await waitFor(()=>$('.task-routine')?.checkVisibility(),'Routine tab');
+ const routine=$('.task-routine');
+ if(!view('任务').querySelector('[data-section="webhook"]'))throw Error('Webhook section disappeared');
+ if(!routine.querySelector('[role=switch]'))throw Error('routine settings lost');
+ if(view('任务').querySelector('[data-agent^="sa_"]'))throw Error('child records still mixed into Routine page');
+ tab('子代理').click();
+ await waitFor(()=>view('子代理').querySelector('[data-agent="sa_0123456789abcdef"]')?.checkVisibility(),'child records');
+ const root=view('子代理'),finished=root.querySelector('[data-agent="sa_0123456789abcdef"]');
+ if(!finished.innerText.includes('检查任务')||!finished.innerText.includes('已完成')||finished.closest('section').querySelectorAll('[data-agent]').length!==1)throw Error('finished child group lost its sole recorded result');
+ const active=root.querySelector('[data-agent="sa_running0000000001"]'),queued=root.querySelector('[data-agent="sa_queued0000000002"]');
+ if(!active?.checkVisibility()||!/进行中|在跑/.test(active.innerText))throw Error('in-progress subagent disappeared');
+ if(!queued?.checkVisibility()||!queued.innerText.includes('已排队'))throw Error('queued subagent disappeared');
+ if(active.closest('section')===queued.closest('section')||queued.closest('section')===finished.closest('section')||active.closest('section')===finished.closest('section'))throw Error('child states no longer grouped separately');
+ tab('任务').click();
+ if($('.task-routine')!==routine||!routine.checkVisibility()||!routine.querySelector('[role=switch]'))throw Error('child navigation replaced Routine settings');
  document.body.dataset.testResult='passed';
 })().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
 `)

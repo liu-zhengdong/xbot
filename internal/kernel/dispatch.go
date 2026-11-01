@@ -12,6 +12,8 @@ import (
 
 	"xbot/internal/agent"
 	"xbot/internal/agenttype"
+	"xbot/internal/compact"
+	"xbot/internal/config"
 	"xbot/internal/exec"
 	"xbot/internal/link"
 	"xbot/internal/provider"
@@ -26,7 +28,7 @@ import (
 
 // DispatchRule tells the model to answer the owner before working and to hand
 // long work out. It is added to the rules only while dispatch is on.
-const DispatchRule = "先回应用户，再干活：调用要花点时间的工具前，用一两句话说你理解了什么、接下来要做什么。你拥有所有工具，短活可以自己做。长活（步骤多、构建或调研耗时长、任何不该让用户等的事）交给子代理：用 dispatch 选对类型，任务里写清子代理需要的一切，因为它从空上下文开始（目标、路径、约束、怎样算做完）。把子代理当成能自己判断的同事：交代目标、约束、验收标准和必要背景，步骤由它自己定，它可以反问；不要写逐步剧本，也不要要求它「只输出…」。然后用一两句话告诉用户你交出去了什么。子代理的结果回来后，告诉用户结果如何，值得留的记进记忆。结果分批回来时，只报告新到的那个；已经告诉过用户的细节不要再说。需要总结时，用一句话带过之前的结果，不再列它们的细节。不要派发没人要求的验证或重复调研；已商定的验收检查由你自己看证据；拿不到证据就报告为未验证，只有要扩大范围时才先问。子代理运行时，用 steer、queue、interrupt 或 cancel 改变它的方向；同一件事不要再开第二个。"
+const DispatchRule = "先回应用户，再干活：调用要花点时间的工具前，用一两句话说你理解了什么、接下来要做什么。你拥有所有工具，短活可以自己做。长活（步骤多、构建或调研耗时长、任何不该让用户等的事）交给子代理：用 dispatch 选对类型，任务里写清子代理需要的一切，因为它从空上下文开始（目标、路径、约束、怎样算做完）。把子代理当成能自己判断的同事：交代目标、约束、验收标准和必要背景，步骤由它自己定，它可以反问；不要写逐步剧本，也不要要求它「只输出…」。然后用一两句话告诉用户你交出去了什么。子代理的结果回来后，告诉用户结果如何，值得留的记进记忆。结果分批回来时，只报告新到的那个；已经告诉过用户的细节不要再说。需要总结时，用一句话带过之前的结果，不再列它们的细节。不要派发没人要求的验证或重复调研；已商定的验收检查由你自己看证据；拿不到证据就报告为未验证，只有要扩大范围时才先问。对子代理的补充与后续反馈用 agent_message（steer 或 queue），完成后同 id 仍能继续；停止用 agent_stop。同一件事不要再开第二个。创建默认 fresh；fork 只继承已完成轮，当前轮的新信息仍须写进任务。"
 
 // legacyDispatchRule is the ADR 0016 wording. It is only recognized, so a
 // bot rules file that still carries it drops it on migration.
@@ -50,7 +52,7 @@ type dispatchTool struct{ k *Kernel }
 func (dispatchTool) Name() string { return "dispatch" }
 func (t dispatchTool) Description() string {
 	var b strings.Builder
-	b.WriteString("Hand a task to a subagent of the chosen type and return at once; its result arrives later as an event. The subagent starts with an empty context: the task must say everything it needs (goal, files, constraints, what done looks like). Types:")
+	b.WriteString("Hand a task to a subagent of the chosen type and return at once; its result arrives later as an event. Default fresh starts with an empty context; fork inherits completed parent turns only. Include goal, files, constraints, and what done looks like in the task. Completed ids can continue via agent_message. Types:")
 	for _, ty := range t.k.agentTypes() {
 		fmt.Fprintf(&b, "\n- %s: %s", ty.Name, ty.When)
 	}
@@ -62,73 +64,42 @@ func (t dispatchTool) Parameters() any {
 		names = append(names, ty.Name)
 	}
 	return schema(map[string]any{
-		"type": map[string]any{"type": "string", "enum": names, "description": "subagent type"},
-		"task": stringProp("交给子代理的事：写清意图、约束、验收标准和必要背景；不要写逐步剧本，也不要「只输出…」之类的格式指令"),
+		"type":             map[string]any{"type": "string", "enum": names, "description": "subagent type"},
+		"task":             stringProp("交给子代理的事：写清意图、约束、验收标准和必要背景；不要写逐步剧本，也不要「只输出…」之类的格式指令"),
+		"context":          map[string]any{"type": "string", "enum": []string{"fresh", "fork"}, "description": "Default fresh; fork inherits completed parent turns, excluding the current turn"},
+		"provider":         stringProp("Configured provider; omitted inherits the parent"),
+		"model":            stringProp("Configured model id"),
+		"thinking":         map[string]any{"type": "string", "enum": []string{"on", "off", "omit"}},
+		"reasoning_effort": map[string]any{"type": "string", "enum": []string{"low", "high", "max"}},
 	}, []string{"type", "task"})
 }
 func (dispatchTool) Confirm(json.RawMessage) (bool, string, error) { return false, "dispatch", nil }
 func (t dispatchTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		Type string `json:"type"`
-		Task string `json:"task"`
-	}
+	var in SubagentRequest
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
 	}
-	return t.k.dispatch(ctx, in.Type, in.Task)
+	live, err := t.k.StartSubagent(ctx, in)
+	if err != nil {
+		return "", err
+	}
+	return dispatchReceipt(live, in.Type), nil
 }
 
-// dispatch starts a subagent of the named type. Its system prompt is the base
-// subagent rules, the type's prompt and report sections, and the memory
-// snapshot of the person this turn serves; the task is the first message.
+// dispatch remains the existing internal caller's brief shorthand.
 func (k *Kernel) dispatch(ctx context.Context, typeName, task string) (string, error) {
-	ty, ok := agenttype.Find(k.agentTypes(), strings.TrimSpace(typeName))
-	if !ok {
-		return "", fmt.Errorf("dispatch: unknown type %q", typeName)
-	}
-	task = strings.TrimSpace(task)
-	if task == "" {
-		return "", errors.New("dispatch: task is empty")
-	}
-	if len(task) > 16<<10 {
-		return "", errors.New("dispatch: task is too long")
-	}
-	id, err := newAgentID()
+	live, err := k.StartSubagent(ctx, SubagentRequest{Type: typeName, Task: task})
 	if err != nil {
 		return "", err
 	}
-	persona := ty.Instructions(exec.SubPersona)
-	if ty.Name != "research" {
-		if guide := k.cliProfileGuide(); guide != "" {
-			persona += "\n\n" + guide
-		}
-	}
-	if mem := k.dispatchMemory(ctx); mem != "" {
-		persona += "\n\n你服务的人和这个 Bot 的已知情况（记忆的只读快照）：\n" + mem
-	}
-	cwd := k.cwdFor(ctx)
-	k.adoptScope(ctx, id)
-	req := exec.StartRequest{
-		ID:         id,
-		Bot:        k.Bot.Name(),
-		Task:       task,
-		Mode:       exec.ModeBrief,
-		Dir:        k.Bot.AgentDir(id),
-		Type:       ty.Name,
-		Persona:    persona,
-		TimeoutSec: int(ty.Budget / time.Second),
-		Resource:   writeResource(ty, cwd),
-	}
-	live, err := k.ensureExec().Start(ctx, req)
-	if err != nil {
-		k.dropScope(id)
-		return "", err
-	}
+	return dispatchReceipt(live, typeName), nil
+}
+func dispatchReceipt(live exec.Task, typeName string) string {
+	receipt := startReceipt(live) + "，类型 " + typeName
 	if live.Status == "queued" {
-		return fmt.Sprintf("%s，类型 %s（预算 %s）。告诉用户它在排队、还没开始；有空位和资源时会自动开始，不要自己去做这件事。", startReceipt(live), ty.Name, ty.Budget), nil
+		return receipt + "。告诉用户它在排队、还没开始；有空位和资源时会自动开始，不要自己重复做这件事。"
 	}
-
-	return fmt.Sprintf("%s，类型 %s（预算 %s）。结果会作为事件送回；告诉用户它已经开始，不要自己去做这件事。", startReceipt(live), ty.Name, ty.Budget), nil
+	return receipt + "。结果会作为事件送回；告诉用户它已经开始。后续反馈用 agent_message 联系同一个 id。"
 }
 
 // writeResource is what a subagent of type ty may write when it starts in
@@ -170,6 +141,9 @@ func (k *Kernel) dispatchMemory(ctx context.Context) string {
 // filtered by its type. A request without a type (a plain spawn) gets the
 // whole set.
 func (k *Kernel) toolsFor(req exec.StartRequest) []tools.Tool {
+	if req.Descriptor != nil {
+		return k.continuableTools(req)
+	}
 	base := k.subagentBase(req.ID)
 	if req.Type == "" {
 		return base
@@ -223,26 +197,86 @@ func (k *Kernel) subApprover() agent.Approver {
 // fitProvider keeps one subagent's requests under the context lines, the way
 // a turn's own requests are kept (fit.go): a subagent can run for hours.
 type fitProvider struct {
-	inner provider.Provider
-	k     *Kernel
-	fit   *turnFit
+	inner    provider.Provider
+	k        *Kernel
+	fit      *turnFit
+	modelKey string
 }
 
 func (p *fitProvider) Chat(ctx context.Context, req provider.Request, onDelta func(string)) (provider.Message, error) {
 	raw := req
-	schemaAttempt := &mcpSchemaAttempt{k: p.k}
-	_, msg, err := schemaAttempt.chat(ctx, p.k.fit(ctx, nil, p.fit, raw, false), onDelta, p.inner.Chat)
+	schemaAttempt := &mcpSchemaAttempt{k: p.k, modelKey: p.modelKey}
+	request, err := p.fitted(ctx, raw, false)
+	if err != nil {
+		return provider.Message{}, err
+	}
+	_, msg, err := schemaAttempt.chat(ctx, request, onDelta, p.inner.Chat)
 	if err != nil && provider.IsContextOverflow(err) {
-		_, msg, err = schemaAttempt.chat(ctx, p.k.fit(ctx, nil, p.fit, raw, true), onDelta, p.inner.Chat)
+		request, err = p.fitted(ctx, raw, true)
+		if err == nil {
+			_, msg, err = schemaAttempt.chat(ctx, request, onDelta, p.inner.Chat)
+		}
+	}
+	if err == nil && p.fit.budget != nil && msg.Usage.Reported {
+		p.fit.mu.Lock()
+		p.fit.budget.ratio = calibrate(msg.Usage.PromptTokens, compact.EstimateMessages(request.Messages)+estimateTools(request.Tools))
+		p.fit.mu.Unlock()
 	}
 	return msg, err
 }
 
-func (k *Kernel) wrapSub(_ exec.StartRequest, p provider.Provider, pre int) provider.Provider {
+func (k *Kernel) wrapSub(req exec.StartRequest, p provider.Provider, pre int) provider.Provider {
 	f := newTurnFit(pre, nil)
-	// A subagent's transcript is its own file, which expand does not read.
 	f.noSeq = "Read the file or run the call again if you still need it."
-	return &fitProvider{inner: p, k: k, fit: f}
+	if req.Descriptor != nil {
+		f.noSeq = "Read this child's transcript with expand_subagent or read_file for the original result; do not rerun completed side effects."
+		window := compact.DefaultWindow
+		d := *req.Descriptor
+		if d.Provider != "" {
+			if _, spec, err := config.Lookup(k.Bot.Root, d.Provider, d.Model); err == nil {
+				window = spec.ContextWindow()
+			}
+		}
+		if limit := k.Bot.Config().ContextLimit; limit > 0 && limit < window {
+			window = limit
+		}
+		target, ceiling := compact.Lines(window)
+		if d.Provider == "" {
+			target, ceiling = k.lines()
+		} // injected fake budgets
+		f.budget = &subagentBudget{target: target, ceiling: ceiling, ratio: 1, compactor: compact.LLM{P: p}}
+		// Recovered history must fit too; preserve the child's system prefix,
+		// then summarize only a safe prefix before its latest step.
+		f.pre = 1
+	}
+	wrapped := &fitProvider{inner: p, k: k, fit: f}
+	if req.Descriptor != nil {
+		wrapped.modelKey = req.Descriptor.Provider + "/" + req.Descriptor.Model
+	}
+	return wrapped
+}
+
+func (p *fitProvider) fitted(ctx context.Context, req provider.Request, overflow bool) (provider.Request, error) {
+	if p.fit.budget != nil {
+		p.fit.mu.Lock()
+		tools := p.fit.scaled(p.k, estimateTools(req.Tools))
+		ceiling := p.fit.budget.ceiling
+		p.fit.mu.Unlock()
+		if tools >= ceiling {
+			return req, fmt.Errorf("subagent tool definitions exceed its model window (%d >= %d)", tools, ceiling)
+		}
+	}
+	out := p.k.fit(ctx, nil, p.fit, req, overflow)
+	if p.fit.budget != nil {
+		p.fit.mu.Lock()
+		size := p.fit.scaled(p.k, compact.EstimateMessages(out.Messages)+estimateTools(out.Tools))
+		ceiling := p.fit.budget.ceiling
+		p.fit.mu.Unlock()
+		if size > ceiling {
+			return out, fmt.Errorf("subagent context exceeds its model window after fitting (%d > %d)", size, ceiling)
+		}
+	}
+	return out, nil
 }
 
 // maxTypeBudget is the longest budget among the types: the executor's cap.

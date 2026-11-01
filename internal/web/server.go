@@ -165,6 +165,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("GET /{$}", s.static("static/index.html", "text/html; charset=utf-8"))
 	mux.HandleFunc("GET /app.js", s.static("static/app.js", "text/javascript; charset=utf-8"))
+	mux.HandleFunc("GET /subagents.js", s.static("static/subagents.js", "text/javascript; charset=utf-8"))
+	mux.HandleFunc("GET /subagents.css", s.static("static/subagents.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /tokens.css", s.static("static/tokens.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /app.css", s.static("static/app.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /devices.js", s.static("static/devices.js", "text/javascript; charset=utf-8"))
@@ -317,6 +319,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/bots/{name}/paste/{image}", s.getPaste)
 	mux.HandleFunc("POST /api/bots/{name}/approvals/{id}", s.decideApproval)
 	mux.HandleFunc("POST /api/bots/{name}/questions/{id}", s.chooseQuestion)
+	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/messages", s.messageSubagent)
+	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/stop", s.stopSubagent)
+	mux.HandleFunc("GET /api/bots/{name}/agents/{id}/transcript", s.subagentTranscript)
 	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/steer", s.steer)
 	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/cancel", s.cancel)
 	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/queue", func(w http.ResponseWriter, r *http.Request) { s.control(w, r, "queue") })
@@ -698,8 +703,13 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		meta, err := exec.ReadMeta(b.AgentDir(e.Name()))
-		if err != nil {
+		if err != nil || meta.ID != e.Name() {
 			continue
+		}
+		_, descriptorErr := exec.ReadDescriptor(b.AgentDir(e.Name()))
+		if active, ok := exec.ActiveTask(b.AgentDir(e.Name())); ok {
+			meta.Status, meta.TurnSeq = active.Status, active.TurnSeq
+			meta.FinishedAt = time.Time{}
 		}
 		if meta.Status == "done" && meta.Mode == "fork-turn" && lastApproval == nil {
 			// Replay assigns cards written before a fork to the fork's branch too.
@@ -725,7 +735,7 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 		if !meta.FinishedAt.IsZero() {
 			finishedAt = meta.FinishedAt
 		}
-		if finishedAt == nil && meta.Status != "running" && meta.Status != "queued" {
+		if finishedAt == nil && meta.Status != "running" && meta.Status != "queued" && meta.Status != "stopping" {
 			if info, err := os.Stat(filepath.Join(b.AgentDir(e.Name()), "meta.json")); err == nil {
 				finishedAt = info.ModTime().UTC()
 			}
@@ -738,6 +748,7 @@ func (s *Server) botPanel(w http.ResponseWriter, r *http.Request) {
 			"id": meta.ID, "type": meta.Type, "status": status, "task": clip(meta.Task, 140), "mode": meta.Mode, "steps": meta.Steps,
 			"summary": clip(meta.Summary, 2000), "finished_at": finishedAt,
 			"started_at": startedAt, "current_step": meta.CurrentStep, "notable": notable.Ordered(meta.Notable),
+			"continuable": descriptorErr == nil, "turn_seq": meta.TurnSeq, "result_path": bot.RedactText(meta.ResultPath),
 		})
 	}
 	// Live work first: running, awaiting, queued, then finished. Directory
@@ -810,7 +821,7 @@ func (s *Server) openWorkdir(w http.ResponseWriter, r *http.Request) {
 // agentRank puts the work an owner should see first at the top of the panel.
 func agentRank(status string) int {
 	switch status {
-	case "running":
+	case "running", "stopping":
 		return 0
 	case "awaiting":
 		return 1
@@ -1545,19 +1556,31 @@ func (s *Server) control(w http.ResponseWriter, r *http.Request, kind string) {
 			return
 		}
 	}
-	k, gate, err := s.kernel(b)
+	k, _, err := s.kernel(b)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		writeErr(w, http.StatusInternalServerError, bot.RedactText(err.Error()))
 		return
 	}
-	if !strings.HasPrefix(r.PathValue("id"), "bg_") {
-		// A background control only touches that turn's queue, so it never waits
-		// behind the foreground holding the gate.
-		gate.Lock()
-		defer gate.Unlock()
-		k.UseBot(b)
+	id := r.PathValue("id")
+	if !strings.HasPrefix(id, "bg_") && kind != exec.KindInterrupt {
+		var task exec.Task
+		if kind == exec.KindCancel {
+			task, err = k.StopSubagent(r.Context(), id)
+		} else {
+			task, err = k.MessageSubagent(r.Context(), id, in.Text, kind)
+		}
+		if err != nil && !errors.Is(err, exec.ErrNotContinuable) {
+			writeSubagentError(w, err)
+			return
+		}
+		if err == nil {
+			writeSubagentReceipt(w, task)
+			return
+		}
+		// An existing one-shot/runner task keeps its original live controls;
+		// missing descriptors never become a cold-start request.
 	}
-	msg, err := k.ControlSubagent(r.Context(), r.PathValue("id"), kind, in.Text)
+	msg, err := k.ControlSubagent(r.Context(), id, kind, in.Text)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return

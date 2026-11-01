@@ -55,7 +55,7 @@ func Builtin() []Type {
 		{
 			Name:    "research",
 			When:    "Find out something: search the web, read pages and files, compare sources. It cannot change files.",
-			Tools:   []string{"read_file", ShellReadOnly, "web_fetch", "web_search", "view_image"},
+			Tools:   []string{"read_file", ShellReadOnly, "web_fetch", "web_search", "view_image", "send_message_to_parent", "read_subagent", "expand_subagent"},
 			Prompt:  "You are a researcher. Check more than one source when you can. Say where each fact comes from. Keep facts and your own inference apart. Do not change any file.",
 			Budget:  20 * time.Minute,
 			Report:  []string{"Findings", "Sources", "Not found"},
@@ -64,7 +64,7 @@ func Builtin() []Type {
 		{
 			Name:    "dev",
 			When:    "Change code or files: read, edit, run commands and tests, use git.",
-			Tools:   []string{"read_file", "write_file", "edit_file", "bash", "sh", "zsh", "powershell", "cmd", "git-bash", "web_fetch", "web_search", "view_image", "read_skill", "write_skill"},
+			Tools:   []string{"read_file", "write_file", "edit_file", "bash", "sh", "zsh", "powershell", "cmd", "git-bash", "web_fetch", "web_search", "view_image", "read_skill", "write_skill", "send_message_to_parent", "read_subagent", "expand_subagent"},
 			Prompt:  "You are a developer. Read before you edit. Run the tests after a change. Stay inside the task: do not refactor or fix things you were not asked to.",
 			Budget:  2 * time.Hour,
 			Report:  []string{"Changed", "Tests", "Not done"},

@@ -155,6 +155,9 @@ func TestSpawnReportsQueuedAdmission(t *testing.T) {
 	k.Dispatch = false
 	loc := exec.NewLocal(exec.Limits{MaxConcurrent: 3})
 	loc.Prov = &roleModel{hold: hold}
+	// This fixture mixes legacy spawn with the typed dispatch entry below.
+	// The injected executor supplies the same child-record root as production.
+	loc.AgentsDir = k.Bot.AgentsDir()
 	k.Exec = loc
 	defer finishAdmissionJobs(t, k, hold)
 	for i := 0; i < 4; i++ {

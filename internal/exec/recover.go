@@ -17,6 +17,9 @@ func Interrupt(dir string) (Meta, error) {
 		// and interrupted event instead of inventing launch parameters or rerunning.
 		m = Meta{ID: filepath.Base(dir), Mode: ModeBrief}
 	}
+	if _, descriptorErr := ReadDescriptor(dir); descriptorErr == nil {
+		return interruptContinuable(dir, m, err)
+	}
 	if err == nil && ((m.Status != statusRunning && m.Status != statusQueued) || tools.SameProcess(m.PID, m.ProcStart)) {
 		return m, nil
 	}

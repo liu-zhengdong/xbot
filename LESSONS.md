@@ -96,6 +96,8 @@
 
 ## 界面交互
 
+- **新增前端模块必须接真实Server资源路由，组件夹具成功不能替代真入口。** 原因：子代理模块已嵌入并被index引用，组件fixture直接载入脚本因此通过；真实serve没有/subagents.js与/subagents.css路由，Tab选中后create undefined且空白。修复复用现有s.static，不新增第二资源来源。守护：`TestContinuableSubagentBinary` 用真实二进制+Chrome读原孩子工具结果并发反馈，`62dfada8` 诊断命中、`113c8a2f` 补路由后配合完成态可见控件驱动于 `2595697f` 转绿；只修夹具定位或补静态文件文字断言不能守住本缺口。Seen 1×（2026-11-01）。
+
 - **消息投影里的头像和装饰必须稳定，分页锚点不能依赖会重播的位移动画。** 头像 SVG 的递增 ID 会让未变消息比较失败并替换播放器；display 切页重播 4px 动画会使历史位置偏移。守护：`TestTranscriptIncrementalBrowser`、`TestVoiceChatBrowser`、`TestChatTabsPreserveChatBrowser`、`TestTranscriptWindowVisibleTailBrowser` 与真实 serve 的 `TestChatTabsJourney`。Seen 1×（2026-11-01）。
 
 - **后端扩窗必须一起验前端合并上限，至少用两页扩展后的 raw 规模测保尾和锚点。** 110 raw小夹具未触300行裁切，真实约200 raw两页把打开时的最新泡裁掉；控件高度也必须计入锚点校正。守护：`TestTranscriptWindowVisibleTailBrowser`（两页各300 raw、25泡、旧裁切先红）及 `TestTranscriptWindowLargeMergeBrowser`（800行触顶仍保尾并提示搜索）。Seen 1×（2026-10-31）。

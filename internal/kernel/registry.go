@@ -171,6 +171,9 @@ var kernelTools = []struct {
 		if k.Dispatch {
 			start = dispatchTool{k}
 		}
+		if k.Dispatch {
+			return []tools.Tool{start, agentMessageTool{k}, agentStopTool{k}, listSubagentsTool{k}, readSubTool{k}, expandSubTool{k}}
+		}
 		return []tools.Tool{start, steerTool{k}, queueTool{k}, interruptTool{k}, cancelTool{k}, readSubTool{k}, expandSubTool{k}}
 	}, nil},
 	// Skills are native tools, including when the library is empty.

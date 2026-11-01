@@ -36,6 +36,7 @@ import (
 // A request the provider rejects as too long is cut with all three and sent
 // once more.
 type turnFit struct {
+	budget             *subagentBudget // nil preserves the main line exactly
 	mu                 sync.Mutex
 	reserve            int  // next full environment, counted before fitting not after sending
 	refreshEnvironment bool // this caller appends a full snapshot after a fold
@@ -100,7 +101,11 @@ func (f *turnFit) view(msgs []provider.Message) []provider.Message {
 	for i, m := range msgs {
 		if f.cut > f.pre && i >= f.pre && i < f.cut {
 			if i == f.pre {
-				out = append(out, turnSummary(f.summary, f.from, f.to))
+				summary := turnSummary(f.summary, f.from, f.to)
+				if f.budget != nil {
+					summary.SetText("Earlier steps of this child conversation were summarized. Read its transcript with expand_subagent or read_file for original details.\n\n" + f.summary)
+				}
+				out = append(out, summary)
 			}
 			continue
 		}
@@ -182,7 +187,7 @@ func (k *Kernel) omit(f *turnFit, msgs []provider.Message, from, to, size, goal 
 		}
 		seq := k.lineSeq(f, msgs, i)
 		f.omitted[i] = seq
-		size -= k.scaled(old) - k.scaled(compact.EstimateMessage(f.omittedResult(m, seq)))
+		size -= f.scaled(k, old) - f.scaled(k, compact.EstimateMessage(f.omittedResult(m, seq)))
 	}
 	return size
 }
@@ -209,7 +214,7 @@ func (k *Kernel) lineSeq(f *turnFit, msgs []provider.Message, i int) int {
 // previous note, if any, is the prior summary, so the new one covers both.
 func (k *Kernel) foldTurn(ctx context.Context, f *turnFit, msgs []provider.Message, keep int) error {
 	start := f.start()
-	if keep <= start || k.Compactor == nil {
+	if keep <= start || f.compactor(k, ctx) == nil {
 		return nil
 	}
 	turns := make([]provider.Message, 0, keep-start)
@@ -219,7 +224,11 @@ func (k *Kernel) foldTurn(ctx context.Context, f *turnFit, msgs []provider.Messa
 		m.Images = nil
 		turns = append(turns, m)
 	}
-	text, err := k.foldFacts(ctx, f.summary, turns)
+	limit := min(256<<10, max(16<<10, k.ceiling()*2))
+	if f.budget != nil {
+		limit = max(1024, min(256<<10, f.budget.ceiling*2))
+	}
+	text, err := foldFactsBudget(ctx, f.summary, turns, limit, f.compactor(k, ctx))
 	if err != nil {
 		return err
 	}
@@ -237,6 +246,10 @@ func (k *Kernel) foldTurn(ctx context.Context, f *turnFit, msgs []provider.Messa
 // originals must not turn the summary call itself into an oversized request.
 func (k *Kernel) foldFacts(ctx context.Context, prior string, msgs []provider.Message) (string, error) {
 	limit := min(256<<10, max(16<<10, k.ceiling()*2))
+	return foldFactsBudget(ctx, prior, msgs, limit, k.compactor(turnSeqOf(ctx)))
+}
+
+func foldFactsBudget(ctx context.Context, prior string, msgs []provider.Message, limit int, compactor compact.Compactor) (string, error) {
 	// Half the batch is reserved for the previous 8 KiB summary, rules and JSON.
 	partLimit := limit / 2
 	var batch []provider.Message
@@ -245,7 +258,7 @@ func (k *Kernel) foldFacts(ctx context.Context, prior string, msgs []provider.Me
 		if len(batch) == 0 {
 			return nil
 		}
-		text, err := k.compactor(turnSeqOf(ctx)).Compact(ctx, strings.TrimSpace(prior+"\n"+summaryFacts), batch)
+		text, err := compactor.Compact(ctx, strings.TrimSpace(prior+"\n"+summaryFacts), batch)
 		if err != nil {
 			return err
 		}
@@ -308,7 +321,11 @@ func (k *Kernel) fit(ctx context.Context, t *turn, f *turnFit, req provider.Requ
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if overflow {
-		k.overflowed()
+		if f.budget == nil {
+			k.overflowed()
+		} else {
+			f.budget.ratio = min(2, max(1, f.budget.ratio)*1.25)
+		}
 	}
 	msgs := req.Messages
 	if f.pre > len(msgs) {
@@ -316,8 +333,12 @@ func (k *Kernel) fit(ctx context.Context, t *turn, f *turnFit, req provider.Requ
 		// still a prefix of it, so this does not happen in practice).
 		return req
 	}
-	measure := func() int { return k.scaled(compact.EstimateMessages(f.view(msgs))) + f.reserve }
+	measure := func() int { return f.scaled(k, compact.EstimateMessages(f.view(msgs))) + f.reserve }
 	target, ceiling := k.target(), k.ceiling()
+	if f.budget != nil {
+		ceiling = f.budget.ceiling - f.scaled(k, estimateTools(req.Tools))
+		target = min(f.budget.target, ceiling)
+	}
 	size := measure()
 	if size <= target && !overflow {
 		req.Messages = f.view(msgs)
@@ -329,7 +350,7 @@ func (k *Kernel) fit(ctx context.Context, t *turn, f *turnFit, req provider.Requ
 	// A failed pre-omit attempt falls back to the existing path, without a
 	// second summary call for the same range in this request.
 	attempted := false
-	if enabled, _ := strconv.ParseBool(os.Getenv("XBOT_FIT_SUMMARY_BEFORE_OMIT")); enabled && k.Compactor != nil {
+	if enabled, _ := strconv.ParseBool(os.Getenv("XBOT_FIT_SUMMARY_BEFORE_OMIT")); enabled && f.compactor(k, ctx) != nil {
 		for i := f.start(); i < keep; i++ {
 			if _, omitted := f.omitted[i]; !omitted && msgs[i].Role == provider.RoleTool && compact.EstimateMessage(msgs[i]) >= omitMin {
 				attempted = true
@@ -372,7 +393,7 @@ func (k *Kernel) fit(ctx context.Context, t *turn, f *turnFit, req provider.Requ
 // earlier is what this turn's steps before keep take in the request now.
 func (k *Kernel) earlier(f *turnFit, msgs []provider.Message, keep int) int {
 	sent := f.view(msgs)[f.pre:]
-	return k.scaled(compact.EstimateMessages(sent)) - k.scaled(compact.EstimateMessages(msgs[keep:]))
+	return f.scaled(k, compact.EstimateMessages(sent)) - f.scaled(k, compact.EstimateMessages(msgs[keep:]))
 }
 
 func (k *Kernel) noteFit(t *turn, reason string) {
@@ -404,4 +425,17 @@ func omitPastResults(msgs []provider.Message, blobs map[int]bool) []provider.Mes
 		}
 	}
 	return out
+}
+
+func (f *turnFit) scaled(k *Kernel, n int) int {
+	if f.budget == nil {
+		return k.scaled(n)
+	}
+	return int(float64(n) * max(1, f.budget.ratio))
+}
+func (f *turnFit) compactor(k *Kernel, ctx context.Context) compact.Compactor {
+	if f.budget != nil {
+		return f.budget.compactor
+	}
+	return k.compactor(turnSeqOf(ctx))
 }

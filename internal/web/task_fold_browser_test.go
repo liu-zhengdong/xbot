@@ -15,6 +15,7 @@ func TestTaskFoldInPanelBrowser(t *testing.T) {
 	runTodoBrowser(t, todoBrowserFixture+`
  const foldBaseFetch=window.fetch;
  window.fetch=async(path,opts={})=>{
+  if(String(path).includes('/agents/sa_0123456789abcdef/transcript'))return json({id:'sa_0123456789abcdef',status:'done',turn_seq:1,continuable:false,has_more:false,entries:[{seq:1,time:'2026-11-01T08:00:00Z',message:{role:'assistant',content:[{type:'text',text:'任务结果'}]}}]});
   if(/^\/api\/bots\/[^/]+$/.test(String(path))) return json({name:bots[0].name,links:[],routines:[{id:'routine1',name:'每小时访问B站',enabled:true,cron:'0 * * * *'}],agents:[{id:'sa_0123456789abcdef',type:'dev',task:'检查任务',status:'done',summary:'任务结果'}]});
   return foldBaseFetch(path,opts);
  };
@@ -23,14 +24,27 @@ func TestTaskFoldInPanelBrowser(t *testing.T) {
  const waitFor=async(fn,label)=>{for(let i=0;i<1000;i++){if(fn())return;await sleep(10)}throw Error('timed out: '+label)};
  (async()=>{
   await waitFor(()=>!$('#shell').hidden && $('#title').textContent.includes(bots[0].name) && !$('.thread-loading-cover'),'boot');
-  await waitFor(()=>[...document.querySelectorAll('#workspace-tabs [role=tab]')].some(n=>n.textContent==='任务'),'tabs');
-  [...document.querySelectorAll('#workspace-tabs [role=tab]')].find(n=>n.textContent==='任务').click();
-  await waitFor(()=>$('.task-record.finished') && $('.task-routine'),'records');
-  const card=$('.task-record.finished'),head=card.querySelector('.recent-task'),name=head.querySelector('.task-name'),routine=$('.task-routine');
-  if(!name || card.querySelectorAll('.task-name, .recent-name').length!==1)throw Error('duplicate title');
-  head.click();if(!head.checkVisibility() || head.getAttribute('aria-expanded')!=='true' || !card.querySelector('.res').checkVisibility())throw Error('expand failed');
-  head.click();if(head.getAttribute('aria-expanded')!=='false' || card.querySelector('.res').checkVisibility())throw Error('collapse failed');
-  if(routine!==$('.task-routine') || !routine.querySelector('[role=switch]'))throw Error('routine changed');
+  const tab=name=>[...document.querySelectorAll('#workspace-tabs [role=tab]')].find(n=>n.textContent===name);
+  const view=name=>document.getElementById(tab(name).getAttribute('aria-controls'));
+  await waitFor(()=>tab('任务')&&tab('子代理'),'peer tabs');
+  tab('任务').click();await waitFor(()=>$('.task-routine')?.checkVisibility(),'Routine settings');
+  const routine=$('.task-routine');
+  tab('子代理').click();
+  await waitFor(()=>view('子代理').querySelector('[data-agent="sa_0123456789abcdef"]')?.checkVisibility(),'finished child list');
+  const root=view('子代理'),card=root.querySelector('[data-agent="sa_0123456789abcdef"]'),name=card.querySelector('b');
+  if(!name||name.textContent!=='检查任务')throw Error('child title missing');
+  const enter=card.getAttribute('role')==='button'?card:card.querySelector('button');enter.click();
+  await waitFor(()=>[...root.querySelectorAll('h2')].some(n=>n.checkVisibility()&&n.textContent==='检查任务')&&root.innerText.includes('任务结果'),'child conversation and result');
+  const head=[...root.querySelectorAll('h2')].find(n=>n.checkVisibility()),summary=root.querySelector('summary[aria-label="任务信息"]'),info=summary?.parentElement;
+  if(!head||!summary||info.open||[...root.querySelectorAll('h2')].filter(n=>n.checkVisibility()&&n.textContent==='检查任务').length!==1)throw Error('duplicate title or initially unfolded task information');
+  summary.click();if(!info.open||!info.innerText.includes('sa_0123456789abcdef')||!head.checkVisibility())throw Error('expand task information failed');
+  summary.click();if(info.open||!head.checkVisibility()||head.textContent!=='检查任务')throw Error('collapse changed the conversation header');
+  const back=[...root.querySelectorAll('button')].find(n=>n.checkVisibility()&&(n.getAttribute('aria-label')||n.textContent).trim()==='子代理');
+  if(!back)throw Error('child list return missing');back.click();
+  await waitFor(()=>card.checkVisibility(),'return to finished child list');
+  if(root.querySelector('[data-agent="sa_0123456789abcdef"]')!==card||card.querySelector('b')!==name)throw Error('enter/return replaced the original child title');
+  tab('任务').click();
+  if(routine!==$('.task-routine')||!routine.checkVisibility()||!routine.querySelector('[role=switch]'))throw Error('routine changed');
   document.body.dataset.testResult='passed';
  })().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
  `)

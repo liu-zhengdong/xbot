@@ -27,6 +27,17 @@ const SubPersona = "你是主 Bot 的协作伙伴，接手它交给你的一件�
 const reportBytes = 4096
 
 type job struct {
+	// Continuable input state is protected by parent.mu; records have their own lock.
+	pending       []pendingInput
+	initial       pendingInput
+	closing       bool
+	closingSeq    int
+	stopped       bool
+	initErr       error
+	turnSeq       int
+	resultPath    string
+	recordMu      sync.Mutex
+	recordSeq     int
 	request       StartRequest
 	blocked       bool
 	id            string
@@ -62,17 +73,26 @@ type job struct {
 }
 
 func runLoop(j *job) {
-	ctx, cancel := context.WithTimeout(context.Background(), j.timeout)
+	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), executingJobKey{}, j), j.timeout)
 	defer cancel()
 	if err := os.MkdirAll(j.dir, 0700); err != nil {
 		j.finish(statusFailed, EvFailed, err.Error())
 		return
 	}
 	msgs := initialMessages(j)
-	for _, m := range msgs {
-		if err := appendEntry(j.dir, bot.Entry{Time: time.Now().UTC(), Message: m}); err != nil {
+	if j.request.Descriptor != nil {
+		var err error
+		msgs, err = j.beginContinuable()
+		if err != nil {
 			j.finish(statusFailed, EvFailed, err.Error())
 			return
+		}
+	} else {
+		for _, m := range msgs {
+			if err := appendEntry(j.dir, bot.Entry{Time: time.Now().UTC(), Message: m}); err != nil {
+				j.finish(statusFailed, EvFailed, err.Error())
+				return
+			}
 		}
 	}
 	j.startedAt = time.Now().UTC()
@@ -125,7 +145,11 @@ func runLoop(j *job) {
 				if appendErr != nil {
 					return
 				}
-				appendErr = appendEntry(j.dir, bot.Entry{Time: time.Now().UTC(), Message: m})
+				if j.request.Descriptor != nil {
+					_, appendErr = j.record(SeqEntry{Entry: bot.Entry{Message: m}, TurnSeq: j.turnSeq})
+				} else {
+					appendErr = appendEntry(j.dir, bot.Entry{Time: time.Now().UTC(), Message: m})
+				}
 			},
 		})
 		j.mu.Lock()
@@ -165,6 +189,11 @@ func runLoop(j *job) {
 			stepsLeft = j.maxSteps
 			continue
 		}
+		if err != nil && j.request.Descriptor != nil && errors.Is(err, context.Canceled) && ctx.Err() == nil {
+			if j.resumeInterrupt(&msgs, &stepsLeft) {
+				continue
+			}
+		}
 		if err != nil {
 			if ctx.Err() != nil {
 				j.finish(statusFromCtx(ctx), EvFailed, statusText(ctx))
@@ -185,11 +214,19 @@ func runLoop(j *job) {
 		if len(last.Calls()) == 0 && last.Role != "" {
 			text := strings.TrimSpace(last.Text())
 			if strings.HasPrefix(text, "BLOCKED") {
+				// A decision already consumed at this boundary earns the next
+				// step; do not park waiting for a second copy of the message.
+				if steered {
+					continue
+				}
 				j.mu.Lock()
 				j.blocked = true
 				j.mu.Unlock()
 				j.writeStatus(statusRunning, "")
-				j.parent.emit(Event{AgentID: j.id, Kind: EvBlocked, Text: clipText(text, 2048)})
+				if err := j.reportBlocked(text); err != nil {
+					j.finish(statusFailed, EvFailed, err.Error())
+					return
+				}
 				if err := j.wait(ctx); err != nil {
 					j.finish(statusFromCtx(ctx), EvFailed, statusText(ctx))
 					return
@@ -207,6 +244,9 @@ func runLoop(j *job) {
 				if !j.startQueued(&msgs, &stepsLeft, &queued) {
 					return
 				}
+				continue
+			}
+			if j.request.Descriptor != nil && !j.closeReady(&msgs, &stepsLeft) {
 				continue
 			}
 			summary := text
@@ -235,6 +275,9 @@ func (j *job) startQueued(msgs *[]provider.Message, stepsLeft *int, queued *[]st
 }
 
 func (j *job) wait(ctx context.Context) error {
+	if j.request.Descriptor != nil {
+		return j.waitContinuable(ctx)
+	}
 	if len(j.held) > 0 {
 		return nil
 	}
@@ -248,6 +291,9 @@ func (j *job) wait(ctx context.Context) error {
 }
 
 func (j *job) drain(msgs *[]provider.Message, stepsLeft *int, queued *[]string) (stop bool, steered bool) {
+	if j.request.Descriptor != nil {
+		return j.drainContinuable(msgs, stepsLeft)
+	}
 	for len(j.held) > 0 {
 		c := j.held[0]
 		j.held = j.held[1:]
@@ -306,6 +352,10 @@ func (j *job) appendUser(msgs *[]provider.Message, text string) error {
 }
 
 func (j *job) finish(status, kind, text string) {
+	if j.request.Descriptor != nil {
+		j.finishContinuable(status, kind, text)
+		return
+	}
 	j.mu.Lock()
 	j.blocked = false
 	j.mu.Unlock()
@@ -410,7 +460,7 @@ func (j *job) writeStatus(status, summary string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	pid, start := tools.CurrentProcess()
-	meta := Meta{PID: pid, ProcStart: start, ID: j.id, Status: status, Summary: summary, Task: j.task, Mode: j.mode, Type: j.kind, Steps: j.steps, StartedAt: j.startedAt, CurrentStep: j.currentStep, Notable: j.notable.Items(), Blocked: j.blocked}
+	meta := Meta{PID: pid, ProcStart: start, ID: j.id, Status: status, Summary: summary, Task: j.task, Mode: j.mode, Type: j.kind, Steps: j.steps, StartedAt: j.startedAt, CurrentStep: j.currentStep, Notable: j.notable.Items(), Blocked: j.blocked, Continuable: j.request.Descriptor != nil, TurnSeq: j.turnSeq, ResultPath: j.resultPath}
 	if status != statusRunning && status != statusQueued {
 		meta.FinishedAt = time.Now().UTC()
 	}

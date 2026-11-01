@@ -4524,7 +4524,10 @@
     subtitle.hidden = !text;
   }
 
+  let subagentsView = null;
   function resetConversation() {
+    subagentsView?.dispose(); subagentsView = null;
+    $("workspace-view-agents")?.replaceChildren();
     state.tab = "chat";
     state.panelError = false;
     document.getElementById("workspace-chat").hidden = false;
@@ -4956,7 +4959,7 @@
     return row;
   }
 
-  const TABS = [["chat", "聊天", "message-circle"], ["library", "记忆", "brain"], ["trace", "轨迹", "git-branch"], ["computer", "任务", "list-checks"], ["context", "上下文", "layers"], ["inbox", "收件箱", "inbox"]];
+  const TABS = [["chat", "聊天", "message-circle"], ["library", "记忆", "brain"], ["trace", "轨迹", "git-branch"], ["agents", "子代理", "git-branch"], ["computer", "任务", "list-checks"], ["context", "上下文", "layers"], ["inbox", "收件箱", "inbox"]];
   const hiddenWorkspaceTabs = new Set();
   try { for (const id of JSON.parse(localStorage.getItem("xbot-workspace-hidden") || "[]")) if (id !== "chat") hiddenWorkspaceTabs.add(id); } catch (e) {}
   function availableWorkspaceTabs() { return state.sel?.type === "bot" && !state.peer ? TABS : TABS.slice(0, 1); }
@@ -5051,6 +5054,7 @@
       if (id === "trace") { loadTrace(); if (!state.panelData) loadPanel(); }
       else if (!state.panelData || state.panelError === id || id === "context") loadPanel();
       else if (id === "inbox") loadInbox();
+      else if (id === "agents") subagentsView?.poll().catch(() => {});
     }
   }
   $("workspace-tabs").addEventListener("keydown", ev => {
@@ -5549,6 +5553,20 @@
       return;
     }
     const data = state.panelData || {name:state.sel.id};
+    if (state.tab === "agents") {
+      if (!subagentsView) {
+        const selection = state.sel;
+        subagentsView = window.XBotSubagents.create({
+          bot:selection.id, api, el, icon, appendMarkdown, taskTitle, taskTypeLabel, taskProgress,
+          taskAvatar, taskValue, taskSelected, updateTaskNotable, sameValue:sameTranscriptValue, visibleError,
+          current:() => state.sel === selection && !state.peer,
+          backParent:() => selectWorkspaceTab("chat"),
+          traceAdapter:{project:traceEvents, sync:syncTraceDetail},
+        });
+        body.replaceChildren(subagentsView.root);
+      }
+      subagentsView.update(data); return;
+    }
     const tasks = body.querySelector(".task-view");
     if (tasks && state.tab === "computer") { syncTaskView(tasks, data); return; }
     const memory = body.querySelector(".memory-view");
@@ -5638,14 +5656,15 @@
     const compact = text => String(text || "").replace(/\s+/g, " ").trim();
     const titleOf = text => compact(text).slice(0, 64);
     for (const m of messages) {
-      const text = String(m.content || ""), context = !!m.internal || m.role === "system" || !!m.kind || /^<(?:environment_|memory(?:>|\s))/.test(text.trim());
+      const text = String(m.content || ""), context = !!m.internal || m.role === "system" || (!!m.kind && !["message_received", "message"].includes(m.kind)) || /^<(?:environment_|memory(?:>|\s))/.test(text.trim());
       if (m.role === "user" && !context) round++;
       if (m.role === "assistant") invocation++;
       if (m.role === "tool") continue;
       const type = context ? "context" : m.role === "assistant" ? "model" : "input";
       const unwrapped = unwrap(text);
       const readable = context ? unwrapped.text.replace(/<\/?(?:environment_[\w-]+|memory)\b[^>]*>/g, "").trim() : unwrapped.text;
-      const title = titleOf(readable) || (m.kind === "fork" ? "分支开始" : m.kind === "fork_end" ? "分支结束" : type === "model" ? "模型调用" : type === "context" ? "上下文记录" : "输入记录");
+      const marker = {message_consumed:"消息已接入", message_dropped:"待发消息已取消", turn_end:"本轮结束"}[m.kind];
+      const title = titleOf(readable) || marker || (m.kind === "fork" ? "分支开始" : m.kind === "fork_end" ? "分支结束" : type === "model" ? "模型调用" : type === "context" ? "上下文记录" : "输入记录");
       const event = { key: m.seq + ":message", seq: m.seq, time: m.time, type, title, text,
         summary: compact(readable).slice(title.length).trim() || (m.thinking ? "含思考" : (m.tool_calls || []).length ? (m.tool_calls.length + " 个工具调用") : ""),
         message: m, round, invocation, results: [], thinking: (m.thinking || "").trim(),
@@ -5771,6 +5790,7 @@
   }
 
   function closeTraceDetail(root) {
+    if (root.closeTraceDetail) { root.closeTraceDetail(); return; }
     const key = state.traceUI.selected;
     state.traceUI.selected = null; syncTrace(root);
     root.rowNodes.get(key)?.focus({preventScroll:true});
@@ -5883,13 +5903,14 @@
   function traceRaw(event) {
     // Only the already-public HTTP DTO is available here. Never read provider
     // transport payloads, vendor_raw or reasoning signatures.
-    if (event.call) return { seq:event.seq, time:event.time, tool_call:event.call, results:event.results };
+    if (event.call) return { seq:event.seq, time:event.time, tool_call:event.call, results:event.results.map(r => r.publicEntry || r) };
     if (event.hosted) return { seq:event.seq, time:event.time, hosted:event.hosted, output:event.output };
-    return event.message;
+    return event.message.publicEntry || event.message;
   }
 
   function syncTraceDetail(root) {
-    const ui = state.traceUI, detail = root.traceNodes.detail, event = root.events.find(e => e.key === ui.selected);
+    const ui = root.traceUI || state.traceUI, thinkingOpen = root.traceThink || state.traceThink;
+    const detail = root.traceNodes.detail, event = root.events.find(e => e.key === ui.selected);
     detail.hidden = !event;
     if (!event) return;
     const raw = traceRaw(event), signature = JSON.stringify([event.key, raw, ui.tab]);
@@ -5919,6 +5940,14 @@
     if (ui.tab === "raw") section("公开记录 JSON", JSON.stringify(raw, null, 2), true);
     else if (ui.tab === "source") {
       const fields = [["记录位置", "transcript #" + event.seq], ["角色", event.message.role], ["追加时间", Number.isNaN(+date) ? "未记录" : date.toLocaleString()]];
+      if (root.recordSource) {
+        fields.push(["所属 Bot", root.recordSource.bot], ["子代理", root.recordSource.id]);
+        if (event.message.sender) fields.push(["发送者", event.message.sender]);
+        if (event.message.turn_seq) fields.push(["本轮起点", "#" + event.message.turn_seq]);
+        if (event.message.input_seq) fields.push(["关联输入", "#" + event.message.input_seq]);
+        if (event.message.delivery) fields.push(["投递方式", event.message.delivery]);
+        if (event.message.result_path) fields.push(["结果文件", event.message.result_path]);
+      }
       if (event.message.branch) fields.push(["分支", event.message.branch]);
       if (event.message.reply_to) fields.push(["引用记录", "#" + event.message.reply_to]);
       if (event.call?.id || event.message.tool_call_id || event.hosted?.id) fields.push(["调用 ID", event.call?.id || event.message.tool_call_id || event.hosted.id]);
@@ -5947,9 +5976,9 @@
         if (event.message.audios?.length) section("语音附件", event.message.audios.join("\n"), true);
         if (!event.text && !event.thinking) content.append(el("p", "hint", (event.message.tool_calls || []).length ? "工具调用列在同序号的独立事件中。" : "这条记录没有文本正文"));
         if (event.thinking) {
-          const thinking = el("details", "trace-think"); thinking.open = !!state.traceThink[event.key];
+          const thinking = el("details", "trace-think"); thinking.open = !!thinkingOpen[event.key];
           thinking.append(el("summary", "text-btn", "思考"), el("pre", "trace-source-text", event.thinking));
-          thinking.addEventListener("toggle", () => { state.traceThink[event.key] = thinking.open; }); content.append(thinking);
+          thinking.addEventListener("toggle", () => { thinkingOpen[event.key] = thinking.open; }); content.append(thinking);
         }
       }
     }
@@ -6563,8 +6592,12 @@
     host.dataset.sig = signature;
     host.replaceChildren();
     if (!agents.length) return;
-    const row = el("button", "wrow"); row.type = "button"; row.title = "打开任务";
-    row.addEventListener("click", () => selectWorkspaceTab("computer"));
+    const row = el("button", "wrow"); row.type = "button"; row.title = "打开子代理";
+    row.addEventListener("click", () => {
+      const children = agents.filter(window.XBotSubagents.isChild);
+      selectWorkspaceTab(children.length ? "agents" : "computer");
+      if (children.length === 1) subagentsView?.open(children[0].id);
+    });
     const stack = el("span", "work-stack");
     for (const ag of agents.slice(0, 3)) stack.append(taskAvatar(ag, "xs"));
     if (agents.length > 3) stack.append(el("span", "", "+" + (agents.length - 3)));
@@ -6813,7 +6846,8 @@
   }
 
   function syncTaskView(root, data) {
-    const agents = data.agents || [];
+    // The task page keeps routines, fork backgrounds and external coding jobs.
+    const agents = (data.agents || []).filter(a => !window.XBotSubagents.isChild(a));
     const sections = [
       ["进行中", agents.filter(a => ["running", "awaiting"].includes(a.status)), "agent"],
       ["排队中", agents.filter(a => a.status === "queued"), "agent"],
@@ -9266,6 +9300,7 @@
     setInterval(() => {
       if (shell.hidden) return;
       if (!document.hidden) refreshStatus().catch(() => {});
+      if (!document.hidden && state.tab === "agents") subagentsView?.poll().catch(() => {});
       if (state.streaming) return;
       if (!document.hidden) refreshUpdate().catch(() => {});
       refreshNotes().catch(() => {});

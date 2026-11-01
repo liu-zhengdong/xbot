@@ -2,13 +2,17 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go]
-verified: 2026-11-01 @ feature/vault-global-shared (global Open/API/NeedsSecret/egress/askpass + binary Chrome smoke); 2026-10-31 @ feature/vault-settings-sudo (Store/API/Shell/Chrome); 2026-10-31 @ feature/always-allow-no-permission-cards (permission regression tests); 2026-10-31 @ feature/custom-provider (provider HTTP policy); 2026-10-30 @ c4d67b18 + image-gen-local-proxy (review tests); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
+verified: 2026-11-01 @ feature/vault-global-shared (global Open/API/NeedsSecret/egress/askpass + binary Chrome smoke); 2026-10-31 @ feature/vault-settings-sudo (Store/API/Shell/Chrome); 2026-10-31 @ feature/always-allow-no-permission-cards (permission regression tests); 2026-10-31 @ feature/custom-provider (provider HTTP policy); 2026-10-30 @ c4d67b18 + image-gen-local-proxy (review tests); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome); 2026-11-01 @ a407f83b (child continuation/route/review targeted and independent scripted binary checks)
 ---
 # 安全：保险箱与权限表
 
 > **30 秒版**：Bot 只知道密钥的名字，出站代理才换成真值。**生产内核永远不弹工具权限卡**（[ADR 0019](../adr/0019-no-permission-cards-by-default.md)）：`serve`/`chat` 固定 `Permissive: true`，旧 `permissions on` 不能开回卡；保险箱/密钥/配置路径、机器 ask/off、外部事件记忆写入也不弹卡。只保留 `links` 填 key 的输入卡。以下权限分类与确认条件仅描述直接构造的严格测试/评测内核，不是生产许可限制。
 
 > **现阶段（2026-10-18 起）**：先把功能调通调顺，再接安全，见 [ADR 0013](../adr/0013-features-before-security.md)。本页写的是现行代码的行为。权限表、审查入口和保险箱占位作为接口保留；不再加新的安全工作。生产工具许可已经固定放行；文件新鲜度、密钥脱敏、出站域名绑定和存储校验不受这次改动影响。
+
+## 子代理工具分类
+
+统一权限表把 `agent_message`、`agent_stop`、`send_message_to_parent` 归 Normal，`list_subagents` 归 Readonly；沿既有registry与review，不添加工具内确认或新的审批UI。孩子的父信目标由scope固定，Web直接输入与模型父信来源由内核装配，不接受任意sender/target；HTTP沿Bot owner鉴权，descriptor不保存密钥。可继续能力与旧记录兼容见[子代理](subagents.md)。
 
 ## 音频工具
 
