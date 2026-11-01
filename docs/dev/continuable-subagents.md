@@ -67,8 +67,9 @@ fresh 保留现有任务隔离，fork 的当前轮不完整调用从不复制；
 type Continuable interface {
     Message(ctx context.Context, id string, c Control) (Task, error)
     SendParent(ctx context.Context, id, text string) (Event, error)
+    Stop(ctx context.Context, id string) (Task, error)
 }
-// KindSteer / KindQueue 是 Message 输入；KindCancel 由已有 Control 接 stop。
+// KindSteer / KindQueue 是 Message 输入；Stop 在同一 owner/admission 边界取消当前执行并返回真实状态。
 // Message 只接受当前 Bot 的 sa_ id，使用 Local.AgentsDir 定位，无客户端路径参数。
 
 type Descriptor struct {
@@ -138,7 +139,7 @@ func ActiveTask(dir string) (Task, bool) // 只读实际active owner快照，Web
 - descriptor.json：原子写的重建事实；CWD 是唯一随执行更新的业务字段，policy/route 沿创建快照。初始 persona、类型 prompt、memory、fork 投影只存初始 transcript，不再复制到 descriptor。
 - meta.json：最近状态与 turn_seq/result_path 等展示投影；活状态/排位以原 Local.Tasks 为准，不从旧 meta 逆向填活表。
 - 第一条任务/下一轮真实输入的物理 seq 作为 `turn_seq`，在入队前确定，等待取消也有稳定身份；steer 不开轮，queue 到轮边界开启下一轮。
-- 输入受理、消费与取消在原串追加 `message_received/message_consumed/message_dropped` 内部记录，引用同一输入 seq；真实输入正文只存一次。受理成功须已追加，写失败/满返回错误；只承诺可审计，不承诺崩溃后自动消费。
+- 输入受理、消费与取消在原串追加 `message_received/message_consumed/message_dropped` 内部记录，引用同一输入 seq；真实输入正文只存一次。`Control.Sender` 为内部来源，模型工具固定 `bot:<父Bot名>`，经认证Web直接续聊固定 `owner`，HTTP不能自报sender；公开SeqEntry可带sender。模型投影在该输入前渲染真实来源，父Bot消息为「来自 Bot <name> 的消息：」，人类为「来自用户的消息：」，不另建通道。受理成功须已追加，写失败/满返回错误；只承诺可审计，不承诺崩溃后自动消费。
 - 每轮结束追加 `turn_end`，携带状态、turn_seq、result_path、未消费输入去向；不改旧行。新轮投影保留原必要上下文与结果，不再次复制初始前缀和全部历史进 JSONL。
 - stop 或恢复发现悬空 tool_call 时由 exec 就地追加占位 tool_result，按调用 id 一一配平；不 import kernel、不重跑工具。请求投影仍按既有工具配对规则组织，原物理行不重排。
 
@@ -187,7 +188,7 @@ Local 由 Kernel 绑定 `AgentsDir = Bot.AgentsDir()`；Message 校验 id 后在
 
 单次解析规则：provider/model 都省略时固定父当前绑定；只 model 时沿父 provider；只 provider 时取其已配置第一模型；都给则该组合须已登记且可解析。thinking/effort 显式值优先该模型已有设置，缺省沿所选模型设置；只有完全继承父 route 时继承父有效设置。统一调用既有协议校验，非法 effort 不悄悄丢掉，也不新增通用 effort 枚举。创建时固定有效身份与推理值，继续时沿此身份解析当前目录能力、窗口和凭据；不改主 Bot binding、不增加 agenttype.model 第二套优先级。
 
-子模型必须独立作用于：模型 overlay、vision、hosted/local search 互斥、thinking/effort、窗口 T/H、摘要器与工具定义预算。`fitProvider{k: parent}` 不再借父 lines；在原 fit 缝给每个 turnFit 传入子模型的 budget / summarizer / scale，主线默认仍走旧路径，不复制带 mutex 的 Kernel，也不临时改 `k.Budget/k.Provider/k.Compactor`。跨轮冷读历史先按子 T/H 生成有界请求投影，过大先用所选子模型摘要；不能压到 H 内明确失败，不把超长 fork 直接发出去。摘要只追加内部记录（含覆盖 child seq），原文不改；下一轮复用已记摘要，不每次重新摘要全本。子原文回读用 expand_subagent/文件，不错误指向主 Bot expand。
+子模型必须独立作用于：模型 overlay、vision、hosted/local search 互斥、thinking/effort、窗口 T/H、摘要器与工具定义预算。`fitProvider{k: parent}` 不再借父 lines；在原 fit 缝给每个 turnFit 传入子模型的 budget / summarizer / scale，主线默认仍走旧路径，不复制带 mutex 的 Kernel，也不临时改 `k.Budget/k.Provider/k.Compactor`。跨轮冷读历史先按子 T/H 生成有界请求投影，过大先用所选子模型摘要；不能压到 H 内明确失败，不把超长 fork 直接发出去。本批沿现有 fit 只在请求投影保留派生摘要，原文不改；冷恢复从原文按子实际窗口重新 fit，接受冷重组代价，不新增 RecordSummary/ReadSummaries 或持久摘要协议。子原文回读用 expand_subagent/文件，不错误指向主 Bot expand。
 
 fork 截止以当前父轮开轮 `turnSeqOf(ctx)-1`，不是当前 Count 或「最近一句 assistant」。调用 assemble 的有界投影：只读截止之前未被摘要覆盖的原文和完全结束在截止之前的 summary block，排除当前轮所有工具调用、插话、结果；使用相同工具配对规则。没活轮上下文的受理入口取已完成边界而非猜 Count；本批仅模型 dispatch 创建，HTTP 不另建 fork 创建入口。父固定提示中 persona/内核规则/记忆可读，子执行规则与类型白名单仍以孩子为准；子 overlay 使用所选子模型，不重复继承父模型补丁。现行 initialMessages 的 fork 分支直接绕过 Persona，必须改成明确子前缀（子规则/类型/route overlay）加已完成父 history 再加 task，不能直接沿用旧分支漏掉子规则。
 
