@@ -14,9 +14,10 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/browser"
-	"xbot/internal/kernel"
+	"xbot/internal/config"
 	"xbot/internal/link"
 	"xbot/internal/machine"
+	"xbot/internal/mcp"
 	"xbot/internal/peer"
 	"xbot/internal/vault"
 )
@@ -43,8 +44,8 @@ type appJSON struct {
 	Fields []string `json:"fields,omitempty"`
 	Custom bool     `json:"custom,omitempty"`
 	// Runtime is per Bot. Legacy state=connected describes installation only.
-	Runtime map[string]link.MCPStatus `json:"runtime,omitempty"`
-	LoadID  string                    `json:"load_id,omitempty"`
+	Runtime map[string]mcp.Status `json:"runtime,omitempty"`
+	LoadID  string                `json:"load_id,omitempty"`
 }
 
 func (s *Server) listApps(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +75,7 @@ func (s *Server) appRows() ([]appJSON, error) {
 	if err != nil {
 		return nil, err
 	}
-	servers, err := link.LoadMCP(bot.GlobalMCPPath(s.Root))
+	servers, err := mcp.LoadMCP(bot.GlobalMCPPath(s.Root), mcp.Options{IsProviderKey: config.ProviderKey})
 	if err != nil {
 		return nil, err
 	}
@@ -93,29 +94,30 @@ func (s *Server) appRows() ([]appJSON, error) {
 		}
 	}
 	keyHeld := s.ownerKeyHeld()
-	srv := map[string]link.MCPServer{}
+	srv := map[string]mcp.Spec{}
 	for _, v := range servers {
 		srv[v.Name] = v
 	}
 	// Snapshot references only; querying the store must never start MCP processes.
 	s.mu.Lock()
-	kernels := make(map[string]*kernel.Kernel, len(cfgs))
-	resources := make(map[string]*kernel.BotResources, len(cfgs))
+	refs := make(map[string]*mcp.BotRef, len(cfgs))
 	for _, cfg := range cfgs {
-		kernels[cfg.Name] = s.cachedKernelLocked(cfg.Name)
-		if entry := s.kernels[cfg.Name]; entry != nil {
-			resources[cfg.Name] = entry.Resources
+		if entry := s.kernels[cfg.Name]; entry != nil && entry.Resources != nil {
+			refs[cfg.Name] = entry.Resources.MCP
 		}
 	}
 	s.mu.Unlock()
-	runtime := func(spec link.MCPServer) map[string]link.MCPStatus {
-		states := make(map[string]link.MCPStatus, len(cfgs))
+	runtime := func(spec mcp.Spec) map[string]mcp.Status {
+		states := make(map[string]mcp.Status, len(cfgs))
 		for _, cfg := range cfgs {
-			state := link.MCPStatus{State: "configured"}
-			if r := resources[cfg.Name]; r != nil {
-				state = r.MCPStatus(spec)
-			} else if k := kernels[cfg.Name]; k != nil {
-				state = k.MCPStatus(spec)
+			state := mcp.Status{State: "configured"}
+			if ref := refs[cfg.Name]; ref != nil {
+				for _, effective := range ref.Specs() {
+					if mcp.SameSpec(effective, spec) {
+						state = ref.Status(spec.Name)
+						break
+					}
+				}
 			}
 			states[cfg.Name] = state
 		}
@@ -164,7 +166,7 @@ func (s *Server) appRows() ([]appJSON, error) {
 // the owner would start it with every key non-blank. A name alone is not a
 // key, so an entry without stored values, or one left keyless by an older
 // one-click add, is not shown as connected.
-func serverReady(srv map[string]link.MCPServer, id string, held func([]string) bool) bool {
+func serverReady(srv map[string]mcp.Spec, id string, held func([]string) bool) bool {
 	v, ok := srv[id]
 	if !ok {
 		return false
@@ -173,13 +175,13 @@ func serverReady(srv map[string]link.MCPServer, id string, held func([]string) b
 	if err != nil {
 		return true
 	}
-	return link.HasSecretEnvs(v, c.SecretEnvs) && held(c.SecretEnvs)
+	return mcp.HasSecretEnvs(v, c.SecretEnvs) && held(c.SecretEnvs)
 }
 
 // ownerKeyHeld uses the same global lookup and environment fallback as MCP spawn.
 func (s *Server) ownerKeyHeld() func([]string) bool {
 	return func(names []string) bool {
-		probe := link.MCPServer{SecretEnvs: names, Secret: link.GlobalSecretLookup(s.Root)}
+		probe := mcp.Spec{SecretEnvs: names, Secret: link.GlobalSecretLookup(s.Root)}
 		return probe.HasSecretValues(names)
 	}
 }
@@ -307,34 +309,67 @@ func (s *Server) probeApp(ctx context.Context, a link.App, values []string) erro
 	if err != nil {
 		return err
 	}
-	spec := link.MCPServer{Name: c.ID, Command: c.Command, Args: c.Args, URL: c.URL, SecretEnvs: c.SecretEnvs, Secret: func(name string) (string, bool) {
-		for i, n := range c.SecretEnvs {
-			if n == name {
-				return values[i], true
-			}
-		}
-		return "", false
-	}}
-	m := link.NewMCP(spec)
-	defer m.Close()
-	list, err := m.LoadTools(ctx)
-	if err != nil || a.ID != "playwright" {
+	spec := mcp.Spec{Name: c.ID, Command: c.Command, Args: c.Args, URL: c.URL, SecretEnvs: c.SecretEnvs}
+	pending := make(map[string]string, len(c.SecretEnvs))
+	for i, name := range c.SecretEnvs {
+		pending[name] = values[i]
+	}
+	return probeMCP(ctx, spec, pending)
+}
+
+// probeMCP uses pending form values in one independent, bounded session. It
+// never reads the Manager's old credentials or persists values before success.
+func probeMCP(ctx context.Context, spec mcp.Spec, values map[string]string) error {
+	pending := make(map[string]string, len(values))
+	for name, value := range values {
+		pending[name] = value
+	}
+	session, err := mcp.Open(ctx, spec, mcp.Options{
+		IsProviderKey:  config.ProviderKey,
+		Redact:         func(text string) string { return config.RedactHeld(bot.RedactText(text)) },
+		ResolveSecrets: func(context.Context, []string) (map[string]string, error) { return pending, nil },
+	})
+	if err != nil {
 		return err
 	}
-	// A handshake proves npx ran; only a page load proves a browser came up.
-	call := func(name, args string) error {
-		for _, t := range list {
-			if strings.HasSuffix(t.Name(), "_"+name) {
-				_, err := t.Run(ctx, json.RawMessage(args))
+	defer session.Close()
+	list, err := session.LoadTools(ctx)
+	if err != nil || spec.Name != "playwright" {
+		return err
+	}
+	// A handshake proves the process ran; a real navigation proves the browser.
+	call := func(remote string, arguments json.RawMessage) error {
+		found := false
+		for _, tool := range list {
+			if tool.Name == remote {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return errors.New("missing " + remote)
+		}
+		raw, err := session.CallTool(ctx, remote, arguments)
+		if err != nil {
+			return err
+		}
+		var result struct {
+			IsError bool `json:"isError"`
+		}
+		if len(strings.TrimSpace(string(raw))) != 0 {
+			if err := json.Unmarshal(raw, &result); err != nil {
 				return err
 			}
 		}
-		return errors.New("missing " + name)
+		if result.IsError {
+			return errors.New("mcp probe tool failed")
+		}
+		return nil
 	}
-	if err := call("browser_navigate", `{"url":"about:blank"}`); err != nil {
+	if err := call("browser_navigate", json.RawMessage(`{"url":"about:blank"}`)); err != nil {
 		return err
 	}
-	_ = call("browser_close", `{}`)
+	_ = call("browser_close", json.RawMessage(`{}`))
 	return nil
 }
 
@@ -477,7 +512,7 @@ func (s *Server) removeApp(w http.ResponseWriter, r *http.Request) {
 		}
 	case ok && a.Kind == link.AppSoon:
 	default:
-		if err := link.RemoveMCP(bot.GlobalMCPPath(s.Root), id); err != nil && !errors.Is(err, link.ErrMCPMissing) {
+		if err := mcp.RemoveMCP(bot.GlobalMCPPath(s.Root), id, mcp.Options{IsProviderKey: config.ProviderKey}); err != nil && !errors.Is(err, mcp.ErrMCPMissing) {
 			writeMCPErr(w, err)
 			return
 		} else if err != nil && !ok {
@@ -562,12 +597,12 @@ func (s *Server) addCustomApp(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, "这个名字已被商店里的应用占用")
 		return
 	}
-	spec := link.MCPServer{Name: name, Command: strings.TrimSpace(in.Program), Args: in.Options, URL: strings.TrimSpace(in.URL)}
+	spec := mcp.Spec{Name: name, Command: strings.TrimSpace(in.Program), Args: in.Options, URL: strings.TrimSpace(in.URL)}
 	if (spec.Command == "") == (spec.URL == "") {
 		writeErr(w, http.StatusBadRequest, "本机程序和网址请二选一")
 		return
 	}
-	if err := link.AddMCP(bot.GlobalMCPPath(s.Root), spec); err != nil {
+	if err := mcp.AddMCP(bot.GlobalMCPPath(s.Root), spec, mcp.Options{IsProviderKey: config.ProviderKey}); err != nil {
 		writeMCPErr(w, err)
 		return
 	}

@@ -5,32 +5,24 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
+	"xbot/internal/config"
 	"xbot/internal/link"
+	"xbot/internal/mcp"
 	"xbot/internal/provider"
 )
 
 // A store server that names a key (Context7) installs through the chat card
 // like Telegram: the card lists the key, nothing is written until it is
-// filled, an old keyless entry is upgraded, the running server gets the key
-// from this Bot's store, and remove takes the entry and the key away.
+// filled, an old keyless entry is upgraded, the shared backend holds the key,
+// and remove takes the entry and the key away.
 func TestLinksInstallStoreConnectorWithKey(t *testing.T) {
 	const secret = "ctx7sk-test-value-123"
 	b := testBot(t, link.NameTerminal)
 	t.Setenv("CONTEXT7_API_KEY", "")
-	var mu sync.Mutex
-	var mounted []link.MCPServer
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}
-	k.newMCP = func(s link.MCPServer) link.Link {
-		mu.Lock()
-		mounted = append(mounted, s)
-		mu.Unlock()
-		s.Dial = fakeMCP(t, "resolve")
-		return link.NewMCP(s)
-	}
 	tool := linksTool{k}
 	for _, id := range []string{"context7", "mcp:context7", "Context7"} {
 		args, _ := json.Marshal(map[string]string{"action": "install", "id": id})
@@ -51,7 +43,7 @@ func TestLinksInstallStoreConnectorWithKey(t *testing.T) {
 		t.Fatalf("search before %q", out)
 	}
 	// An entry left by the old keyless add is upgraded, not skipped.
-	if err := link.AddMCP(b.GlobalMCPPath(), link.MCPServer{Name: "context7", Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}}); err != nil {
+	if err := mcp.AddMCP(b.GlobalMCPPath(), mcp.Spec{Name: "context7", Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}}, mcp.Options{IsProviderKey: config.ProviderKey}); err != nil {
 		t.Fatal(err)
 	}
 	if out := tool.search("context7"); !strings.Contains(out, "context7\tavailable") {
@@ -64,10 +56,10 @@ func TestLinksInstallStoreConnectorWithKey(t *testing.T) {
 	if out := tool.search("context7"); !strings.Contains(out, "context7\tavailable") {
 		t.Fatalf("name without a value reads installed %q", out)
 	}
-	if err := link.RemoveMCP(b.GlobalMCPPath(), "context7"); err != nil {
+	if err := mcp.RemoveMCP(b.GlobalMCPPath(), "context7", mcp.Options{IsProviderKey: config.ProviderKey}); err != nil {
 		t.Fatal(err)
 	}
-	if err := link.AddMCP(b.GlobalMCPPath(), link.MCPServer{Name: "context7", Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}}); err != nil {
+	if err := mcp.AddMCP(b.GlobalMCPPath(), mcp.Spec{Name: "context7", Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}}, mcp.Options{IsProviderKey: config.ProviderKey}); err != nil {
 		t.Fatal(err)
 	}
 	k.StageSecrets("context7", map[string]string{"CONTEXT7_API_KEY": secret})
@@ -75,8 +67,8 @@ func TestLinksInstallStoreConnectorWithKey(t *testing.T) {
 	if err != nil || out != "installed context7" {
 		t.Fatalf("install %q %v", out, err)
 	}
-	global, _ := link.LoadMCP(b.GlobalMCPPath())
-	if len(global) != 1 || !link.HasSecretEnvs(global[0], []string{"CONTEXT7_API_KEY"}) {
+	global, _ := mcp.LoadMCP(b.GlobalMCPPath(), mcp.Options{IsProviderKey: config.ProviderKey})
+	if len(global) != 1 || !mcp.HasSecretEnvs(global[0], []string{"CONTEXT7_API_KEY"}) {
 		t.Fatalf("global %+v", global)
 	}
 	raw, _ := os.ReadFile(b.GlobalMCPPath())
@@ -89,23 +81,11 @@ func TestLinksInstallStoreConnectorWithKey(t *testing.T) {
 	if out := tool.search("context7"); !strings.Contains(out, "context7\tinstalled") || strings.Contains(out, secret) {
 		t.Fatalf("search after %q", out)
 	}
-	if got, err := tool.load("Context7"); err != nil || !strings.Contains(got, "resolve") {
-		t.Fatalf("load %q %v", got, err)
-	}
-	mu.Lock()
-	last := mounted[len(mounted)-1]
-	mu.Unlock()
-	if last.Secret == nil {
-		t.Fatal("mounted server has no key lookup")
-	}
-	if v, ok := last.Secret("CONTEXT7_API_KEY"); !ok || v != secret {
-		t.Fatalf("lookup %q %v", v, ok)
-	}
 	// Installing again without a fresh key changes nothing.
 	if out, _ := tool.install("context7"); strings.Contains(out, "installed") {
 		t.Fatalf("second install %q", out)
 	}
-	if global, _ := link.LoadMCP(b.GlobalMCPPath()); len(global) != 1 {
+	if global, _ := mcp.LoadMCP(b.GlobalMCPPath(), mcp.Options{IsProviderKey: config.ProviderKey}); len(global) != 1 {
 		t.Fatalf("second install touched the entry %+v", global)
 	}
 	for i := 0; i < 2; i++ {
@@ -113,7 +93,7 @@ func TestLinksInstallStoreConnectorWithKey(t *testing.T) {
 			t.Fatalf("remove %q %v", out, err)
 		}
 	}
-	if global, _ := link.LoadMCP(b.GlobalMCPPath()); len(global) != 0 {
+	if global, _ := mcp.LoadMCP(b.GlobalMCPPath(), mcp.Options{IsProviderKey: config.ProviderKey}); len(global) != 0 {
 		t.Fatalf("left %+v", global)
 	}
 	if _, ok := link.GlobalSecretLookup(b.Root)("CONTEXT7_API_KEY"); ok {
@@ -130,7 +110,6 @@ func TestLinksInstallStoreConnectorHidesKey(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4}
-	k.newMCP = func(s link.MCPServer) link.Link { s.Dial = fakeMCP(t, "resolve"); return link.NewMCP(s) }
 	k.Approve = func(_ context.Context, _ string, summary string) (bool, error) {
 		if !strings.Contains(summary, "secrets: CONTEXT7_API_KEY") {
 			t.Errorf("card %q", summary)

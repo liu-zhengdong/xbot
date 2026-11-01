@@ -45,7 +45,7 @@ func (t reviewedTool) Forward(ctx context.Context, args json.RawMessage) (tools.
 	return nil, nil, nil
 }
 
-// ReadOnlyHint preserves the MCP annotation through the review wrapper.
+// ReadOnlyHint preserves tool hints for downstream review and notable records.
 func (t reviewedTool) ReadOnlyHint() bool {
 	hint, ok := t.Tool.(review.ReadOnlyHinter)
 	return ok && hint.ReadOnlyHint()

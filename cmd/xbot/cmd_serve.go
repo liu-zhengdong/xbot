@@ -89,7 +89,7 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	if err != nil {
 		return nil, person.Person{}, err
 	}
-	links, err := mount(b, runner, runtime)
+	links, err := mount(b, runner)
 	if err != nil {
 		return nil, person.Person{}, err
 	}
@@ -215,7 +215,7 @@ func attachConnectors(links []link.Link, backend vault.Backend) {
 	}
 }
 
-func mount(b *bot.Bot, runner runnerSpec, resources ...*kernel.BotResources) ([]link.Link, error) {
+func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 	var out []link.Link
 	seen := map[string]bool{}
 	for _, name := range b.EffectiveLinks() {
@@ -262,20 +262,6 @@ func mount(b *bot.Bot, runner runnerSpec, resources ...*kernel.BotResources) ([]
 			return nil, errors.New("runner token is empty")
 		}
 		out = append(out, link.Runner{BaseURL: runner.URL, Token: runner.Token})
-	}
-	if len(resources) > 0 && resources[0] != nil {
-		for _, spec := range resources[0].MCP.Specs() {
-			out = append(out, link.NewBorrowedMCP(spec, resources[0].MCP))
-		}
-	} else {
-		servers, err := link.LoadMCPAll(b.GlobalMCPPath(), b.MCPPath())
-		if err != nil {
-			return nil, err
-		}
-		for _, spec := range servers {
-			spec.Secret = link.GlobalSecretLookup(b.Root)
-			out = append(out, link.NewMCP(spec))
-		}
 	}
 	if _, _, err := work.Open(b.Root, b.Name()); err != nil {
 		return nil, err

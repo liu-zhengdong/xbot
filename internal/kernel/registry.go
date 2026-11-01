@@ -44,7 +44,7 @@ var hotTools = map[string]bool{
 
 type toolEntry struct {
 	tool   tools.Tool
-	source string // kernel | organ | link | mcp:<server>
+	source string // kernel | organ | link
 	group  string
 	expose toolExpose
 	// deferred tools belong to a lazy Link not loaded this turn. The main
@@ -53,17 +53,7 @@ type toolEntry struct {
 	deferred bool
 }
 
-// pendingGroup is an installed MCP server with no tools listed this turn. The
-// door starts it when the model describes the group or calls a tool of it.
-type pendingGroup struct {
-	id, summary string
-	mcp         *link.MCP
-}
-
-type toolRegistry struct {
-	entries []toolEntry
-	pending []pendingGroup
-}
+type toolRegistry struct{ entries []toolEntry }
 
 // Register adds one tool under its name. A duplicate name is left for the
 // agent to reject, as before.
@@ -95,8 +85,7 @@ func (r *toolRegistry) loaded() []tools.Tool {
 	return out
 }
 
-// index is the short list for the environment: listed ids by group, and
-// servers not started yet.
+// index is the short list for the environment: listed ids by group.
 func (r *toolRegistry) index() map[string]any {
 	groups := map[string][]string{}
 	for _, e := range r.entries {
@@ -104,13 +93,10 @@ func (r *toolRegistry) index() map[string]any {
 			groups[e.group] = append(groups[e.group], e.tool.Name())
 		}
 	}
-	out := make(map[string]any, len(groups)+len(r.pending))
+	out := make(map[string]any, len(groups))
 	for g, ids := range groups {
 		sort.Strings(ids)
 		out[g] = ids
-	}
-	for _, p := range r.pending {
-		out[p.id] = "not started; describe it to list its tools"
 	}
 	return out
 }
@@ -186,7 +172,6 @@ var kernelTools = []struct {
 func always(*Kernel, []link.Link) bool { return true }
 
 // toolRegistry registers what the mounted links offer and the kernel rows.
-// An MCP server registers its tools once it has been started this turn.
 func (k *Kernel) toolRegistry() *toolRegistry {
 	k.attachShell()
 	links := k.snapshotLinks()
@@ -194,10 +179,6 @@ func (k *Kernel) toolRegistry() *toolRegistry {
 	r := &toolRegistry{}
 	for _, l := range links {
 		if l == nil {
-			continue
-		}
-		if m, ok := l.(*link.MCP); ok && !k.isLoaded(l.Name()) {
-			r.pending = append(r.pending, pendingGroup{id: l.Name(), summary: serverSummary(m.Spec.Name), mcp: m})
 			continue
 		}
 		source := linkSource(l)
@@ -221,12 +202,9 @@ func (k *Kernel) toolRegistry() *toolRegistry {
 	return r
 }
 
-// linkSource follows the native-or-Link cut: an MCP server and a store grant
-// depend on something outside this process; an organ and the rest are ours.
+// linkSource follows the native-or-Link cut: store grants depend on something
+// outside this process; organs and the rest are ours.
 func linkSource(l link.Link) string {
-	if _, ok := l.(*link.MCP); ok {
-		return l.Name()
-	}
 	if _, ok := link.LookupOrgan(l.Name()); ok {
 		return "organ"
 	}
@@ -234,42 +212,6 @@ func linkSource(l link.Link) string {
 		return "link"
 	}
 	return "kernel"
-}
-
-func serverSummary(name string) string {
-	if a, ok := link.LookupApp(name); ok && a.Kind == link.AppServer {
-		return a.Summary
-	}
-	return link.Blurb("mcp:" + name)
-}
-
-// startGroup starts one pending server for the rest of this turn.
-func (k *Kernel) startGroup(ctx context.Context, id string) error {
-	if _, err := k.toolsForLoaded(ctx, id); err != nil {
-		return errors.New(k.redactor()(err.Error()))
-	}
-	k.markLoaded(id)
-	return nil
-}
-
-// lookupTool finds id, starting the pending server whose naming it follows,
-// so a tool seen in an earlier turn is callable without describing again.
-func (k *Kernel) lookupTool(ctx context.Context, id string) (toolEntry, bool, error) {
-	r := k.toolRegistry()
-	if e, ok := r.find(id); ok {
-		return e, true, nil
-	}
-	for _, p := range r.pending {
-		if !p.mcp.Owns(id) {
-			continue
-		}
-		if err := k.startGroup(ctx, p.id); err != nil {
-			return toolEntry{}, false, err
-		}
-		e, ok := k.toolRegistry().find(id)
-		return e, ok, nil
-	}
-	return toolEntry{}, false, nil
 }
 
 // toolSummary is the first sentence of a description, for search and lists.
@@ -300,7 +242,7 @@ type doorArgs struct {
 
 func (toolDoor) Name() string { return "tools" }
 func (toolDoor) Description() string {
-	return "Reach every tool this Bot has that is not in your tool list. The environment's tool_index names them by group. action=search with query (and optional group, limit) returns matching ids with one-line summaries. action=describe with a tool id returns its full description and JSON schema; with a group id it lists the group's tools, starting an MCP server that is not running yet. action=call with id and args (an object) runs that tool, with the same review and confirmation as a direct call. None of these change your tool list."
+	return "Reach every tool this Bot has that is not in your tool list. The environment's tool_index names them by group. action=search with query (and optional group, limit) returns matching ids with one-line summaries. action=describe with a tool id returns its full description and JSON schema; with a group id it lists the group's tools. MCP is reached through the current instance CLI, outside this tool door. action=call with id and args (an object) runs that tool, with the same review and confirmation as a direct call. None of these change your tool list."
 }
 func (toolDoor) Parameters() any {
 	return schema(map[string]any{
@@ -355,10 +297,7 @@ func (t toolDoor) Forward(ctx context.Context, raw json.RawMessage) (tools.Tool,
 	if !json.Valid(in.Args) {
 		return nil, nil, errors.New("tools: args are not valid JSON")
 	}
-	e, ok, err := t.k.lookupTool(ctx, in.ID)
-	if err != nil {
-		return nil, nil, err
-	}
+	e, ok := t.k.toolRegistry().find(in.ID)
 	if !ok {
 		return nil, nil, fmt.Errorf("tools: no tool with id %q; use action=search to find one", in.ID)
 	}
@@ -418,14 +357,6 @@ func (k *Kernel) searchTools(query, group string, limit int) string {
 			hits = append(hits, hit{line, s})
 		}
 	}
-	for _, p := range r.pending {
-		if group != "" && p.id != group {
-			continue
-		}
-		if s := score(strings.ToLower(p.id + " " + p.summary)); s > 0 {
-			hits = append(hits, hit{fmt.Sprintf("%s [group, not started] %s Describe it to list its tools.", p.id, toolSummary(p.summary)), s})
-		}
-	}
 	if len(hits) == 0 {
 		return "no tool matches; try other keywords, or read tool_index in the environment"
 	}
@@ -452,10 +383,7 @@ func (k *Kernel) describeTool(ctx context.Context, id string) (string, error) {
 	if id == "" {
 		return "", errors.New("tools: describe needs id")
 	}
-	e, ok, err := k.lookupTool(ctx, id)
-	if err != nil {
-		return "", err
-	}
+	e, ok := k.toolRegistry().find(id)
 	if ok {
 		out, err := json.Marshal(struct {
 			ID          string `json:"id"`
@@ -467,18 +395,9 @@ func (k *Kernel) describeTool(ctx context.Context, id string) (string, error) {
 		}{e.tool.Name(), e.group, e.source, e.expose == exposeHot, e.tool.Description(), e.tool.Parameters()})
 		return string(out), err
 	}
-	// A group goes by its id, its server name, or its store title.
-	names := []string{id, "mcp:" + id, link.ResolveApp(id)}
+	// A group goes by its id or its store title.
+	names := []string{id, link.ResolveApp(id)}
 	r := k.toolRegistry()
-	for _, p := range r.pending {
-		if slices.Contains(names, p.id) {
-			if err := k.startGroup(ctx, p.id); err != nil {
-				return "", err
-			}
-			r = k.toolRegistry()
-			break
-		}
-	}
 	type member struct {
 		ID      string `json:"id"`
 		Summary string `json:"summary"`

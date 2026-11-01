@@ -88,7 +88,7 @@ func TestMCP2aResourceRenameKeepsSessionAndRoutes(t *testing.T) {
 	receipt := resources.Jobs.RunCall(ctx, tools.CallRequest{Name: "fixture", Background: true,
 		Prepare: func(ctx context.Context, _ string) (context.Context, func()) { return ctx, func() { close(finished) } },
 		Run: func(ctx context.Context) tools.CallResult {
-			result, err := resources.MCP.CallTool(ctx, "fixture", "slow", json.RawMessage(`{}`))
+			result, err := resources.MCP.CallTool(ctx, "fixture", "slow", json.RawMessage(`{}`), mcp.CallOptions{})
 			return tools.CallResult{Text: string(result), Err: err}
 		},
 	})

@@ -2,6 +2,8 @@ package web
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,10 +11,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"xbot/internal/bot"
 	"xbot/internal/link"
+	"xbot/internal/mcp"
 )
 
 // The scripted npx stands in for @playwright/mcp: a handshake alone is not
@@ -27,7 +33,7 @@ for line in sys.stdin:
  m=json.loads(line)
  if m.get('method')=='initialize': result={'protocolVersion':'2024-11-05','capabilities':{},'serverInfo':{'name':'test','version':'1'}}
  elif m.get('method')=='tools/list':
-  names=['browser_snapshot'] if mode=='nonav' else ['browser_navigate','browser_close','browser_snapshot']
+  names=['browser_snapshot'] if mode=='nonav' else ['prefix_browser_navigate','browser_close'] if mode=='suffix' else ['browser_navigate','browser_close','browser_snapshot']
   result={'tools':[{'name':n,'inputSchema':{'type':'object'}} for n in names]}
  elif m.get('method')=='tools/call':
   open(` + "'" + `CALLS` + "'" + `,'a').write(m['params']['name']+' '+json.dumps(m['params']['arguments'])+'\n')
@@ -53,7 +59,7 @@ for line in sys.stdin:
 	if !strings.HasPrefix(string(got), `browser_navigate {"url": "about:blank"}`) || !strings.Contains(string(got), "browser_close") {
 		t.Fatalf("browser not driven: %q", got)
 	}
-	for _, m := range []string{"navfail", "nonav"} {
+	for _, m := range []string{"navfail", "nonav", "suffix"} {
 		_ = os.WriteFile(mode, []byte(m), 0600)
 		if err := s.probeApp(context.Background(), a, nil); err == nil {
 			t.Fatalf("%s accepted", m)
@@ -145,5 +151,105 @@ func TestAppsLarkProbeSendsNothing(t *testing.T) {
 	}
 	if err := probeLark(context.Background(), srv.URL, "a/b"); err == nil {
 		t.Fatal("path in token accepted")
+	}
+}
+
+func TestAppsMCPProbePendingValuesAndCleanup(t *testing.T) {
+	t.Setenv("TOKEN", "fixture-old-environment")
+	var initializations, legacyLookup atomic.Int32
+	var mu sync.Mutex
+	var calls []string
+	streamStarted, streamClosed := make(chan struct{}), make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("TOKEN") != "fixture-pending-value" {
+			t.Error("probe did not use pending form credentials")
+		}
+		if r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.(http.Flusher).Flush()
+			close(streamStarted)
+			<-r.Context().Done()
+			close(streamClosed)
+			return
+		}
+		var msg struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
+			t.Error(err)
+			return
+		}
+		w.Header().Set("Mcp-Session-Id", "probe-only")
+		var result any = map[string]any{}
+		switch msg.Method {
+		case "initialize":
+			initializations.Add(1)
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusAccepted)
+			return
+		case "tools/list":
+			select {
+			case <-streamStarted:
+			case <-r.Context().Done():
+				return
+			}
+			result = map[string]any{"tools": []any{map[string]any{"name": "browser_navigate"}, map[string]any{"name": "browser_close"}}}
+		case "tools/call":
+			var params struct {
+				Name      string          `json:"name"`
+				Arguments json.RawMessage `json:"arguments"`
+			}
+			if err := json.Unmarshal(msg.Params, &params); err != nil {
+				t.Error(err)
+				return
+			}
+			mu.Lock()
+			calls = append(calls, params.Name)
+			mu.Unlock()
+			if params.Name == "browser_navigate" && string(params.Arguments) != `{"url":"about:blank"}` {
+				t.Error("probe changed navigation arguments")
+			}
+			// Closing the temporary browser stays best effort, including raw isError.
+			result = map[string]any{"isError": params.Name == "browser_close", "content": []any{map[string]any{"type": "text", "text": "fixture-pending-value"}}}
+		default:
+			t.Error("unexpected method", msg.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": msg.ID, "result": result})
+	}))
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	err := probeMCP(ctx, mcp.Spec{Name: "playwright", URL: srv.URL, SecretEnvs: []string{"TOKEN"}, Secret: func(string) (string, bool) { legacyLookup.Add(1); return "fixture-old-vault", true }}, map[string]string{"TOKEN": "fixture-pending-value"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	gotCalls := append([]string(nil), calls...)
+	mu.Unlock()
+	if len(gotCalls) != 2 || gotCalls[0] != "browser_navigate" || gotCalls[1] != "browser_close" {
+		t.Fatal(gotCalls)
+	}
+	if initializations.Load() != 1 || legacyLookup.Load() != 0 {
+		t.Fatal("probe reused/reopened a session or read old credentials")
+	}
+	select {
+	case <-streamClosed:
+	case <-time.After(time.Second):
+		t.Fatal("temporary probe did not close its inbound stream")
+	}
+}
+
+func TestAppsMCPProbeMissingPendingValueNeverUsesEnvironment(t *testing.T) {
+	t.Setenv("TOKEN", "fixture-environment")
+	var dials, legacy atomic.Int32
+	err := probeMCP(context.Background(), mcp.Spec{Name: "probe", SecretEnvs: []string{"TOKEN"}, Secret: func(string) (string, bool) { legacy.Add(1); return "fixture-vault", true }, Dial: func(context.Context) (io.ReadWriteCloser, error) {
+		dials.Add(1)
+		return nil, errors.New("unexpected dial")
+	}}, nil)
+	if err == nil || !strings.Contains(err.Error(), "TOKEN") || dials.Load() != 0 || legacy.Load() != 0 {
+		t.Fatalf("error=%v dials=%d legacy=%d", err, dials.Load(), legacy.Load())
 	}
 }

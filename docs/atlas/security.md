@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
-verified: 2026-11-01 @ 97c32bb5 (MCP masking/credential phase evidence and continuation checks retained)
+verified: 2026-11-01 @ 16be6d78 (same-slot readonly, owner/root, probe pending-value and source masking checks; prior vault evidence reused)
 ---
 # 安全：保险箱与权限表
 
@@ -13,6 +13,10 @@ verified: 2026-11-01 @ 97c32bb5 (MCP masking/credential phase evidence and conti
 ## 子代理工具分类
 
 统一权限表把 `agent_message`、`agent_stop`、`send_message_to_parent` 归 Normal，`list_subagents` 归 Readonly；沿既有registry与review，不添加工具内确认或新的审批UI。孩子的父信目标由scope固定，Web直接输入与模型父信来源由内核装配，不接受任意sender/target；HTTP沿Bot owner鉴权，descriptor不保存密钥。可继续能力与旧记录兼容见[子代理](subagents.md)。
+
+## MCP CLI 与研究只读
+
+MCP不再有可执行mcp_模型工具；Known不为任意旧前缀兜底，历史分类/记录仍可读。research只接受当前canonical BIN或精确受控XBOT_BIN的单POSIX直调，窄lexer保整词引号并拒替换/串联/重定向；list/tools/describe仅self，call另需readonly且在同slot/session精确检查hint再执行。legacy与continuable同接，生产许可仍默认放行，不添加审批UI。source新路由复用Host/browser/root约束；human先owner/owned，未显式root不以客户端默认目录作认证。结果JSON字符串/错误沿动态脱敏，产物实际路径取值+独占0600写在短route内；解码/网络锁外，详情见 [API](../API.md#mcp-运行时-cli)。
 
 ## 共享慢调用的脱敏
 

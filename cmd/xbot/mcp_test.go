@@ -10,7 +10,7 @@ import (
 	"xbot/internal/link"
 )
 
-func TestMCPCLIAndMount(t *testing.T) {
+func TestMCPOfflineConfigDoesNotMountOrStart(t *testing.T) {
 	t.Setenv("API_TOKEN", "super-secret-value")
 	root := t.TempDir()
 	b, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal})
@@ -27,7 +27,7 @@ func TestMCPCLIAndMount(t *testing.T) {
 	if err := os.WriteFile(script, []byte(body), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmdMCP(root, []string{"add", "ada", "docs", "--command", script, "--arg", "--stdio", "--secret-env", "API_TOKEN"}); err != nil {
+	if err := cmdMCP(root, []string{"offline", "add", "ada", "docs", "--command", script, "--arg", "--stdio", "--secret-env", "API_TOKEN"}); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(b.MCPPath())
@@ -41,10 +41,10 @@ func TestMCPCLIAndMount(t *testing.T) {
 	if err != nil || fi.Mode().Perm() != 0600 {
 		t.Fatalf("mode %v %v", fi, err)
 	}
-	if err := cmdMCP(root, []string{"add", "ada", "docs", "--command", script}); err == nil || !strings.Contains(err.Error(), "already exists") {
+	if err := cmdMCP(root, []string{"offline", "add", "ada", "docs", "--command", script}); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("dup %v", err)
 	}
-	if err := cmdMCP(root, []string{"list", "ada"}); err != nil {
+	if err := cmdMCP(root, []string{"offline", "list", "ada"}); err != nil {
 		t.Fatal(err)
 	}
 	links, err := mount(b, runnerSpec{})
@@ -57,13 +57,13 @@ func TestMCPCLIAndMount(t *testing.T) {
 			found = true
 		}
 	}
-	if !found {
-		t.Fatal("mcp link was not mounted")
+	if found {
+		t.Fatal("MCP must not mount a model adapter")
 	}
 	if _, err := os.Stat(sentinel); err == nil {
 		t.Fatal("mount started the server")
 	}
-	if err := cmdMCP(root, []string{"remove", "ada", "docs"}); err != nil {
+	if err := cmdMCP(root, []string{"offline", "remove", "ada", "docs"}); err != nil {
 		t.Fatal(err)
 	}
 	links, err = mount(b, runnerSpec{})
@@ -82,8 +82,8 @@ func TestMCPCLIAndMount(t *testing.T) {
 	if err := os.WriteFile(bad.MCPPath(), []byte("{"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mount(bad, runnerSpec{}); err == nil {
-		t.Fatal("broken mcp.json mounted")
+	if err := cmdMCP(root, []string{"offline", "list", "bob"}); err == nil {
+		t.Fatal("broken offline mcp.json accepted")
 	}
 }
 

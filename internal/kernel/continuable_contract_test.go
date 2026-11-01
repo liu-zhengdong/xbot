@@ -52,7 +52,7 @@ func TestContinuableFitsBelowSoftTargetWhenToolsConsumeWindow(t *testing.T) {
 	}
 }
 
-func TestContinuableMCPSchemaFallbackIsolatesActualRoutes(t *testing.T) {
+func TestContinuableSchemaErrorsPreserveActualRoutes(t *testing.T) {
 	var mu sync.Mutex
 	received := map[string][][]string{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +71,7 @@ func TestContinuableMCPSchemaFallbackIsolatesActualRoutes(t *testing.T) {
 		bad := false
 		for _, tool := range in.Tools {
 			names = append(names, tool.Function.Name)
-			if tool.Function.Name == "mcp_schema_bad" {
+			if tool.Function.Name == "native_lookup" {
 				bad = true
 			}
 		}
@@ -80,7 +80,7 @@ func TestContinuableMCPSchemaFallbackIsolatesActualRoutes(t *testing.T) {
 		mu.Unlock()
 		if in.Model == "route-b" && bad {
 			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprint(w, `{"error":{"message":"Invalid schema for function 'mcp_schema_bad'"}}`)
+			fmt.Fprint(w, `{"error":{"message":"Invalid schema for function 'native_lookup'"}}`)
 			return
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -97,7 +97,7 @@ func TestContinuableMCPSchemaFallbackIsolatesActualRoutes(t *testing.T) {
 	if err := b.SetBinding("fixture", "route-a"); err != nil {
 		t.Fatal(err)
 	}
-	req := schemaRequest()
+	req := provider.Request{Tools: []provider.ToolDef{{Name: "native_lookup", Parameters: map[string]any{"type": "object"}}, {Name: "read_file", Parameters: map[string]any{"type": "object"}}}}
 	req.Messages = append([]provider.Message{{Role: provider.RoleSystem, Content: provider.TextContent("child rules")}}, req.Messages...)
 	for _, model := range []string{"route-b", "route-a", "route-b"} {
 		ep, _, err := config.Resolve(b.Root, "fixture", model, config.Getenv)
@@ -109,21 +109,18 @@ func TestContinuableMCPSchemaFallbackIsolatesActualRoutes(t *testing.T) {
 			t.Fatal(err)
 		}
 		child := k.wrapSub(exec.StartRequest{Descriptor: &exec.Descriptor{Provider: "fixture", Model: model}}, p, len(req.Messages))
-		if _, err := child.Chat(context.Background(), req, nil); err != nil {
-			t.Fatal(err)
+		_, err = child.Chat(context.Background(), req, nil)
+		if (model == "route-b") != (err != nil) {
+			t.Fatalf("route %s err=%v", model, err)
 		}
-	}
-	// The same Bot's parent route A must retain its original schema too.
-	if filtered := (&mcpSchemaAttempt{k: k}).filter(req); len(filtered.Tools) != len(req.Tools) {
-		t.Fatal("route B poisoned the parent's route A cache")
 	}
 	mu.Lock()
 	defer mu.Unlock()
 	a, bCalls := received["route-a"], received["route-b"]
-	if len(a) != 1 || len(a[0]) != 3 {
-		t.Fatalf("route A lost its schema: %v", a)
+	if len(a) != 1 || len(a[0]) != 2 {
+		t.Fatalf("route A lost its native tools: %v", a)
 	}
-	if len(bCalls) != 3 || len(bCalls[0]) != 3 || len(bCalls[1]) != 2 || len(bCalls[2]) != 2 {
-		t.Fatalf("route B did not retain its own fallback: %v", bCalls)
+	if len(bCalls) != 2 || len(bCalls[0]) != 2 || len(bCalls[1]) != 2 {
+		t.Fatalf("route B was retried or lost its native tools: %v", bCalls)
 	}
 }

@@ -17,7 +17,9 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/browser"
+	"xbot/internal/config"
 	"xbot/internal/link"
+	"xbot/internal/mcp"
 	"xbot/internal/vault"
 )
 
@@ -159,7 +161,7 @@ func TestAppsInstallIsGlobalAndIdempotent(t *testing.T) {
 	if n != 1 || apps["playwright"].State != "connected" {
 		t.Fatalf("%d %+v", n, apps)
 	}
-	global, _ := link.LoadMCP(bot.GlobalMCPPath(e.root))
+	global, _ := mcp.LoadMCP(bot.GlobalMCPPath(e.root), mcp.Options{IsProviderKey: config.ProviderKey})
 	if len(global) != 1 || global[0].Name != "playwright" {
 		t.Fatalf("global %+v", global)
 	}
@@ -168,10 +170,10 @@ func TestAppsInstallIsGlobalAndIdempotent(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if own, _ := link.LoadMCP(b.MCPPath()); len(own) != 0 {
+		if own, _ := mcp.LoadMCP(b.MCPPath(), mcp.Options{IsProviderKey: config.ProviderKey}); len(own) != 0 {
 			t.Fatalf("%s got a per-bot copy: %+v", name, own)
 		}
-		if all, _ := link.LoadMCPAll(b.GlobalMCPPath(), b.MCPPath()); len(all) != 1 {
+		if all, _ := mcp.LoadMCPAll(mcp.Options{IsProviderKey: config.ProviderKey}, b.GlobalMCPPath(), b.MCPPath()); len(all) != 1 {
 			t.Fatalf("%s sees %+v", name, all)
 		}
 		if b.Config().Links[0] != link.NameTerminal || len(b.Config().Links) != 1 {
@@ -190,7 +192,7 @@ func TestAppsInstallIsGlobalAndIdempotent(t *testing.T) {
 		t.Fatalf("connected after remove %d", n)
 	}
 	b, _ := bot.Load(e.root, "bob")
-	if all, _ := link.LoadMCPAll(b.GlobalMCPPath(), b.MCPPath()); len(all) != 0 {
+	if all, _ := mcp.LoadMCPAll(mcp.Options{IsProviderKey: config.ProviderKey}, b.GlobalMCPPath(), b.MCPPath()); len(all) != 0 {
 		t.Fatalf("bob still sees %+v", all)
 	}
 }
@@ -307,13 +309,13 @@ func TestAppsContext7NeedsKey(t *testing.T) {
 	}
 	// An entry left keyless by the old one-click add does not count as connected.
 	path := bot.GlobalMCPPath(e.root)
-	if err := link.AddMCP(path, link.MCPServer{Name: "context7", Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}}); err != nil {
+	if err := mcp.AddMCP(path, mcp.Spec{Name: "context7", Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}}, mcp.Options{IsProviderKey: config.ProviderKey}); err != nil {
 		t.Fatal(err)
 	}
 	if n, apps := e.list(); n != 0 || apps["context7"].State != "available" {
 		t.Fatalf("keyless entry shown %d %+v", n, apps["context7"])
 	}
-	if err := link.RemoveMCP(path, "context7"); err != nil {
+	if err := mcp.RemoveMCP(path, "context7", mcp.Options{IsProviderKey: config.ProviderKey}); err != nil {
 		t.Fatal(err)
 	}
 	if err := link.EnableConnector(path, "context7"); err != nil {
@@ -350,7 +352,7 @@ func TestAppsContext7NeedsKey(t *testing.T) {
 			t.Fatalf("remove %d %s", code, raw)
 		}
 	}
-	if all, _ := link.LoadMCP(path); len(all) != 0 {
+	if all, _ := mcp.LoadMCP(path, mcp.Options{IsProviderKey: config.ProviderKey}); len(all) != 0 {
 		t.Fatalf("left %+v", all)
 	}
 	if _, ok := link.GlobalSecretLookup(e.root)("CONTEXT7_API_KEY"); ok {
@@ -371,13 +373,13 @@ func TestAppsContext7KeyFromEnvironment(t *testing.T) {
 	}
 	// A blank stored value masks the environment at start (the Bot's store is
 	// read first), so with every Bot blank the store must not say connected.
-	var spawnSees []link.MCPServer
+	var spawnSees []mcp.Spec
 	for _, name := range []string{"ada", "bob"} {
 		b, _ := bot.Load(e.root, name)
 		if err := link.WriteSecrets(b.SecretPath(), map[string]string{"CONTEXT7_API_KEY": "   "}); err != nil {
 			t.Fatal(err)
 		}
-		spawnSees = append(spawnSees, link.MCPServer{Name: "context7", SecretEnvs: []string{"CONTEXT7_API_KEY"}, Secret: link.GlobalSecretLookup(e.root)})
+		spawnSees = append(spawnSees, mcp.Spec{Name: "context7", SecretEnvs: []string{"CONTEXT7_API_KEY"}, Secret: link.GlobalSecretLookup(e.root)})
 	}
 	for _, sv := range spawnSees {
 		if sv.HasSecretValues(sv.SecretEnvs) {
@@ -461,7 +463,7 @@ func TestAppsProbeBeforeCommit(t *testing.T) {
 // card nor counted as connected.
 func TestAppsHideRetiredServer(t *testing.T) {
 	e := newAppsEnv(t)
-	if err := link.AddMCP(bot.GlobalMCPPath(e.root), link.MCPServer{Name: "fetch", Command: "uvx", Args: []string{"mcp-server-fetch"}}); err != nil {
+	if err := mcp.AddMCP(bot.GlobalMCPPath(e.root), mcp.Spec{Name: "fetch", Command: "uvx", Args: []string{"mcp-server-fetch"}}, mcp.Options{IsProviderKey: config.ProviderKey}); err != nil {
 		t.Fatal(err)
 	}
 	n, apps := e.list()

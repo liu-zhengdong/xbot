@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -38,6 +39,45 @@ func (o Options) secretLookup(spec Spec) func(string) (string, bool) {
 	}
 }
 
+func (o Options) resolveSecrets(ctx context.Context, spec Spec) (map[string]string, error) {
+	names := make([]string, 0, len(spec.SecretEnvs))
+	for _, name := range spec.SecretEnvs {
+		if !o.providerKey(name) {
+			names = append(names, name)
+		}
+	}
+	var resolved map[string]string
+	if resolve := o.ResolveSecrets; resolve != nil {
+		var err error
+		resolved, err = resolve(ctx, names)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		resolved = map[string]string{}
+		lookup := spec.secretLookup()
+		for _, name := range names {
+			if value, ok := lookup(name); ok {
+				resolved[name] = value
+			}
+		}
+	}
+	// Copy only declared inputs. The resolver may return a reused or broader map;
+	// neither its later mutation nor unrelated credentials affect this session.
+	snapshot := make(map[string]string, len(names))
+	var missing []error
+	for _, name := range names {
+		value, ok := resolved[name]
+		if ok {
+			snapshot[name] = value
+		}
+		if !ok || value == "" {
+			missing = append(missing, fmt.Errorf("mcp: missing credential %q", name))
+		}
+	}
+	return snapshot, errors.Join(missing...)
+}
+
 // Session owns one lazily connected MCP server and its transport.
 type Session struct {
 	Spec    Spec
@@ -59,6 +99,23 @@ type Session struct {
 	client   *mcpClient
 	listed   bool
 	tools    []ToolSpec
+}
+
+// Open creates an independent session with one authoritative credential
+// snapshot and a lifetime bounded by ctx. The caller must close it.
+func Open(ctx context.Context, spec Spec, options Options) (*Session, error) {
+	secrets, err := options.resolveSecrets(ctx, spec)
+	if err != nil {
+		return nil, err
+	}
+	options.secrets = secrets
+	options.lifetime = ctx
+	session := NewSession(spec, options)
+	if err := session.Connect(ctx); err != nil {
+		_ = session.Close()
+		return nil, err
+	}
+	return session, nil
 }
 
 // NewSession returns a session that connects on Connect or LoadTools.

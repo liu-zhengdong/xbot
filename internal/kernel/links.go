@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"reflect"
 	"sort"
 	"strings"
 
@@ -16,6 +15,7 @@ import (
 	"xbot/internal/config"
 	"xbot/internal/desktop"
 	"xbot/internal/link"
+	"xbot/internal/mcp"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 	"xbot/internal/vault"
@@ -29,7 +29,7 @@ type linksTool struct{ k *Kernel }
 
 func (linksTool) Name() string { return "links" }
 func (linksTool) Description() string {
-	return "搜索、安装、移除或加载连接器。看到上下文‘连接器’摘要中的名称:描述后，可用 action=load、id=名称或 id 连上它，例如浏览器/browser、Playwright/playwright/mcp:playwright；成功返回工具 id，之后用 tools 的 describe 看参数、call 调用（不会加进你的工具列表）。失败返回原因。search 查目录摘要；install/remove 走用户确认，所需密钥由用户在确认卡填写，你不接收密钥值。"
+	return "搜索、安装、移除或加载连接器。浏览器/browser 等非 MCP 连接器可 action=load、id=名称或 id；成功返回工具 id，之后用 tools 的 describe/call。MCP（如 Playwright）通过当前实例 CLI 操作：先运行 \"$XBOT_BIN\" mcp tools <服务器> --self --json，再用 mcp describe/call 和远端原工具名。search 查目录摘要；install/remove 走用户确认，所需密钥由用户在确认卡填写，你不接收密钥值。"
 }
 func (linksTool) Parameters() any {
 	return schema(map[string]any{
@@ -98,13 +98,9 @@ func (t linksTool) Run(ctx context.Context, args json.RawMessage) (string, error
 		}
 		if err == nil && t.k.Resources != nil {
 			_ = t.k.Resources.manager.Reconcile(ctx)
-			t.k.snapshotLinks()
 		}
 		return text, err
 	case "load":
-		if t.k.Resources != nil {
-			_ = t.k.Resources.MCP.Reconcile(ctx)
-		}
 		return t.loadContext(ctx, strings.TrimSpace(in.ID))
 	default:
 		return "", fmt.Errorf("links: action must be search, install, remove, or load")
@@ -272,7 +268,6 @@ func (t linksTool) installConnector(c link.CatalogItem) (string, error) {
 	if err := link.EnableConnector(t.k.Bot.GlobalMCPPath(), c.ID); err != nil {
 		return scrubSecrets("links: "+err.Error(), values), nil
 	}
-	t.k.snapshotLinks() // mount it now, so load works in this turn
 	return scrubSecrets("installed "+c.ID, values), nil
 }
 
@@ -280,7 +275,7 @@ func (t linksTool) installConnector(c link.CatalogItem) (string, error) {
 // mcp.json and drops the keys this Bot stored for it. Removing twice is fine.
 func (t linksTool) removeConnector(c link.CatalogItem) (string, error) {
 	for _, path := range []string{t.k.Bot.GlobalMCPPath(), t.k.Bot.MCPPath()} {
-		if err := link.RemoveMCP(path, c.ID); err != nil && !errors.Is(err, link.ErrMCPMissing) {
+		if err := mcp.RemoveMCP(path, c.ID, mcp.Options{IsProviderKey: config.ProviderKey}); err != nil && !errors.Is(err, mcp.ErrMCPMissing) {
 			return "", err
 		}
 	}
@@ -324,22 +319,9 @@ func (t linksTool) loadContext(ctx context.Context, id string) (string, error) {
 	}
 	if strings.HasPrefix(id, "mcp:") {
 		name := strings.TrimPrefix(id, "mcp:")
-		servers, err := t.k.mcpSpecs()
-		if err != nil {
-			return "", err
-		}
-		found := false
-		for _, s := range servers {
-			if s.Name == name {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return "", fmt.Errorf("links: not found")
-		}
-		return t.loadedNamesContext(ctx, id)
+		return "", fmt.Errorf("links: MCP tools use the CLI: \"$XBOT_BIN\" mcp tools %q --self --json; use mcp describe/call with the remote tool name", name)
 	}
+
 	// An organ is on from boot; loading it only lists its tools.
 	if o, ok := link.LookupOrgan(id); ok {
 		return t.loadedNames(o.Grant)
@@ -393,22 +375,14 @@ func (k *Kernel) toolsForLoaded(ctx context.Context, id string) ([]tools.Tool, e
 			continue
 		}
 		if l.Name() == id || (id != "" && l.Name() == grantName(id)) {
-			if m, ok := l.(*link.MCP); ok {
-				list, err := m.LoadTools(ctx)
-				if err != nil {
-					return nil, err
-				}
-				out = append(out, list...)
-			} else {
-				out = append(out, l.Tools()...)
-			}
+			out = append(out, l.Tools()...)
 		}
 	}
 	return out, nil
 }
 
 // snapshotLinks mounts catalog grants that were installed after this kernel
-// started, and drops catalog grants that were removed. Runner and mcp links stay.
+// started, and drops catalog grants that were removed. Runner links stay.
 func (k *Kernel) snapshotLinks() []link.Link {
 	if k == nil {
 		return nil
@@ -467,7 +441,7 @@ func (k *Kernel) syncGrantsLocked() {
 			have[o.Grant] = true
 		}
 	}
-	k.Links = k.syncMCPLocked(kept)
+	k.Links = kept
 }
 
 // MountOrgans assembles the same always-on capabilities used by the registry.
@@ -477,75 +451,12 @@ func MountOrgans(b *bot.Bot, links []link.Link) []link.Link {
 	return k.snapshotLinks()
 }
 
-// syncMCPLocked makes the mounted mcp links match the global and personal
-// mcp.json: a server the store added is mounted, one it removed is closed, and
-// one whose definition changed is replaced by a fresh instance. An unreadable
-// file leaves the mounted set as it is.
-// mcpSpecs is authoritative for runtime metadata and adapter discovery. The
-// Manager retains the last effective inputs when an external file is invalid.
-func (k *Kernel) mcpSpecs() ([]link.MCPServer, error) {
+// mcpSpecs reads the effective runtime inputs retained by the Manager.
+func (k *Kernel) mcpSpecs() ([]mcp.Spec, error) {
 	if k.Resources != nil {
 		return k.Resources.MCP.Specs(), nil
 	}
-	return link.LoadMCPAll(k.Bot.GlobalMCPPath(), k.Bot.MCPPath())
-}
-
-func (k *Kernel) syncMCPLocked(links []link.Link) []link.Link {
-	servers, err := k.mcpSpecs()
-	if err != nil {
-		return links
-	}
-	want := make(map[string]link.MCPServer, len(servers))
-	for _, s := range servers {
-		if link.RetiredServer(s.Name) {
-			continue
-		}
-		want[s.Name] = s
-	}
-	out := make([]link.Link, 0, len(links)+len(servers))
-	have := map[string]bool{}
-	var stale []*link.MCP
-	for _, l := range links {
-		m, ok := l.(*link.MCP)
-		if !ok {
-			out = append(out, l)
-			continue
-		}
-		if s, ok := want[m.Spec.Name]; ok && sameMCPSpec(m.Spec, s) {
-			out = append(out, l)
-			have[m.Spec.Name] = true
-			continue
-		}
-		stale = append(stale, m)
-	}
-	for _, s := range servers {
-		if have[s.Name] || link.RetiredServer(s.Name) {
-			continue
-		}
-		s.Secret = link.GlobalSecretLookup(k.Bot.Root)
-		mk := k.newMCP
-		if mk == nil {
-			mk = func(s link.MCPServer) link.Link {
-				if k.Resources != nil {
-					return link.NewBorrowedMCP(s, k.Resources.MCP)
-				}
-				return link.NewMCP(s)
-			}
-		}
-		out = append(out, mk(s))
-	}
-	for _, m := range stale {
-		_ = m.Close()
-	}
-	return out
-}
-
-func sameMCPSpec(a, b link.MCPServer) bool {
-	a.Dial, b.Dial = nil, nil
-	a.Secret, b.Secret = nil, nil
-	a.Args, b.Args = append([]string{}, a.Args...), append([]string{}, b.Args...)
-	a.SecretEnvs, b.SecretEnvs = append([]string{}, a.SecretEnvs...), append([]string{}, b.SecretEnvs...)
-	return reflect.DeepEqual(a, b)
+	return mcp.LoadMCPAll(mcp.Options{IsProviderKey: config.ProviderKey}, k.Bot.GlobalMCPPath(), k.Bot.MCPPath())
 }
 
 func catalogRuntime(name string) bool {
@@ -862,20 +773,8 @@ func (k *Kernel) scrubEntry(m provider.Message) provider.Message {
 }
 
 func lazyUntilLoad(name string) bool {
-	return strings.HasPrefix(name, "mcp:") || link.StoreGrant(name)
+	return link.StoreGrant(name)
 }
 
 // silence unused import if tools is only used in toolsForLoaded
 var _ tools.Tool = linksTool{}
-
-// MCPStatus reads the matching mounted instance without mounting or connecting.
-func (k *Kernel) MCPStatus(spec link.MCPServer) link.MCPStatus {
-	k.linksMu.Lock()
-	defer k.linksMu.Unlock()
-	for _, l := range k.Links {
-		if m, ok := l.(*link.MCP); ok && sameMCPSpec(m.Spec, spec) {
-			return m.Status()
-		}
-	}
-	return link.MCPStatus{State: "configured"}
-}

@@ -170,8 +170,6 @@ type Kernel struct {
 	loadMu      sync.Mutex
 	loaded      map[string]bool
 	linksMu     sync.Mutex
-	// newMCP builds an mcp link for a server in mcp.json; tests replace it with a fake.
-	newMCP      func(link.MCPServer) link.Link
 	secretMu    sync.Mutex
 	secrets     map[string]map[string]string
 	compactMu   sync.Mutex
@@ -886,9 +884,6 @@ func (k *Kernel) StartEmitters(ctx context.Context) {
 			return
 		}
 		for _, l := range k.snapshotLinks() {
-			if m, ok := l.(*link.MCP); ok && m.Borrowed() {
-				continue
-			}
 			em, ok := l.(link.Emitter)
 			if !ok {
 				continue

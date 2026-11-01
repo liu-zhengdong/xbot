@@ -63,9 +63,6 @@ func (k *Kernel) attachShellJobs() {
 		if l == nil {
 			continue
 		}
-		if _, ok := l.(*link.MCP); ok {
-			continue
-		}
 		for _, t := range l.Tools() {
 			sh, ok := t.(*tools.Shell)
 			if ok {
@@ -83,9 +80,6 @@ func (k *Kernel) attachShell() {
 	}
 	for _, l := range k.snapshotLinks() {
 		if l == nil {
-			continue
-		}
-		if _, ok := l.(*link.MCP); ok {
 			continue
 		}
 		for _, t := range l.Tools() {
@@ -118,9 +112,6 @@ func (k *Kernel) bindShellRuntime(sh *tools.Shell) {
 func shellBackgroundOn(links []link.Link) bool {
 	for _, l := range links {
 		if l == nil {
-			continue
-		}
-		if _, ok := l.(*link.MCP); ok {
 			continue
 		}
 		for _, t := range l.Tools() {

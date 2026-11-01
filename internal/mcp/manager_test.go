@@ -146,7 +146,7 @@ func TestManagerAsyncBindReuseIsolationAndNotifications(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		raw, err := ref.CallTool(ctx, "docs", "echo", map[string]any{})
+		raw, err := ref.CallTool(ctx, "docs", "echo", map[string]any{}, CallOptions{})
 		if err != nil || !strings.Contains(string(raw), "structuredContent") || !strings.Contains(string(raw), "unchanged") || !strings.Contains(string(raw), "unknown") {
 			t.Fatalf("raw result %s: %v", raw, err)
 		}
@@ -221,7 +221,7 @@ func TestManagerReplacementInterruptsCallWithoutRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
-	go func() { _, err := ref.CallTool(ctx, "docs", "echo", map[string]any{}); done <- err }()
+	go func() { _, err := ref.CallTool(ctx, "docs", "echo", map[string]any{}, CallOptions{}); done <- err }()
 	<-entered
 	config.set(Spec{Name: "docs", URL: f.server.URL, Args: []string{"changed"}})
 	if err := ref.Reconcile(ctx); err != nil {
@@ -472,10 +472,7 @@ func TestManagerPauseKeepsSessionDiscoveryAndNotifications(t *testing.T) {
 	if text := awaitMCP(t, notes); text != "docs:still-live" {
 		t.Fatal("pause stopped notifications", text)
 	}
-	if _, err := ref.CallTool(ctx, "docs", "echo", map[string]any{}); !errors.Is(err, ErrPaused) {
-		t.Fatal(err)
-	}
-	if _, err := ref.CallToolForSpec(ctx, spec, "echo", map[string]any{}); !errors.Is(err, ErrPaused) {
+	if _, err := ref.CallTool(ctx, "docs", "echo", map[string]any{}, CallOptions{}); !errors.Is(err, ErrPaused) {
 		t.Fatal(err)
 	}
 	if calls.Load() != 0 {
@@ -484,7 +481,7 @@ func TestManagerPauseKeepsSessionDiscoveryAndNotifications(t *testing.T) {
 	if err := ref.Resume(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ref.CallToolForSpec(ctx, spec, "echo", map[string]any{}); err != nil {
+	if _, err := ref.CallTool(ctx, spec.Name, "echo", map[string]any{}, CallOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if calls.Load() != 1 || inits.Load() != 1 {

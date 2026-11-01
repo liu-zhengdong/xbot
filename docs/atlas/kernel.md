@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/, internal/cliops/]
-verified: 2026-11-01 @ 97c32bb5 (merged MCP runtime and child continuation/route/schema checks; exact phase E2E evidence retained)
+verified: 2026-11-01 @ 16be6d78 (CLIEntry/static and kernel 27 race; prior continuation/profile evidence reused)
 ---
 # 内核：Link、Event、收件箱
 
@@ -14,13 +14,13 @@ verified: 2026-11-01 @ 97c32bb5 (merged MCP runtime and child continuation/route
 
 ## 当前实例的 CLI 资料入口
 
-`openKernel` 最后为已有 Kernel 绑定 `127.0.0.1` 随机端口的窄 HTTP 操作入口（`internal/cliops`），serve、桌面和独立 chat 同协议；只提供简介/时区/生成头像 seed 的 profile 读取/更新，不另起 Kernel。CLI 自操作直接执行领域合并，不拿对话处理锁、web gate 或 turnMu，不投 message/send；保存后解业务锁，若现有 liveTurns 指向另一个活 Kernel 则刷新其 profile（含头像）快照，使下一步环境采样与读取可见，再经当前活轮次 Sink 发 `profile` SSE 提示；通知随原插话出口移交。刷新读取失败不将已落盘的保存回执伪报失败。请求/响应各上限 64 KiB，须匹配规范数据根；只接受本机非浏览器调用，身份与命令见 [多 Bot](multibot.md#运行时普通资料)。
+`openKernel` 最后为已有 Kernel 绑定 `127.0.0.1` 随机端口的窄 HTTP 操作入口（`internal/cliops`），serve、桌面和独立 chat 同协议；提供简介/时区/生成头像 seed 的 profile 读取/更新，以及借同Resources的MCP领域操作，不另起 Kernel。CLI 自操作直接执行领域合并，不拿对话处理锁、web gate 或 turnMu，不投 message/send；保存后解业务锁，若现有 liveTurns 指向另一个活 Kernel 则刷新其 profile（含头像）快照，使下一步环境采样与读取可见，再经当前活轮次 Sink 发 `profile` SSE 提示；通知随原插话出口移交。刷新读取失败不将已落盘的保存回执伪报失败。请求/响应各上限 64 KiB，须匹配规范数据根；只接受本机非浏览器调用，身份与命令见 [多 Bot](multibot.md#运行时普通资料)。
 
 操作入口由实际持有者释放：chat 退出、web 淘汰/换绑或服务 context 取消强制关闭；serve.Pass 的 Kernel.Close 请求退役，有本机子代理或编码任务时复用原执行集合保持入口，实际任务移除并排空原队列后的无锁 OnIdle 回调关闭空闲入口。没有第二张任务表或定期寿命轮询；已关闭入口会撤销宿主 context 回调。主线与可写本机子代理有一条短 CLI 帮助指引，普通字段与头像 seed 优先 CLI、改名仍走旧工具，不注入子命令 schema。决定见 [ADR 0043](../adr/0043-cli-platform-runtime-entry.md)。
 
 ## MCP 与每 Bot 进程资源
 
-serve/chat 各创建一个 `mcp.Manager`。web 原缓存提升为 `entry{Resources, Kernel, Gate}`，Pass 与 cached/临时 checker 借同一份 `BotResources`；chat 直接持资源。只稳定原 Jobs、MCP ref 和短 Bot/Inbox route，下一 Pass 仍 fresh 构造 Provider/role/budget/恢复。runtime 摘要/search/load/adapter 统一沿 Manager 保留的有效 specs，坏磁盘配置不旁路破坏该保留态；snapshot 只读缓存，reconcile 在 Pass/API/Handle/显式load 的资源锁外。wake 的最终当前名复查也在短 route 内 fresh Load 全配置，不把长期 r.current 的旧绑定盖回新 Provider。借用 K.Close 不 Shutdown 共享 Jobs；进程 context/资源最终 Close 才取消并等待真实退出。所有权决定见 [ADR 0046](../adr/0046-process-owned-mcp-sessions.md)。
+serve/chat 各创建一个 `mcp.Manager`。web 原缓存提升为 `entry{Resources, Kernel, Gate}`，Pass 与 cached/临时 checker 借同一份 `BotResources`；chat 直接持资源。只稳定原 Jobs、MCP ref 和短 Bot/Inbox route，下一 Pass 仍 fresh 构造 Provider/role/budget/恢复。runtime 摘要与CLI tools/describe/call 统一沿 Manager 保留的有效 specs，坏磁盘配置不旁路破坏该保留态；snapshot 只读缓存，reconcile 在 Pass/API/Handle/显式load 的资源锁外。wake 的最终当前名复查也在短 route 内 fresh Load 全配置，不把长期 r.current 的旧绑定盖回新 Provider。借用 K.Close 不 Shutdown 共享 Jobs；进程 context/资源最终 Close 才取消并等待真实退出。所有权决定见 [ADR 0046](../adr/0046-process-owned-mcp-sessions.md)。
 
 默认 Jobs 的 Redact/Forms/OnDone/Now 只绑定一次，每个实际 CallRequest 保 source 的动态脱敏/Forms、Prepare/Finalize、turn/replyGen/cwd；不以最后构造的 K 覆盖。完成沿原 Jobs.Deliver 和稳定 `shelljob_ID` 进入当前 Inbox，再锁外唤醒；request.OnDone 仍覆盖默认一次。没有 JobID 路由表或旧 K 登记表。
 
@@ -101,7 +101,7 @@ list/replay 使用全局产品保险库的既有脱敏出口；命令不追加�
 
 每轮开始从 `web.json` 固定全局生图开关和供应商选择；默认关。`resolveImageGen` 在装配工具目录前固定一份能力：关则两路都关；自动优先当前绑定的已登录 OpenAI/xAI OAuth Responses hosted，否则注册代理 `generate_image`；总用设置里的家则只注册代理。代理须全局所选账号已登录且目录有 Responses 模型，经 `kernelTools` 的真实 `image_gen` 分组登记为 listed，再由 `tools` 门调用；没有空组或 `expand_tool_group`。同一轮续段保留快照，设置变化下一轮生效。与搜索策略独立，完成和失败沿 `PartHosted` 进入进度与原对话。Save 只将文件保存到 `generated/` 并返回真实工作区相对路径，不写出图队列或 `Entry.Images`。Bot 读取回执后，主动调用既有 `send_message_to_user` 的 `images` 挂图；相对路径按调用时的目录解析，目录改变时需按工作区根定位回执路径。挂图沿既有 `attachOutImages` 的工作区边界、类型/尺寸校验和每条回复 4 张 / 10 MiB / 长边 2048 上限，内容相同的图只挂一次。通知调用携带原 turn 与 reply generation，迟到调用不能挂到另一条回复，同一长轮的后续回复可正常挂图。最终回复沿既有队列写 `Entry.Images`；保存成功不代表交付成功，挂图成败以 `send_message_to_user` 回执为准，拒绝不污染队列，原文件仍保留。传输、配置、保存上限及回放规则见 [供应商](providers.md)，代理复用相同保存上限和回执，权限表归 Normal，不增加工具内确认分支，不改 transcript 旧行。
 
-主对话与本机子代理的模型调用另有一次 MCP schema 降级重试，独立于 overflow；停用范围、跨轮冷却和恢复边界见 [生态](ecosystem.md)。
+MCP已移出主/legacy子/continuable子模型schema，原MCP重试/冷却退役；普通overflow的fit重试、预算校准与Descriptor实际模型路由保持。CLI/ref同session只读与结果产物见 [生态](ecosystem.md#mcp-cli只读与旧入口退役) 和 [ADR 0047](../adr/0047-mcp-cli-domain-entry.md)。
 
 ## 全局搜索策略
 

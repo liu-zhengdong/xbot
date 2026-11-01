@@ -274,6 +274,99 @@ Jobs 准入至少区分 open/临时 paused/宿主永久 closed，仅表达资源
 
 **最小红与验证**：先自有 source call lease fixture，K1 两次 profile 协议调用中间 gate、同表空 K2 退休、requested cancel 未真返回、完整 cleanup 后端口关；该 unit 不冒充真实 CLI。core 搬并复用 stdio/HTTP/diagnostics 断言；补同 Bot 两 K/Pass 单 initialize、另 Bot 独立、热新增 note、override/GET 不重连、换配置 call 计数1、HTTP call ctx/原 ID cancel。共享 Jobs 两源动态 secrets/Forms、不串回调、跨 K 原 ID cancel、单 OnDone、old replyGen/附件边界；保既有 avatar/name/代理门有效断言。独立 ownership/通知/慢 call/跨 K cancel 新文件归验证方，实现方不改。按影响最小 unit/race+入口一次，不全仓/三遍/真模型；仅已单独放行的纯机械 core 子步可先提交；整体结构已经PASS，现正式继续HTTP取消修正与runtime接线；产品完成仍需实际绿证据。
 
+## 批 2b：实例 MCP CLI 与旧模型入口退役
+
+2026-11-01，基线 main `16101e7e`；2a 已合入，本节仅补父2241草图与24预核2749的实际新增接缝。独立最窄真入口已在此基线红：`"$XBOT_BIN" mcp list --self --json` 返回旧 `mcp list <bot>` usage（validation b4f266c6，独立测试9f035622）；不重复2a慢调用/Owner。新决定见 [ADR 0047](../adr/0047-mcp-cli-domain-entry.md)。选定共享领域方法+两个薄HTTP+纯argv parser，不选 web spawn CLI 或每命令自建 K/Session；不重开候选/路线。
+
+### 调用方、argv 与目标
+
+```sh
+"$XBOT_BIN" mcp add docs --url http://127.0.0.1:9001/mcp --self --json
+"$XBOT_BIN" mcp list --self --json
+"$XBOT_BIN" mcp add docs --scope bot --command /absolute/program --arg literal --self --json
+"$XBOT_BIN" mcp tools docs --self --json
+"$XBOT_BIN" mcp describe docs search_docs --self --json
+"$XBOT_BIN" mcp call docs search_docs --args '{"q":"x"}' --self --json
+xbot mcp call docs search_docs --http 127.0.0.1:8788 --bot ada --args-file request.json --json
+xbot mcp offline list ada
+```
+
+`list/add/remove` scope 默认 global、显式 bot 为整条 override；tools/describe/call 总用当前 Bot 的 effective spec和远端原名（可含斜杠），不用旧 sanitize/prefix。无 self 或显式 http+bot 报错，不猜primary/cwd、不静默offline；显式http优先并不得混self，env endpoint只供self。旧裸 `<bot>` 配置语法给迁移提示，文件用途仅 `offline list/add/remove <bot>…`，不接online flags。管理写只保存配置，不接受密钥值。
+
+`cliops.ParseMCP(argv []string)(MCPCommand,error)` 无环境/文件/网络，字段为 Action/Server/Tool/Scope、Self/HTTP/Bot、JSON/ReadOnly、Command/CommandArgs/URL/SecretEnvs、Args/ArgsFile、Timeout/Help。flag arity明确，支持位置参数前后flag；args与args-file互斥且不可重复，cmd再读至1MiB+1（`-`为stdin），以RawMessage保单JSON object且EOF，拒null/数组/多对象；不转any丢大整数。未给args等于 `{}`。timeout默认0只随信号ctx，显式值须正；发现仍core15s。
+
+main.run保splitGlobal的rawRoot是否显式，在resolveRoot/EnsureDefault/BindLegacy/HoldKeys之前分流MCP help/online；help只stdout不需实例/目录，不安装凭据。offline才沿原本地root/config流程。self取XBOT_ENDPOINT+XBOT_ROOT，显式rawRoot核验沿当前profile边界；human只在显式rawRoot时canonicalize并发X-XBot-Root，不发送默认Root/XBOT_ROOT、不臆造session.Root。human复用cmdMessage的loopback校验、同cookiejar GET /api/session authed与后续请求；不复制其2m/default transport。MCP独立client使用caller ctx、Proxy:nil/noRedirect，不使用profile10s。HTTP请求上限1MiB，回包按下述最终JSON上限64KiB。
+
+### 领域方法与两个薄HTTP入口
+
+新增 `kernel/resources_mcp.go`，不暴露通用route/action bus。低层 `cliops` 定义MCP DTO/具名handlers，不import kernel；Kernel已import cliops，禁止反向循环。
+
+```go
+type MCPCall struct { Server, Tool string; Args json.RawMessage; ReadOnly bool }
+type MCPArtifact struct { Type, MIMEType, File, Access string } // JSON: type,mime_type,file,access
+type MCPContent struct { Type, Text, Preview, MIMEType, URI, File, Access, ProjectionError string }
+type MCPReply struct {
+    Data json.RawMessage `json:"data,omitempty"` // metadata only; too large goes to Artifact
+    Content []MCPContent `json:"content,omitempty"`
+    Raw *MCPArtifact `json:"raw,omitempty"`
+    Structured *MCPArtifact `json:"structured_content,omitempty"`
+    Artifact *MCPArtifact `json:"artifact,omitempty"` // complete large metadata/manifest
+    IsError bool `json:"is_error"`
+    Saved bool `json:"saved,omitempty"`
+    RuntimeError string `json:"runtime_error,omitempty"`
+    ProjectionErrors []string `json:"projection_errors,omitempty"`
+}
+func (*BotResources) MCPList(ctx context.Context, scope string) (cliops.MCPReply,error)
+func (*BotResources) MCPAdd(ctx context.Context, scope string, spec mcp.Spec) (cliops.MCPReply,error)
+func (*BotResources) MCPRemove(ctx context.Context, scope,name string) (cliops.MCPReply,error)
+func (*BotResources) MCPTools(ctx context.Context, server string) (cliops.MCPReply,error)
+func (*BotResources) MCPDescribe(ctx context.Context, server,remote string) (cliops.MCPReply,error)
+func (*BotResources) MCPCall(ctx context.Context, call cliops.MCPCall) (cliops.MCPReply,error)
+```
+
+MCPHandlers逐个持同签名函数；cliops.Start用具名Handlers包含Profile/MCP，在原source监听器挂 `/v1/mcp/servers` GET/POST/DELETE、`/v1/mcp/tools?server=`、`/v1/mcp/describe?server=&tool=` GET、`/v1/mcp/call` POST `{server,tool,args,read_only}`。server/tool用query/body，不能path拆远端原名。所有source路由复用现root/browser/Host guard，不裸挂新路径；MCP调用不持operations锁，handler捕获本source Resources/ref而非XBOT_BOT。source listener的原解释器lease覆盖整个CLI脚本。
+
+human同方法映射 `/api/bots/{bot}/mcp/servers|tools|describe|call`，先require/owned，再在显式header非空时对s.Root核验，最后ResourcesFor；scope global也不跳owner校验。旧web MCP配置GET/POST/DELETE、apps custom/remove与store配置写口保业务，但委托同领域保存/reconcile，不能又旁路创建客户端。
+
+list Data为 `{scope,servers:[{...spec,source:"global"|"bot",shadowed, runtime:{state,tool_count,error?}}]}`；默认读global并在同短route读local名称判遮盖；只有行spec匹配Ref.Specs当前effective才用其Status，否则configured。工具Data为 `{server,tools:[完整ToolSpec...]}`，describe Data为完整原ToolSpec；若最终JSON超限，Data不截schema，改完整json Artifact。add/remove回Data `{scope,name,state:"configured"}` 与Saved:true，reconcile失败保真实保存回执+RuntimeError，不伪ready/回滚。
+
+配置路径的取值和mcp.Load/Add/Remove实际IO在同短route内，Options显式config.ProviderKey；释放route后global→manager.Reconcile、bot→ref.Reconcile，避免ReadConfig再进route死锁。bad config的runtime tools/describe/call仍用Manager保留态；显式配置list如实报告读错。所有网络与JSON/base64 decode均不持route/ops/host。
+
+### 同session readonly 与临时probe
+
+```go
+type CallOptions struct { ReadOnly bool }
+func (*BotRef) CallTool(context.Context, string, string, any, CallOptions) (json.RawMessage,error)
+func Open(context.Context, Spec, Options) (*Session,error)
+```
+
+CallTool只选一次slot→wait→若ReadOnly，在同slot.session.LoadTools精确匹配远端名且hint=true→原短锁复核closed/paused/仍当前slot→调用该session。不能组合公开ref.LoadTools和ref.CallTool二次路由；换代失败不打新session，已发unknown不retry。退adapter时删除CallToolForSpec。RawMessage直接传arguments，保数字/未知结构。
+
+Open复用Options.resolveSecrets的同一实现，冻结一次snapshot、lifetime绑probe ctx，Connect失败Close；Manager仍原异步slot启动。现NewSession不消费public ResolveSecrets，不能只传resolver假装完成注入。web.probeApp仍45s envelope，但用此次待保存values的复制map、显式predicate/redactor打开临时core Session，defer Close；不去Manager旧vault。Playwright用原名browser_navigate/browser_close，CallTool后decode isError并检查（transport nil不等于成功），close best effort，保原真探测。
+
+### 有界投影与实际落盘fence
+
+MCPReply最终Marshal（含转义/metadata/tools聚合）<=64KiB；metadata过大完整写json Artifact，不能直接Encode20页工具表。call始终保存脱敏完整Raw json，small text直接Content.text，大text给preview（最多2KiB）+完整txt；known image在锁外真实base64解码、用WriteGenerated的sniff，返回mime/file/access:local；resource_link只保URI不fetch。embedded text/blob为txt/bin，unknown块/structuredContent保完整json；未知type不猜可执行语义。已知图片解码/类型失败仍保原块json并给ProjectionError，不能静默丢。任何projection/落盘失败如实输出，不重放远端写。
+
+新增薄 `work.WriteResult(workspace string,data []byte,ext string)(rel string,error)`：内部固定txt/json/bin suffix、随机exclusive0600、os.OpenRoot、单文件<=20MiB（tools最多20页）、短写/Close失败清残件，返回workspace相对结果路径；不接远端filename、不借Job或第二账。known image复用WriteGenerated的现20MiB/500文件约束。网络、解码、脱敏、预处理在锁外；每次真正写入必须在r.route.RLock内检查closed/ctx、取 `work.BotDir(r.current.Root,r.current.Name())` 并完成writer至Close。work在root/work/name，非bot.Dir；bot.Rename实际moveWork，CurrentBot返回后锁外写会复活旧工作区，不能这样做。
+
+若内容/产物metadata本身使reply超64KiB，把完整投影manifest写json，再仅回小preview+Artifact/Raw引用；保已产出文件的可发现路径，不stdout raw/base64。JSON字段用snake_case，plain输出也只摘要/本机引用。isError:true仍输出Content/Raw后CLI非0；transport失败独立error，projection_errors非空也非0；Saved成功但runtime尚不可用不冒ready。相对file随工作区实际改名移动，access只声明local，不伪远端可达。
+
+### research实际接线与同cut退旧
+
+review新增窄DirectXBotArgs，只认完整literal词、整词单引号/无展开双引号；首词准当前canonical BIN或精确 `"$XBOT_BIN"`，其它变量/拼接/operator/重定向/substitution/wrapper拒绝。原shellWords会抹操作符和引号，不可用于授权。CLI纯parser确认self help/list/tools/describe或call+readonly；禁止http/其它Bot/offline/写动作，显式root仅接受同当前root的literal，未知形式拒绝。仅POSIX解释器，不宣称cmd/PowerShell；普通read分类保留。readOnlyShell取source caller的实际BIN/root，legacy toolsFor和continuableTools都接相同逻辑；不更改Descriptor.Tools持久策略、每Local admission或路由/overflow。
+
+同一2b产品切换退：link.MCP/NewMCP/NewBorrowed/Owns/build/本地工具名投影；cmd.mount两条MCP分支；kernel registry pending/prefix/startGroup/Owns/describe启动；links MCP load/toolsForLoaded/sync/status/newMCP hook；Shell/StartEmitters的过渡skip；主reply/schemaKernel、dispatch.fitProvider的MCP attempt/modelKey和continuable_contract旧MCP fallback用例。保context overflow/fit/calibration、Descriptor provider路由、普通权限/hint真实消费者，历史transcript只读不藏旧执行adapter。
+
+config aliases/callers转core并显式predicate：尤其link.connectors目录Validate/Add/Replace、web MCP/apps CRUD/status、cmd connector/offline；删除SetProviderKey全局前逐口完成，零Options不能放过provider key。Raw ToolSpec/annotations已存在，不造第二结构。混合测试只退adapter/pending/schema断言；保HTTP/session/SSE/原IDcancel、global-local override、目录/密钥/probe真失败、配置状态GET不探测及非MCP Tools原行为。Tools门仍服务memory/routine/context/peers/bots/links/secrets/shelljobs/agents/skills，不可跟MCP一起删除。
+
+### 怎样算对与实施顺序
+
+1. 最窄真实BIN source Shell：self add→list→tools→describe→call，原名/同session counter连续，配置回执不冒ready；此路径独立最小红已固定。
+2. 独立方把既有2a central driver改真CLI，原Owner/热note、慢call/gate/计数1、跨K原Job status/output/cancel、单Event、source两CLI/空K/真结束回收断言不改。独立文件只归0d，产品方不改；只因真实受影响路径选择重验。
+3. 必要边界：help无root/本地凭据副作用；human显式dev实例/错root；args-file/stdin/大整数/非法或多JSON；isError内容+非0；image/unknown/structured完整本机产物且不stdout base64；research literal/注入拒绝、精确hint与list期间换spec零RPC；主/legacy子/continuable provider请求均无MCPschema而非MCP Tools仍可用。
+4. 最小相关unit/race及真实入口各一次，绿即停；不完整矩阵/全仓/真模型/权限UI，不提前完整rename/runner。先交24具体新增DTO/argv/guard/同slot/probe/写fence，PASS后分冲突面实现；最终同cut退旧，不暂留双入口进入main。
+
 ## 对照回顾
 
 回顾范围：候选索引全文、164 份候选 metadata/title 逐条、直接相关 44 篇全文与其余 120 篇主题筛查已由独立研究方核对，未新增阻止批 0/1 的前置；不是宣称全部 164 篇正文逐字读过。人用终端 PATH 的 P3 不等于本批 XBOT_BIN 已完成它；环境实体暂不开、多 Provider/子代理人工排期不阻塞首刀。旧搜索 Link/禁 hosted、expand/load/schema 旧描述和默认写跑先问方向与当前 atlas/ADR 不一致，本批不执行、不改候选状态。头像即时刷新、改名 Jobs 连续性保持；research/runner 缺口明示。下表核对 atlas、ADR、guard 与正在做的设计，不把无关 UI、供应商、评测、设备扩张条目纳入实现。
@@ -325,7 +418,7 @@ Jobs 准入至少区分 open/临时 paused/宿主永久 closed，仅表达资源
 - 主人日用验收尚未开始。普通资料首刀的独立审计、真入口验证与合入已完成；后续不重复该刀设计审批，按新切片复核实际增量。
 - 批 0 的后续实际操作及入站依赖清单、research 按业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - 头像上传/clear、改名完整运行时 CLI 与其组合仍未覆盖，保留完整旧工具和原即时刷新，未整族移除。avatar_seed 的独立真入口、兼容增量审核与合入已完成，不重复该刀验收。
-- 2b 的 MCP 管理/发现/调用 runtime CLI、完整结果产物与旧 adapter/schema 退役。已完成的 2a 运行态底座不重复设计审批与既有验收；后续只按实际增量核对，现状见 atlas。
+- 2a/2b 的 MCP 运行态、runtime CLI、完整结果产物与旧 adapter/schema 退役已独立所测端到端/静态通过，2b待整合及日用；现状已提炼atlas。后续各平台族继续按实际增量迁移，不重复本刀审批或精确已绿证据。
 - 技能/例程/Bot/群/连接器等平台能力逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。

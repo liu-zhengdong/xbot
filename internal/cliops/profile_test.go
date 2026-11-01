@@ -12,14 +12,14 @@ import (
 func TestProfileProtocolIdentityAndFailures(t *testing.T) {
 	root := t.TempDir()
 	calls := 0
-	s, err := Start(root, func(update *Update) (Profile, error) {
+	s, err := Start(root, Handlers{Profile: func(update *Update) (Profile, error) {
 		calls++
 		p := Profile{Name: "non-primary", Scope: "runtime", Applied: update != nil}
 		if update != nil && update.Description != nil {
 			p.Description = *update.Description
 		}
 		return p, nil
-	})
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestProfileProtocolIdentityAndFailures(t *testing.T) {
 func TestProfileIPCOverheadP95(t *testing.T) {
 	root := t.TempDir()
 	callback := func(*Update) (Profile, error) { return Profile{Name: "ada", Scope: "runtime"}, nil }
-	s, err := Start(root, callback)
+	s, err := Start(root, Handlers{Profile: callback})
 	if err != nil {
 		t.Fatal(err)
 	}

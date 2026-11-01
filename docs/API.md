@@ -405,9 +405,19 @@ Bot 不存在、名字不合法、或没有装上这条 Link，是 404 `{"status
 
 `GET /api/apps` 沿用 owner 登录校验和全局安装列表。MCP 商店条目增加 `load_id`（如 `mcp:playwright`）；已配置的 MCP 增加 `runtime`，键为当前用户的 Bot 名，值为 `{state, tool_count, error?}`。`configured` 表示当前配置尚未成功取得工具；`ready` 表示该 Bot 的匹配实例取得非空工具表；`error` 附带有界、脱敏的失败原因。没有 Bot 时不返回 runtime。读取不启动 MCP 进程、不发网络请求，不将其他配置实例或其他用户的状态混入。
 
-旧 `state=connected` 和顶层 `connected` 仍表达安装/凭据状态，不代表工具可用；前端本次未接入 runtime。`load_id` 可直接交给 `links` 的 load 动作，成功后返回工具名；错误在原工具结果通路内返回。ready 不保证某个工具的浏览器等外部依赖可用。
+旧 `state=connected` 和顶层 `connected` 仍表达安装/凭据状态，不代表工具可用；前端本次未接入 runtime。`load_id` 保留目录身份；MCP 的 links load 只返回当前实例 CLI 指引，实际发现/调用用下节 MCP CLI，不再返回模型工具 schema。ready 不保证某个工具的浏览器等外部依赖可用。
 
 `POST /api/apps/custom` 保存命令/地址配置后返回 `{id,state:"configured",saved:true}`，保存成功不冒称运行 ready。现 Bot MCP POST/DELETE、全局应用添加/移除与 `/api/secrets` 成功写入都会触发同进程 reconcile；同 spec POST 仍 409，不新增 PUT。外部文件变化按现 serve Pass 读取，坏配置保当前有效会话但报告读错，仍引用的凭据失效单独关闭对应旧输入。
+
+## MCP 运行时 CLI
+
+Agent：`"$XBOT_BIN" mcp list|tools|describe|call … --self --json`，配置为 `add SERVER (--command PATH [--arg VALUE]… | --url URL) [--secret-env NAME]…` / `remove SERVER`。配置scope默认global、显式`--scope bot`整条覆盖；调用使用effective服务器与远端原工具名。human必须显式`--http ADDR --bot NAME`，同cookiejar `/api/session` 的authed会话；只有显式global `--root`才发X-XBot-Root，服务端Root是权威。离线文件命令改为明确 `mcp offline list/add/remove BOT…`。
+
+source在原随机loopback listener提供 `/v1/mcp/servers` GET/POST/DELETE、`tools?server=` / `describe?server=&tool=` GET、`call` POST；全部复用原Host/browser/root guard。human对应 `/api/bots/{name}/mcp/servers|tools|describe|call`，先owner登录/owned再核显式root并借Resources，不另建K/client。servers POST `{scope,spec}`、DELETE query `scope,server`；call `{server,tool,args,read_only}`。args为单JSON对象、默认`{}`，CLI `--args`与有界`--args-file FILE|-`互斥，保大整数；请求<=1MiB。MCP调用ctx/default timeout0，显式timeout正duration；不复用profile10s/message2m，client Proxy:nil/拒redirect。
+
+成功回 `MCPReply`（最终JSON<=64KiB）：metadata在`data`，list `{scope,servers:[spec+source+shadowed+runtime]}`、tools `{server,tools:[完整ToolSpec]}`、describe完整Spec；过大改完整json `artifact`。call用`content:[{type,text?,preview?,mime_type?,uri?,file?,access?,projection_error?}]`，完整脱敏`raw`和`structured_content`为本机artifact；artifact形状`{type,mime_type,file,access:"local"}`。大manifest同样保存引用，stdout不打印binary/base64。图片真实解码和sniff，resource_link只留URI不fetch，unknown/embedded/blob不丢。文件为当前工作区相对路径，URI不等于已下载文件。
+
+配置保存回`saved:true`，`runtime_error`独立且不冒ready；ready只取匹配effective spec的缓存状态。`is_error:true`仍输出保留内容但CLI非0，`projection_errors`也非0，transport失败另报，不自动重试未知写。research `call --readonly`在同一次session检查精确远端tool `readOnlyHint=true`并沿同session调用，换代失败不转发新slot。主与子provider均不再声明MCP schema，非MCP Tools门继续工作。
 
 ## MCP 服务器
 

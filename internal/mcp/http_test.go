@@ -1,4 +1,4 @@
-package link
+package mcp
 
 import (
 	"context"
@@ -14,8 +14,7 @@ import (
 func TestStreamableHTTPRoundTrip(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "gh-secret")
 	t.Setenv("XBOT_API_KEY", "sk-provider")
-	SetProviderKey(func(name string) bool { return name == "XBOT_API_KEY" })
-	defer SetProviderKey(nil)
+	options := Options{IsProviderKey: func(name string) bool { return name == "XBOT_API_KEY" }}
 
 	note := `{"jsonrpc":"2.0","method":"notifications/message","params":{"text":"hello-from-http"}}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -78,36 +77,29 @@ func TestStreamableHTTPRoundTrip(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	m := NewMCP(MCPServer{
+	m := NewSession(Spec{
 		Name:       "docs",
 		URL:        srv.URL,
 		SecretEnvs: []string{"GITHUB_TOKEN", "XBOT_API_KEY"},
-	})
+	}, options)
 	defer m.Close()
-	list := m.Tools()
-	if len(list) != 1 || list[0].Name() != "mcp_docs_ping" {
+	list, err := m.LoadTools(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Name != "ping" {
 		got := []string{}
 		for _, tool := range list {
-			got = append(got, tool.Name())
+			got = append(got, tool.Name)
 		}
 		t.Fatalf("tools %v", got)
 	}
-	out, err := list[0].Run(context.Background(), []byte(`{}`))
-	if err != nil || !strings.Contains(out, "pong") {
+	out, err := m.CallTool(context.Background(), list[0].Name, json.RawMessage(`{}`))
+	if err != nil || !strings.Contains(string(out), "pong") {
 		t.Fatalf("%q %v", out, err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	got := make(chan string, 1)
-	go func() {
-		_ = m.Run(ctx, func(ev Event) error {
-			got <- ev.Content
-			cancel()
-			return nil
-		})
-	}()
 	select {
-	case text := <-got:
+	case text := <-m.Notifications():
 		if !strings.Contains(text, "hello-from-http") {
 			t.Fatal(text)
 		}

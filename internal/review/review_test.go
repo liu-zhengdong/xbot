@@ -205,8 +205,8 @@ func TestSelfEditAndReadOnlyClasses(t *testing.T) {
 }
 
 func TestMCPAndUnknownTools(t *testing.T) {
-	if !Known("mcp_docs_echo") {
-		t.Fatal("mcp tool not known")
+	if Known("mcp_docs_echo") {
+		t.Fatal("retired MCP model tool reported known")
 	}
 	if ClassOf("mcp_docs_echo") != ExternalSend {
 		t.Fatalf("mcp class %q", ClassOf("mcp_docs_echo"))

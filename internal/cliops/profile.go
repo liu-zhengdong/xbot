@@ -67,7 +67,7 @@ type Server struct {
 	done     chan struct{}
 }
 
-func Start(root string, profile func(*Update) (Profile, error)) (*Server, error) {
+func Start(root string, handlers Handlers) (*Server, error) {
 	root, err := CanonicalRoot(root)
 	if err != nil {
 		return nil, err
@@ -89,17 +89,8 @@ func Start(root string, profile func(*Update) (Profile, error)) (*Server, error)
 			w.WriteHeader(code)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 		}
-		if r.Header.Get("Origin") != "" || r.Header.Get("Sec-Fetch-Site") != "" {
-			fail(403, "browser requests are not supported")
-			return
-		}
-		host, _, err := net.SplitHostPort(r.Host)
-		if err != nil || host != "127.0.0.1" {
-			fail(403, "local endpoint required")
-			return
-		}
-		if r.Header.Get("X-XBot-Root") != root {
-			fail(409, "runtime data root mismatch")
+		if handlers.Profile == nil {
+			fail(404, "profile unavailable")
 			return
 		}
 		var update *Update
@@ -126,14 +117,42 @@ func Start(root string, profile func(*Update) (Profile, error)) (*Server, error)
 			fail(405, "method not allowed")
 			return
 		}
-		value, err := profile(update)
+		value, err := handlers.Profile(update)
 		if err != nil {
 			fail(400, err.Error())
 			return
 		}
 		_ = json.NewEncoder(w).Encode(value)
 	})
-	s.http = &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second}
+	mux.HandleFunc("/v1/mcp/", func(w http.ResponseWriter, r *http.Request) {
+		if handlers.MCP == nil {
+			http.NotFound(w, r)
+			return
+		}
+		ServeMCP(w, r, *handlers.MCP, strings.TrimPrefix(r.URL.Path, "/v1/mcp/"))
+	})
+	guarded := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fail := func(code int, message string) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(code)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+		}
+		if r.Header.Get("Origin") != "" || r.Header.Get("Sec-Fetch-Site") != "" {
+			fail(403, "browser requests are not supported")
+			return
+		}
+		host, _, err := net.SplitHostPort(r.Host)
+		if err != nil || host != "127.0.0.1" {
+			fail(403, "local endpoint required")
+			return
+		}
+		if r.Header.Get("X-XBot-Root") != root {
+			fail(409, "runtime data root mismatch")
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
+	s.http = &http.Server{Handler: guarded, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second}
 	go func() { defer close(s.done); _ = s.http.Serve(ln) }()
 	return s, nil
 }

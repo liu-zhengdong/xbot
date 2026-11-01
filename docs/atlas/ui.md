@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-01 @ 97c32bb5 (merged child HTTP controls and MCP endpoint checks; prior child tab/browser evidence retained)
+verified: 2026-11-01 @ 16be6d78 (MCP owner APIs/probe/status backend; prior child tab and browser evidence retained)
 
 ---
 # 网页界面

@@ -8,9 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"strings"
 	"time"
@@ -67,45 +65,20 @@ func cmdMessage(args []string, in io.Reader, out io.Writer) error {
 	if strings.TrimSpace(message) == "" || len(message) > 16<<10 {
 		return errors.New("message must be nonempty and at most 16 KiB")
 	}
-	if !strings.Contains(addr, "://") {
-		addr = "http://" + addr
-	}
-	base, err := url.Parse(addr)
-	if err != nil || base.Scheme != "http" || base.User != nil || base.Path != "" || base.RawQuery != "" || base.Fragment != "" {
-		return errors.New("--http must be a local HTTP address")
-	}
-	host := base.Hostname()
-	ip := net.ParseIP(host)
-	if host != "localhost" && (ip == nil || !ip.IsLoopback()) {
-		return errors.New("--http must be a loopback address")
-	}
-	jar, _ := cookiejar.New(nil)
-	client := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	sessionReq, err := http.NewRequestWithContext(ctx, http.MethodGet, base.String()+"/api/session", nil)
+	client, base, err := localOwnerClient(ctx, addr)
 	if err != nil {
 		return err
 	}
-	res, err := client.Do(sessionReq)
-	if err != nil {
-		return fmt.Errorf("session: %w", err)
-	}
-	var session struct {
-		Authed bool `json:"authed"`
-	}
-	err = json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&session)
-	res.Body.Close()
-	if err != nil || res.StatusCode != http.StatusOK || !session.Authed {
-		return errors.New("local owner session unavailable")
-	}
+	defer client.CloseIdleConnections()
 	payload, _ := json.Marshal(map[string]string{"text": message})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base.String()+"/api/bots/"+url.PathEscape(positional[0])+"/messages", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/api/bots/"+url.PathEscape(positional[0])+"/messages", bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	res, err = client.Do(req)
+	res, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("send message: %w", err)
 	}
