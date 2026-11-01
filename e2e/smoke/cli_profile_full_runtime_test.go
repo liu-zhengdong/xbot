@@ -99,7 +99,7 @@ func TestCLIProfileFullRuntimeAtomic(t *testing.T) {
 	// through combined rename, a second profile CLI and an MCP CLI call.
 	const cue = "FULL_ATOMIC_COMMIT"
 	command := `printf 'FULL_ENDPOINT_BEFORE=%s\n' "$XBOT_ENDPOINT"; "$XBOT_BIN" profile set --self --name FullRenamed --description 'combined runtime saved' --timezone Asia/Tokyo --avatar-seed 'FullRenamed#combined' --json && "$XBOT_BIN" profile show --self --json && "$XBOT_BIN" mcp call runtime-fixture counter --args '{"label":"full-after"}' --self --json && printf 'FULL_ENDPOINT_AFTER=%s\n' "$XBOT_ENDPOINT"`
-	model.base.add(cue, mcpRuntimeShell(command), mcpRuntimeShell(`printf 'full-next-step\n' >> full-next.txt; pwd -P`), mcpRuntimeTool("tools", map[string]any{"action": "call", "id": "bot_propose_persona", "args": map[string]string{"text": "FULL_PERSONA_RETAINED_TOOL"}}))
+	model.base.add(cue, mcpRuntimeShell(command), mcpRuntimeShell(`printf 'full-next-step\n' >> full-next.txt; pwd -P`), mcpRuntimeShell(`"$XBOT_BIN" persona set --self --text FULL_PERSONA_RETAINED_TOOL --json`))
 	notices := cliFullSend(t, srv, "Worker", cue)
 	results := model.base.results(cue)
 	if !strings.HasPrefix(results[0], "exit 0\n") {
@@ -151,8 +151,16 @@ func TestCLIProfileFullRuntimeAtomic(t *testing.T) {
 	if !strings.Contains(results[1], filepath.Join(srv.Root, "work", "FullRenamed")) || string(cliFullRead(t, filepath.Join(srv.Root, "work", "FullRenamed", "full-next.txt"))) != "full-next-step\n" {
 		t.Fatal("the next actual Shell step wrote or resolved its cwd under the old name")
 	}
-	if !strings.Contains(results[2], "persona saved") || !bytes.Contains(cliFullRead(t, filepath.Join(srv.Root, "bots", "FullRenamed", "persona.md")), []byte("FULL_PERSONA_RETAINED_TOOL")) {
-		t.Fatal("retiring profile tool removed the independent persona business")
+	// ADR0054 retires native persona; keep this post-rename independent duty
+	// business on its current source CLI without rerunning the profile family.
+	var persona struct {
+		Name             string
+		Written          bool
+		Effective, Error string
+	}
+	cliBotDecode(t, results[2], &persona)
+	if persona.Name != "FullRenamed" || !persona.Written || persona.Effective != "next_wake" || persona.Error != "" || !bytes.Contains(cliFullRead(t, filepath.Join(srv.Root, "bots", "FullRenamed", "persona.md")), []byte("FULL_PERSONA_RETAINED_TOOL")) {
+		t.Fatal("current source persona CLI lost the independent post-rename duty business")
 	}
 	afterConfig := cliProfileDisk(t, srv.Root, "FullRenamed")
 	for _, field := range []string{"provider", "model", "role", "skills", "card"} {
