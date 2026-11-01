@@ -12,14 +12,8 @@ import (
 	"strings"
 )
 
-type routineCallIDKey struct{}
-
-// RoutineCallID returns the source-call correlation header. The value alone
-// does not establish an approval context or caller identity.
-func RoutineCallID(ctx context.Context) string {
-	id, _ := ctx.Value(routineCallIDKey{}).(string)
-	return id
-}
+// RoutineCallID preserves the routine accessor over the shared source-call key.
+func RoutineCallID(ctx context.Context) string { return SourceCallID(ctx) }
 
 func serveRoutine(w http.ResponseWriter, r *http.Request, handlers *RoutineHandlers) {
 	w.Header().Set("Content-Type", "application/json")
@@ -31,7 +25,7 @@ func serveRoutine(w http.ResponseWriter, r *http.Request, handlers *RoutineHandl
 		fail(http.StatusNotFound, "routine: runtime unavailable")
 		return
 	}
-	ctx := context.WithValue(r.Context(), routineCallIDKey{}, r.Header.Get("X-XBot-Call-ID"))
+	ctx := optionalSourceCallID(r.Context(), r.Header.Get("X-XBot-Call-ID"))
 	var reply any
 	var problem error
 	switch strings.TrimPrefix(r.URL.Path, "/v1/routine/") {

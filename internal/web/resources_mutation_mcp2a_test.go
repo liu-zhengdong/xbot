@@ -140,7 +140,7 @@ func TestMCP2aDeleteProtectedFailureKeepsResourcesUsable(t *testing.T) {
 	if err := bot.SetPrimary(f.s.Root, "target"); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.s.DeleteRuntimeBot(context.Background(), "target"); !errors.Is(err, bot.ErrPrimary) {
+	if _, err := f.s.DeleteRuntimeBot(context.Background(), "target"); !errors.Is(err, bot.ErrPrimary) {
 		t.Fatalf("delete primary: %v", err)
 	}
 	if r.Jobs != jobs || r.MCP != ref || !r.AdmissionOpen() {
@@ -174,7 +174,10 @@ func TestMCP2aDeleteJoinReleasesLocksAndResumesSameResources(t *testing.T) {
 	}
 	mutationAwait(t, started, "call did not start")
 	deleted := make(chan error, 1)
-	go func() { deleted <- f.s.DeleteRuntimeBot(context.Background(), "target") }()
+	go func() {
+		_, err := f.s.DeleteRuntimeBot(context.Background(), "target")
+		deleted <- err
+	}()
 	mutationAwait(t, canceled, "delete did not request cancellation")
 	select {
 	case err := <-deleted:
@@ -238,7 +241,7 @@ func TestMCP2aDeletePhysicalFailureResumesAndCleanupFailureCloses(t *testing.T) 
 		if err := os.WriteFile(filepath.Join(f.s.Root, "vault"), []byte("blocked"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if err := f.s.DeleteRuntimeBot(context.Background(), "target"); err == nil {
+		if _, err := f.s.DeleteRuntimeBot(context.Background(), "target"); err == nil {
 			t.Fatal("expected migration filesystem error")
 		}
 		if !r.AdmissionOpen() || f.s.kernels["target"].Resources != r {
@@ -263,7 +266,7 @@ func TestMCP2aDeletePhysicalFailureResumesAndCleanupFailureCloses(t *testing.T) 
 		if err := os.WriteFile(filepath.Join(key, "block"), []byte("fixture"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if err := f.s.DeleteRuntimeBot(context.Background(), "target"); err == nil {
+		if _, err := f.s.DeleteRuntimeBot(context.Background(), "target"); err == nil {
 			t.Fatal("expected post-removal key cleanup error")
 		}
 		if f.s.kernels["target"] != nil || r.AdmissionOpen() {

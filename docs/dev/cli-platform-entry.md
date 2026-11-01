@@ -579,9 +579,9 @@ handlers.Skills = k.SkillHandlers() // 固定 Root、SkillsDir、动态 Redact �
 
 3e具体合同及0051窄核后，routine当前实例CLI/actual Timer/原调用审批桥与四模型门退役已提炼至 [API](../API.md#例程运行时-cli)、[内核](../atlas/kernel.md#例程实例与原调用审批)、[ADR0051](../adr/0051-routine-runtime-cli.md)。六项独立所测业务与实现方严格上下文单位的精确phase、fixture修正及当前合入级别只记 [MILESTONES](../MILESTONES.md)；不把它们抬成末docs SHA重跑。以下其它族仍沿母路线推进，不再保留已完成routine合同的重复副本。
 
-## 批 Bot：发现、状态、创建删除（具体合同待窄核）
+## 批 Bot：发现、状态、创建删除（具体合同PASS，实施中）
 
-L档，基线main `2f03f51d`；仅本节与 [ADR0052](../adr/0052-bot-runtime-cli.md) 为下一具体切片，非产品已实现。0052 glob空后新建Proposed，合同提交后一次reviewer24窄核，PASS即实现首compiled链并立即交独立首链，不再开概念轮。独立最窄List红89cea90bcf7ed5e5e9312cb9810dd0b111f61aa3/validation4a8bfd14dd8f8484c5151ecdd31d6f0e9f3a3cbf封存：真source Shell BIN list --self --json exit0却忽略flags、走旧seed/全本地人读，.93s/package2.129s；不重该红或routine/skills/profile/MCP旧绿。
+L档，基线main `2f03f51d`；本节具体合同ccdc3f72已由reviewer24单次CONCRETE SHAPE PASS、无必要结构阻断，[ADR0052](../adr/0052-bot-runtime-cli.md) Accepted；按同合同实施，首compiled链立即交独立首链，不再开概念轮。独立最窄List红89cea90bcf7ed5e5e9312cb9810dd0b111f61aa3/validation4a8bfd14dd8f8484c5151ecdd31d6f0e9f3a3cbf封存：真source Shell BIN list --self --json exit0却忽略flags、走旧seed/全本地人读，.93s/package2.129s；不重该红或routine/skills/profile/MCP旧绿。
 
 ### Caller与准确边界
 

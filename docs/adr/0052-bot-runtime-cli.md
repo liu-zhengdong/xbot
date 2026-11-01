@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0052 原 source 的 Bot 发现、状态与创建删除经 CLI
@@ -10,7 +10,7 @@ date: 2026-11-02
 
 routine已合main2f03f51d；本刀仅沿母路线迁list_bots、bot_status、create_bot、delete_bot，不迁消息/群、fork、persona、role/budget或pin/primary。现CLI是平面list/new/delete，不存在bot子命令；list忽略余参，带--self仍走离线seed/全本地列表，独立真红89cea90b已固定在2f/validation4a8bfd14（exit0但不是runtime JSON）。用户另份cli-message-bot是主人SSE与外Agent send设计，不是Bot message_bot，本刀不修改。
 
-调用方：`"$XBOT_BIN" list --self --json`、`info [NAME] --self [--steps N] --json`、`new NAME --self (--persona TEXT|--persona-file FILE|-) --json`、`delete NAME --self --json`。--self只定位source endpoint，不指目标。精确DTO/路由/预算/生命周期及怎样算对见同份 [母dev具体合同](../dev/cli-platform-entry.md#批-bot发现状态创建删除具体合同待窄核)。无--self的原list/new/delete、pin/primary/fork等保原离线含义，runtime失败不回落。
+调用方：`"$XBOT_BIN" list --self --json`、`info [NAME] --self [--steps N] --json`、`new NAME --self (--persona TEXT|--persona-file FILE|-) --json`、`delete NAME --self --json`。--self只定位source endpoint，不指目标。精确DTO/路由/预算/生命周期及怎样算对见同份 [母dev具体合同](../dev/cli-platform-entry.md#批-bot发现状态创建删除具体合同pass实施中)。无--self的原list/new/delete、pin/primary/fork等保原离线含义，runtime失败不回落。
 
 ## 两种结构与决定
 

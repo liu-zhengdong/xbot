@@ -106,7 +106,7 @@ func (t deleteBotTool) Run(ctx context.Context, args json.RawMessage) (string, e
 	}
 	var err error
 	if r := t.k.Resources; r != nil && r.Delete != nil {
-		err = r.Delete(ctx, name)
+		_, err = r.Delete(ctx, name)
 	} else {
 		err = bot.Delete(t.k.Bot.Root, name)
 	}
