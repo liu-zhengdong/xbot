@@ -12,6 +12,37 @@ import (
 	"xbot/internal/provider"
 )
 
+func TestColdCompletionReadHasNoInboxDependency(t *testing.T) {
+	s, _, bots := statusFixture(t, 1)
+	b := bots[0]
+	appendDone := func() {
+		t.Helper()
+		if err := b.Append(bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(link.Render(link.Event{Source: link.SourceSubagent, Sender: "sa_cold", Type: "done", Content: "completed", Untrusted: true}, false))}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	appendDone()
+	if err := os.WriteFile(b.InboxPath(), []byte("{not valid inbox}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if got := s.unreadCompletions(b, 0, nil); got != 1 {
+			t.Fatalf("cold poll %d depended on Inbox: got %d want1", i, got)
+		}
+	}
+	appendDone()
+	if got := s.unreadCompletions(b, 0, nil); got != 2 {
+		t.Fatalf("cold incremental transcript count %d want2", got)
+	}
+	total, err := b.Count()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := s.unreadCompletions(b, total, nil); got != 0 {
+		t.Fatalf("viewed transcript count %d want0", got)
+	}
+}
+
 func TestBotInfoCompletionReadUsesRetainedSourceCurrentRoute(t *testing.T) {
 	f := newMutationHostFixture(t)
 	f.s.owner = "u1"
