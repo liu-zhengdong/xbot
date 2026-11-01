@@ -95,16 +95,19 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 				var invocation struct {
 					Command string `json:"command"`
 				}
-				if json.Unmarshal([]byte(tc.Function.Arguments), &invocation) == nil && strings.HasPrefix(invocation.Command, `"$XBOT_BIN" peer-message `) {
-					sawPeer = true
+				if json.Unmarshal([]byte(tc.Function.Arguments), &invocation) == nil {
+					if strings.HasPrefix(invocation.Command, `"$XBOT_BIN" peer-message `) {
+						sawPeer = true
+					}
+					if invocation.Command == `"$XBOT_BIN" memory-recall --self --query tea --scope person` {
+						sawRecall = true
+					}
 				}
 			case "write_file":
 				sawWrite = true
 				sawMemoryWrite = strings.Contains(tc.Function.Arguments, "memory.md") || sawMemoryWrite
 			case "send_message_to_user":
 				sawNotify = true
-			case "recall":
-				sawRecall = true
 			case "spawn":
 				sawSpawn = true
 			case "read_subagent":
@@ -151,7 +154,11 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 		writeText(w, "remembered\n")
 		return
 	case strings.Contains(lastUser, "RECALL_PERSON") && !sawRecall:
-		writeTool(w, "call_recall", "recall", `{"query":"tea","scope":"person"}`)
+		args, _ := json.Marshal(map[string]string{
+			"description": "Search the scripted person's memory through its original source CLI",
+			"command":     `"$XBOT_BIN" memory-recall --self --query tea --scope person`,
+		})
+		writeTool(w, "call_recall", "sh", string(args))
 		return
 	case strings.Contains(lastUser, "RECALL_PERSON"):
 		writeText(w, "recalled\n")

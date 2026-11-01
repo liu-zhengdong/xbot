@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 
+	"xbot/internal/cliops"
 	"xbot/internal/provider"
+	"xbot/internal/review"
 )
 
 // Stop reasons written into the trace. Evals match these codes.
@@ -262,6 +264,12 @@ func looseShell(args string) bool {
 		return false
 	}
 	cmd := strings.TrimSpace(m.Command)
+	if argv, ok := review.DirectXBotArgs(cmd, "$XBOT_BIN"); ok && len(argv) > 0 && argv[0] == "memory-recall" {
+		parsed, err := cliops.ParseMemoryRecallRuntime(argv[1:])
+		if err == nil && (parsed.Help || parsed.Self) {
+			return true
+		}
+	}
 	if i := strings.IndexAny(cmd, "\n;&|"); i >= 0 {
 		cmd = strings.TrimSpace(cmd[:i])
 	}

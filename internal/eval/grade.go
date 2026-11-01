@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
+	"xbot/internal/provider"
 	"xbot/internal/review"
 	"xbot/internal/tools"
 )
@@ -38,6 +40,12 @@ type Observation struct {
 
 func grade(c Case, obs Observation, seeded map[string]string, work string, before map[string]bool) (problems []string, facts []FileFact) {
 	for name, parts := range c.Checks.ToolResultContains {
+		if c.Name == "memory-recall" && name == "recall" {
+			if !memoryRecallCaseResult(obs.entries, parts) {
+				problems = append(problems, "recall result missing required launch code and path")
+			}
+			continue
+		}
 		for _, part := range parts {
 			found := false
 			for _, e := range obs.entries {
@@ -151,6 +159,53 @@ func grade(c Case, obs Observation, seeded map[string]string, work string, befor
 		}
 	}
 	return problems, facts
+}
+
+// This case requires the answer and citation in one actual recall result.
+// Legacy native results remain readable; new Shell results must pair with the
+// canonical CLI invocation for this case's query and scope.
+func memoryRecallCaseResult(entries []bot.Entry, parts []string) bool {
+	binary, _ := os.Executable()
+	calls := map[string]string{}
+	for _, e := range entries {
+		if e.Message.Role == provider.RoleAssistant {
+			for _, call := range e.Message.Calls() {
+				if call.ID == "" {
+					continue
+				}
+				delete(calls, call.ID)
+				if !review.IsShellTool(call.Function.Name) {
+					continue
+				}
+				argv, ok := review.DirectXBotArgs(shellCommand(call.Function.Arguments), binary)
+				if !ok || len(argv) == 0 || argv[0] != "memory-recall" {
+					continue
+				}
+				in, err := cliops.ParseMemoryRecallRuntime(argv[1:])
+				if err == nil && in.Self && !in.Help && in.Query == "launch code" && in.QueryFile == "" && in.Scope == "bot" && in.Since == "" {
+					calls[call.ID] = call.Function.Name
+				}
+			}
+		}
+		if e.Message.Role != provider.RoleTool {
+			continue
+		}
+		name, paired := calls[e.Message.CallID()]
+		if e.Message.Name != "recall" && (!paired || name != e.Message.Name) {
+			continue
+		}
+		complete := true
+		for _, part := range parts {
+			if !strings.Contains(e.Message.Text(), part) {
+				complete = false
+				break
+			}
+		}
+		if complete {
+			return true
+		}
+	}
+	return false
 }
 
 // File-tool records also reject an explicit write-then-restore. Shell changes

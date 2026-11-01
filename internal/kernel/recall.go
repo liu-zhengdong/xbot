@@ -2,7 +2,6 @@ package kernel
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,26 +18,7 @@ import (
 	"xbot/internal/memory"
 )
 
-type recallTool struct{ k *Kernel }
-
-func (recallTool) Name() string { return "recall" }
-func (recallTool) Description() string {
-	return "Search visible memory folders; returns up to 20 ranked path:line hits."
-}
-func (recallTool) Parameters() any {
-	return schema(map[string]any{"query": stringProp("keywords"), "scope": stringProp("optional bot or person"), "since": stringProp("optional YYYY-MM-DD")}, []string{"query"})
-}
-func (recallTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
-
 type recallInput struct{ Query, Scope, Since string }
-
-func (t recallTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	var in recallInput
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	return t.k.recall(ctx, in)
-}
 
 func (k *Kernel) recall(ctx context.Context, in recallInput) (string, error) {
 	if in.Scope != "" && in.Scope != "bot" && in.Scope != "person" {
