@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
-verified: 2026-11-01 @ 16be6d78 (same-slot readonly, owner/root, probe pending-value and source masking checks; prior vault evidence reused)
+verified: 2026-11-01 @ 0856164f (merged CLI; exact 16be6d78 same-slot readonly and owner/root phase evidence, prior vault checks retained)
 ---
 # 安全：保险箱与权限表
 

@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/link/, internal/mcp/, internal/skill/, internal/code/, internal/tools/]
-verified: 2026-11-01 @ 16be6d78 (CLIEntry and static PASS; targeted core/projection/registry/probe checks; remaining CLI groups pending)
+verified: 2026-11-01 @ 0856164f (merged MCP CLI; phase Entry/Owner/Calls/Boundaries/Results/Research/Reconcile and static PASS on 16be6d78)
 ---
 # 生态：Link、MCP、技能、连接器、编码代理
 

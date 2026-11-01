@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**普通资料、avatar_seed 与 MCP 2a 运行态底座已合入本地 main、所测真入口通过；MCP CLI、完整改名与其余平台批次继续实施**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**普通资料、avatar_seed、MCP 运行态与 CLI 已合入本地 main、所测真入口通过；完整改名与其余平台批次继续实施**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -227,7 +227,7 @@ func (c *client) cancelHint(id json.RawMessage) {
 - mount/newServeKernel 不再 New 拥有 client 的 MCP；syncMCPLocked 仅同步 borrowed adapter，adapter.Close 不关 Session。attachShellJobs/attachShell 扫 *Shell 时不得经 MCP.Tools 隐式网络；真正 LoadTools 在 host/links/operations 锁外。删除 startEmitters 中 MCP 长期 K，保其它原 Emitter。
 - `CallRequest` 增真实 `Redact func(string)string` 与 `Forms func()[]string`；runToolCall 给 source k.redactor+staged secrets、k.shellForms 动态闭包，live/writer 捕获它们，不让每 K 改共享默认。默认只绑定进程 Vault/held/current 已知秘密；Output 仍动态遮新学秘密。实际出口逐处接：RunCall writer/初始 Command；completeCall 的 result.Text **及 Err**、输出、Finalize 后 Result/错误和 writeMeta 失败诊断；runProcess 重设 Command/Description、启动/Wait/读输出错误与格式化结果。writeMeta 本身完全不脱敏，落盘前必须源 call 已遮；保原分块 Forms、输出限额和新学秘密读回。
 - Prepare/Finalize/原 turn/replyGen/sender/trust/cwd 闭包继续属 source call，不换成当前 owner K。默认 Resources.DeliverToolDone 复用 Jobs.Deliver→原稳定 shelljob_ID Event→当前 Inbox，所有锁外 wake。request.OnDone 覆盖默认的现有单选保持；exec fallback/forwardExec 用同一 Deliver，不发第二完成 Event。Deliver 实际持 metaMu，故短路由顺序为 Jobs.metaMu→route→Inbox；MCP note 为 route→Inbox。
-- 实际运行写口 web/mcp、apps/custom、apps/{id} DELETE、globalSecrets 与 kernel links 成功后立即 reconcile；旧离线 cmd 配置及外部文件由现 Pass 读取，2b 尚未新增 runtime MCP CLI。snapshotLinks 只读 cached spec；Pass/API、Handle 和显式 load 在资源锁外 reconcile。runtime 摘要/search/load/adapter 统一沿 Manager 保留的有效 spec，不绕过它读坏配置；仅 saved/configured 不冒称 ready。现 Bot MCP API 是 GET/POST/DELETE，同 spec POST 409，无 PUT/update；DEL+POST 仅称移除/新增。真正外部原子替换 mcp.json 沿现 serve pass 频率 reconcile，无新 watcher；独立 fixture 可沿现 --interval 100ms。GET apps/runtime 只看当前 Manager 状态，不拿另一 spec 旧错误作新配置结果。
+- 实际运行写口 web/mcp、apps/custom、apps/{id} DELETE、globalSecrets 与 kernel links 成功后立即 reconcile；旧离线 cmd 配置及外部文件由现 Pass 读取，2a 阶段将 runtime MCP CLI 留至2b，现已按下一节完成并合入。snapshotLinks 只读 cached spec；Pass/API、Handle 和显式 load 在资源锁外 reconcile。runtime 摘要/search/load/adapter 统一沿 Manager 保留的有效 spec，不绕过它读坏配置；仅 saved/configured 不冒称 ready。现 Bot MCP API 是 GET/POST/DELETE，同 spec POST 409，无 PUT/update；DEL+POST 仅称移除/新增。真正外部原子替换 mcp.json 沿现 serve pass 频率 reconcile，无新 watcher；独立 fixture 可沿现 --interval 100ms。GET apps/runtime 只看当前 Manager 状态，不拿另一 spec 旧错误作新配置结果。
 
 **实际装配签名（已整合并通过相关组合检查）**：`Kernel.Resources *BotResources`；`web.Server.NewResources func(*bot.Bot)(*kernel.BotResources,error)`，`NewKernel func(*bot.Bot,*kernel.BotResources)(*kernel.Kernel,error)`；原缓存只一张 entry map，`ResourcesFor(b)` 复用同 entry，Pass 的 factory 先取它再 `newServeKernel(root,b,resources,restart)`。chat 直接构造同类型，不建 map/web。Resources 构造完成 Jobs.Load/一次默认投递，再注入 openKernel，后者才 RecoverTasks；binding cached/临时构造同传此指针。默认 Jobs 不捕获第一 K 的 Redact/Forms/OnDone；源 call 仍自己的闭包。MCP ReadConfig 在装配过滤原 retired catalog 项，core 不 import link 猜目录规则。Runtime rename/delete 通过 source K 的窄 host callbacks 进入同 Server entry 接缝；chat 仅当前资源闭包，未持资源的其它 Bot 无需造 K/client/table。
 
@@ -418,7 +418,7 @@ config aliases/callers转core并显式predicate：尤其link.connectors目录Val
 - 主人日用验收尚未开始。普通资料首刀的独立审计、真入口验证与合入已完成；后续不重复该刀设计审批，按新切片复核实际增量。
 - 批 0 的后续实际操作及入站依赖清单、research 按业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - 头像上传/clear、改名完整运行时 CLI 与其组合仍未覆盖，保留完整旧工具和原即时刷新，未整族移除。avatar_seed 的独立真入口、兼容增量审核与合入已完成，不重复该刀验收。
-- 2a/2b 的 MCP 运行态、runtime CLI、完整结果产物与旧 adapter/schema 退役已独立所测端到端/静态通过，2b待整合及日用；现状已提炼atlas。后续各平台族继续按实际增量迁移，不重复本刀审批或精确已绿证据。
+- 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
 - 技能/例程/Bot/群/连接器等平台能力逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。

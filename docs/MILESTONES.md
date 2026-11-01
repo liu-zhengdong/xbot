@@ -1,12 +1,13 @@
 # XBot 里程碑与进度
 
-## 2026-11-01 MCP 2b 实例 CLI 与旧模型入口退役（独立端到端与静态通过，待合入）
+## 2026-11-01 MCP 2b 实例 CLI 与旧模型入口退役（已合入本地 main，所测端到端通过）
 
 - L档，在main16101e7e上沿已定CLI路线落具体合同29668efc；24窄结构PASS后 [ADR0047](adr/0047-mcp-cli-domain-entry.md) Accepted，替代0035的MCP模型门部分，0046进程owner/通知/Jobs/sourcelease保持。产品7c5d5766退Kernel旧注册/schema并接领域产物，16be6d78接argv/双HTTP/早分流/core只读/probe和移除Link adapter/aliases。未新增通用action bus、会话/任务账、权限UI或完整rename。
 - CLI self以原endpoint/ref为准；human显式http+bot复用owner cookie，未显式root不发默认目录。纯ParseMCP供cmd/research，同session hint精确查验后执行，不二次slot路由。args-file/stdin单对象、RawMessage保大整数、默认ctx/timeout0。tools/describe/call统一最终64KiB投影，完整Raw/unknown/structured/图片/embedded产物在当前work路径短route写完，isError保内容而非0；临时probe冻结此次待保存值并检查raw isError。
 - 本地选定绿：CLI/profile/literal/Known检查.543/.514s；cmd help/root/cookie/stdin大整数/isError/offline四项.771s；统一Kernel27case race3.190s（非MCP门/Descriptor真实HTTP路由/overflow/secret与资源4case），research源绑定单项race4.289s（初版新fixture少Tool接口方法仅编译失败，修fixture后单项绿）。提取owner HTTP后原message三项.373s通过。work3case.650s、human/domain API.808s；新core readonly/Open4race1.668s、迁协议3race1.744s、目录4race1.666s/provider拒绝1.726s；probe/runtime5race2.598s首轮实际执行通过。相关vet/diff通过，未因并行写中编译失败重复执行已绿组。
 - 精确16be6d78独立CLIEntry（validation4bb126e3）PASS.58s/package1.378s：真实source Shell add/list/tools/describe/原名counter及remote.v1 call1/2同session、envBot decoy无效、完整Spec/unknown annotations、主tools无MCPschema、DoorPeer非MCP Tools门保留。初轮只因独立fixture把list_bots误要求当前Worker失败，作者创建DoorPeer后仅Entry复跑，无产品改。24对16101..16be静态PASS，无P0/P1；同产品16be的validation4bb126e3还通过Owner1.32s、Calls22.86s（新CLI唯一长调用15.601727s，原Job跨web控制/sourcelease/单Event）、Boundaries.12s、Results.16s、Research.45s；完整Raw/structured/unknown/PNG/schema Artifact/isError坏图非0、主+continuable无MCPschema、同sessionhint与换spec两端零RPC均到达。Reconcile产品热换已正确done+exit1/configuration_changed/outcome_unknown/noRetry，独立fixture修为读取原Job.exit_code后仅该项在validation c530b805一次PASS10.57s/package11.844s，所有credentials后续均过。产品无fix、其它组/15.602s不重复，后续docs版本不冒领全组重跑。独立文件提交9f035622/4d130a95/4bb126e3/c530b805仍归0d。
-- 级别：feature完整产品已提交、本地定向unit/race、独立所测端到端与静态全部通过；尚未合main/日用。Not run：全仓/完整矩阵、真模型/外部服务、无关UI/头像/continuation浏览器旅程、跨平台；独立CLI慢15.5秒仅由验证方必要重验一次，实现方不跑。旧2a精确aaa/704证据封存，2b不把其冒用成新CLI全部通过。整条平台CLI迁移与其它族仍未完成。
+- 本地 main 合入 `35abccda`，独立四提交依次取为 `5aca7fcb`、`595aa436`、`76e0599e`、`0856164f`；未取验证分支产品镜像。合入后 CLI 编译通过（0.729s），smoke 只编译，未重复独立组；atlas audit退出0、无断链，40项非致命提示未扩修。原未提交设计和临时文件保持。
+- 级别：2b 已合入本地 main、本地定向unit/race、独立所测端到端与静态全部通过，尚未日用。Not run：全仓/完整矩阵、真模型/外部服务、无关UI/头像/continuation浏览器旅程、跨平台；独立CLI慢15.5秒仅由验证方必要重验一次，实现方不跑。旧2a精确aaa/704证据封存，2b不把其冒用成新CLI全部通过。整条平台CLI迁移与其它族仍未完成。
 
 ## 2026-11-01 可继续本机子代理，对齐 DSH 主旅程
 

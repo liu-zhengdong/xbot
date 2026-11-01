@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/, internal/cliops/]
-verified: 2026-11-01 @ 16be6d78 (CLIEntry/static and kernel 27 race; prior continuation/profile evidence reused)
+verified: 2026-11-01 @ 0856164f (merged CLI and retired MCP model gate; exact 16be6d78 phase E2E/static and targeted race evidence retained)
 ---
 # 内核：Link、Event、收件箱
 
