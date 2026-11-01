@@ -73,6 +73,7 @@ type SeqEntry struct {
 	Sender     string `json:"sender,omitempty"`
 	Status     string `json:"status,omitempty"`
 	ResultPath string `json:"result_path,omitempty"`
+	Truncated  bool   `json:"truncated,omitempty"`
 }
 
 type TranscriptWindow struct {
@@ -123,30 +124,76 @@ func ReadTranscript(dir string, before, limit int) (TranscriptWindow, error) {
 		limit = 200
 	}
 	w := TranscriptWindow{Entries: make([]SeqEntry, 0, limit)}
+	f, err := os.Open(transcriptPath(dir))
+	if os.IsNotExist(err) {
+		return w, nil
+	}
+	if err != nil {
+		return w, err
+	}
+	defer f.Close()
+	r := bufio.NewReader(f)
 	count := 0
-	err := scanTranscript(dir, func(e SeqEntry) error {
-		if before > 0 && e.Seq >= before {
-			return nil
+	for seq := 1; before == 0 || seq < before; seq++ {
+		// The public window never allocates an unbounded line. Original data
+		// remains available through the transcript/expand paths.
+		const lineCap = 64 << 10
+		var line []byte
+		truncated := false
+		for {
+			part, readErr := r.ReadSlice('\n')
+			if !truncated {
+				if len(line)+len(part) <= lineCap {
+					line = append(line, part...)
+				} else {
+					line = nil
+					truncated = true
+				}
+			}
+			if readErr == bufio.ErrBufferFull {
+				continue
+			}
+			if readErr == io.EOF {
+				goto complete
+			}
+			if readErr != nil {
+				return w, readErr
+			}
+			break
 		}
+		e := SeqEntry{Seq: seq, Truncated: truncated}
+		if truncated {
+			e.Kind = "truncated"
+			e.Entry = bot.Entry{Origin: bot.OriginInternal, Message: provider.Message{Role: provider.RoleUser, Internal: true, Content: provider.TextContent("记录过长；请通过 expand_subagent 按此序号读取原文。")}}
+		} else if err := json.Unmarshal(line, &e); err != nil {
+			return w, fmt.Errorf("exec: transcript line %d: %w", seq, err)
+		}
+		e.Seq = seq
 		count++
 		if len(w.Entries) == limit {
 			copy(w.Entries, w.Entries[1:])
 			w.Entries = w.Entries[:limit-1]
 		}
 		w.Entries = append(w.Entries, e)
-		return nil
-	})
+	}
+complete:
 	w.HasMore = count > len(w.Entries)
 	if w.HasMore && len(w.Entries) > 0 {
 		w.NextBefore = w.Entries[0].Seq
 	}
-	return w, err
+	return w, nil
 }
 
 func readRecords(dir string) ([]SeqEntry, error) {
 	var entries []SeqEntry
 	err := scanTranscript(dir, func(e SeqEntry) error { entries = append(entries, e); return nil })
 	return entries, err
+}
+
+func (j *job) recordCount() int {
+	j.recordMu.Lock()
+	defer j.recordMu.Unlock()
+	return j.recordSeq
 }
 
 func (j *job) record(e SeqEntry) (int, error) {

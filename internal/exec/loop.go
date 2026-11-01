@@ -31,6 +31,7 @@ type job struct {
 	pending       []pendingInput
 	initial       pendingInput
 	closing       bool
+	closingSeq    int
 	stopped       bool
 	initErr       error
 	turnSeq       int
@@ -213,6 +214,11 @@ func runLoop(j *job) {
 		if len(last.Calls()) == 0 && last.Role != "" {
 			text := strings.TrimSpace(last.Text())
 			if strings.HasPrefix(text, "BLOCKED") {
+				// A decision already consumed at this boundary earns the next
+				// step; do not park waiting for a second copy of the message.
+				if steered {
+					continue
+				}
 				j.mu.Lock()
 				j.blocked = true
 				j.mu.Unlock()

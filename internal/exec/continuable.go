@@ -36,6 +36,8 @@ type pendingInput struct {
 }
 
 // This is only an address book for accepted work, never a second task table.
+// Capacity and resource admission remain per Local, as for legacy execution;
+// this map routes the same child ID and does not schedule new IDs across Kernels.
 // Lock order is owners -> Local.mu -> job.recordMu/job.mu. Callbacks run unlocked.
 var owners = struct {
 	sync.Mutex
@@ -334,17 +336,24 @@ func (l *Local) Message(ctx context.Context, id string, c Control) (Task, error)
 		}
 		return Task{}, err
 	}
-	entries, err := readRecords(dir)
-	if err != nil {
-		return Task{}, err
-	}
-	j.recordSeq = len(entries)
+	unusedScope := true
+	defer func() {
+		if unusedScope && l.ReleaseScope != nil {
+			l.ReleaseScope(req)
+		}
+	}()
 	owners.Lock()
 	l.mu.Lock()
 	// Another request may have claimed it while the current runtime was assembled.
-	if owners.local[key] != nil {
+	if owner := owners.local[key]; owner != nil {
 		l.mu.Unlock()
 		owners.Unlock()
+		// A winning activation on this Local uses the same scope. A different
+		// Local owns separate tools, so discard only this losing assembly.
+		if owner != l && l.ReleaseScope != nil {
+			l.ReleaseScope(req)
+		}
+		unusedScope = false
 		return l.Message(ctx, id, c)
 	}
 	defer owners.Unlock()
@@ -352,12 +361,20 @@ func (l *Local) Message(ctx context.Context, id string, c Control) (Task, error)
 	if (l.busyLocked(j.resource) || len(l.jobs) >= l.limits.MaxConcurrent) && l.waitingCountLocked() >= maxWaiting {
 		return Task{}, ErrQueueFull
 	}
+	// Resolve the physical seq after claiming the admission boundary, rather
+	// than from an earlier read that another activation could have extended.
+	entries, err := readRecords(dir)
+	if err != nil {
+		return Task{}, err
+	}
+	j.recordSeq = len(entries)
 	seq, err := j.receive(c)
 	if err != nil {
 		return Task{}, err
 	}
 	j.initial, j.turnSeq = pendingInput{seq, c}, seq
 	owners.local[key] = l
+	unusedScope = false
 	return l.admitLocked(j), nil
 }
 
@@ -416,6 +433,11 @@ func (l *Local) Stop(ctx context.Context, id string) (Task, error) {
 		owner.mu.Unlock()
 		return Task{}, err
 	}
+	if j.stopped {
+		task := j.snapshot("stopping", 0)
+		owner.mu.Unlock()
+		return task, nil
+	}
 	j.stopped = true
 	if position > 0 {
 		// Keep it in admission while its cancellation is recorded and callbacks finish.
@@ -461,13 +483,20 @@ func (l *Local) controlContinuable(ctx context.Context, id string, c Control) (b
 	return true, err
 }
 
-func (j *job) dropPendingLocked() error {
+func (j *job) dropPendingLocked() error { return j.dropBeforeLocked(j.recordCount()) }
+
+func (j *job) dropBeforeLocked(cutoff int) error {
+	left := j.pending[:0]
 	for _, p := range j.pending {
+		if p.seq > cutoff {
+			left = append(left, p)
+			continue
+		}
 		if err := j.markInput("message_dropped", p); err != nil {
 			return err
 		}
 	}
-	j.pending = nil
+	j.pending = left
 	return nil
 }
 
@@ -530,7 +559,7 @@ func (j *job) closeReady(msgs *[]provider.Message, stepsLeft *int) bool {
 			return false
 		}
 	}
-	j.closing = true
+	j.closing, j.closingSeq = true, j.recordCount()
 	j.parent.mu.Unlock()
 	return true
 }
@@ -629,6 +658,25 @@ func TerminalEventID(id string, turnSeq int) string {
 	return fmt.Sprintf("subagent:%s:turn:%d:end", id, turnSeq)
 }
 
+func (j *job) restoreNext() *job {
+	l := j.parent
+	req := j.request
+	var err error
+	if l.Restore != nil {
+		req, err = l.Restore(context.Background(), *j.request.Descriptor)
+	}
+	req.ID, req.Bot, req.Dir, req.Type, req.Mode, req.Descriptor = j.id, j.request.Bot, j.dir, j.kind, j.mode, j.request.Descriptor
+	req.MaxSteps, req.TimeoutSec = j.request.Descriptor.MaxSteps, j.request.Descriptor.TimeoutSec
+	if err == nil {
+		var next *job
+		next, err = l.newJob(req)
+		if err == nil {
+			return next
+		}
+	}
+	return &job{request: req, id: j.id, dir: j.dir, parent: l, ctrl: make(chan Control, 16), timeout: j.timeout, maxSteps: j.maxSteps, initErr: err}
+}
+
 func (j *job) finishContinuable(status, kind, text string) {
 	l := j.parent
 	l.mu.Lock()
@@ -638,31 +686,29 @@ func (j *job) finishContinuable(status, kind, text string) {
 	if j.stopped {
 		status, kind, text = statusCancelled, EvFailed, "cancelled"
 	}
-	j.closing = true
-	// This lock is the failure/stop cutoff. Explicit input accepted after it
-	// belongs to a new activation and is never discarded with the old turn.
-	if status != statusDone && !j.stopped {
-		if err := j.dropPendingLocked(); err != nil {
+	if !j.closing {
+		j.closing, j.closingSeq = true, j.recordCount()
+	}
+	cutoff, stopped := j.closingSeq, j.stopped
+	// Explicit input after closing belongs to a new activation, including
+	// when saving this turn's CWD or conclusion subsequently fails.
+	if status != statusDone && !stopped {
+		if err := j.dropBeforeLocked(cutoff); err != nil {
 			text += "\n" + err.Error()
 		}
-	} else if status == statusDone {
-		keep := j.pending[:0]
-		for _, p := range j.pending {
-			if p.control.Kind == KindQueue {
-				keep = append(keep, p)
-			} else {
-				// A steer accepted after the final drain must become a new turn.
-				p.control.Kind = KindQueue
-				keep = append(keep, p)
-			}
-		}
-		j.pending = keep
 	}
 	l.mu.Unlock()
 	fail := func(err error) {
 		if err != nil {
 			status, kind = statusFailed, EvFailed
 			text += "\n" + err.Error()
+			if !stopped {
+				l.mu.Lock()
+				if dropErr := j.dropBeforeLocked(cutoff); dropErr != nil {
+					text += "\n" + dropErr.Error()
+				}
+				l.mu.Unlock()
+			}
 		}
 	}
 	fail(j.sealCalls())
@@ -700,45 +746,24 @@ func (j *job) finishContinuable(status, kind, text string) {
 	// Assemble outside all executor locks. The old activation continues to
 	// own the identity while closing input can still be accepted.
 	var next *job
-	l.mu.Lock()
-	hasNext := len(j.pending) > 0
-	l.mu.Unlock()
-	if hasNext {
-		req := j.request
-		var restoreErr error
-		if l.Restore != nil {
-			req, restoreErr = l.Restore(context.Background(), *j.request.Descriptor)
-		}
-		req.ID, req.Bot, req.Dir, req.Type, req.Mode, req.Descriptor = j.id, j.request.Bot, j.dir, j.kind, j.mode, j.request.Descriptor
-		req.MaxSteps, req.TimeoutSec = j.request.Descriptor.MaxSteps, j.request.Descriptor.TimeoutSec
-		if restoreErr == nil {
-			next, restoreErr = l.newJob(req)
-		}
-		if restoreErr != nil {
-			next = &job{request: req, id: j.id, dir: j.dir, parent: l, ctrl: make(chan Control, 16), timeout: j.timeout, maxSteps: j.maxSteps, initErr: restoreErr}
-		}
-	}
-	owners.Lock()
-	l.mu.Lock()
-	// Input may arrive while callbacks run, including after the earlier sample.
-	if len(j.pending) > 0 && next == nil {
-		l.mu.Unlock()
-		owners.Unlock()
-		// Restore must run unlocked, and the owner remains closing throughout.
-		req := j.request
-		var restoreErr error
-		if l.Restore != nil {
-			req, restoreErr = l.Restore(context.Background(), *j.request.Descriptor)
-		}
-		req.ID, req.Bot, req.Dir, req.Type, req.Mode, req.Descriptor = j.id, j.request.Bot, j.dir, j.kind, j.mode, j.request.Descriptor
-		if restoreErr == nil {
-			next, restoreErr = l.newJob(req)
-		}
-		if restoreErr != nil {
-			next = &job{request: req, id: j.id, dir: j.dir, parent: l, ctrl: make(chan Control, 16), timeout: j.timeout, maxSteps: j.maxSteps, initErr: restoreErr}
-		}
+	for {
 		owners.Lock()
 		l.mu.Lock()
+		if len(j.pending) == 0 && next != nil {
+			l.mu.Unlock()
+			owners.Unlock()
+			if l.ReleaseScope != nil {
+				l.ReleaseScope(next.request)
+			}
+			next = nil
+			continue
+		}
+		if len(j.pending) == 0 || next != nil {
+			break
+		}
+		l.mu.Unlock()
+		owners.Unlock()
+		next = j.restoreNext()
 	}
 	delete(l.jobs, j.id)
 	if i := l.waitingIndex(j.id); i >= 0 {
@@ -752,7 +777,7 @@ func (j *job) finishContinuable(status, kind, text string) {
 		for i := range next.pending {
 			next.pending[i].control.Kind = KindQueue
 		}
-		next.recordSeq = j.recordSeq
+		next.recordSeq = j.recordCount()
 		l.waiting = append(l.waiting, next)
 		next.writeStatus(statusQueued, "")
 	} else {
