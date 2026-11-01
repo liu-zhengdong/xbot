@@ -15,7 +15,7 @@ const cfg=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
    const openSettings=async()=>{await p.locator('#account').click();await p.locator('#account-settings').click();await p.locator('[data-set=vault]').click()};
    const start=Date.now();await openSettings();
    const host=p.locator('#settings-vault');
-   await host.getByText('当前 · ada',{exact:true}).waitFor().catch(async e=>{throw Error(e.message+'; vault='+await host.textContent()+'; settings='+await p.locator('#settings-error').textContent()+'; pageerrors='+errors.join(';'))});
+   await host.getByRole('heading',{name:'保险库',exact:true}).waitFor();
    if(theme==='light')await host.getByText('还没有密钥',{exact:true}).waitFor();else await host.getByText('LOCAL_SUDO',{exact:true}).waitFor();
    mountTimes.push(Date.now()-start);
    const shot=async(name)=>{const dir=path.join(cfg.shots,'after',theme);fs.mkdirSync(dir,{recursive:true});await p.screenshot({path:path.join(dir,name+'.png')})};
@@ -31,7 +31,7 @@ const cfg=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
    await d().getByLabel('值',{exact:true}).fill(cfg.password);await d().getByRole('button',{name:'添加',exact:true}).click();
    await host.getByText('LOCAL_SUDO',{exact:true}).waitFor();assert.equal(await host.locator('input[type=password]').count(),0);
    for(const [name,domains] of [['CONTEXT7_API_KEY','context7.com'],['telegram.token','api.telegram.org'],['GH_TOKEN','api.github.com, github.com']]){
-    await host.getByRole('button',{name:'添加',exact:true}).click();await host.getByRole('menuitem').filter({hasText:'密钥'}).click();await d().getByLabel('名称',{exact:true}).fill(name);await d().getByLabel('值',{exact:true}).fill('scripted-outbound-fixture');await d().getByLabel('域名',{exact:true}).fill(domains);
+    await host.getByRole('button',{name:'添加',exact:true}).click();await d().getByLabel('名称',{exact:true}).fill(name);await d().getByLabel('值',{exact:true}).fill('scripted-outbound-fixture');await d().getByLabel('域名',{exact:true}).fill(domains);
     if(name==='GH_TOKEN')await shot('add');await d().getByRole('button',{name:'添加',exact:true}).click();await host.getByText(name,{exact:true}).waitFor();
    }
    await host.getByRole('button',{name:'全部 4',exact:true}).waitFor();await shot('list');
@@ -44,10 +44,15 @@ const cfg=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
    await host.locator('.vault-card').filter({hasText:'GH_TOKEN'}).getByRole('button',{name:'管理',exact:true}).click();await d().getByRole('button',{name:'重新设置值',exact:true}).click();await shot('manage-reset');await d().getByLabel('新值',{exact:true}).fill('scripted-reset-fixture');await d().getByRole('button',{name:'保存',exact:true}).click();await d().waitFor({state:'detached'});
    await host.locator('.vault-card').filter({hasText:'GH_TOKEN'}).getByRole('button',{name:'管理',exact:true}).click();await d().getByRole('button',{name:'删除',exact:true}).click();await shot('delete');await d().getByRole('button',{name:'取消',exact:true}).click();await d().getByRole('button',{name:'取消',exact:true}).click();
    for(const name of ['GH_TOKEN','CONTEXT7_API_KEY','telegram.token'])await remove(name);
-   // Switching the selected sidebar Bot reads a different real backend.
-   await p.locator('#settings-close').click();await p.locator('[data-bot="bob"]').first().click();await openSettings();await host.getByText('当前 · bob',{exact:true}).waitFor();await host.getByText('还没有密钥',{exact:true}).waitFor();
+   // Sidebar changes do not change the global list or discard a live draft.
+   await host.getByRole('button',{name:'添加',exact:true}).click();
+   await d().getByLabel('名称',{exact:true}).fill('DRAFT_SHARED');
+   await p.evaluate(()=>document.querySelector('[data-bot="bob"]').click());
+   assert.equal(await d().getByLabel('名称',{exact:true}).inputValue(),'DRAFT_SHARED');
+   await d().getByRole('button',{name:'取消',exact:true}).click();
+   await p.locator('#settings-close').click();await p.locator('[data-bot="bob"]').first().click();await openSettings();await host.getByText('LOCAL_SUDO',{exact:true}).waitFor();
    await p.locator('#settings-close').click();await p.locator('[data-bot="ada"]').first().click();await openSettings();await host.getByText('LOCAL_SUDO',{exact:true}).waitFor();
-   for(let i=0;i<15;i++){const before=Date.now(),res=await context.request.get(cfg.url+'/api/bots/ada/secrets');const text=await res.text();readTimes.push(Date.now()-before);assert.ok(!text.includes('value')&&!text.includes(cfg.password));}
+   for(let i=0;i<15;i++){const before=Date.now(),res=await context.request.get(cfg.url+'/api/secrets');const text=await res.text();readTimes.push(Date.now()-before);assert.ok(!text.includes('value')&&!text.includes(cfg.password));}
    assert.deepEqual(errors,[]);await context.close();
   }
   readTimes.sort((a,b)=>a-b);console.log('passed: real HTTP vault CRUD/manage/filter/search/Bot switch, light/dark; settings-open ms='+mountTimes.join(',')+'; secrets GET p95 ms='+readTimes[Math.ceil(readTimes.length*.95)-1]);

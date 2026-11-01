@@ -3,6 +3,7 @@
 package smoke
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -25,6 +26,15 @@ func TestVaultSettingsSudoBinary(t *testing.T) {
 	}
 	const password = "scripted-local-sudo-123456"
 	var phase atomic.Int32
+	var injected atomic.Int32
+	outbound := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer scripted-global-token" {
+			t.Error("global outbound injection missing")
+		}
+		injected.Add(1)
+		io.WriteString(w, "shared outbound authenticated")
+	}))
+	defer outbound.Close()
 	var sudoPath string
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
@@ -33,8 +43,10 @@ func TestVaultSettingsSudoBinary(t *testing.T) {
 		}
 		switch phase.Add(1) {
 		case 1:
-			streamTool(w, "local_sudo", "sh", argsJSON(map[string]string{"description": "check configured local sudo", "command": shellQuote(sudoPath) + " -A"}))
+			streamTool(w, "shared_http", "http_request", argsJSON(map[string]any{"method": "GET", "url": outbound.URL, "headers": map[string]string{"Authorization": "Bearer {{secret:SHARED_TOKEN}}"}}))
 		case 2:
+			streamTool(w, "local_sudo", "sh", argsJSON(map[string]string{"description": "check configured local sudo", "command": shellQuote(sudoPath) + " -A"}))
+		case 3:
 			streamTool(w, "sudo_report", "send_message_to_user", argsJSON(map[string]string{"text": "检查完成"}))
 		default:
 			streamText(w, []string{"SILENT"})
@@ -44,7 +56,7 @@ func TestVaultSettingsSudoBinary(t *testing.T) {
 	stub := &Stub{srv: model}
 	srv := Start(t, stub)
 	srv.CreateBot("ada", "Only follow the scripted test.")
-	srv.CreateBot("bob", "A separate vault for scope checks.")
+	srv.CreateBot("bob", "A second Bot sharing the product vault.")
 	sudoPath = filepath.Join(t.TempDir(), "sudo")
 	script := `#!/bin/sh
 [ "$1" = '-A' ] || exit 3
@@ -73,7 +85,30 @@ echo authenticated
 		t.Fatalf("browser: %v\n%s", err, out)
 	}
 	t.Log(strings.TrimSpace(string(out)))
-	srv.Send("ada", "CHECK_LOCAL_SUDO")
+	sharedURL, _ := url.Parse(outbound.URL)
+	payload, _ := json.Marshal(map[string]any{"name": "SHARED_TOKEN", "value": "scripted-global-token", "domains": []string{sharedURL.Hostname()}})
+	res, err := srv.client.Post(srv.URL+"/api/secrets", "application/json", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatal("global API write failed")
+	}
+	for _, name := range []string{"ada", "bob"} {
+		phase.Store(0)
+		srv.Send(name, "CHECK_SHARED_VAULT")
+		encoded, _ := json.Marshal(srv.Transcript(name))
+		if strings.Contains(string(encoded), password) || strings.Contains(string(encoded), "scripted-global-token") {
+			t.Fatal("secret reached transcript")
+		}
+		if !strings.Contains(string(encoded), "authenticated") || !strings.Contains(string(encoded), "[secret]") {
+			t.Fatal("shared sudo/injection missing")
+		}
+	}
+	if injected.Load() != 2 {
+		t.Fatal("both Bot outbound paths did not use the global key")
+	}
 	rows := srv.Transcript("ada")
 	encoded, _ := json.Marshal(rows)
 	if strings.Contains(string(encoded), password) {
@@ -82,8 +117,8 @@ echo authenticated
 	if !strings.Contains(string(encoded), "authenticated") || !strings.Contains(string(encoded), "[secret]") {
 		t.Fatal("sudo -A did not authenticate/redact")
 	}
-	req, _ := http.NewRequest("DELETE", srv.URL+"/api/bots/ada/secrets/LOCAL_SUDO", nil)
-	res, err := srv.client.Do(req)
+	req, _ := http.NewRequest("DELETE", srv.URL+"/api/secrets/LOCAL_SUDO", nil)
+	res, err = srv.client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}

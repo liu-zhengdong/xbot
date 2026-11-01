@@ -140,32 +140,27 @@ func postConnector(t *testing.T, url, secret, body string) posted {
 	return posted{status: res.StatusCode, body: string(buf)}
 }
 
-// TestConnectorInboundUsesEachBotsOwnVault pins that the hub opens the vault of
-// the bot the request names. A shared vault would verify bot B's webhook with
-// bot A's credential.
-func TestConnectorInboundUsesEachBotsOwnVault(t *testing.T) {
+// Connector credentials are shared; webhook routing still targets its Bot.
+func TestConnectorInboundUsesGlobalVault(t *testing.T) {
 	root := t.TempDir()
-	ada, err := bot.Create(root, "ada", "persona", []string{link.NameTelegram})
+	_, err := bot.Create(root, "ada", "persona", []string{link.NameTelegram})
 	if err != nil {
 		t.Fatal(err)
 	}
-	bob, err := bot.Create(root, "bob", "persona", []string{link.NameTelegram})
+	_, err = bot.Create(root, "bob", "persona", []string{link.NameTelegram})
 	if err != nil {
 		t.Fatal(err)
 	}
-	const adaToken = "111:ada-token"
-	const bobToken = "222:bob-token"
-	for b, token := range map[*bot.Bot]string{ada: adaToken, bob: bobToken} {
-		store, err := vault.Open(b.VaultDir(), b.VaultKeyPath())
-		if err != nil {
-			t.Fatalf("vault.Open: %v", err)
-		}
-		if err := link.SetConnectorSecret(store, link.NameTelegram, token); err != nil {
-			t.Fatalf("SetConnectorSecret: %v", err)
-		}
+	const bobToken = "222:shared-token"
+	store, err := vault.OpenGlobal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := link.SetConnectorSecret(store, link.NameTelegram, bobToken); err != nil {
+		t.Fatal(err)
 	}
 	s := &Server{Root: root, OpenVault: func(b *bot.Bot) (vault.Backend, error) {
-		return vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
+		return vault.OpenGlobal(b.Root)
 	}}
 	ui := httptest.NewServer(s.Handler())
 	defer ui.Close()
@@ -175,8 +170,8 @@ func TestConnectorInboundUsesEachBotsOwnVault(t *testing.T) {
 	if res.status != http.StatusOK {
 		t.Fatalf("bob with bob's token: %d %s", res.status, res.body)
 	}
-	res = postConnector(t, ui.URL+"/connector/telegram/bob", adaToken, `{"update_id":12,"message":{"text":"x","chat":{"id":1}}}`)
+	res = postConnector(t, ui.URL+"/connector/telegram/bob", "111:wrong-token", `{"update_id":12,"message":{"text":"x","chat":{"id":1}}}`)
 	if res.status != http.StatusUnauthorized {
-		t.Fatalf("bob with ada's token should be 401, got %d %s", res.status, res.body)
+		t.Fatalf("wrong token should be 401, got %d %s", res.status, res.body)
 	}
 }

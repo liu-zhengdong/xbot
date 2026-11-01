@@ -29,9 +29,9 @@ type Backend interface {
 	MaskTruncated(string) string
 }
 
-// OpenBackend opens the credential backend for one bot. When XBOT_VAULT_SOCKET
-// is set the daemon client is used and vaultDir/keyPath are ignored; otherwise
-// the local same-user Store is the fallback.
+// OpenBackend opens an explicit low-level namespace (for example provider
+// OAuth). Product callers use OpenGlobal, never a Bot name here. When
+// XBOT_VAULT_SOCKET is set, vaultDir/keyPath are ignored.
 func OpenBackend(botName, vaultDir, keyPath string) (Backend, error) {
 	if socket := strings.TrimSpace(os.Getenv("XBOT_VAULT_SOCKET")); socket != "" {
 		return OpenClient(socket, botName)

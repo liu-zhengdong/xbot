@@ -31,10 +31,10 @@ func cmdSecret(root string, args []string) error {
 	}
 }
 
-// openSecretBackend opens the per-bot credential backend: the daemon client
-// when XBOT_VAULT_SOCKET is set, otherwise the local same-user Store.
+// openSecretBackend opens the global product vault. The CLI Bot argument is
+// retained for compatibility, not as a credential bucket.
 func openSecretBackend(b *bot.Bot) (vault.Backend, error) {
-	return vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
+	return vault.OpenGlobal(b.Root)
 }
 
 // cmdSecretSet reads the value from stdin so it never appears in argv or the
@@ -79,11 +79,11 @@ func cmdSecretSet(root string, args []string) error {
 	list := store.List()
 	for _, sec := range list {
 		if sec.Name == name {
-			fmt.Printf("stored %s for %s -> %s\n", name, b.Name(), strings.Join(sec.Domains, ","))
+			fmt.Printf("stored %s globally -> %s\n", name, strings.Join(sec.Domains, ","))
 			return nil
 		}
 	}
-	fmt.Printf("stored %s for %s\n", name, b.Name())
+	fmt.Printf("stored %s globally\n", name)
 	return nil
 }
 
@@ -121,11 +121,11 @@ func cmdSecretRm(root string, args []string) error {
 	if err := store.Remove(name); err != nil {
 		return err
 	}
-	fmt.Printf("removed %s from %s\n", name, b.Name())
+	fmt.Printf("removed %s globally\n", name)
 	return nil
 }
 
-// cmdSecretMigrate copies every secret from the bot's local vault into the
+// cmdSecretMigrate copies every secret from the global local vault into the
 // daemon and, only after every set succeeded, removes the local vault dir and
 // key file. Without XBOT_VAULT_SOCKET there is nothing to migrate to.
 func cmdSecretMigrate(root string, args []string) error {
@@ -136,19 +136,29 @@ func cmdSecretMigrate(root string, args []string) error {
 	if socket == "" {
 		return errors.New("secret migrate: XBOT_VAULT_SOCKET is not set")
 	}
-	b, err := bot.Load(root, args[0])
+	if _, err := bot.Load(root, args[0]); err != nil {
+		return err
+	}
+	local, err := vault.OpenLocalProduct(root)
 	if err != nil {
 		return err
 	}
-	local, err := vault.Open(b.VaultDir(), b.VaultKeyPath())
-	if err != nil {
-		return err
-	}
-	remote, err := vault.OpenClient(socket, b.Name())
+	remote, err := vault.OpenClient(socket, vault.ProductNamespace)
 	if err != nil {
 		return err
 	}
 	localList := local.List()
+	// The daemon intentionally cannot expose values for comparison. Refuse any
+	// overlapping name before copying rather than overwrite an unknown credential.
+	remoteNames := map[string]bool{}
+	for _, sec := range remote.List() {
+		remoteNames[sec.Name] = true
+	}
+	for _, sec := range localList {
+		if remoteNames[sec.Name] {
+			return fmt.Errorf("secret migrate: conflict for %q; local vault retained", sec.Name)
+		}
+	}
 	for _, sec := range localList {
 		value, ok := local.Lookup(sec.Name)
 		if !ok {
@@ -161,13 +171,13 @@ func cmdSecretMigrate(root string, args []string) error {
 	// Every set succeeded; now remove the local copy. The key file is only
 	// removed after the vault directory is gone, so a partial failure leaves a
 	// working local vault.
-	if err := os.RemoveAll(b.VaultDir()); err != nil {
+	if err := os.RemoveAll(vault.GlobalDir(root)); err != nil {
 		return err
 	}
-	if err := os.Remove(b.VaultKeyPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(vault.GlobalKeyPath(root)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	_ = os.Remove(filepath.Dir(b.VaultKeyPath()))
-	fmt.Printf("migrated %d secrets for %s\n", len(localList), b.Name())
+	_ = os.Remove(filepath.Dir(vault.GlobalKeyPath(root)))
+	fmt.Printf("migrated %d global secrets\n", len(localList))
 	return nil
 }

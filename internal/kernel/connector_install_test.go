@@ -83,8 +83,8 @@ func TestLinksInstallStoreConnectorWithKey(t *testing.T) {
 	if strings.Contains(string(raw), secret) {
 		t.Fatal("key value in mcp.json")
 	}
-	if got, _ := link.ReadSecrets(b.SecretPath()); got["CONTEXT7_API_KEY"] != secret {
-		t.Fatalf("secrets file %v", got)
+	if got, ok := link.GlobalSecretLookup(b.Root)("CONTEXT7_API_KEY"); !ok || got != secret {
+		t.Fatal("global MCP credential missing")
 	}
 	if out := tool.search("context7"); !strings.Contains(out, "context7\tinstalled") || strings.Contains(out, secret) {
 		t.Fatalf("search after %q", out)
@@ -116,8 +116,8 @@ func TestLinksInstallStoreConnectorWithKey(t *testing.T) {
 	if global, _ := link.LoadMCP(b.GlobalMCPPath()); len(global) != 0 {
 		t.Fatalf("left %+v", global)
 	}
-	if got, _ := link.ReadSecrets(b.SecretPath()); got["CONTEXT7_API_KEY"] != "" {
-		t.Fatal("key left behind")
+	if _, ok := link.GlobalSecretLookup(b.Root)("CONTEXT7_API_KEY"); ok {
+		t.Fatal("shared key left behind")
 	}
 }
 

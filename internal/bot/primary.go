@@ -11,6 +11,7 @@ import (
 	"xbot/internal/fsutil"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
+	"xbot/internal/vault"
 )
 
 const (
@@ -182,6 +183,12 @@ func Delete(root, name string) error {
 		}
 		if name == primary {
 			return ErrPrimary
+		}
+		// Old product credentials must survive deleting their former Bot bucket.
+		// This is migration only; daemon installations still use secret migrate
+		// to move local credentials across the process boundary.
+		if _, err := vault.OpenLocalProduct(root); err != nil {
+			return err
 		}
 		if err := os.RemoveAll(Dir(root, name)); err != nil {
 			return err

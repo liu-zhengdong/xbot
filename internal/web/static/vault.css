@@ -1,6 +1,5 @@
 .vault-head{gap:var(--x-s5);margin-bottom:var(--x-s4)}
 .vault-head h2{flex:1}
-.vault-current{font-size:var(--x-fs-sm);color:var(--x-faint);white-space:nowrap}
 .vault-icon{display:inline-flex;flex:none;width:var(--x-s6);height:var(--x-s6);color:inherit}
 .vault-icon svg{width:100%;height:100%}
 .vault-toolbar{display:flex;align-items:center;gap:var(--x-s4);flex-wrap:wrap;margin-bottom:var(--x-s5)}
@@ -28,13 +27,6 @@ html[data-theme="dark"] .vault-settings .vault-manage{background:var(--x-fill-3)
 .vault-settings .vault-manage:hover{background:var(--x-fill-1)}
 .vault-actions{display:flex;gap:var(--x-s3)}
 .vault-settings .vault-lock{width:calc(var(--x-s7)*2);height:calc(var(--x-s7)*2);color:var(--x-faint);margin-bottom:var(--x-s3)}
-.vault-add-wrap{position:relative}
-.vault-add-menu{position:absolute;right:0;top:calc(100% + var(--x-s2));z-index:40;min-width:var(--vault-menu-width);padding:var(--x-s2);border-radius:var(--x-r-card);background:var(--x-card);box-shadow:var(--x-shadow-pop)}
-.vault-add-menu[hidden]{display:none}
-.vault-menu-item{display:flex;align-items:flex-start;gap:var(--x-s4);width:100%;padding:var(--x-s3) var(--x-s4);border:0;border-radius:var(--x-r-sm);background:transparent;color:var(--x-text);font:inherit;text-align:left;cursor:pointer}
-.vault-menu-item:hover,.vault-menu-item:focus-visible{background:var(--x-fill-2)}
-.vault-menu-item b{display:block;font-size:var(--x-fs-ui);font-weight:560}
-.vault-menu-item .hint{display:block;font-size:var(--x-fs-cap);color:var(--x-muted);line-height:1.4}
 .vault-settings .sudo-bar{display:flex;align-items:flex-start;gap:var(--x-s4);width:100%;text-align:left;padding:var(--x-s4) var(--x-s5);margin-bottom:var(--x-s6);border:0;border-radius:var(--x-r-card);background:transparent;color:var(--x-text);cursor:pointer;font:inherit}
 .vault-settings .sudo-bar:hover,.vault-settings .sudo-bar.on{background:var(--x-fill-2)}
 .sudo-bar b{display:block;font-size:var(--x-fs-ui)}

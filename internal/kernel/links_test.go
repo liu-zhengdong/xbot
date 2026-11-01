@@ -103,11 +103,14 @@ func TestLinksInstallHidesSecrets(t *testing.T) {
 	if !strings.Contains(text, "installed telegram") {
 		t.Fatal(text)
 	}
-	raw, err := os.ReadFile(b.SecretPath())
-	if err != nil || !strings.Contains(string(raw), secret) {
-		t.Fatalf("secret file: %v %s", err, raw)
+	raw, err := os.ReadFile(b.VaultDir() + "/secrets.enc")
+	if err != nil || strings.Contains(string(raw), secret) {
+		t.Fatal("secret missing from encrypted global vault or stored in plaintext")
 	}
-	info, err := os.Stat(b.SecretPath())
+	if got, ok := link.GlobalSecretLookup(b.Root)("telegram.token"); !ok || got != secret {
+		t.Fatal("shared token missing")
+	}
+	info, err := os.Stat(b.VaultDir() + "/secrets.enc")
 	if err != nil || info.Mode().Perm() != 0600 {
 		t.Fatalf("mode %v %v", info, err)
 	}

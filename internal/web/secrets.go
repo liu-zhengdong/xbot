@@ -12,16 +12,11 @@ type secretJSON struct {
 	Domains []string `json:"domains"`
 }
 
-func (s *Server) botSecrets(w http.ResponseWriter, r *http.Request) {
+func (s *Server) globalSecrets(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
 		return
 	}
-	b, err := s.owned(r.PathValue("name"))
-	if err != nil {
-		writeMissing(w, err)
-		return
-	}
-	backend, err := vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
+	backend, err := vault.OpenGlobal(s.Root)
 	if err != nil {
 		writeErr(w, 500, "没能打开保险库")
 		return

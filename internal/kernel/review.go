@@ -259,7 +259,7 @@ func (k *Kernel) protectedPaths() []string {
 		return nil
 	}
 	root := k.Bot.Root
-	out := []string{k.Bot.VaultDir(), bot.VaultKeysDir(root), config.WebPath(root), config.Path(root), filepath.Join(root, "env"), filepath.Join(root, "keys", "remote"), filepath.Join(root, "remote")}
+	out := []string{k.Bot.VaultDir(), filepath.Join(root, "vault"), bot.VaultKeysDir(root), config.WebPath(root), config.Path(root), filepath.Join(root, "env"), filepath.Join(root, "keys", "remote"), filepath.Join(root, "remote")}
 	botsDir := filepath.Join(root, "bots")
 	entries, err := os.ReadDir(botsDir)
 	if err != nil {

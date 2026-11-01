@@ -73,7 +73,7 @@
   /* 保险库：已定稿 Grok 风格卡行，色块只区分出站 / 本机。 */
   --vault-outbound:#d4897a; --vault-local:#5a9e7f; --vault-glyph-ink:#fff;
   --vault-glyph-size:36px; --vault-card-radius:14px; --vault-card-height:56px;
-  --vault-search-width:200px; --vault-search-icon:14px; --vault-menu-width:168px;
+  --vault-search-width:200px; --vault-search-icon:14px;
   --vault-glyph-radius:10px; --vault-chip-height:28px;
   color-scheme:light;
 }

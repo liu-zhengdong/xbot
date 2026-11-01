@@ -1,9 +1,9 @@
-// Package vault stores per-bot credentials encrypted at rest and injects them
+// Package vault stores credentials encrypted at rest and injects them
 // into outbound requests without ever showing values to the model.
 //
 // A vault is one directory. The directory is 0700 and every file in it is 0600.
 // Secrets are serialized as JSON and encrypted with AES-GCM; the key is a local
-// key file outside the bot workspace (normally <root>/keys/vault/<bot>.key), so
+// key file outside the bot workspace (normally under <root>/keys/vault/), so
 // a bot's own shell cannot read the key next to the ciphertext. Values never
 // reach the process environment, the model prompt, or a tool result.
 package vault
@@ -49,7 +49,7 @@ type secretDisk struct {
 	Secrets []Secret `json:"secrets"`
 }
 
-// Store is one bot's credential vault. It is safe for concurrent use.
+// Store is one encrypted credential namespace. It is safe for concurrent use.
 type Store struct {
 	dir     string
 	keyPath string

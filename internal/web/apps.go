@@ -25,8 +25,8 @@ import (
 // names one. Installed apps are written to the owner-level files under the
 // root (apps.json, mcp.json), which every bot reads.
 
-// keyPerBotNote is shown on key-bearing apps, whose key is saved per Bot rather than shared.
-const keyPerBotNote = "密钥按 Bot 分别保存，只有填过密钥的 Bot 能用。"
+// keySharedNote describes the product vault scope, not connector grants.
+const keySharedNote = "密钥写入本机保险库，所有 Bot 共用。"
 
 type appJSON struct {
 	ID      string `json:"id"`
@@ -92,7 +92,7 @@ func (s *Server) appRows() ([]appJSON, error) {
 			}
 		}
 	}
-	keyHeld := s.ownerKeyHeld(cfgs)
+	keyHeld := s.ownerKeyHeld()
 	srv := map[string]link.MCPServer{}
 	for _, v := range servers {
 		srv[v.Name] = v
@@ -121,8 +121,7 @@ func (s *Server) appRows() ([]appJSON, error) {
 		known[a.ID] = true
 		row := appJSON{ID: a.ID, Title: a.Title, Summary: a.Summary, Category: a.Category, State: "available", Card: a.NeedsSecret}
 		if a.NeedsSecret {
-			// Honest about scope: the key lives with the Bot that took it, so only those Bots can use it.
-			row.Scope = keyPerBotNote
+			row.Scope = keySharedNote
 			for _, name := range appSecretNames(a) {
 				label := secretLabels[name]
 				if label == "" {
@@ -171,26 +170,11 @@ func serverReady(srv map[string]link.MCPServer, id string, held func([]string) b
 	return link.HasSecretEnvs(v, c.SecretEnvs) && held(c.SecretEnvs)
 }
 
-// ownerKeyHeld asks, Bot by Bot, what that Bot's server would read at start:
-// the same lookup and blank rule as the spawn (its secrets file first, the
-// process environment only when the file has no value). Any one Bot with every
-// key non-blank is enough. Values are only tested, never returned.
-func (s *Server) ownerKeyHeld(cfgs []bot.Config) func([]string) bool {
+// ownerKeyHeld uses the same global lookup and environment fallback as MCP spawn.
+func (s *Server) ownerKeyHeld() func([]string) bool {
 	return func(names []string) bool {
-		if len(names) == 0 {
-			return true
-		}
-		for _, cfg := range cfgs {
-			b, err := bot.Load(s.Root, cfg.Name)
-			if err != nil {
-				continue
-			}
-			probe := link.MCPServer{SecretEnvs: names, Secret: link.SecretLookup(b.SecretPath())}
-			if probe.HasSecretValues(names) {
-				return true
-			}
-		}
-		return false
+		probe := link.MCPServer{SecretEnvs: names, Secret: link.GlobalSecretLookup(s.Root)}
+		return probe.HasSecretValues(names)
 	}
 }
 
@@ -431,7 +415,7 @@ func (s *Server) saveApp(a link.App, names, values []string) error {
 		return err
 	}
 	if a.Kind == link.AppNative {
-		backend, err := vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
+		backend, err := vault.OpenGlobal(b.Root)
 		if err != nil {
 			return err
 		}
@@ -447,7 +431,7 @@ func (s *Server) saveApp(a link.App, names, values []string) error {
 		}
 		return nil
 	}
-	previous, err := link.ReadSecrets(b.SecretPath())
+	backend, err := vault.OpenGlobal(s.Root)
 	if err != nil {
 		return err
 	}
@@ -455,12 +439,10 @@ func (s *Server) saveApp(a link.App, names, values []string) error {
 	for i, name := range names {
 		updates[name] = values[i]
 	}
-	if err := link.WriteSecrets(b.SecretPath(), updates); err != nil {
+	if err := link.SetProductSecrets(backend, updates); err != nil {
 		return err
 	}
 	if err := link.EnableConnector(bot.GlobalMCPPath(s.Root), a.ID); err != nil {
-		_ = link.DropSecrets(b.SecretPath(), names)
-		_ = link.WriteSecrets(b.SecretPath(), previous)
 		return fmt.Errorf("install failed")
 	}
 	return nil
@@ -528,27 +510,17 @@ func (s *Server) dropFromBots(a link.App) error {
 	return nil
 }
 
-// dropServerKeys removes a key-bearing store server's keys from every bot of
-// the owner; links install kept them in the installing Bot's secrets file.
+// dropServerKeys removes a store server's shared credentials.
 func (s *Server) dropServerKeys(id string) error {
 	c, err := link.LookupConnector(id)
 	if err != nil {
 		return nil
 	}
-	cfgs, err := peer.OwnerBots(s.Root, s.owner)
+	backend, err := vault.OpenGlobal(s.Root)
 	if err != nil {
 		return err
 	}
-	for _, cfg := range cfgs {
-		b, err := bot.Load(s.Root, cfg.Name)
-		if err != nil {
-			continue
-		}
-		if err := link.DropSecrets(b.SecretPath(), c.SecretEnvs); err != nil {
-			return err
-		}
-	}
-	return nil
+	return link.RemoveProductSecrets(backend, c.SecretEnvs)
 }
 
 func listHas(list []string, name string) bool {

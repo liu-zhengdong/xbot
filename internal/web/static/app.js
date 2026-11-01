@@ -4769,7 +4769,6 @@
     leavePeer();
     clearQuote();
     state.sel = { type: "bot", id: name };
-    if (!$('setpage').hidden && settingsSection === 'vault') openSettings('vault');
     try { sessionStorage.setItem("xbot-selected-bot", name); } catch (e) {}
     resetConversation();
     try {
@@ -4802,7 +4801,6 @@
     leavePeer();
     clearQuote();
     state.sel = { type: "group", id: id };
-    if (!$('setpage').hidden && settingsSection === 'vault') openSettings('vault');
     resetConversation();
     state.sig = "";
     state.editOpen = false;
@@ -8437,7 +8435,7 @@
         if (request === settingsRequest) { paintPermissions(data); $("settings-permissions").disabled = false; }
       } else if (section === "vault") {
         const bot = state.sel?.type === "bot" && !state.peer ? state.sel.id : "";
-        await window.XBotVault.mount({api, host:$("settings-vault"), bot, displayName:niceName(bot), isCurrent:()=>request===settingsRequest});
+        await window.XBotVault.mount({api, host:$("settings-vault"), isCurrent:()=>request===settingsRequest});
       } else if (section === "search") {
         await window.XBotWebSearch.mount({api, host:$("settings-search"), isCurrent:()=>request===settingsRequest});
       } else if (section === "image-gen") {

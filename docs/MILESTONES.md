@@ -1,5 +1,15 @@
 # XBot 里程碑与进度
 
+## 2026-11-01 保险库全局单库、Bot 共享（feature/vault-global-shared，本地分支）
+
+- L 档，在 6bd6c31f 上改装配缝，不重做皮。唯一产品入口 `vault.OpenGlobal(root)` 不接收 Bot 名；本地和 vaultd 各按既有后端选择使用固定产品 namespace，OAuth namespace 不动。设置 `/api/secrets` 的 metadata DTO 永无 Value；连接应用 NeedsSecret（含 Context7/MCP 环境键）、CLI、出站 HTTP、LOCAL_SUDO askpass 都接同源。CLI 暂留存在性校验的 Bot 参数，但语义全局，帮助明确说明。
+- 安全合并旧 Bot 密文及产品 secrets.json：目标原写锁内检查全部冲突、一次提交后才删源。非空同名值或域名不同显式失败、保留源；同值同绑定可重入，空值让位非空；本地迁往 daemon 时任何远端同名均拒绝覆盖。删除旧 Bot 前也先迁移，已迁全局库不随 Bot 删除/改名。没有新增依赖、模型工具或明文 daemon 出口。
+- UI 去掉当前 Bot 标记，切 Bot 不换列表、不清草稿；导语和删除确认说明所有 Bot 共用。按政东中途纠偏，主钮纯「添加」直接开 nestcard，删除下拉/箭头及其样式；sudo 仅保留卡内快捷条和空态次钮。卡行/管理、chip、搜索及浅深皮沿现有实现。
+- 缝上测试：全局 Open/API 写入后跨 Bot 的真实出站注入、NeedsSecret 写入及 MCP 读取、askpass 同源；另守密文/明文合并、值/域名冲突保源、幂等不复活、OAuth 隔离、daemon 合并及冲突显式失败、Bot 生命周期和 CLI 跨 Bot。临时回退 Bot 的旧 per-bot 路径投影，`TestGlobalAPIAndNeedsSecretCrossBotConsumers` 实际因 askpass 读不到 API 值而红，恢复后绿；不是只看 URL 有没有 Bot 名。
+- 真二进制 `TestVaultSettingsSudoBinary` 最终三遍通过（29.358s）：真实 serve/HTTP/浅深 Chrome、两 Bot 的 HTTP 注入及脚本化 sudo -A，模型请求/transcript 无值、删后 askpass 失败。截图 `~/.xbot-build/ui-shots/vault-global-shared/after/{light,dark}/`；before 复用上一条已留存的截图，已本机对照原型查看。三遍 settings-open 127–185ms，secrets GET 每遍 30 样本 p95 2–7ms；既有 daemon overhead 300 次 warm GET p95 0.127ms。均为本机 fake/scripted 数字，不是生产交互/持续 60fps 或后台减速指标。
+- gofmt 无输出、全仓 vet、diff check 通过；atlas audit 退出 0，保留既有链接/陈旧/未索引告警。cmd/xbot、bot、inbound、kernel、link、vault 整包三遍通过；web 本条缝上/API/应用/审批及 Chrome 专项三遍通过（17.451s），整包三遍在 600s 超时前出现 DevicesPairBrowser/remote、CLIEventQueue 清理竞态、QuestionTypedReplyStopsTimer 计时失败，未改用例或扩修。全仓 `go test -count=1 ./...` 已完整跑过，最终仅 OAuth 回调端口占用和旧 DevicesPairBrowser/remote 未绿；OAuth 单项三遍复跑通过，设备配对在未修改 6bd6c31f 归档复现相同失败；三遍另两类失败未重新归因。六基础旅程 smoke 在当前分支和原 tip 归档均因旧 done.text/delta 契约同样失败；长程测试随全量 e2e 通过。
+- 级别：分支专项真入口端到端通过；未合 main、未 push、未重启日用服务，不宣称整体旅程门禁或用户日用通过。设计保留，未改 guard/Agent 指令/发版文件；不安排合入后逛验收。Not run: 真实密码/系统 sudo 策略、真模型、Linux CI、独立设计/代码复审、设计师回签、用户日用、生产 p95/后台减速/持续帧率专项。日志 `/tmp/vault-{all-final,repeat3,web-seams3,binary3,old-red,baseline-device,guard-smoke,baseline-guard,atlas-final}.log`。
+
 ## 2026-11-01 设置主人头像（feature/owner-avatar-settings）
 
 - M 档。通用「我的头像」复用现有 setpane/按钮/字体，无新 CSS、颜色或动效；data root `owner-avatar` 是唯一真源，GET/POST/DELETE 与 session 字段串起预览、侧栏即时更新和刷新读回。类型/大小对齐 Bot，无 localStorage 图片副本。
@@ -16,7 +26,6 @@
 - 真二进制 `TestVaultSettingsSudoBinary` 对真实 serve/HTTP/页面、浅深 Chrome 1440×900 DPR2，脚本化模型与 sudo（不碰本机密码/系统策略）最终三遍通过（24.945s）：管理改域名/重设值、切 Bot、sudo -A、模型请求/transcript 无密码、删除后 exit 4。最终三遍设置打开 126–135ms，secrets GET 每遍 30 样本 p95 2–3ms；是本机脚本化交互数字，不是生产/IPC/60fps 指标。截图 `~/.xbot-build/ui-shots/vault-settings/after/{light,dark}/`，含列表、添加、sudo、管理、重设、删除、过滤、无匹配、空态，已本机对照新 shots/ref 查看。
 - 全量一遍未绿：kernel 长轮/记忆日志、memory 月日志、web 时间/供应商/审批/粘贴/人设/提问、work description，在 HEAD 2a5f3044 归档复现；初跑的 vault 非 ASCII 校验回归已修且整包三遍绿。web 三遍另有 CLIEventQueue/VoiceRealBrowser/DevicesPairBrowser 偶发失败，baseline 单次未复现，不扩修。既有六旅程 smoke 均卡旧 done.text/delta 契约，HEAD 归档同样复现；本条新 smoke 绿，不声称全局旅程无退化已证明。日志 `/tmp/xbot-vault-{tests,repeat,baseline,baseline-extra,smoke,baseline-smoke,binary3,atlas}.log`。
 - 级别：本地分支专项真二进制端到端通过，未合 main、未 push、未重启日用服务；整体门禁未全绿，不宣称用户日用通过。设计保留，未经用户确认不移 guard。Not run: 真实系统 sudo/真实密码、真模型、Linux CI、独立设计/代码复审、用户日用、生产 p95/IPC/后台减速/持续帧率专项；不安排合入后逛验收。
-
 
 ## 2026-10-31 全仓测试修绿（feature/fix-full-suite，基线 f743221d）
 
@@ -83,7 +92,6 @@
 - `TestDeleteBotConfirmBrowser` 浅深各三遍通过，覆盖实心按钮、无正文灰框／身份行、取消、Esc、焦点循环、两种拒绝及删除成功刷新；回退旧 app.js 后因缺少 nestcard 失败。Chrome 1440×900 DPR 2 前后与 hover 截图：`~/.xbot-build/ui-shots/delete-bot-confirm/`。20 次打开到下一帧 p95：浅 16.6ms、深 17.5ms（本机 scripted HTTP 页面，非真模型）。
 - gofmt、go vet、diff check 通过；atlas audit 仅已有告警。全仓一遍未绿：kernel 两条、memory 月容量、OAuth 端口占用、work description 以及 web 十条失败；web 十条已回退旧 app.js 定向复现，日志 `/tmp/delete-bot-{tests,baseline-web}.log`。web 整包三遍未绿并在总计 10 分钟时超时（当时运行 `TestTranscriptWindowHTTP`）；另见 CLI event queue、设备配对、语音失败，未扩修或逐条归因。日志 `/tmp/delete-bot-repeat.log`。
 - 级别：本地分支实现，浏览器 scripted 删除路径通过；未合 main、未 push，待设计师复审和用户日用。Not run: 真服务删除冒烟、Linux CI、用户日用。
-
 
 ## 2026-10-31 记忆提醒（feature/memory-reminder，本地分支）
 
@@ -152,7 +160,6 @@
 - 浅深色 1440×900、DPR 2 前后截图：`~/.xbot-build/ui-shots/drop-replying-label/`，待设计师/用户日用验收。
 - gofmt 与 go vet 通过；全量 go test 运行 120 秒后超时，期间 kernel 的 TestLongTurnStaysUnderTheCeiling、TestMemoryFileLogGuard 及 memory 的 TestMonthlyGuardAndRoundTrip 失败；web 全包 -count=3 运行 300 秒超时，无结果。未扩改无关包。
 
-
 ## 2026-10-31 可见交付尾窗修复（feature/visible-tail-window，本地分支）
 
 - S 档：唯一扩窗装配缝仍为 `Bot.Window`。默认尾窗和未指定 limit 的 before 页先取60条 raw，再按25条可见交付向前扩，保留200条/128 KiB硬帽、连续 seq、真实 has_more_before、原有 fork 回放；显式 limit 与 after/around 原语义保留。HTTP 仅透传未指定 limit，不增加前端自动续拉或另一套计数，不改旧 transcript、Agent 指令或发版。
@@ -178,7 +185,6 @@
 - 1440×900、DPR 2 浅深色前后、hover／playing／paused 和 390px 短长音截图在 `~/.xbot-build/ui-shots/chat-voice-cluster-v5/`，已对照原型自查。每色 30 次播放事件更新到布局 p95 浅 0.4ms／深 0.3ms；投影到两帧绘制 p95 26.1／33.6ms。原生 Range GET 每轮 25 次，三轮 p95 5.0／3.6／6.8ms。均为本机受控样本，非真实供应商／物理设备／60fps 或用户日用验收。
 - gofmt、JS 语法、go vet、diff 检查通过；atlas audit 退出 0，保留既有告警。全仓 `-count=1 -timeout=90s` 与 web 整包 `-count=3 -timeout=90s` 未全绿：kernel 长轮 19 folds/40 steps、MemoryFileLogGuard、memory 月容量、work description，以及 web 旧头像断言与 AskOnly 静态测试 panic，均在原 tip `56e6fda8` 干净归档复现。全仓另在 e2e LongRunJourney、tools JobWriterManySecretsIsFast 达到 90 秒包超时，本轮未作基线归因，未扩修。证据与完整日志在 `~/.xbot-build/chat-voice-cluster-v5/`。
 - 级别：本地浏览器行为通过，既有语音真入口 scripted 冒烟通过；设计师对生产截图复审、真实供应商／物理麦克风扬声器、Linux CI 和用户日用未验。只提交本分支，未合 main、未 push，未移动 guard。
-
 
 ## 2026-10-31 设置自定义供应商（feature/custom-provider，本地分支）
 
@@ -222,7 +228,6 @@
 - 目标回归先红后绿；两份约 14 KiB 正文的本机装配平均 0.224ms、p95 0.321ms（200 次）；不等同于模型回复延迟或 UI 帧率。
 - gofmt、go vet、功能涉及四包的目标回归三遍通过；link/cmd 完整包三遍通过。全量及 kernel 完整包三遍遇 TestLongTurnStaysUnderTheCeiling（40 步 19 folds）；全量另有 work.TestShellUsesBotDir 缺 description，web 完整包卡在 TestWebApprovalAllowAndDeny 的连接清理后主动停止。三者均在原始 tip dbda0b60 隔离 archive 复现；未修改既有测试。atlas_audit 执行成功，无新增非 stale 告警；全量 e2e 包通过（61.618s）。
 - 级别：CLI→serve→scripted 模型端到端通过；未合 main，真实模型及用户日用未验。UI 定稿与剩余工作只在 [设计](dev/routine-skills.md) 维护。
-
 
 - 2026-10-30：聊天 transcript 首次加载／轮询／收工对账收敛到 `applyTranscript`，按 seq／送达序号与卡片 id 做 keyed DOM patch，未变旧行、选区与展开态保留；复用尾段 stamp 的弱 ETag，304 无正文且不解码历史，不再 stringify 整份消息。仅主列与 transcript 条件请求，未改侧栏刷新或发送 SSE；有变化时仍计算完整离屏投影。级别：功能分支 Chrome/scripted HTTP 行为通过，未合 main、未 push；真实 serve 与用户日用、独立视觉复审未验。
 - 新增接口与 Chrome（有／无 validator）回归旧代码红、新代码连续三次绿，现有 live 分段、transcript 来源／分叉／转义定向三次通过。条件请求 handler 三轮各 100 次，p95 32.833 / 32.958 / 31.125 µs，正文 0 字节；隐藏工具追加的主列 DOM mutation 为 0；未测真实模型延迟／60fps。1440×900、DPR 2 明暗前后截图在 `~/.xbot-build/ui-shots/chat-transcript-incremental/`。gofmt、vet、diff 检查通过，atlas audit 有既有告警。全仓测试遇既有内核长轮 40 步 19 次折叠失败，600 秒内未完成；web 整包三次在审批测试 180 秒超时。浏览器批量三次另遇 `TestChatStreamBrowser` 布局高度偶发差 8px，未修改 HEAD 的重复运行也复现；未扩修这些路径。

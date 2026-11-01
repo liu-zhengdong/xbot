@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go]
-verified: 2026-10-31 @ feature/vault-settings-sudo (Store/API/Shell/Chrome); 2026-10-31 @ feature/always-allow-no-permission-cards (permission regression tests); 2026-10-31 @ feature/custom-provider (provider HTTP policy); 2026-10-30 @ c4d67b18 + image-gen-local-proxy (review tests); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
+verified: 2026-11-01 @ feature/vault-global-shared (global Open/API/NeedsSecret/egress/askpass + binary Chrome smoke); 2026-10-31 @ feature/vault-settings-sudo (Store/API/Shell/Chrome); 2026-10-31 @ feature/always-allow-no-permission-cards (permission regression tests); 2026-10-31 @ feature/custom-provider (provider HTTP policy); 2026-10-30 @ c4d67b18 + image-gen-local-proxy (review tests); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome)
 ---
 # 安全：保险箱与权限表
 
@@ -29,29 +29,29 @@ verified: 2026-10-31 @ feature/vault-settings-sudo (Store/API/Shell/Chrome); 202
 ## 保险箱与出站代理
 钥匙只在用户这一侧。Bot 和模型只看得到名字，出站时代理才把 `{{secret:名字}}` 换成真值。
 
-- **存储**：每个 Bot 一份保险箱目录 `bots/<name>/vault/`，目录 0700，所有文件 0600。内容用 AES-GCM 加密，密钥挪到 Bot 工作区之外的数据根 `<root>/keys/vault/<bot>.key`（目录 0700，文件 0600）。旧版密钥仍和密文同目录时，`Open` 会在文件锁下把它移到新位置（跨设备则先写 0600 再删旧文件），绝不因迁移另造新钥。Bot 改名时密钥文件跟着走，删除 Bot 时删掉。
-- **严格测试/评测内核的保险箱路径确认**（生产不出卡）：`shell`、`read_file`、`write_file`、`edit_file` 触到本 Bot 的 `vault/`、`<root>/keys/vault/`、任何 `bots/*/vault/`、数据根上的 `web.json` 或 `providers.json`、跨设备的安装私钥 `<root>/keys/remote/` 或设备表所在的 `<root>/remote/`（见 [网关](gateway.md)）、桌面应用启动时读取密钥和端点的 `<root>/env`时，无论机器开关是不是 `allow`，都出确认卡（摘要带「触及保险箱/密钥」）。`xbot remote add/invite/join/remove`、`xbot remote gateway <url>` 不写路径也会改设备表，命令位置出现时同样出卡。判定是尽力而为：文件工具按解析后的路径，shell 把命令按词解析、对 cwd 取绝对、清理并解析符号链接后比对。这只是防随手读取，**不是真正隔离**：同一系统用户的进程仍然能读这些文件。真正隔离见 [ADR 0005](../adr/0005-vault-daemon-user.md) 的独立系统用户守护进程方案，本步只是它的第一步。
+- **存储**：整机一个产品保险库，所有 Bot 共用；唯一装配入口 `vault.OpenGlobal(root)`，不接收 Bot 名。密文 `<root>/vault/_product_vault/secrets.enc`，目录 0700，文件 0600，AES-GCM；密钥 `<root>/keys/vault/_product_vault.key`（0600，目录 0700），不随 Bot 改名/删除。首次打开把旧 `bots/*/vault/` 密文及产品 `secrets.json` 在目标原写锁内合并：先验证全部，再一次提交，成功才删源；同名非空值不同或绑定不同显式失败并保留源，相同项可重入，空值让位非空。删除 Bot 前也先做本地迁移，避免连旧桶一起丢。OAuth 等保留独立 namespace。见 [ADR 0041](../adr/0041-global-product-vault.md)。
+- **严格测试/评测内核的保险箱路径确认**（生产不出卡）：`shell`、`read_file`、`write_file`、`edit_file` 触到全局 `<root>/vault/`、`<root>/keys/vault/`、旧 `bots/*/vault/`、数据根上的 `web.json` 或 `providers.json`、跨设备的安装私钥 `<root>/keys/remote/` 或设备表所在的 `<root>/remote/`（见 [网关](gateway.md)）、桌面应用启动时读取密钥和端点的 `<root>/env`时，无论机器开关是不是 `allow`，都出确认卡（摘要带「触及保险箱/密钥」）。`xbot remote add/invite/join/remove`、`xbot remote gateway <url>` 不写路径也会改设备表，命令位置出现时同样出卡。判定是尽力而为：文件工具按解析后的路径，shell 把命令按词解析、对 cwd 取绝对、清理并解析符号链接后比对。这只是防随手读取，**不是真正隔离**：同一系统用户的进程仍然能读这些文件。真正隔离见 [ADR 0005](../adr/0005-vault-daemon-user.md) 的独立系统用户守护进程方案，本步只是它的第一步。
 - **绑定**：空域名是本机用途，不出站；`HostAllowed` 对空名单拒绝，URL、头、正文占位注入均不能发出。非空但全部非法的域名仍拒绝写入，不会被悄悄转成本机。每个出站凭据记一串允许的域名。请求域名不在名单里就拒绝注入，一个字节的真值都不发。按域名标签边界匹配，`a.com` 不覆盖 `evil-a.com` 和 `a.com.evil.com`；只认 ASCII 域名（IDN 用 punycode），只认 http/https，重定向的每一跳都重新校验，跳转 URL 或被复制的头里捎带真值（含 URL 编码、base64 等变体）同样拒绝。
 - **出站代理**：内核在请求离开进程前，把 URL、请求头和请求体里的 `{{secret:名字}}` 换成真值。模型只写名字。URL 路径里的花括号会被 Go 转义成 `%7B%7Bsecret:名字%7D%7D`，代理也认这种写法，同样先查域名绑定。Telegram 和飞书连接器的 token 也存在这里，出站只带占位符（见 [生态](ecosystem.md)）。
 - **OAuth 模型鉴权**：凭证格式、刷新、退出时的并发写回协调与共享命名空间见 [供应商](providers.md)。模型请求通过同一后端的 `InjectStream` 只替换鉴权头，保留正文里的占位示例；本地和 daemon 都校验域名。出站时固定这次使用的脱敏快照，响应的令牌、编码变体与折行形式按既有口径隐藏，正常 SSE 文本不等待完整令牌长度的缓冲窗口。
 - **脱敏**：真值出现在工具结果、transcript 或导出里时换成 `[secret]`，接的是现成的 `RedactText`；URL 编码、JSON 转义、base64 等变体以及被截断拆开的残段同样脱敏。base64 还认两种情况：值落在更长的 base64 流里、不在 3 字节组的开头（例如 Basic auth 的 `user:token`），这时它中间的整组照样认得出，两端最多各剩 2 个字节混在边界组里；以及被 base64 工具按 64、76 或任意固定宽度折行的，同宽的 base64 行先拼起来再找，连同换行一起换掉。替换是一遍从左到右：每个位置最长的形式先匹配，换进去的 `[secret]` 不再参与匹配。形式列表和替换器按保险箱版本缓存，保险箱变了才重算。`Store.Forms` 和 `RegisteredForms` 按从长到短列出这些形式（一样长按字节序），后台 shell 用这份列表决定待写尾巴留哪一段。
-- **设置**：左栏「保险库」按当前侧栏 Bot 管理，HTTP 响应 DTO 只有名称/域名，永无 value。与连接器 NeedsSecret 共用 `OpenBackend`。改域名用 `SetDomains` 在原跨进程写锁内保留旧值，删除不存在条目不会复活；接口见 [API](../API.md#bot-保险库)，界面见 [UI](ui.md#保险库设置)。
+- **设置**：左栏「保险库」管理全局列表，切 Bot 不换库；HTTP `/api/secrets` 响应 DTO 只有名称/域名，永无 value。连接应用 NeedsSecret（含 MCP 环境键）、CLI、出站和 askpass 共用 `OpenGlobal`；旧 Bot 明文不是运行回退。改域名用 `SetDomains` 在原跨进程写锁内保留旧值，删除不存在条目不会复活；接口见 [API](../API.md#全局保险库)，界面见 [UI](ui.md#保险库设置)。
 - **本机 sudo**：本地 Store 的固定名 `LOCAL_SUDO` 经 `Shell.Run` 的环境装配点配置 `SUDO_ASKPASS`，主线和作用域/子代理 Shell 共用绑定。临时 0700 助手只含二进制和 vault 路径，专用内部入口现读该密钥，密码只向 askpass stdout 输出，不放进环境变量或助手文件。助手至实际进程退出才清理，转后台不提前删除；输出复用既有脱敏注册，注册身份变化会使形式缓存失效。删除后即使旧助手尚在，新调用也取不到密码。本条不改 sudoers 或撤销系统 sudo 认证缓存；vaultd 不提供此明文出口、不绕过已配置后端。见 [ADR 0040](../adr/0040-local-sudo-askpass.md)。
-- **CLI**：`xbot secret set <bot> NAME [--domains a.com,b.com]`（不传域名为本机）（值从 stdin 读，永不从 argv）、`xbot secret list <bot>`（只列名字和域名）、`xbot secret rm <bot> NAME`；配了守护进程后用 `xbot secret migrate <bot>` 把本地保险箱整体搬过去（见下）。
+- **CLI**：`xbot secret set <bot> NAME [--domains a.com,b.com]`（不传域名为本机，值只从 stdin 读）、`xbot secret list <bot>`（只列名字和域名）、`xbot secret rm <bot> NAME`。Bot 参数暂留兼容并验证存在，但不参与分桶，所有命令读写同一个全局产品库。配了守护进程后 `xbot secret migrate <bot>` 把同一个本地产品库整体搬至 daemon 的产品 namespace。
 
 完成标准：
 1. Bot 和模型只看得到凭据名字，看不到值。
 2. 内核的出站代理在请求发出前替换 URL、请求头和请求体里的 `{{secret:名字}}`。
 3. 每个凭据绑定允许的域名；向名单外域名注入会被拒绝，真值不发出。
 4. 工具结果、transcript 和导出里出现的真值会被脱敏（接上 `RedactText`）。
-5. 落盘加密（AES-GCM + 本地密钥文件），保险箱文件 0600，目录 0700，密钥在 `<root>/keys/vault/<bot>.key`（0600，目录 0700）。
+5. 落盘加密（AES-GCM + 本地密钥文件），保险箱文件 0600，目录 0700，密钥在 `<root>/keys/vault/_product_vault.key`（0600，目录 0700）。
 6. 生产内核触及保险箱或密钥路径不出确认卡；严格测试/评测内核仍验证保护路径分类。这不是隔离。
 
 ## 独立用户守护进程
 第一步只把密钥挪出 Bot 目录、读写出确认卡，密钥和密文仍在同一系统用户可读处；真正隔离由独立系统用户 `xbot-vault` 的守护进程 `xbot vaultd` 提供（见 [ADR 0005](../adr/0005-vault-daemon-user.md)）。
 
-- **后端接口**：`vault.Backend` 只有 `List`（`Secret.Value` 永远为空）、`Names`、`Set`、`SetDomains`（只改域名，旧值不回传）、`Remove`、`Transport(base)`、`Redact`、`MaskTruncated`。本地 `*Store` 和守护进程客户端 `*Client` 都实现它；`vault.OpenBackend(bot, vaultDir, keyPath)` 在 `XBOT_VAULT_SOCKET` 有值时返回客户端，否则回退到本地 `Store`。`http_request`、内核 `Vault` 字段、serve、`secret` CLI、导出都用接口，不再写死 `*Store`。
-- **协议**：unix socket 上的 HTTP/1.1。接入时每个连接只读一次 `SO_PEERCRED`（`syscall.GetsockoptUcred`；macOS 上是 `LOCAL_PEERCRED`，`unix.GetsockoptXucred`；其他平台一律拒绝），uid 不在允许名单就直接关闭，之后不再逐请求握手。Bot 名走 `X-Vault-Bot` 头，校验 `[A-Za-z0-9_-]`，每个 Bot 一份 `dataDir/<bot>/`（0700），密钥 `dataDir/keys/<bot>.key`（0700 目录 / 0600 文件）。`GET /v1/list` 只回名字和域名；`POST /v1/set`（正文上限 64 KiB）、`POST /v1/domains`（只改域名）和 `POST /v1/rm` 写；`/v1/forward` 用 `X-Vault-Method`、`X-Vault-URL`、`X-Vault-Host` 带目标，原请求头以 `X-Vault-H-<Name>` 传递，正文流式。守护进程走原有 `Store.Inject`/`guard`（只发绑定域名、重定向逐跳重校验、编码变体），用现有 Proxy 逻辑转发，回包状态放 `X-Vault-Status`、头放 `X-Vault-H-*`，正文边流边脱敏：跨块保留「最长变体长度 − 1」字节的重叠窗口，EOF 冲尾。含占位符的请求体才需要整体替换并缓冲，上限 1 MiB（超了 413）；否则不缓冲直接流。响应上限 8 MiB（超出截断）。任何响应和错误都不含明文，错误先过 `sanitizeError`。
+- **后端接口**：`vault.Backend` 只有 `List`（`Secret.Value` 永远为空）、`Names`、`Set`、`SetDomains`（只改域名，旧值不回传）、`Remove`、`Transport(base)`、`Redact`、`MaskTruncated`。本地 `*Store` 和守护进程客户端 `*Client` 都实现它；产品统一由 `vault.OpenGlobal(root)` 选择本地 `Store` 或 `XBOT_VAULT_SOCKET` 客户端；低层 `OpenBackend(namespace, vaultDir, keyPath)` 只留给 OAuth 等独立 namespace。`http_request`、内核 `Vault` 字段、serve、`secret` CLI、导出都用接口，不再写死 `*Store`。
+- **协议**：unix socket 上的 HTTP/1.1。接入时每个连接只读一次 `SO_PEERCRED`（`syscall.GetsockoptUcred`；macOS 上是 `LOCAL_PEERCRED`，`unix.GetsockoptXucred`；其他平台一律拒绝），uid 不在允许名单就直接关闭，之后不再逐请求握手。Bot 名走 `X-Vault-Bot` 头，校验 `[A-Za-z0-9_-]`，底层显式 namespace 使用 `dataDir/<namespace>/`（0700），密钥 `dataDir/keys/<namespace>.key`（0700 目录 / 0600 文件）。产品固定 `_product_vault`，首次打开合并旧 Bot 桶，OAuth `_provider_accounts` 不参与；产品调用不再传 Bot 名。`GET /v1/list` 只回名字和域名；`POST /v1/set`（正文上限 64 KiB）、`POST /v1/domains`（只改域名）和 `POST /v1/rm` 写；`/v1/forward` 用 `X-Vault-Method`、`X-Vault-URL`、`X-Vault-Host` 带目标，原请求头以 `X-Vault-H-<Name>` 传递，正文流式。守护进程走原有 `Store.Inject`/`guard`（只发绑定域名、重定向逐跳重校验、编码变体），用现有 Proxy 逻辑转发，回包状态放 `X-Vault-Status`、头放 `X-Vault-H-*`，正文边流边脱敏：跨块保留「最长变体长度 − 1」字节的重叠窗口，EOF 冲尾。含占位符的请求体才需要整体替换并缓冲，上限 1 MiB（超了 413）；否则不缓冲直接流。响应上限 8 MiB（超出截断）。任何响应和错误都不含明文，错误先过 `sanitizeError`。
 - **性能**：客户端 `http.Transport` 的 `DialContext` 拨 socket，keep-alive（`MaxIdleConnsPerHost` 4、`IdleConnTimeout` 90s）复用一条长连接；链路只走小控制头加流式正文，没有大块缓冲。`TestDaemonOverheadP95` 用 300 个小 GET（预热、长连接）对比直连，p95 额外开销必须 < 5 毫秒；`BenchmarkDaemonForward` 量转发成本。
 - **后备**：没配 `XBOT_VAULT_SOCKET` 就用本地的同用户 `Store`，开发与测试用；客户端 `Redact`/`MaskTruncated` 原样返回（值只在守护进程侧，回包已脱敏）。
 - **仍防不住什么**：同一用户的进程仍可以叫守护进程把密钥发去它绑定的域名（由权限表的确认卡和域名绑定兜住），也可以覆盖或删除密钥；但读不到值。

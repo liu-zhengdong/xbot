@@ -18,6 +18,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/browser"
 	"xbot/internal/link"
+	"xbot/internal/vault"
 )
 
 type appsEnv struct {
@@ -216,7 +217,7 @@ func TestAppsKeyConnectorsNeedTheirKeys(t *testing.T) {
 	if err := ada.GrantLink(link.NameTelegram); err != nil {
 		t.Fatal(err)
 	}
-	if _, apps := e.list(); apps["telegram"].State != "connected" || apps["telegram"].Scope != keyPerBotNote || strings.Contains(apps["telegram"].Summary, "分别保存") {
+	if _, apps := e.list(); apps["telegram"].State != "connected" || apps["telegram"].Scope != keySharedNote || strings.Contains(apps["telegram"].Summary, "分别保存") {
 		t.Fatalf("connected key app must say the key stays per Bot: %+v", apps["telegram"])
 	}
 	// The layer asks in plain words; variable names never reach the page.
@@ -226,7 +227,7 @@ func TestAppsKeyConnectorsNeedTheirKeys(t *testing.T) {
 	if _, raw := e.call("GET", "/api/apps", "", true); strings.Contains(string(raw), "_KEY") || strings.Contains(string(raw), "_TOKEN") || strings.Contains(string(raw), "_SECRET") {
 		t.Fatal("variable names on the page")
 	}
-	if _, apps := e.list(); apps["playwright"].Scope != "" || apps["lark"].Scope != keyPerBotNote {
+	if _, apps := e.list(); apps["playwright"].Scope != "" || apps["lark"].Scope != keySharedNote {
 		t.Fatal("per-Bot note belongs on key apps only")
 	}
 	if code, raw := e.call("DELETE", "/api/apps/telegram", "", true); code != 200 {
@@ -331,7 +332,11 @@ func TestAppsContext7NeedsKey(t *testing.T) {
 		t.Fatalf("empty value shown %d %+v", n, apps["context7"])
 	}
 	// A Bot holding a real value (where links install puts it) makes it connected.
-	if err := link.WriteSecrets(ada.SecretPath(), map[string]string{"CONTEXT7_API_KEY": "ctx7sk-abc"}); err != nil {
+	backend, err := vault.OpenGlobal(e.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Set("CONTEXT7_API_KEY", "ctx7sk-abc", nil); err != nil {
 		t.Fatal(err)
 	}
 	if n, apps := e.list(); n != 1 || apps["context7"].State != "connected" {
@@ -348,8 +353,8 @@ func TestAppsContext7NeedsKey(t *testing.T) {
 	if all, _ := link.LoadMCP(path); len(all) != 0 {
 		t.Fatalf("left %+v", all)
 	}
-	if got, _ := link.ReadSecrets(ada.SecretPath()); got["CONTEXT7_API_KEY"] != "" {
-		t.Fatal("store remove left the key with the Bot")
+	if _, ok := link.GlobalSecretLookup(e.root)("CONTEXT7_API_KEY"); ok {
+		t.Fatal("store remove left shared credential")
 	}
 }
 
@@ -372,7 +377,7 @@ func TestAppsContext7KeyFromEnvironment(t *testing.T) {
 		if err := link.WriteSecrets(b.SecretPath(), map[string]string{"CONTEXT7_API_KEY": "   "}); err != nil {
 			t.Fatal(err)
 		}
-		spawnSees = append(spawnSees, link.MCPServer{Name: "context7", SecretEnvs: []string{"CONTEXT7_API_KEY"}, Secret: link.SecretLookup(b.SecretPath())})
+		spawnSees = append(spawnSees, link.MCPServer{Name: "context7", SecretEnvs: []string{"CONTEXT7_API_KEY"}, Secret: link.GlobalSecretLookup(e.root)})
 	}
 	for _, sv := range spawnSees {
 		if sv.HasSecretValues(sv.SecretEnvs) {
@@ -382,9 +387,12 @@ func TestAppsContext7KeyFromEnvironment(t *testing.T) {
 	if n, apps := e.list(); n != 0 || apps["context7"].State != "available" {
 		t.Fatalf("blank store plus env shown %d %+v", n, apps["context7"])
 	}
-	// Once one Bot has no stored value, its server falls back to the environment.
-	bob, _ := bot.Load(e.root, "bob")
-	if err := link.DropSecrets(bob.SecretPath(), []string{"CONTEXT7_API_KEY"}); err != nil {
+	// Removing the shared stored value restores the environment fallback for all Bots.
+	backend, err := vault.OpenGlobal(e.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Remove("CONTEXT7_API_KEY"); err != nil {
 		t.Fatal(err)
 	}
 	if !spawnSees[1].HasSecretValues(spawnSees[1].SecretEnvs) {

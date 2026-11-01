@@ -18,6 +18,7 @@ import (
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
+	"xbot/internal/vault"
 	"xbot/internal/work"
 )
 
@@ -138,7 +139,7 @@ func (t linksTool) search(query string) string {
 			// Installed only once the entry names every key and each has a value.
 			state := "available"
 			for _, s := range servers {
-				s.Secret = link.SecretLookup(t.k.Bot.SecretPath())
+				s.Secret = link.GlobalSecretLookup(t.k.Bot.Root)
 				if s.Name == c.ID && s.HasSecretValues(c.SecretEnvs) {
 					state = "installed"
 				}
@@ -500,7 +501,7 @@ func (k *Kernel) syncMCPLocked(links []link.Link) []link.Link {
 		if have[s.Name] || link.RetiredServer(s.Name) {
 			continue
 		}
-		s.Secret = link.SecretLookup(k.Bot.SecretPath())
+		s.Secret = link.GlobalSecretLookup(k.Bot.Root)
 		mk := k.newMCP
 		if mk == nil {
 			mk = func(s link.MCPServer) link.Link { return link.NewMCP(s) }
@@ -525,40 +526,22 @@ func catalogRuntime(name string) bool {
 	return link.StoreGrant(name)
 }
 
-// storeSecrets writes link credentials. With a vault they go to the backend
-// under the connector name; without one the legacy plaintext file keeps the
-// old behaviour. Only connector secrets are vaulted: other links keep their
-// file entry, so a mixed install neither loses nor leaks a value.
+// storeSecrets uses the same global backend for connector and MCP keys.
 func (k *Kernel) storeSecrets(values map[string]string) error {
-	rest := map[string]string{}
-	for name, value := range values {
-		kind := link.KindForSecret(name)
-		if kind == "" || k.Vault == nil {
-			rest[name] = value
-			continue
-		}
-		if err := link.SetConnectorSecret(k.Vault, kind, value); err != nil {
-			return err
-		}
+	backend, err := vault.OpenGlobal(k.Bot.Root)
+	if err != nil {
+		return err
 	}
-	if len(rest) == 0 {
-		return nil
-	}
-	return link.WriteSecrets(k.Bot.SecretPath(), rest)
+	return link.SetProductSecrets(backend, values)
 }
 
-// dropSecrets removes link credentials from the vault and the legacy file.
+// dropSecrets removes shared link credentials.
 func (k *Kernel) dropSecrets(e link.CatalogEntry) error {
-	for _, name := range e.Secrets {
-		kind := link.KindForSecret(name)
-		if kind == "" || k.Vault == nil {
-			continue
-		}
-		if err := link.RemoveConnectorSecret(k.Vault, kind); err != nil {
-			return err
-		}
+	backend, err := vault.OpenGlobal(k.Bot.Root)
+	if err != nil {
+		return err
 	}
-	return link.DropSecrets(k.Bot.SecretPath(), e.Secrets)
+	return link.RemoveProductSecrets(backend, e.Secrets)
 }
 
 // connector mounts a Telegram or Lark connector and, on this first access,

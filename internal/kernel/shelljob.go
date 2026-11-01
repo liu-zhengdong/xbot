@@ -95,7 +95,7 @@ func (k *Kernel) bindShellSudo(sh *tools.Shell) {
 		return
 	}
 	sh.BindLocalSudo(func() (vault.Backend, error) {
-		return vault.OpenBackend(k.Bot.Name(), k.Bot.VaultDir(), k.Bot.VaultKeyPath())
+		return vault.OpenGlobal(k.Bot.Root)
 	})
 }
 

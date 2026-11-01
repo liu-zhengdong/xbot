@@ -40,10 +40,10 @@ Usage:
   xbot [--root DIR] mcp list <bot>
   xbot [--root DIR] mcp add <bot> <name> (--command PATH [--arg A]... | --url URL) [--secret-env NAME]...
   xbot [--root DIR] mcp remove <bot> <name>
-  xbot [--root DIR] secret set <bot> NAME [--domains a.com,b.com]
-  xbot [--root DIR] secret list <bot>
-  xbot [--root DIR] secret rm <bot> NAME
-  xbot [--root DIR] secret migrate <bot>
+  xbot [--root DIR] secret set <bot> NAME [--domains a.com,b.com]  (global vault; bot is compatibility-only)
+  xbot [--root DIR] secret list <bot>  (all Bots share the same vault)
+  xbot [--root DIR] secret rm <bot> NAME  (removes for all Bots)
+  xbot [--root DIR] secret migrate <bot>  (global local vault -> vaultd)
   xbot [--root DIR] vaultd --dir DIR --socket PATH --allow-uid N[,N]
   xbot [--root DIR] connector list
   xbot [--root DIR] connector add <bot> <id>

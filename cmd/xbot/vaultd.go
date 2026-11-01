@@ -15,7 +15,7 @@ import (
 	"xbot/internal/vault"
 )
 
-// cmdVaultd runs the vault daemon. It owns the per-bot vaults under --dir and
+// cmdVaultd runs the vault daemon. It owns credential namespaces under --dir and
 // only serves peers whose uid is in --allow-uid.
 func cmdVaultd(root string, args []string) error {
 	ordered, err := reorderFlags(args, map[string]bool{"dir": true, "socket": true, "allow-uid": true})

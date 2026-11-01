@@ -82,7 +82,7 @@ func cmdTrace(root string, args []string, out io.Writer) error {
 		}
 		return json.NewEncoder(out).Encode(paths)
 	}
-	store, err := vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
+	store, err := vault.OpenGlobal(b.Root)
 	if err != nil {
 		return err
 	}

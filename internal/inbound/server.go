@@ -56,11 +56,10 @@ type Server struct {
 	Window   time.Duration
 	Debounce time.Duration
 	Now      func() time.Time
-	// OpenVault returns the backend that verifies a connector webhook for one
-	// bot. Every vault belongs to a single bot, so the hub opens the backend per
-	// request instead of sharing one. Nil falls back to the legacy plaintext
-	// secrets.json; a daemon-backed vault refuses the request because it does
-	// not expose the secret to this process.
+	// OpenVault opens the global product backend for connector verification.
+	// The Bot argument supplies the data root, not a credential bucket. Nil is
+	// retained for legacy tests; a daemon backend refuses verification because
+	// it does not expose the secret to this process.
 	OpenVault func(*bot.Bot) (vault.Backend, error)
 
 	mu      sync.Mutex

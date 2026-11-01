@@ -11,38 +11,14 @@ import (
 	"xbot/internal/vault"
 )
 
-// writeLinkSecrets stores install-time values: connector tokens in the vault,
-// anything else in the legacy plaintext file.
+// writeLinkSecrets stores all install-time values in the global vault.
 func writeLinkSecrets(b *bot.Bot, store vault.Backend, values map[string]string) error {
-	rest := map[string]string{}
-	for name, value := range values {
-		kind := link.KindForSecret(name)
-		if kind == "" || store == nil {
-			rest[name] = value
-			continue
-		}
-		if err := link.SetConnectorSecret(store, kind, value); err != nil {
-			return err
-		}
-	}
-	if len(rest) == 0 {
-		return nil
-	}
-	return link.WriteSecrets(b.SecretPath(), rest)
+	return link.SetProductSecrets(store, values)
 }
 
-// dropLinkSecrets removes install-time values from the vault and the file.
+// dropLinkSecrets removes shared install-time values.
 func dropLinkSecrets(b *bot.Bot, store vault.Backend, e link.CatalogEntry) error {
-	for _, name := range e.Secrets {
-		kind := link.KindForSecret(name)
-		if kind == "" || store == nil {
-			continue
-		}
-		if err := link.RemoveConnectorSecret(store, kind); err != nil {
-			return err
-		}
-	}
-	return link.DropSecrets(b.SecretPath(), e.Secrets)
+	return link.RemoveProductSecrets(store, e.Secrets)
 }
 
 func cmdLink(root string, args []string) error {
@@ -104,7 +80,7 @@ func cmdLink(root string, args []string) error {
 				}
 				vals[name] = v
 			}
-			opened, err := vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
+			opened, err := vault.OpenGlobal(b.Root)
 			if err != nil {
 				return err
 			}
@@ -139,7 +115,7 @@ func cmdLink(root string, args []string) error {
 			}
 		}
 		if len(e.Secrets) > 0 {
-			store, err := vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
+			store, err := vault.OpenGlobal(b.Root)
 			if err != nil {
 				return err
 			}

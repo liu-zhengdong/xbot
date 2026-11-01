@@ -17,6 +17,7 @@ import (
 	"xbot/internal/fsutil"
 	"xbot/internal/link"
 	"xbot/internal/provider"
+	"xbot/internal/vault"
 )
 
 const DefaultPersona = "You are XBot, a personal assistant. Help the person with the tools granted to you. Be concise and concrete. Answer in the owner's language. Do not narrate a plan before you act."
@@ -468,25 +469,25 @@ func (b *Bot) SecretPath() string {
 	return filepath.Join(b.dir(), "secrets.json")
 }
 
-// VaultDir is the bot's encrypted credential vault. Mode 0700; files 0600.
+// VaultDir is the shared product vault, independent of this Bot's lifecycle.
 func (b *Bot) VaultDir() string {
-	return filepath.Join(b.dir(), "vault")
+	return vault.GlobalDir(b.Root)
 }
 
-// keysSubdir is the data-root directory holding per-bot vault keys. It sits
+// keysSubdir holds namespace keys and legacy Bot keys. It sits
 // outside bots/<name>/, so a bot's own shell or file tools cannot reach the
 // key next to secrets.enc.
 const keysSubdir = "keys/vault"
 
-// VaultKeysDir is the directory holding every bot's vault key: <root>/keys/vault.
+// VaultKeysDir holds global, OAuth, and legacy migration keys: <root>/keys/vault.
 func VaultKeysDir(root string) string {
 	return filepath.Join(root, keysSubdir)
 }
 
-// VaultKeyPath is this bot's vault key file: <root>/keys/vault/<name>.key.
+// VaultKeyPath is the shared product vault key, outside all Bot workspaces.
 // It lives outside the bot workspace on purpose; see docs/atlas/security.md.
 func (b *Bot) VaultKeyPath() string {
-	return filepath.Join(VaultKeysDir(b.Root), b.cfg.Name+".key")
+	return vault.GlobalKeyPath(b.Root)
 }
 
 // SetBinding stores the provider and model names. The API key stays in the environment.

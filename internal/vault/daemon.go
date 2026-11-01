@@ -46,7 +46,7 @@ const placeholderLead = "{{secret:"
 // Server is the vault daemon. It holds every bot's vault under DataDir and only
 // serves peers whose uid is in AllowUIDs.
 type Server struct {
-	// DataDir is the daemon's data root: per-bot vaults at DataDir/<bot>/ and
+	// DataDir is the daemon's data root: namespaces at DataDir/<namespace>/ and
 	// keys at DataDir/keys/<bot>.key.
 	DataDir string
 	// AllowUIDs is the set of peer uids allowed to connect.
@@ -148,7 +148,15 @@ func (s *Server) storeFor(bot string) (*Store, error) {
 	}
 	dir := filepath.Join(s.DataDir, bot)
 	keyPath := filepath.Join(s.DataDir, "keys", bot+".key")
-	st, err := Open(dir, keyPath)
+	var st *Store
+	var err error
+	if bot == ProductNamespace {
+		st, err = mergeProductVault(dir, keyPath, s.DataDir, func(name string) (string, string, string) {
+			return filepath.Join(s.DataDir, name), filepath.Join(s.DataDir, "keys", name+".key"), ""
+		})
+	} else {
+		st, err = Open(dir, keyPath)
+	}
 	if err != nil {
 		return nil, err
 	}

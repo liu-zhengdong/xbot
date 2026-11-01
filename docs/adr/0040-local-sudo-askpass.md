@@ -1,9 +1,11 @@
 ---
 kind: adr
-status: Accepted
+status: Superseded
 date: 2026-10-31
 ---
 # 0040 本机 sudo 经专用 askpass 出口
+
+> 作用域由 [ADR 0041](0041-global-product-vault.md) 改为整机单库；专用 askpass 出口与 daemon 不返回明文的边界继续沿用。
 
 ## 背景
 

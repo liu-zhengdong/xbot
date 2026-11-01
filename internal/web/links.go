@@ -106,26 +106,16 @@ func (s *Server) removeLink(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "installed": false})
 }
 
-// dropSecrets removes a link's stored credentials: the vault when one is
-// configured, otherwise the legacy plaintext file.
+// dropSecrets removes a link's shared credentials.
 func dropSecrets(b *bot.Bot, e link.CatalogEntry) error {
 	if b == nil {
 		return nil
 	}
-	if store, err := vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath()); err == nil && store != nil {
-		var firstErr error
-		for _, name := range e.Secrets {
-			if kind := link.KindForSecret(name); kind != "" {
-				if err := store.Remove(link.VaultName(kind)); err != nil && firstErr == nil {
-					firstErr = err
-				}
-			}
-		}
-		if firstErr != nil {
-			return firstErr
-		}
+	store, err := vault.OpenGlobal(b.Root)
+	if err != nil {
+		return err
 	}
-	return link.DropSecrets(b.SecretPath(), e.Secrets)
+	return link.RemoveProductSecrets(store, e.Secrets)
 }
 
 func catalogRows(b *bot.Bot) []linkJSON {

@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/, internal/peer/, internal/cron/, internal/notify/]
-verified: 2026-10-30 @ dbda0b60 + feature/routine-skills (Timer→Inbox→Kernel scripted tests)
+verified: 2026-11-01 @ feature/vault-global-shared (rename/delete preserve global vault; delete migrates legacy bucket); 2026-10-30 @ dbda0b60 + feature/routine-skills (Timer→Inbox→Kernel scripted tests)
 ---
 # 多 Bot
 
@@ -13,6 +13,7 @@ verified: 2026-10-30 @ dbda0b60 + feature/routine-skills (Timer→Inbox→Kernel
 
 ## 怎么运转
 - **主 Bot**：首次运行时自动创建，承接没有指定 Bot 的输入。主 Bot 不能直接删除，要先把主 Bot 身份转给别的 Bot；系统里永远至少有一个 Bot。
+- **共享保险库**：`Bot.VaultDir/VaultKeyPath` 指向同一全局产品库，不随 Bot 改名/删除。删除旧 Bot 前先安全合并旧桶；迁移冲突中止删除，避免丢钥。装配、路径与冲突策略见 [安全](security.md#保险箱与出站代理)。
 - **置顶**：任何 Bot 都可以置顶，主 Bot 默认置顶。
 - **侧边栏分组**：每个 Bot 的档案有一个可选的 `group`。用户另外有一份分组顺序，没有拖拽排序。侧边栏按这份顺序显示可折叠的分组，每组带上 Bot 数量；`group` 为空，或不在这份顺序里的，归到最后的「未分组」。可以新建、改名、删除分组。删除分组只把里面的 Bot 挪到未分组，不删除 Bot。「未分组」不是一个可以新建或删除的分组。分组不进模板。这和 Bot 之间的聊天群不是一回事：聊天群仍用 `g_` 开头的 id，有自己的消息记录。
 - **创建 Bot**：`create_bot` 只接受非空职责正文；用途未知先用 `ask_user` 或普通提问补清名字、职责、是否现在建，清楚用途和名字（或授权取名）可直接建，仍是 normal 权限。工具把职责正文写进新 Bot 的人设，成功只返回 `created <name>`。新 Bot 的正文进入自己的固定前缀；紧随的环境消息只公布人设可读标签与短哈希，格式见 [上下文](context.md)。

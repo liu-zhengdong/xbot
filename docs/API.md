@@ -101,13 +101,13 @@
 
 `POST /api/bots`，body `{"name":"ada","persona":"...","avatar_seed":"writer#3"}`。名字匹配 `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`。`avatar_seed` 可省略，省了就用名字。种子是去空白后 1–80 个字符，不能有控制字符和「<>"'&」以及反引号。种子不合法 400，这时不会建出 Bot。成功 200 `{"name":"ada"}`。这是目录里第一个 Bot 时，它成为主 Bot 并被置顶。
 
-## Bot 保险库
+## 全局保险库
 
-均要求登录、Bot owner；写请求沿用同源校验。JSON 正文上限 1 MiB，拒绝未知字段。接口与连接器 NeedsSecret、CLI 共用该 Bot 的 `vault.OpenBackend`，没有另一份存储。
+要求登录；写请求沿用同源校验。不依赖选中 Bot 或 Bot owner，整机所有 Bot 共用。JSON 正文上限 1 MiB，拒绝未知字段。接口与连接应用 NeedsSecret（含 MCP）、出站注入、askpass、CLI 共用 `vault.OpenGlobal(root)`，没有另一份存储。
 
-- `GET /api/bots/{name}/secrets` → `{"secrets":[{"name":"LOCAL_SUDO","domains":[]}]}`。响应 DTO 只有名称、域名，**永远没有 value 字段或值**。
-- `POST /api/bots/{name}/secrets`：`{name,value,domains}` 添加/覆盖，值仅在请求体；成功 `{ok:true}`。名称/值为空或保存失败 400，不回显提交内容。省略 `value` 时，仅用 `SetDomains` 在原写锁内修改已有条目的域名，不取出、不替换旧值；不存在的名字返回 400，不能复活已删除条目。显式空值仍拒绝。
-- `DELETE /api/bots/{name}/secrets/{secret}`：按 URL 编码后的名称删除，成功 `{ok:true}`，重复删除幂等。
+- `GET /api/secrets` → `{"secrets":[{"name":"LOCAL_SUDO","domains":[]}]}`。响应 DTO 只有名称、域名，**永远没有 value 字段或值**。
+- `POST /api/secrets`：`{name,value,domains}` 添加/覆盖，值仅在请求体；成功 `{ok:true}`。名称/值为空或保存失败 400，不回显提交内容。省略 `value` 时，仅用 `SetDomains` 在原写锁内修改已有条目的域名，不取出、不替换旧值；不存在的名字返回 400，不能复活已删除条目。显式空值仍拒绝。
+- `DELETE /api/secrets/{secret}`：按 URL 编码后的名称删除，成功 `{ok:true}`，重复删除幂等。
 
 空 `domains` 是本机用途（包括 `LOCAL_SUDO`），绝不注入 HTTP；非空名单沿既有域名规范化与 HostAllowed 规则。设置的全部/出站/本机计数与名称/域名搜索均在前端处理。列表和写响应不提供查看、复制旧明文的入口。
 
@@ -341,7 +341,7 @@ M6 的第一片。清单是内置的，不是远程商店。`GET /api/links` 要
 
 `POST /api/bots/{name}/links`，body `{"id":"webhook"}`。成功 200 `{"id":"webhook","installed":true}`。这会把对应的 Link 名写进该 Bot 的授权。未知 id 是 404。`available` 为 false 是 409，正文含 `not available yet`，授权不变。已经装过再装一次仍是 200。声明了密钥的条目（Telegram、飞书）也是 409，正文含 `secrets required`，授权和 `secrets.json` 都不变。密钥只能在聊天确认卡里填，或由用户用命令行从同名环境变量安装。
 
-`DELETE /api/bots/{name}/links/{id}` 卸下这条授权。已知 id 成功 200 `{"id","installed":false}`。未知 id 是 404。这条 Link 声明了密钥时，同时删掉这些名字：连接器（Telegram、飞书）的 token 存在保险箱 backend 里，用 `backend.Remove` 删除；只有非连接器的键还留在 `secrets.json`。
+`DELETE /api/bots/{name}/links/{id}` 卸下这条授权。已知 id 成功 200 `{"id","installed":false}`。未知 id 是 404。这条 Link 声明了密钥时，同时删掉这些名字：连接器（Telegram、飞书）的 token 存在保险箱 backend 里，用 `backend.Remove` 删除；其它 Link 的键也从全局 backend 删除，不回退 Bot 明文文件。
 
 连接器 token 的存放：Telegram 与飞书的 token 存在 `vault.Backend` 里（名字 `telegram.token`、`lark.token`，绑定域名分别是 `api.telegram.org` 与 `open.feishu.cn`）。Bot 目录下旧的明文 `secrets.json` 在连接器第一次被打开时自动迁移进 backend，全部写入成功后明文文件被删掉；迁移中途失败则保留明文，下次再迁，重复执行安全。连接器出站请求只携带 `{{secret:telegram.token}}` 这类占位符，真值由 `backend.Transport` 在出口注入。
 
@@ -381,7 +381,7 @@ Bot 不存在、名字不合法、或没有装上这条 Link，是 404 `{"status
 
 ## 连接应用安装
 
-`POST /api/apps` 接收 `{"id":"context7","secrets":["密钥值"]}`；无密钥条目省略 `secrets`。密钥按 `GET /api/apps` 每行 `fields`（人话标签，如「API 密钥」）的顺序提交，只在探测通过后保存，不出现在列表。真实探测失败返回 422，未添加；需要密钥却未填齐返回 400。Telegram、飞书的密钥保存于主 Bot（或首个 owner Bot）的保险箱；Context7 写该 Bot 的 secrets。探测方式见 [ADR 0031](adr/0031-store-keys-in-settings.md)；飞书只发一个不存在的消息类型，不会投递到群。同一时间只处理一个添加或移除，单次上限 45 秒；请求取消时在途探测终止。旧的自定义应用接口不在此变更范围。
+`POST /api/apps` 接收 `{"id":"context7","secrets":["密钥值"]}`；无密钥条目省略 `secrets`。密钥按 `GET /api/apps` 每行 `fields`（人话标签，如「API 密钥」）的顺序提交，只在探测通过后保存，不出现在列表。真实探测失败返回 422，未添加；需要密钥却未填齐返回 400。Telegram、飞书及 Context7 的密钥全部保存于整机全局保险库；连接器授权仍按既有规则保存。探测方式见 [ADR 0031](adr/0031-store-keys-in-settings.md)；飞书只发一个不存在的消息类型，不会投递到群。同一时间只处理一个添加或移除，单次上限 45 秒；请求取消时在途探测终止。旧的自定义应用接口不在此变更范围。
 
 ## 连接应用的运行状态
 

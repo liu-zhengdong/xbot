@@ -76,7 +76,7 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		log.Printf("skill migration: %v", err)
 	}
 
-	store, err := vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
+	store, err := vault.OpenGlobal(b.Root)
 	if err != nil {
 		return nil, person.Person{}, err
 	}
@@ -253,7 +253,7 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 		return nil, err
 	}
 	for i := range servers {
-		servers[i].Secret = link.SecretLookup(b.SecretPath())
+		servers[i].Secret = link.GlobalSecretLookup(b.Root)
 		out = append(out, link.NewMCP(servers[i]))
 	}
 	if _, _, err := work.Open(b.Root, b.Name()); err != nil {
@@ -490,7 +490,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	}
 	cfg.HTTPAddr = resolved.ListenAddr
 	hub := &inbound.Server{Root: root, Window: inbound.DefaultWindow, Debounce: inbound.DefaultDebounce, OpenVault: func(b *bot.Bot) (vault.Backend, error) {
-		return vault.OpenBackend(b.Name(), b.VaultDir(), b.VaultKeyPath())
+		return vault.OpenGlobal(b.Root)
 	}}
 	ui := &web.Server{
 		Root:         root,

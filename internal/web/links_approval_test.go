@@ -92,9 +92,12 @@ func TestLinksApprovalCarriesSecretNames(t *testing.T) {
 	if strings.Contains(joined.String(), secret) {
 		t.Fatal(joined.String())
 	}
-	raw, err := os.ReadFile(b.SecretPath())
-	if err != nil || !strings.Contains(string(raw), secret) {
-		t.Fatalf("secret file: %v %s", err, raw)
+	raw, err := os.ReadFile(b.VaultDir() + "/secrets.enc")
+	if err != nil || strings.Contains(string(raw), secret) {
+		t.Fatal("global encrypted credential missing or plaintext leaked")
+	}
+	if got, ok := link.GlobalSecretLookup(root)("telegram.token"); !ok || got != secret {
+		t.Fatal("global approved credential missing")
 	}
 	loaded, err := bot.Load(root, "ada")
 	if err != nil {

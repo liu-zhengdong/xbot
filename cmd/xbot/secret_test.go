@@ -10,6 +10,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/link"
+	"xbot/internal/vault"
 )
 
 func withStdin(t *testing.T, in string, fn func() error) error {
@@ -45,7 +46,7 @@ func TestSecretCLISetListRm(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dir := filepath.Join(bot.Dir(root, "ada"), "vault")
+	dir := vault.GlobalDir(root)
 	raw, err := os.ReadFile(filepath.Join(dir, "secrets.enc"))
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +55,10 @@ func TestSecretCLISetListRm(t *testing.T) {
 		t.Fatal("plaintext value on disk")
 	}
 
-	out := captureStdout(t, func() error { return cmdSecret(root, []string{"list", "ada"}) })
+	if _, err := bot.Create(root, "bob", "persona", []string{link.NameTerminal}); err != nil {
+		t.Fatal(err)
+	}
+	out := captureStdout(t, func() error { return cmdSecret(root, []string{"list", "bob"}) })
 	if !strings.Contains(out, "GITHUB_TOKEN\ta.com,b.com") {
 		t.Fatalf("list output %q", out)
 	}
@@ -69,7 +73,7 @@ func TestSecretCLISetListRm(t *testing.T) {
 		t.Fatal("accepted a value as an argument")
 	}
 
-	out = captureStdout(t, func() error { return cmdSecret(root, []string{"rm", "ada", "GITHUB_TOKEN"}) })
+	out = captureStdout(t, func() error { return cmdSecret(root, []string{"rm", "bob", "GITHUB_TOKEN"}) })
 	if !strings.Contains(out, "removed GITHUB_TOKEN") {
 		t.Fatalf("rm output %q", out)
 	}

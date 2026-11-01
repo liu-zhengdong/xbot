@@ -71,7 +71,7 @@ func TestSecretMigrateMovesSecretsToDaemon(t *testing.T) {
 	t.Setenv("XBOT_VAULT_SOCKET", socket)
 
 	out := captureStdout(t, func() error { return cmdSecret(root, []string{"migrate", "ada"}) })
-	if !strings.Contains(out, "migrated 1 secrets") {
+	if !strings.Contains(out, "migrated 1 global secrets") {
 		t.Fatalf("migrate output %q", out)
 	}
 
@@ -84,7 +84,7 @@ func TestSecretMigrateMovesSecretsToDaemon(t *testing.T) {
 	}
 
 	// The daemon serves the name and domains, without the value.
-	client, err := vault.OpenClient(socket, "ada")
+	client, err := vault.OpenClient(socket, vault.ProductNamespace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,6 +100,36 @@ func TestSecretMigrateMovesSecretsToDaemon(t *testing.T) {
 	out = captureStdout(t, func() error { return cmdSecret(root, []string{"list", "ada"}) })
 	if !strings.Contains(out, "GITHUB_TOKEN\ta.com,b.com") || strings.Contains(out, value) {
 		t.Fatalf("list after migrate %q", out)
+	}
+}
+
+func TestSecretMigrateRefusesRemoteNameCollision(t *testing.T) {
+	t.Setenv("XBOT_VAULT_SOCKET", "")
+	root := t.TempDir()
+	if _, err := bot.Create(root, "arbitrary", "p", nil); err != nil {
+		t.Fatal(err)
+	}
+	local, err := vault.OpenLocalProduct(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := local.Set("COLLISION", "fixture-local", nil); err != nil {
+		t.Fatal(err)
+	}
+	socket := startMigrateDaemon(t)
+	remote, err := vault.OpenClient(socket, vault.ProductNamespace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.Set("COLLISION", "fixture-remote", nil); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XBOT_VAULT_SOCKET", socket)
+	if err := cmdSecret(root, []string{"migrate", "arbitrary"}); err == nil || !strings.Contains(err.Error(), "conflict") {
+		t.Fatal("remote credential silently overwritten")
+	}
+	if _, err := os.Stat(filepath.Join(vault.GlobalDir(root), "secrets.enc")); err != nil {
+		t.Fatal("local migration source lost")
 	}
 }
 

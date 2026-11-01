@@ -4,29 +4,27 @@
   const button = (cls, text, action) => { const b = node("button", cls, text); b.type = "button"; b.onclick = action; return b; };
   const icon = kind => {
     const n = node("span", "vault-icon"); n.setAttribute("aria-hidden", "true");
-    const paths = {key:'<circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6m4.1-4.1 3 3L22 7l-3-3"/>', terminal:'<path d="m4 17 6-6-6-6m8 14h8"/>', search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>', down:'<path d="m6 9 6 6 6-6"/>', lock:'<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'};
+    const paths = {key:'<circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6m4.1-4.1 3 3L22 7l-3-3"/>', terminal:'<path d="m4 17 6-6-6-6m8 14h8"/>', search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>', lock:'<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'};
     n.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + paths[kind] + '</svg>';
     return n;
   };
   const domainsOf = input => input.value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
-  async function mount({api, host, bot, displayName, isCurrent}) {
+  async function mount({api, host, isCurrent}) {
     teardown();
-    let alive = true, layer = null, secrets = [], category = "all", query = "", closeMenu = () => {};
+    let alive = true, layer = null, secrets = [], category = "all", query = "";
     const current = () => alive && isCurrent();
     const body = node("div"), layers = node("div", "sk-layers"), error = node("p", "sk-error");
     error.hidden = true; error.setAttribute("role", "alert");
     host.className = "skills-settings vault-settings"; host.replaceChildren(body, error, layers);
     const closeLayer = () => { if (!layer) return; const old = layer; layer = null; old.inputs.forEach(i => i.value = ""); layers.replaceChildren(); if (old.opener?.isConnected) old.opener.focus({preventScroll:true}); };
-    const outsideMenu = ev => { if (!ev.target.closest(".vault-add-wrap")) closeMenu(); };
-    document.addEventListener("click", outsideMenu);
-    teardown = () => { alive = false; closeLayer(); document.removeEventListener("click", outsideMenu); host.replaceChildren(); };
-    const path = "/api/bots/" + encodeURIComponent(bot) + "/secrets";
+    teardown = () => { alive = false; closeLayer(); host.replaceChildren(); };
+    const path = "/api/secrets";
     async function load() {
       try { const data = await api(path); if (current()) { secrets = data.secrets || []; error.hidden = true; paint(); } }
       catch { if (current()) { error.textContent = "没能读取保险库，请重新打开试试。"; error.hidden = false; } }
     }
     function dialog(title, lead, cancelAction = closeLayer) {
-      closeMenu(); closeLayer();
+      closeLayer();
       const root = node("div", "nestlayer"), card = node("div", "nestcard"), err = node("p", "sk-error"), actions = node("div", "nest-actions");
       root.setAttribute("role", "dialog"); root.setAttribute("aria-modal", "true"); root.setAttribute("aria-label", title);
       err.hidden = true; err.setAttribute("role", "alert");
@@ -54,7 +52,7 @@
       catch { if (current() && layer === active) { d.err.textContent = "没能保存，请检查后重试。"; d.err.hidden = false; submit.disabled = false; } }
     }
     function add(sudo = false) {
-      const d = dialog("添加密钥", "写入当前 Bot 的保险库。提交后界面不再保留明文。"), active = layer;
+      const d = dialog("添加密钥", "写入本机保险库，所有 Bot 共用。提交后界面不再保留明文。"), active = layer;
       const [nw, name] = field("名称", "text", "例如 GH_TOKEN"), [vw, value] = field("值", "password", "粘贴密钥"), [dw, domains] = field("域名", "text", "可空；多个用逗号，如 api.github.com, github.com");
       const shortcut = button("sudo-bar", "", () => { name.value = "LOCAL_SUDO"; domains.value = ""; shortcut.classList.add("on"); shortcut.setAttribute("aria-pressed", "true"); value.focus(); });
       shortcut.setAttribute("aria-pressed", "false");
@@ -86,7 +84,7 @@
     }
     function remove(secret) {
       const back = () => manage(secret);
-      const d = dialog("删除 " + secret.name + "？", "删掉后，" + displayName + " 再也用不到这个密钥；出站请求也注入不到这个名字。不可恢复，要再用只能重新添加。", back), active = layer;
+      const d = dialog("删除 " + secret.name + "？", "删掉后，所有 Bot 都用不到这个密钥；出站请求也注入不到这个名字。不可恢复，要再用只能重新添加。", back), active = layer;
       const cancel = button("btn", "取消", back), submit = button("btn danger", "删除", async () => {
         if (submit.disabled) return;
         submit.disabled = cancel.disabled = true;
@@ -96,23 +94,15 @@
       d.actions.append(cancel, submit); d.card.append(d.err, d.actions); cancel.focus({preventScroll:true});
     }
     function paint() {
-      closeMenu();
-      const head = node("div", "sethd vault-head"); head.append(node("h2", "", "保险库"), node("span", "vault-current", "当前 · " + displayName));
+      const head = node("div", "sethd vault-head"); head.append(node("h2", "", "保险库"));
       const foot = node("p", "setfoot", "模型只看见密钥名字，看不见值；出站时代理才注入，且只发往绑定域名。连接应用装密钥时也会写进这里。");
       if (!secrets.length) {
         const empty = node("div", "skempty vault-empty"), art = icon("lock"), acts = node("div", "vault-actions"); art.classList.add("vault-lock");
         acts.append(button("btn pri", "添加", () => add()), button("btn", "本机 sudo", () => add(true)));
-        empty.append(art, node("h3", "", "还没有密钥"), node("p", "", "添加后，只有这个 Bot 能在出站请求里用名字引用它们。"), acts);
+        empty.append(art, node("h3", "", "还没有密钥"), node("p", "", "添加后，所有 Bot 都能在出站请求里用名字引用它们。"), acts);
         body.replaceChildren(head, empty, foot); return;
       }
-      const addWrap = node("div", "vault-add-wrap"), menu = node("div", "vault-add-menu"), trigger = button("btn pri", "添加", () => { const open = menu.hidden; menu.hidden = !open; trigger.setAttribute("aria-expanded", String(open)); if (open) menu.querySelector("button").focus(); });
-      trigger.append(icon("down")); trigger.setAttribute("aria-haspopup", "menu"); trigger.setAttribute("aria-expanded", "false"); trigger.setAttribute("aria-label", "添加"); menu.hidden = true; menu.setAttribute("role", "menu");
-      for (const [sudo, label, hint, glyph] of [[false,"密钥","出站注入 · 可绑域名","key"],[true,"本机 sudo","给 shell 提权 · 模型看不见","terminal"]]) {
-        const item = button("vault-menu-item", "", () => add(sudo)), tx = node("span"); tx.append(node("b", "", label), node("span", "hint", hint)); item.append(icon(glyph), tx); item.setAttribute("role", "menuitem"); menu.append(item);
-      }
-      closeMenu = () => { menu.hidden = true; trigger.setAttribute("aria-expanded", "false"); };
-      addWrap.addEventListener("keydown", ev => { if (ev.key === "Escape" && !menu.hidden) { ev.preventDefault(); ev.stopPropagation(); closeMenu(); trigger.focus(); } });
-      addWrap.append(trigger, menu); head.append(addWrap);
+      head.append(button("btn pri", "添加", () => add()));
       const toolbar = node("div", "vault-toolbar"), chips = node("div", "vault-chips"), searchWrap = node("div", "vault-search-wrap"), search = node("input", "vault-search"), list = node("div", "vault-list");
       chips.setAttribute("role", "group"); chips.setAttribute("aria-label", "品类"); list.setAttribute("role", "list");
       search.type = "search"; search.autocomplete = "off"; search.placeholder = "搜索保险库"; search.setAttribute("aria-label", "搜索保险库"); search.value = query;
@@ -135,7 +125,6 @@
       search.oninput = () => { query = search.value; fill(); };
       searchWrap.append(icon("search"), search); toolbar.append(chips, searchWrap); fill(); body.replaceChildren(head, toolbar, list, foot);
     }
-    if (!bot) { body.append(node("h2", "", "保险库"), node("p", "setlead", "请先在侧栏选择一个 Bot。")); return; }
     await load();
   }
   window.XBotVault = {mount, unmount:() => teardown()};
