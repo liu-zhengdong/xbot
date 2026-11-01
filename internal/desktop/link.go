@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"strings"
 
 	"xbot/internal/link"
@@ -26,7 +27,7 @@ func (l *Link) Tools() []tools.Tool {
 		return nil
 	}
 	return []tools.Tool{
-		shotTool{l}, clickTool{l}, typeTool{l}, scrollTool{l}, keyTool{l},
+		shotTool{l}, snapshotTool{l}, setValueTool{l}, clickTool{l}, typeTool{l}, scrollTool{l}, keyTool{l},
 	}
 }
 
@@ -34,7 +35,7 @@ func (l *Link) driver() Driver {
 	if l != nil && l.Driver != nil {
 		return l.Driver
 	}
-	return commandDriver{}
+	return defaultDriver()
 }
 
 type shotTool struct{ l *Link }
@@ -55,77 +56,84 @@ type clickTool struct{ l *Link }
 
 func (clickTool) Name() string { return "desktop_click" }
 func (clickTool) Description() string {
-	return "Click the local screen at x, y. Yields when the owner has used the machine in the last few seconds. Stops for payment, login, and sending. Prefer a shell command or an API."
+	return "Click a qualified ref from desktop_snapshot on Mac/Windows; x,y are Linux-only. Snapshot again to verify. Never retry uncertain delivery without observing. Prefer shell/API."
 }
 func (clickTool) Parameters() any {
+	required := []string{"x", "y"}
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		required = []string{"ref"}
+	}
 	return obj(map[string]any{
-		"x": map[string]any{"type": "integer", "description": "Pixels from the left"},
-		"y": map[string]any{"type": "integer", "description": "Pixels from the top"},
-	}, []string{"x", "y"})
+		"ref": map[string]any{"type": "string", "description": "Qualified ref from desktop_snapshot (Mac/Windows)"},
+		"x":   map[string]any{"type": "integer", "description": "Pixels from the left (Linux)"},
+		"y":   map[string]any{"type": "integer", "description": "Pixels from the top"},
+	}, required)
 }
 func (t clickTool) Confirm(args json.RawMessage) (bool, string, error) {
 	var in struct {
-		X int `json:"x"`
-		Y int `json:"y"`
+		X   int    `json:"x"`
+		Y   int    `json:"y"`
+		Ref string `json:"ref"`
 	}
 	_ = json.Unmarshal(args, &in)
+	if in.Ref != "" {
+		return false, "desktop click " + in.Ref, nil
+	}
 	return false, fmt.Sprintf("desktop click %d %d", in.X, in.Y), nil
 }
 func (t clickTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		X int `json:"x"`
-		Y int `json:"y"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	return Perform(ctx, t.l.Root, t.l.driver(), Action{Name: "click", X: in.X, Y: in.Y}, true)
+	return t.l.performArgs(ctx, args, "click")
 }
 
 type typeTool struct{ l *Link }
 
 func (typeTool) Name() string { return "desktop_type" }
 func (typeTool) Description() string {
-	return "Type text into the local focused window. Yields when the owner is active. Payment, login, and send text must be confirmed. Prefer a shell command or an API."
+	return "Insert text into a desktop_snapshot ref on Mac/Windows (Windows uses physical input); Linux types into the focused window. Snapshot again to verify; do not retry uncertain delivery. Prefer shell/API."
 }
 func (typeTool) Parameters() any {
+	required := []string{"text"}
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		required = append(required, "ref")
+	}
 	return obj(map[string]any{
+		"ref":  map[string]any{"type": "string", "description": "Qualified ref (required on Mac/Windows)"},
 		"text": map[string]any{"type": "string", "description": "Text to type"},
-	}, []string{"text"})
+	}, required)
 }
 func (t typeTool) Confirm(args json.RawMessage) (bool, string, error) {
 	var in struct {
 		Text string `json:"text"`
+		Ref  string `json:"ref"`
 	}
 	_ = json.Unmarshal(args, &in)
-	summary := "desktop type\n" + in.Text
+	summary := "desktop type " + in.Ref + "\n" + in.Text
 	if sensitive(in.Text) {
 		summary += "\npayment, login, or send"
 	}
 	return false, summary, nil
 }
 func (t typeTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		Text string `json:"text"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	return Perform(ctx, t.l.Root, t.l.driver(), Action{Name: "type", Text: in.Text}, true)
+	return t.l.performArgs(ctx, args, "type")
 }
 
 type scrollTool struct{ l *Link }
 
 func (scrollTool) Name() string { return "desktop_scroll" }
 func (scrollTool) Description() string {
-	return "Scroll the local window. Positive dy scrolls up, negative scrolls down, at most 20 steps. Yields when the owner is active."
+	return "Scroll a desktop_snapshot ref on Mac/Windows, or the focused Linux window. Positive dy is up, negative down, at most 20 steps. Snapshot again to verify. Yields when owner activity is detectable."
 }
 func (scrollTool) Parameters() any {
+	required := []string{"dy"}
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		required = append(required, "ref")
+	}
 	return obj(map[string]any{
-		"dy": map[string]any{"type": "integer", "description": "Steps, -20..-1 or 1..20. Positive is up."},
-		"x":  map[string]any{"type": "integer", "description": "Pixels from the left. Omit to keep the pointer."},
-		"y":  map[string]any{"type": "integer", "description": "Pixels from the top. Omit to keep the pointer."},
-	}, []string{"dy"})
+		"ref": map[string]any{"type": "string", "description": "Qualified ref (required on Mac/Windows)"},
+		"dy":  map[string]any{"type": "integer", "description": "Steps, -20..-1 or 1..20. Positive is up."},
+		"x":   map[string]any{"type": "integer", "description": "Pixels from the left. Omit to keep the pointer."},
+		"y":   map[string]any{"type": "integer", "description": "Pixels from the top. Omit to keep the pointer."},
+	}, required)
 }
 func (t scrollTool) Confirm(args json.RawMessage) (bool, string, error) {
 	in, err := scrollArgs(args)
@@ -135,25 +143,24 @@ func (t scrollTool) Confirm(args json.RawMessage) (bool, string, error) {
 	return false, scrollSummary(in), nil
 }
 func (t scrollTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		Dy int `json:"dy"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	return Perform(ctx, t.l.Root, t.l.driver(), Action{Name: "scroll", Dy: in.Dy}, true)
+	return t.l.performArgs(ctx, args, "scroll")
 }
 
 type keyTool struct{ l *Link }
 
 func (keyTool) Name() string { return "desktop_key" }
 func (keyTool) Description() string {
-	return "Press one key or chord such as Return or ctrl+l. Yields when the owner is active. Prefer a shell command or an API."
+	return "Press a key chord such as Return or ctrl+l in app (required on Mac/Windows). Snapshot afterwards to verify. Prefer shell/API."
 }
 func (keyTool) Parameters() any {
+	required := []string{"key"}
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		required = append(required, "app")
+	}
 	return obj(map[string]any{
+		"app": map[string]any{"type": "string", "description": "Target app (required on Mac/Windows)"},
 		"key": map[string]any{"type": "string", "description": "Key name"},
-	}, []string{"key"})
+	}, required)
 }
 func (t keyTool) Confirm(args json.RawMessage) (bool, string, error) {
 	var in struct {
@@ -167,13 +174,7 @@ func (t keyTool) Confirm(args json.RawMessage) (bool, string, error) {
 	return false, summary, nil
 }
 func (t keyTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		Key string `json:"key"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	return Perform(ctx, t.l.Root, t.l.driver(), Action{Name: "key", Key: in.Key}, true)
+	return t.l.performArgs(ctx, args, "key")
 }
 
 type scrollIn struct {
@@ -224,6 +225,9 @@ func scrollSummary(in scrollIn) string {
 }
 
 func obj(props map[string]any, required []string) map[string]any {
+	if required == nil {
+		required = []string{}
+	}
 	if props == nil {
 		props = map[string]any{}
 	}

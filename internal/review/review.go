@@ -154,6 +154,8 @@ var Table = map[string]Class{
 
 	// Desktop.
 	"desktop_screenshot": Readonly,
+	"desktop_snapshot":   Readonly,
+	"desktop_set_value":  Normal,
 	"desktop_click":      Normal,
 	"desktop_type":       Normal,
 	"desktop_scroll":     Normal,
@@ -238,7 +240,7 @@ func Known(tool string) bool {
 func MachineTouching(tool string) bool {
 	switch normalize(tool) {
 	case "shell", "bash", "sh", "zsh", "powershell", "cmd", "git-bash", "read_file", "write_file", "edit_file", "view_image",
-		"desktop_screenshot", "desktop_click", "desktop_type", "desktop_scroll", "desktop_key",
+		"desktop_screenshot", "desktop_snapshot", "desktop_set_value", "desktop_click", "desktop_type", "desktop_scroll", "desktop_key",
 		"browser_open", "browser_snapshot", "browser_click":
 		return true
 	default:

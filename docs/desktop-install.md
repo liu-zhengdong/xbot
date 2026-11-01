@@ -42,6 +42,22 @@
 
 `xbot-*-linux-amd64.tar.gz` 里是命令行程序。`xbot app` 需要 WebKitGTK 4.1（Debian/Ubuntu：`sudo apt install libwebkit2gtk-4.1-0`）。
 
+## 电脑操作（Mac / Windows）
+
+电脑操作是自带能力，不需要去连接应用商店添加。首次使用需安装官方组件（Node.js 18+）：
+
+```sh
+npm install -g agent-desktop
+agent-desktop status
+```
+
+已安装在其它位置，可在启动 XBot 的环境里设置 `XBOT_AGENT_DESKTOP` 为可执行文件的完整路径；未设置时从 PATH 查找。图形启动的 XBot 若找不到终端里安装的组件，可通过数据目录 `env` 配置这个路径，再重启 XBot。当前适配实探版本为 agent-desktop 1.0.2 / JSON 协议 2.5，不捆绑或自动下载它。Windows 的 npm `.cmd` 入口会按上游全局/本地安装布局解析到原生 `.exe`，不经过 cmd.exe；非标准布局请将 `XBOT_AGENT_DESKTOP` 直接指向原生 `.exe`。
+
+- Mac：在「系统设置 → 隐私与安全性 → 辅助功能」允许启动 XBot 的应用（部分系统另列 agent-desktop，也需允许）；macOS 27+ 可能显示为设备控制与数据访问。截图另需「屏幕录制」，读取树和语义动作不需要屏幕录制。授权后在 XBot「设置 → 设备 → 这台电脑」点「重新检查」。也可手动运行 `agent-desktop permissions --guide` 打开官方引导。
+- Windows：在登录用户的交互桌面运行；不能控制权限更高的进程、锁屏、UAC 安全桌面或另一用户的会话。被完整性等级拦住时，让 XBot 和目标 App 以相同权限运行，不以管理员身份默认启动。Windows type 是物理输入，set-value 是语义替换。
+
+先 `xbot desktop snapshot "App 名称"` 拿到 `@snapshot:eN` 形式的引用，再 `xbot desktop click "@实际引用"` 或 `xbot desktop type "@实际引用" "文字"`，最后重新 snapshot 核验。引用不是永久编号，过期就重新取；失败的投递状态不确定时先观察，别直接重复操作。Mac / Windows 不把坐标点击当作自动降级；Linux 原有像素路径保留。
+
 ## 常见问题
 
 - 什么都没发生：可能已经开着一个 XBot（同一个数据目录只能开一个），或者 8787 端口被别的程序占了。原因写在数据目录的 `app.log` 里（`~/.xbot/app.log`，Windows 是 `%USERPROFILE%\.xbot\app.log`）；也可以在命令行运行 `xbot app --port 8788` 直接看。

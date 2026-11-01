@@ -18,14 +18,17 @@ import (
 const idleYield = 5 * time.Second
 
 var keyPattern = regexp.MustCompile(`^[A-Za-z0-9_+-]{1,64}$`)
+var qualifiedRef = regexp.MustCompile(`^@[A-Za-z0-9_-]+:e[0-9]+$`)
 
 // Action is one desktop call.
 type Action struct {
-	Name string
-	X, Y int
-	Text string
-	Dy   int
-	Key  string
+	Name              string
+	Skeleton          bool
+	App, Ref, Surface string
+	X, Y              int
+	Text              string
+	Dy                int
+	Key               string
 }
 
 // Driver performs the action on this machine. Tests substitute a fake.
@@ -42,7 +45,7 @@ type Driver interface {
 // off always refuses. ask refuses when approved is false.
 func Perform(ctx context.Context, root string, d Driver, action Action, approved bool) (string, error) {
 	if d == nil {
-		d = commandDriver{}
+		d = defaultDriver()
 	}
 	mode, err := machine.Get(root, machine.Local)
 	if err != nil {
@@ -54,13 +57,23 @@ func Perform(ctx context.Context, root string, d Driver, action Action, approved
 	if mode == machine.Ask && !approved {
 		return "", errors.New("machine local is ask")
 	}
-	mutating := action.Name != "screenshot"
+	mutating := action.Name != "screenshot" && action.Name != "snapshot"
 	if mutating {
 		if idle, ok := d.Idle(ctx); ok && idle < idleYield {
 			return "", errors.New("desktop: owner is active")
 		}
 	}
+	if native, ok := d.(interface {
+		Execute(context.Context, Action) (string, error)
+	}); ok && action.Name != "screenshot" {
+		return native.Execute(ctx, action)
+	}
+	if action.Ref != "" {
+		return "", errors.New("desktop: refs require the Mac/Windows accessibility driver; no pixel fallback")
+	}
 	switch action.Name {
+	case "snapshot", "set_value":
+		return "", errors.New("desktop: accessibility actions require Mac or Windows with agent-desktop")
 	case "screenshot":
 		dir := filepath.Join(root, "desktop")
 		if err := os.MkdirAll(dir, 0700); err != nil {

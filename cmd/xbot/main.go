@@ -100,11 +100,14 @@ Usage:
   xbot [--root DIR] permissions [on|off]   (off by default: no confirmation cards)
   xbot [--root DIR] machine list
   xbot [--root DIR] machine set <name> allow|ask|off
+  xbot [--root DIR] desktop status
+  xbot [--root DIR] desktop snapshot <app>
   xbot [--root DIR] desktop screenshot
-  xbot [--root DIR] desktop click <x> <y>
-  xbot [--root DIR] desktop type <text>
-  xbot [--root DIR] desktop scroll <dy>
-  xbot [--root DIR] desktop key <key>
+  xbot [--root DIR] desktop click <ref>             # Mac/Windows; Linux: <x> <y>
+  xbot [--root DIR] desktop type <ref> <text>       # Mac/Windows; Linux: <text>
+  xbot [--root DIR] desktop set-value <ref> <text>
+  xbot [--root DIR] desktop scroll [ref] <dy>
+  xbot [--root DIR] desktop key [app] <key>
   xbot [--root DIR] browser open [--headless] <url>
   xbot [--root DIR] browser snapshot
   xbot [--root DIR] browser click <selector>

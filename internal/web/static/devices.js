@@ -71,6 +71,7 @@
 
   // ---- 状态 ----
   const S = {
+    desktop: null,
     data: null,            // GET /api/devices
     pairing: { a: {}, b: {} },
     view: null,            // drawer 之上的弹窗
@@ -86,6 +87,37 @@
     menuFor: "", target: null, busy: false,
   };
   let devicesEl = null, modalEl = null, lastView = "";
+  let desktopGeneration = 0;
+  async function checkDesktop() {
+    const generation = ++desktopGeneration;
+    const button = devicesEl.querySelector('[data-act="desktop-check"]');
+    if (button) button.disabled = true;
+    let result;
+    try { result = await api("GET", "/api/devices/desktop"); }
+    catch (e) { result = { error: "连接失败" }; }
+    if (generation !== desktopGeneration || !S.embedded) return;
+    const data = result.status && result.status.data || {};
+    const platform = result.platform || data.platform;
+    const state = data.permissions && data.permissions.accessibility && data.permissions.accessibility.state;
+    let label = "暂时查不到状态", guide = "请确认电脑操作组件已安装，再重新检查。";
+    if (result.error) {
+      guide = String(result.error).includes("not installed") ? "先在这台电脑的终端运行 npm install -g agent-desktop，再重新检查。" : "检查失败，请稍后重试。";
+    } else if (platform === "darwin" || platform === "macos") {
+      label = state === "granted" ? "无障碍已授权" : state === "denied" ? "无障碍未授权" : "无障碍状态未知";
+      guide = state === "granted" ? "Bot 可以读取和操作 App；截图另需屏幕录制授权。" : "在这台 Mac 的「系统设置 → 隐私与安全性 → 辅助功能」中，允许启动 XBot 的应用；若列表另有 agent-desktop，也请打开。然后重新检查。";
+    } else if (platform === "windows") {
+      label = "使用 Windows 系统授权";
+      guide = "请在已登录、未锁屏的桌面运行 XBot。不能操作权限比 XBot 更高的应用或系统安全提示；需要时让两者以相同权限运行。";
+    } else if (result.legacy) {
+      label = "使用屏幕操作";
+      guide = "这台电脑保留原有的截图、点击和输入方式。";
+    }
+    S.desktop = { label, guide };
+    const status = devicesEl.querySelector('#g7-desktop-status'), help = devicesEl.querySelector('#g7-desktop-help');
+    if (status) status.textContent = label;
+    if (help) help.textContent = guide;
+    if (button) button.disabled = false;
+  }
   // 挂给 pairing.js 的句柄（最后填上 views/acts 等）。
   const D = window.xbotDevices = {};
 
@@ -138,6 +170,7 @@
     S.embedded = true; S.menuFor = "";
     await Promise.all([refresh(), loadAcct()]);
     render();
+    checkDesktop();
   }
   // 「把这台电脑绑到账号？」（04b）：本机还没绑到登录着的账号时，app.js 开机后请一次。
   async function offerClaim() {
@@ -150,6 +183,7 @@
     S.claimErr = ""; S.view = "claim"; render();
   }
   function unmount() {
+    ++desktopGeneration;
     S.embedded = false;
     if (["add", "join", "confirm", "waiting"].includes(S.view) && D.closePair) D.closePair();
     else { S.view = null; render(); }
@@ -271,7 +305,11 @@
     const selfCard = `<section class="profile-section"><h3>这台电脑</h3>
       <div class="g7-device g7-self"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
         <div class="g7-dev-main"><div class="g7-dev-name">${esc(self.name)}${bound ? `<span class="g7-bound">已绑到账号</span>` : ""}</div><div class="g7-dev-sub">${esc([self.os, (self.bots || []).length + " 个 Bot"].filter(Boolean).join(" · "))}</div></div>
-        <button class="ghost" type="button" aria-label="改名" data-act="rename-self">${svg("pencil")}</button></div></section>`;
+        <button class="ghost" type="button" aria-label="改名" data-act="rename-self">${svg("pencil")}</button></div>
+      <div class="g7-device g7-flat"><span class="g7-dev-ico">${svg("laptop", 20)}</span>
+        <div class="g7-dev-main"><div class="g7-dev-name">电脑操作</div><div class="g7-dev-sub" id="g7-desktop-status">${esc(S.desktop ? S.desktop.label : "正在检查授权")}</div></div>
+        <button class="secondary g7-sm" type="button" data-act="desktop-check">重新检查</button></div>
+      <p class="g7-fine" id="g7-desktop-help">${esc(S.desktop ? S.desktop.guide : "")}</p></section>`;
     // 只在已登录且本机未绑时出现；已绑、未登都整节不渲染。
     const claim = S.acct && S.acct.unbound ? `<section class="profile-section g7-claim" id="g7-claim"><b>通过账号关联设备</b>
       <small>把这台电脑绑到账号，手机和其它入口也能看到这台上的 Bot。</small>
@@ -328,6 +366,7 @@
   async function act(name, el) {
     const data = S.data || {};
     switch (name) {
+      case "desktop-check": await checkDesktop(); break;
       case "close": closeModal(); break;
       case "to-drawer": if (D.closePair) await D.closePair(); else closeModal(); await openDevices(); break;
       case "row-menu": S.menuFor = S.menuFor === el.dataset.id ? "" : el.dataset.id; render(); break;

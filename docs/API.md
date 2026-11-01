@@ -542,6 +542,8 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 ## 设备
 
+`GET /api/devices/desktop` 沿现有主人 cookie 鉴权，返回 `{platform,status}`：`status` 是官方 agent-desktop 的原 JSON envelope（权限位于 `status.data.permissions`），不请求系统授权。依赖缺失或探测失败时仍以 200 返回 `{platform,error}` 供设置显示「查不到状态」，不伪造 granted；Linux 返回 `{platform:"linux",legacy:true}`。打开设备页或手动重新检查时调用，不参与设备轮询。动作工具与本机 CLI 的合同见 [机器与设备](atlas/machines.md)。
+
 `GET /api/devices` 返回已配对的设备列表：`{"self","gateway_ok","devices","pairing"}`，每台设备有 `id`、`label`、`name`、`bots`、`bot_avatars`、`seen`、`online` 等字段（`seen`、`added` 是时间，`unpaired`、`online` 是布尔值）。`bots` 照旧是另一台设备上 Bot 的名字数组。`bot_avatars` 是同一批 Bot 的头像，每个列出的 Bot 一项：`{"writer": {"avatar_seed": "writer#2"}, "coach": {"custom": true}}`。种子由对方随设备目录送来，没设种子时取 Bot 名字；`custom` 表示对方用的是上传的图片，图片不过网关，所以界面在能传图之前先画几何字形。对方版本较旧、没送种子时这一项是空的，界面画几何字形，不拿名字当种子（免得和本机同名 Bot 一张脸）。种子先在接收时校验一次，建视图时再校验一次，不合法的丢掉种子、保留 Bot。没有 Bot 时是 `{}`，从不是 `null`。
 
 ## 供应商与模型绑定

@@ -15,6 +15,7 @@ import (
 
 func (s *Server) registerDevicesAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/devices", s.listDevices)
+	mux.HandleFunc("GET /api/devices/desktop", s.desktopStatus)
 	mux.HandleFunc("GET /api/devices/pairing", s.pairingStatus)
 	mux.HandleFunc("PUT /api/devices/gateway", s.putGateway)
 	mux.HandleFunc("PATCH /api/devices/self", s.renameSelf)

@@ -1,5 +1,14 @@
 # XBot 里程碑与进度
 
+## 2026-11-01 Bot 控机 · Mac / Windows 无障碍树
+
+- L 档，按本轮用户直接授权自行设计、实现及设置自检，不等设计师或用户代合。唯一装配仍为 `link.Organs → kernel desktop.Open(root) → Link.Tools`，Mac/Windows 薄适配官方 CLI，Linux 旧像素驱动保留；没有平行 Link、商店项、应用名单或 UI 指纹。Windows npm shim 按官方安装布局定位原生 exe，不经过 shell。决策见 [ADR 0048](adr/0048-desktop-a11y-adapter.md)，合同见 [机器与设备](atlas/machines.md)。
+- 自动验证（均 `go test -count=1`）：desktop、review、link 相关整包；kernel 的器官装配/注册、机器 allow/ask/off、生产无卡定向用例；web 授权 API/状态浏览器与原设备配对 8 场景；cmd 的非法按键回归；`-tags smoke ./e2e/smoke -run TestDesktopAccessibilityBinary` 真 CLI/serve/HTTP 冒烟通过。CLI 子进程夹具覆盖 snapshot→click/type→snapshot 变化、原样文字、错误 disposition、无重试、超限与缺依赖；npm global/local 的 amd64/arm64 路径解析通过。浏览器仅 chrome-headless-shell。初次 cmd 回归命中 bad-key 错误文案变化，恢复原错误语义后定向通过。
+- Windows amd64/arm64 与 Linux 相关包交叉构建、相关 vet、JS 语法、diff、atlas audit 通过（audit 有仓库既有非致命提示）。实际官方 1.0.2 / envelope 2.5 无权限路径：真 xbot snapshot 非零退出，保留 `PERM_DENIED / not_delivered / safe`，未伪报操作成功。
+- 设置沿白纸透明行，实际隔离 serve、浅色 1280×900 DPR 2 截图由主 Agent 看图通过：`~/.xbot-build/ui-shots/bot-desktop-a11y/page-@2x.png`。已有设备初始化在会话建立前 GET 的一次 401 记入截图报告，最终真实授权状态成功读取；未扩修旧初始化时序。没有新 CSS/动效、未独立视觉评审。证据摘要在 `~/.xbot-build/bot-desktop-a11y/`。
+- 级别：自动化的 scripted 桌面端到端通过；真实 Mac App 正向链因系统无障碍 denied 未通过，Windows 无实机。不宣称双平台实机完成或用户日用通过；剩余验收留在 [dev](dev/bot-desktop-a11y.md)。Not run：全仓、真模型、无关旅程、Windows 实机、已授权 Mac App 正向操作、原生壳及完整主题/响应式矩阵、专项性能；不 push。
+
+
 ## 2026-11-01 MCP 2b 实例 CLI 与旧模型入口退役（已合入本地 main，所测端到端通过）
 
 - L档，在main16101e7e上沿已定CLI路线落具体合同29668efc；24窄结构PASS后 [ADR0047](adr/0047-mcp-cli-domain-entry.md) Accepted，替代0035的MCP模型门部分，0046进程owner/通知/Jobs/sourcelease保持。产品7c5d5766退Kernel旧注册/schema并接领域产物，16be6d78接argv/双HTTP/早分流/core只读/probe和移除Link adapter/aliases。未新增通用action bus、会话/任务账、权限UI或完整rename。
