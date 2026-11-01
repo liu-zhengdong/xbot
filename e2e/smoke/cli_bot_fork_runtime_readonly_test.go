@@ -4,6 +4,7 @@ package smoke
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io/fs"
 	"os"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"xbot/internal/memory"
 )
 
 func TestCLIBotForkRuntimeReadOnlyAndSchemas(t *testing.T) {
@@ -95,12 +98,30 @@ func TestCLIBotForkRuntimeReadOnlyAndSchemas(t *testing.T) {
 			t.Fatal("actual fork child did not save its complete role persona")
 		}
 		childMemory, err := os.ReadFile(filepath.Join(srv.Root, "bots", child, "memory", "memory.md"))
-		if err != nil || !bytes.Contains(childMemory, []byte(handoff)) || !bytes.Contains(childMemory, []byte("fork-source")) || !bytes.Contains(childMemory, []byte(source)) {
+		if err != nil || !bytes.Contains(childMemory, []byte(handoff)) || !bytes.Contains(childMemory, []byte("peer-message")) || !bytes.Contains(childMemory, []byte(source)) {
 			t.Fatal("actual child memory lost the real LLM handoff or source recognition fact")
 		}
-		sourceMemory, err := os.ReadFile(memoryPath)
-		if err != nil || !bytes.Contains(sourceMemory, []byte("fork-"+child)) {
-			t.Fatal("actual source memory lost its acknowledged child recognition fact")
+		// Keys/WrittenBy are original index metadata, not dated Markdown text.
+		for _, name := range []string{source, child} {
+			facts, err := memory.Open(srv.Root).Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, BotName: name, Tier: memory.TierProfile})
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, fact := range facts {
+				want := "fork-source"
+				peer := source
+				if name == source {
+					want = "fork-" + child
+					peer = child
+				}
+				if fact.Key == want && fact.WrittenBy == source && strings.Contains(fact.Text, peer) && strings.Contains(fact.Text, "peer-message") {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatal("actual indexed Bot facts lost their acknowledged recognition key/writer/body")
+			}
 		}
 	}
 	archiveCount := func() int {

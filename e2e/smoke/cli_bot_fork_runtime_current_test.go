@@ -63,8 +63,11 @@ func TestCLIBotForkRuntimeCurrentDuringArchive(t *testing.T) {
 			t.Fatal("archive input was not the frozen original current source history/facts/persona")
 		}
 	}
-	if strings.Contains(input, current) || strings.Contains(input, "FORK_CURRENT_POST_MODEL_RULE") {
-		t.Fatal("later source state appeared in already frozen archive input")
+	// Projected transcript legitimately contains this original Shell's future
+	// rename/rules commands. Only frozen prior metadata identifies source state.
+	prior, _, ok := strings.Cut(input, "</prior_summary>")
+	if !ok || !strings.Contains(prior, "BOTNAME="+old) || strings.Contains(prior, "BOTNAME="+current) || strings.Contains(prior, "FORK_CURRENT_POST_MODEL_RULE") {
+		t.Fatal("archive prior metadata did not freeze the original current source")
 	}
 	if err := os.WriteFile(filepath.Join(srv.Root, "work", old, "fork-route-ready"), []byte("ALLOW_REAL_SOURCE_MOVE\n"), 0600); err != nil {
 		t.Fatal(err)

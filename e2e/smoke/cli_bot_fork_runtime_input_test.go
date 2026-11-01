@@ -240,7 +240,7 @@ func TestCLIBotForkRuntimeRoleFileAndStdin(t *testing.T) {
 			t.Fatal("invalid effective role did not produce a real nonzero CLI exit")
 		}
 		var reply cliBotForkReply
-		if err := json.Unmarshal([]byte(commandOutput(result)), &reply); err != nil || reply.Created || reply.Stage != "validation" || reply.Error == "" || len(reply.Confirmed) != 0 || reply.UncertainMemory != nil {
+		if err := json.NewDecoder(strings.NewReader(commandOutput(result))).Decode(&reply); err != nil || reply.Created || reply.Stage != "validation" || reply.Error == "" || len(reply.Confirmed) != 0 || reply.UncertainMemory != nil {
 			t.Fatal("invalid role claimed a child or committed fork stages")
 		}
 		if _, err := os.Stat(filepath.Join(srv.Root, "bots", child)); !os.IsNotExist(err) {
