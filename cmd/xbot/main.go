@@ -60,10 +60,10 @@ Usage:
   xbot [--root DIR] chat [name] [--yes]
   xbot [--root DIR] send --whoami ID [--http ADDR] [--timeout DURATION] <bot> <text...|->
   xbot [--root DIR] message [--http ADDR] [--timeout DURATION] <bot> <text...|-> [--text TEXT]
-  xbot [--root DIR] pin <name>
-  xbot [--root DIR] unpin <name>
+  xbot [--root DIR] pin <name> [--self] [--json]
+  xbot [--root DIR] unpin <name> [--self] [--json]
   xbot [--root DIR] primary
-  xbot [--root DIR] primary set <name>
+  xbot [--root DIR] primary set <name> [--self] [--json]
   xbot [--root DIR] profile show (--self | <name>) [--json]
   xbot [--root DIR] profile set --self [--description TEXT] [--timezone ZONE] [--avatar-seed SEED] [--json]
   xbot [--root DIR] profile set <name> [--description TEXT] [--timezone ZONE] [--avatar-seed SEED] [--role chat|dev] [--background-max-time MIN] [--name NEW]
@@ -189,12 +189,12 @@ func run(argv []string) error {
 	}
 	if len(rest) > 0 {
 		switch rest[0] {
-		case "list", "info", "new", "delete":
+		case "list", "info", "new", "delete", "pin", "unpin", "primary":
 			command, parseErr := cliops.ParseBotRuntime(rest)
+			if parseErr != nil {
+				return parseErr
+			}
 			if !command.Offline {
-				if parseErr != nil {
-					return parseErr
-				}
 				return cmdBotRuntime(root, len(argv) > len(rest), rest)
 			}
 		}

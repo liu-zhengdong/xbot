@@ -21,7 +21,10 @@ Runtime commands (require this source's XBOT_ENDPOINT and XBOT_ROOT):
   info [NAME] --self [--steps N] [--json]
   new NAME --self (--persona TEXT | --persona-file FILE|-) [--json]
   delete NAME --self [--json]
---self selects the active source, not the target Bot. Only the primary source can create/delete.
+  pin NAME --self [--json]
+  unpin NAME --self [--json]
+  primary set NAME --self [--json]
+--self selects the active source, not the target Bot. Only the current primary source can create/delete/pin/unpin/set primary.
 --persona-file - reads stdin. Input and final JSON requests are limited to 1 MiB.
 Info steps above 10 are normalized on the server; zero or negative values omit steps.
 Results are complete bounded output or a local file reference for a large list/status.
@@ -30,6 +33,10 @@ Existing offline commands (files/configuration only):
   list
   new NAME [--persona TEXT] [--provider NAME] [--model NAME]
   delete NAME
+  pin NAME
+  unpin NAME
+  primary
+  primary set NAME
 Help works without a running instance. Runtime failures never fall back to offline files.
 `
 
@@ -107,6 +114,18 @@ func runBotRuntime(ctx context.Context, rawRoot string, rootExplicit bool, args 
 			return err
 		}
 		result, text, operationErr = reply, cliops.FormatBotDelete(reply), err
+	case "pin", "unpin":
+		reply, err := cliops.CallBotPin(ctx, endpoint, root, cliops.BotPin{Name: command.Name, Pinned: command.Action == "pin"})
+		if err != nil && reply.Error == "" && reply.Name == "" && !reply.Applied {
+			return err
+		}
+		result, text, operationErr = reply, cliops.FormatBotPin(reply), err
+	case "primary":
+		reply, err := cliops.CallBotPrimary(ctx, endpoint, root, command.Name)
+		if err != nil && reply.Error == "" && reply.Name == "" && !reply.Applied {
+			return err
+		}
+		result, text, operationErr = reply, cliops.FormatBotPrimary(reply), err
 	}
 	raw, err := json.Marshal(result)
 	if err != nil {

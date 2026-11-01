@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary具体合同待单次窄核，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary具体合同f609单次SHAPE PASS，正在实施，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -583,9 +583,9 @@ handlers.Skills = k.SkillHandlers() // 固定 Root、SkillsDir、动态 Redact �
 
 ccdc具体合同单次窄核后，原source平面list/info/new/delete、动态状态、primary管理、实际partial及原审批/四模型门退役已经提炼至 [API](../API.md#bot-运行时-cli)、[内核](../atlas/kernel.md#bot-发现与管理实例入口)、[ADR0052](../adr/0052-bot-runtime-cli.md)。首链d7、完整519增量与作者/独立各自精确phase及当前验收/合入级别只记 [MILESTONES](../MILESTONES.md)，不留完整合同重复副本。原pin/primary/fork/persona/rolebudget、peers消息/群及以下其余路线未借本刀迁移；主人cli-message-bot/SSE/send设计不在本刀内。
 
-## 批 pin/primary：置顶与主身份转交（具体合同待窄核）
+## 批 pin/primary：置顶与主身份转交（具体合同PASS，实施中）
 
-L档，基线main ac519c8d；只有本节与新 [ADR0053](../adr/0053-bot-pin-primary-runtime-cli.md) 是下一具体切片，0053 glob空后建Proposed。上一Bot四操作已真实合main；不重该族五phase/routine6/skills/profile/MCP。独立最窄pin红b860b672dd2070c854f247d93ba3b6fdaa663f59在mainac/validation4ea58a066dc36293074f4f3783af20f0be89f71b：实际root Primary+APIpeer/source非空owner交集、真Native Shell BIN pin Peer --self FAIL.68s/package2.050s旧single-arg usage，源diff0；封存不重，不给合法空Links加前提。
+L档，基线main ac519c8d；本节具体合同f609已由reviewer24单次CONCRETE SHAPE PASS、无必要结构阻断，[ADR0053](../adr/0053-bot-pin-primary-runtime-cli.md)已Accepted；按同合同先交首compiled实际链候选，再只实际边界验证。上一Bot四操作已真实合main；不重该族五phase/routine6/skills/profile/MCP。独立最窄pin红b860b672dd2070c854f247d93ba3b6fdaa663f59在mainac/validation4ea58a066dc36293074f4f3783af20f0be89f71b：实际root Primary+APIpeer/source非空owner交集、真Native Shell BIN pin Peer --self FAIL.68s/package2.050s旧single-arg usage，源diff0；封存不重，不给合法空Links加前提。
 
 ### Caller、旧CLI与本刀范围
 

@@ -116,6 +116,8 @@ func (k *Kernel) BotHandlers() *cliops.BotHandlers {
 		})
 	}
 	return &cliops.BotHandlers{
+		Pin:     k.pinBotRuntime,
+		Primary: k.primaryBotRuntime,
 		List: func(ctx context.Context) (cliops.BotListReply, error) {
 			release := k.holdOperations()
 			defer release()

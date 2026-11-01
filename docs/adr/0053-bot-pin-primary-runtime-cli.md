@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0053 原 source 的置顶与主 Bot 转交经 CLI
@@ -10,7 +10,7 @@ date: 2026-11-02
 
 Bot四操作已合main ac519c8d。下一刀只迁原pin_bot/set_primary；persona、fork、消息群、role/budget不是本刀。实际离线CLI是pin NAME/unpin NAME各恰一参数、primary零参数ensureSeed并打印、primary set NAME恰set+name。独立最窄红b860b672在mainac/validation4ea58a06实际source Shell pin Peer --self只得旧usage（.68s/package2.050s），封存不重。
 
-调用方明确为 `"$XBOT_BIN" pin NAME --self --json`、`unpin NAME --self --json`、`primary set NAME --self --json`。self定位原source，不是target；不新增runtime primary读口或通用Bot patch。离线help，未选self的原有效CLI形状不变。完整caller/DTO/阶段与怎样算对见 [母dev具体合同](../dev/cli-platform-entry.md#批-pinprimary置顶与主身份转交具体合同待窄核)。
+调用方明确为 `"$XBOT_BIN" pin NAME --self --json`、`unpin NAME --self --json`、`primary set NAME --self --json`。self定位原source，不是target；不新增runtime primary读口或通用Bot patch。离线help，未选self的原有效CLI形状不变。完整caller/DTO/阶段与怎样算对见 [母dev具体合同](../dev/cli-platform-entry.md#批-pinprimary置顶与主身份转交具体合同pass实施中)。
 
 ## 两种结构与选择
 
