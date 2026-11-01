@@ -145,11 +145,11 @@ Agent → Shell → xbot CLI ─┐
 
 **变更与检查**：预期只改 `cmd/xbot/{main,cmd_bot}.go`、`internal/cliops/profile.go`、`internal/kernel/{operations,profile}.go`、`internal/bot/{bot,profile}.go`、`internal/web/profile_api.go` 与自有针对性单测；沿既有前端代码通知，不重写 UI。先跑自有旧句柄回滚/组合非法/并发读写红回归，审计 PASS 后实现；通过后仅跑受影响 profile/头像/模板/CLI/web 组合检查与必要 race，独立真入口由验证方跑，不全仓/三遍/真实模型。ADR 0043 的入口/生命周期决定继续有效，本刀不改变它或提前移出工具族；改名、上传 runtime 协议、research/runner、MCP 均不纳入。
 
-## 批 2a：MCP core 与进程资源 owner（2026-11-01，结构草图待审）
+## 批 2a：MCP core 与进程资源 owner（2026-11-01，整体结构 PASS，实施中）
 
 **切片与对照**：2a 只做 core/真实会话 owner、通知 reconcile、原 Jobs 共享和源调用责任；短暂保留只借用的旧模型 adapter 供观察。2b 真 CLI 通过后同刀退 MCP adapter/装配/schema，不提前写 CLI 大接口或文件产物协议。沿已完成 164 metadata/44 相关全文与其余主题筛查，只查新冲突：ADR 0021 消息/环境、0035 剩余工具门、0043 source endpoint、0044 sender 继续有效；新所有权决定见 ADR 0045。不重新做全候选审查，不改旧 Accepted 正文。
 
-**独立机械子步（已单独放行）**：先搬现 client/stdio/http/diagnostics/config 与有效协议测试到 internal/mcp，link 仅留薄模型/事件调用适配；保持现凭据/provider注入、连接寿命、HTTP取消和15s契约，不接进程Manager/共享Jobs/rename-delete。每提交可编译，只跑搬迁相关一次，不合 main、不宣称2a完成；后续HTTP写缝与runtime接线仍待整体具体结构PASS。若无法纯机械拆开，不硬造兼容框架。
+**独立机械子步（已单独放行）**：先搬现 client/stdio/http/diagnostics/config 与有效协议测试到 internal/mcp，link 仅留薄模型/事件调用适配；保持现凭据/provider注入、连接寿命、HTTP取消和15s契约，不接进程Manager/共享Jobs/rename-delete。每提交可编译，只跑搬迁相关一次，不合 main、不宣称2a完成；后续HTTP写缝与runtime接线已获整体具体结构PASS，继续按下述形状实施。若无法纯机械拆开，不硬造兼容框架。
 
 **调用方与两种结构**：runServe/cmdChat 各创建一个 `mcp.Manager`，同 Bot/server 唯一真实 Session；web 缓存 K、每次 Pass fresh K 与旧 adapter 都借同一 Bot 资源。A 缓存整颗长期 K 会改变 fresh Provider/role/budget/recovery 与 web gate/chat 装配，淘汰。B（选用）复用原 web kernels/gate 映射提升 `entry{Resources, Kernel, Gate}`，只稳定 Jobs/MCP/通知落点；chat 直接持一份 Resources，不起完整 web.Server。撤回母稿 drain/JobOwners 及上一版 Bot 全局 endpoint：无旧 K/JobID 路由表、持久 UUID/alias、第二任务账本；Pass 仍 fresh 构造。
 
@@ -265,7 +265,7 @@ func (s *Server) deleteRuntimeBot(ctx context.Context, name string) error {
 ```
 Jobs 准入至少区分 open/临时 paused/宿主永久 closed，仅表达资源寿命，不是 active/drain 任务状态；Resume 仅在 shutdown实际完成、host仍活且原对象仍存在时执行。service ctx结束是不可恢复上界，不因失败删除把宿主已关资源重新打开。全段无 primary/map/route→join，既有 rename 的 Jobs→primary 锁序不被反转。
 
-**最小红与验证**：先自有 source call lease fixture，K1 两次 profile 协议调用中间 gate、同表空 K2 退休、requested cancel 未真返回、完整 cleanup 后端口关；该 unit 不冒充真实 CLI。core 搬并复用 stdio/HTTP/diagnostics 断言；补同 Bot 两 K/Pass 单 initialize、另 Bot 独立、热新增 note、override/GET 不重连、换配置 call 计数1、HTTP call ctx/原 ID cancel。共享 Jobs 两源动态 secrets/Forms、不串回调、跨 K 原 ID cancel、单 OnDone、old replyGen/附件边界；保既有 avatar/name/代理门有效断言。独立 ownership/通知/慢 call/跨 K cancel 新文件归验证方，实现方不改。按影响最小 unit/race+入口一次，不全仓/三遍/真模型；仅已单独放行的纯机械 core 子步可先提交；HTTP取消修正与runtime接线均等整体具体结构PASS。
+**最小红与验证**：先自有 source call lease fixture，K1 两次 profile 协议调用中间 gate、同表空 K2 退休、requested cancel 未真返回、完整 cleanup 后端口关；该 unit 不冒充真实 CLI。core 搬并复用 stdio/HTTP/diagnostics 断言；补同 Bot 两 K/Pass 单 initialize、另 Bot 独立、热新增 note、override/GET 不重连、换配置 call 计数1、HTTP call ctx/原 ID cancel。共享 Jobs 两源动态 secrets/Forms、不串回调、跨 K 原 ID cancel、单 OnDone、old replyGen/附件边界；保既有 avatar/name/代理门有效断言。独立 ownership/通知/慢 call/跨 K cancel 新文件归验证方，实现方不改。按影响最小 unit/race+入口一次，不全仓/三遍/真模型；仅已单独放行的纯机械 core 子步可先提交；整体结构已经PASS，现正式继续HTTP取消修正与runtime接线；产品完成仍需实际绿证据。
 
 ## 对照回顾
 
