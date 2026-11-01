@@ -177,7 +177,9 @@ func (k *Kernel) bindCurrentPaths(item link.Link) {
 	if coding, ok := item.(*code.Link); ok {
 		coding.UseCurrentIO(k.withCurrentIO)
 	}
-	if timer, ok := item.(*link.Timer); ok && timer.WithDirectoryIO == nil {
+	// MountOrgans may have bound this object using its assembly-only Kernel.
+	// Rebind before runtime publication so the actual source owns its route.
+	if timer, ok := item.(*link.Timer); ok {
 		timer.WithDirectoryIO = func(fn func(string) error) error {
 			return k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { return fn(b.RoutineDir()) })
 		}
