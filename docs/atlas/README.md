@@ -30,7 +30,7 @@ Bot 是全能的。授权给它的机器，它能做用户在终端里能做的�
 | 内核要薄 | 只留 Link、Event、收件箱、执行器任务几个抽象，约束由 harness 强制执行 | 为什么新功能先找已有抽象，为什么规则放在工具和内核里而不是提示里 | [ideas/thin-kernel.md](ideas/thin-kernel.md) |
 | 评测把关，不对着题调 | 行为由评测判定；留出套件只在验收时跑；每条规则都要是通用原则 | 怎么改提示才算改好了，为什么普通套件全过还不够 | [ideas/eval-gated.md](ideas/eval-gated.md) |
 | 收敛与主动补齐 | 主动做目标显然需要的配套，同时有预算、有边界、做不到就停 | Bot 什么时候该多走一步，什么时候该停下 | [ideas/convergence-and-ownership.md](ideas/convergence-and-ownership.md) |
-| 分级合并门槛 | 测试全绿才合并，修复必带回归测试，大改再加复测和独立评审 | 一个改动要过哪些关才能进 main | [ideas/tiered-merge-gates.md](ideas/tiered-merge-gates.md) |
+| 分级合并门槛 | 相关检查通过才合并，修复有回归证据，验证按风险选择并复用结果 | 一个改动要过哪些关才能进 main | [ideas/tiered-merge-gates.md](ideas/tiered-merge-gates.md) |
 | 自我修改要可控 | Bot 改自己时，每一步都过评测门、可回滚、留记录 | 自进化可以走多远、哪些线不能碰 | [ideas/self-modification.md](ideas/self-modification.md) |
 
 ## 已有旅程
@@ -100,6 +100,7 @@ flowchart LR
 | 已做好的旅程 | [docs/guard/](../guard/)（[长程运行](../guard/长程运行.md)、[六条基本旅程](../guard/六条基本旅程.md)、[界面](../guard/界面.md)） | 用户、编码 Agent | 活的，步骤和「怎样算对」只有用户能改；冒烟用例和级别随测试同步 | Agent 同步，毕业要用户确认 |
 | Agent 入口 | [AGENTS.md](../../AGENTS.md) | 编码 Agent | 活的 | 用户 |
 | 里程碑与进度 | [MILESTONES.md](../MILESTONES.md) | 用户、开发者 | 活的，天天变 | Bot 复刻 |
+| 测试范围与资源预算 | [TESTING.md](../TESTING.md) | 用户、编码 Agent | 活的，默认按影响一次，通过即停 | Agent 按用户约定维护 |
 | 网页 HTTP 接口 | [API.md](../API.md) | 界面开发者 | 活的 | 开发者 |
 | 候选清单 | 用户的 Obsidian：`正在干什么/06-XBot/XBot 候选清单.md`（不在仓库） | 用户、XBot 主管 | 活的，新想法先进这里，不当场开工；记了不用提交 | 用户、XBot 主管（周调研、每晚复盘的新想法也记这里） |
 | 调研笔记 | [docs/research/](../research/) | 开发者 | 写完即冻结，结论进候选清单或里程碑 | Bot 复刻 |
@@ -117,6 +118,6 @@ flowchart LR
 - 链路不传大块数据：只传摘要或流式传输；每次节点调用上限 1 MiB，处处设大小上限。
 - 交互回复 p95 < 3 秒；本机进程间通信（IPC）额外开销 p95 < 5 毫秒；后台导致的变慢不超过 10%。
 - 界面：60fps；动画只动 transform/opacity，普通过渡不超过 200 毫秒，弹性动画最长 300 毫秒（弹出用 `--dur-pop` 220 毫秒，气泡回弹 300 毫秒）；遵守 prefers-reduced-motion；轮询不能引起重排、卡顿或抢焦点。
-- 每个里程碑验收都要报性能数字。
+- 涉及性能目标或性能行为的改动才测相关指标；验证范围和复跑条件统一见 [测试约定](../TESTING.md)。
 
 ADR 一览：[0001 多个后台](../adr/0001-multiple-backgrounds.md)、[0002 前台写操作自动排队](../adr/0002-foreground-writes-auto-queue.md)、[0003 一张权限表](../adr/0003-one-permission-table.md)、[0004 去掉主动性三档](../adr/0004-drop-proactivity-levels.md)、[0005 保险箱交给独立系统用户的守护进程](../adr/0005-vault-daemon-user.md)、[0006 记忆只留两层](../adr/0006-two-memory-scopes.md)、[0007 本地优先的桌面端](../adr/0007-local-first-desktop-app.md)、[0008 记忆 v2：默认写日志，常驻快照加差异](../adr/0008-memory-v2-dated-log-first.md)、[0009 每个记忆范围是一个文件夹，用普通文件工具编辑](../adr/0009-memory-as-folder.md)、[0010 跨设备靠开源信箱中继传 Bot 消息，不同步数据](../adr/0010-gateway-mailbox-relay.md)、[0011 官方网关跑在 Cloudflare Workers 上，客户端默认连它](../adr/0011-official-gateway-on-workers.md)、[0012 退役「节点」，多台电脑只靠网关配对](../adr/0012-retire-node.md)、[0013 现阶段先把功能调通调顺，安全只留接口](../adr/0013-features-before-security.md)、[0014 后台不做续段，也不再按步数限制](../adr/0014-no-background-segments.md)、[0015 上下文分两条线：软目标和硬上限，都从模型推出来](../adr/0015-soft-target-hard-ceiling.md)、[0016 前台只理解和派活，干活交给预制类型的子代理（已被 0028 取代）](../adr/0016-foreground-dispatches-typed-subagents.md)、[0017 用户的话直接插进正在跑的一轮，不进收件箱](../adr/0017-owner-words-go-straight-into-the-turn.md)、[0018 确认卡不挡用户说话：插话时挂起，决定稍后送达](../adr/0018-cards-never-block-the-owner.md)、[0019 默认不弹权限卡，用户自己控制](../adr/0019-no-permission-cards-by-default.md)、[0021 环境流：一切会变的状态只追加差异，不改前缀](../adr/0021-env-stream.md)、[0028 无前后台之分：主 Agent 全工具，长活直接 subAgent](../adr/0028-no-foreground-background-split.md)。

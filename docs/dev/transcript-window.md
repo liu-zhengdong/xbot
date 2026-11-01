@@ -32,7 +32,7 @@ HTTP：默认4460行历史响应显著小于全本，翻页连续、around包含
 **冒烟用例**：`e2e/smoke/transcript_window_test.go` 的 `TestTranscriptWindowJourney`（真 serve + HTTP + Chrome）；`internal/web/transcript_window_browser_test.go`（独立行为断言）。
 
 Chrome：真 app.js 默认尾窗→更早（锚点保留）→搜索命中跳转→前后翻→返回最新→轮询/切Bot/失败文案；行为测试不锁像素。
-全量：gofmt、vet、go test ./...、改动包 count=3、atlas audit。性能记录响应字节和 HTTP p95，不冒充生产或模型延迟。
+后续按 [测试约定](../TESTING.md) 选择相关检查一次，复用已有结果。性能记录响应字节和 HTTP p95，不冒充生产或模型延迟。
 
 ## 验收状态
 

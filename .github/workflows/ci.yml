@@ -2,15 +2,29 @@ name: ci
 
 on:
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "LESSONS.md"
+      - "README.md"
+      - "LICENSE"
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "LESSONS.md"
+      - "README.md"
+      - "LICENSE"
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   linux:

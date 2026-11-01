@@ -22,7 +22,7 @@ UI：沿用任务面板例程行；增加技能编辑入口，展示有序引用
 | 其它候选：记忆/语音/webhooks | 无数据或行为依赖；保持独立 |
 
 ## 验证
-独立方补冒烟；实现侧测试 Timer→Inbox 序列化→Handle→scripted provider 的真实装配 seam，顺序、缺失、停用、技能更新重读、空数组、下轮不泄漏、技能库字节不变；工具/API/CLI 省略保留与清空。浏览器验证读写、失败重试、窄屏和焦点。全量 test 一遍、改动包 count=3、vet、gofmt、atlas_audit；性能记录本地装配耗时。真入口冒烟用 fake/scripted，不调用真模型。
+独立方补冒烟；实现侧测试 Timer→Inbox 序列化→Handle→scripted provider 的真实装配 seam，顺序、缺失、停用、技能更新重读、空数组、下轮不泄漏、技能库字节不变；工具/API/CLI 省略保留与清空。浏览器验证读写、失败重试、窄屏和焦点。按 [测试约定](../TESTING.md) 选择相关检查一次；atlas_audit；性能记录本地装配耗时。真入口冒烟用 fake/scripted，不调用真模型。
 
 **冒烟用例**：`e2e/smoke/routine_skills_test.go` 的 `TestRoutineSkillsCLIAndWake`；后端级别为 CLI→serve→scripted 模型端到端通过。UI 行为用例为 `internal/web/routine_skills_browser_test.go` 的 `TestRoutineSkillsBrowser`，使用生产静态资源与受控 fetch，验证有序保存、清空、添加、失败重试、取消、轮询焦点与原开关；本地 Chrome 与例程 API 定向三遍通过，截图已生成。UI 未合 main，尚不等于真实 serve 全链路或日用验收。
 
