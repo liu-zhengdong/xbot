@@ -5558,9 +5558,10 @@
         const selection = state.sel;
         subagentsView = window.XBotSubagents.create({
           bot:selection.id, api, el, icon, appendMarkdown, taskTitle, taskTypeLabel, taskProgress,
-          taskAvatar, taskValue, taskSelected, sameValue:sameTranscriptValue, toolSummary, visibleError, copyText,
+          taskAvatar, taskValue, taskSelected, sameValue:sameTranscriptValue, visibleError,
           current:() => state.sel === selection && !state.peer,
           backParent:() => selectWorkspaceTab("chat"),
+          traceAdapter:{project:traceEvents, sync:syncTraceDetail},
         });
         body.replaceChildren(subagentsView.root);
       }
@@ -5655,14 +5656,15 @@
     const compact = text => String(text || "").replace(/\s+/g, " ").trim();
     const titleOf = text => compact(text).slice(0, 64);
     for (const m of messages) {
-      const text = String(m.content || ""), context = !!m.internal || m.role === "system" || !!m.kind || /^<(?:environment_|memory(?:>|\s))/.test(text.trim());
+      const text = String(m.content || ""), context = !!m.internal || m.role === "system" || (!!m.kind && !["message_received", "message"].includes(m.kind)) || /^<(?:environment_|memory(?:>|\s))/.test(text.trim());
       if (m.role === "user" && !context) round++;
       if (m.role === "assistant") invocation++;
       if (m.role === "tool") continue;
       const type = context ? "context" : m.role === "assistant" ? "model" : "input";
       const unwrapped = unwrap(text);
       const readable = context ? unwrapped.text.replace(/<\/?(?:environment_[\w-]+|memory)\b[^>]*>/g, "").trim() : unwrapped.text;
-      const title = titleOf(readable) || (m.kind === "fork" ? "分支开始" : m.kind === "fork_end" ? "分支结束" : type === "model" ? "模型调用" : type === "context" ? "上下文记录" : "输入记录");
+      const marker = {message_consumed:"消息已接入", message_dropped:"待发消息已取消", turn_end:"本轮结束"}[m.kind];
+      const title = titleOf(readable) || marker || (m.kind === "fork" ? "分支开始" : m.kind === "fork_end" ? "分支结束" : type === "model" ? "模型调用" : type === "context" ? "上下文记录" : "输入记录");
       const event = { key: m.seq + ":message", seq: m.seq, time: m.time, type, title, text,
         summary: compact(readable).slice(title.length).trim() || (m.thinking ? "含思考" : (m.tool_calls || []).length ? (m.tool_calls.length + " 个工具调用") : ""),
         message: m, round, invocation, results: [], thinking: (m.thinking || "").trim(),
@@ -5788,6 +5790,7 @@
   }
 
   function closeTraceDetail(root) {
+    if (root.closeTraceDetail) { root.closeTraceDetail(); return; }
     const key = state.traceUI.selected;
     state.traceUI.selected = null; syncTrace(root);
     root.rowNodes.get(key)?.focus({preventScroll:true});
@@ -5900,13 +5903,14 @@
   function traceRaw(event) {
     // Only the already-public HTTP DTO is available here. Never read provider
     // transport payloads, vendor_raw or reasoning signatures.
-    if (event.call) return { seq:event.seq, time:event.time, tool_call:event.call, results:event.results };
+    if (event.call) return { seq:event.seq, time:event.time, tool_call:event.call, results:event.results.map(r => r.publicEntry || r) };
     if (event.hosted) return { seq:event.seq, time:event.time, hosted:event.hosted, output:event.output };
-    return event.message;
+    return event.message.publicEntry || event.message;
   }
 
   function syncTraceDetail(root) {
-    const ui = state.traceUI, detail = root.traceNodes.detail, event = root.events.find(e => e.key === ui.selected);
+    const ui = root.traceUI || state.traceUI, thinkingOpen = root.traceThink || state.traceThink;
+    const detail = root.traceNodes.detail, event = root.events.find(e => e.key === ui.selected);
     detail.hidden = !event;
     if (!event) return;
     const raw = traceRaw(event), signature = JSON.stringify([event.key, raw, ui.tab]);
@@ -5936,6 +5940,14 @@
     if (ui.tab === "raw") section("公开记录 JSON", JSON.stringify(raw, null, 2), true);
     else if (ui.tab === "source") {
       const fields = [["记录位置", "transcript #" + event.seq], ["角色", event.message.role], ["追加时间", Number.isNaN(+date) ? "未记录" : date.toLocaleString()]];
+      if (root.recordSource) {
+        fields.push(["所属 Bot", root.recordSource.bot], ["子代理", root.recordSource.id]);
+        if (event.message.sender) fields.push(["发送者", event.message.sender]);
+        if (event.message.turn_seq) fields.push(["本轮起点", "#" + event.message.turn_seq]);
+        if (event.message.input_seq) fields.push(["关联输入", "#" + event.message.input_seq]);
+        if (event.message.delivery) fields.push(["投递方式", event.message.delivery]);
+        if (event.message.result_path) fields.push(["结果文件", event.message.result_path]);
+      }
       if (event.message.branch) fields.push(["分支", event.message.branch]);
       if (event.message.reply_to) fields.push(["引用记录", "#" + event.message.reply_to]);
       if (event.call?.id || event.message.tool_call_id || event.hosted?.id) fields.push(["调用 ID", event.call?.id || event.message.tool_call_id || event.hosted.id]);
@@ -5964,9 +5976,9 @@
         if (event.message.audios?.length) section("语音附件", event.message.audios.join("\n"), true);
         if (!event.text && !event.thinking) content.append(el("p", "hint", (event.message.tool_calls || []).length ? "工具调用列在同序号的独立事件中。" : "这条记录没有文本正文"));
         if (event.thinking) {
-          const thinking = el("details", "trace-think"); thinking.open = !!state.traceThink[event.key];
+          const thinking = el("details", "trace-think"); thinking.open = !!thinkingOpen[event.key];
           thinking.append(el("summary", "text-btn", "思考"), el("pre", "trace-source-text", event.thinking));
-          thinking.addEventListener("toggle", () => { state.traceThink[event.key] = thinking.open; }); content.append(thinking);
+          thinking.addEventListener("toggle", () => { thinkingOpen[event.key] = thinking.open; }); content.append(thinking);
         }
       }
     }

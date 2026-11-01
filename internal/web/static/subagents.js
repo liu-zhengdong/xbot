@@ -22,41 +22,12 @@
     });
   }
 
-  // This compact reader projection is also the fallback until the shared trace
-  // explorer adapter is supplied. Pair only recorded call IDs, never time/order.
-  function recordEvents(messages, toolSummary) {
-    const results = new Map(), linked = new Set(), events = [];
-    for (const m of messages) if (m.role === "tool" && m.tool_call_id) {
-      if (!results.has(m.tool_call_id)) results.set(m.tool_call_id, []);
-      results.get(m.tool_call_id).push(m);
-    }
-    for (const m of messages) {
-      if (m.role === "tool") continue;
-      const context = (!!m.kind && !["message_received", "message"].includes(m.kind)) || m.role === "system" || m.internal || /^<(?:environment_|memory[>\s])/.test(m.content.trim());
-      const type = context ? "context" : m.role === "assistant" ? "model" : "input";
-      const sender = m.sender === "owner" ? "你" : m.sender?.startsWith("bot:") ? m.sender.slice(4) : m.sender;
-      const title = ({message_consumed:"消息已接入",message_dropped:"待发消息已取消",turn_end:"本轮结束",message:"发给主 Bot 的消息"})[m.kind] || (type === "context" ? "上下文记录" : type === "model" ? "子代理" : sender || "主 Bot");
-      if (m.content || context) events.push({key:m.seq + ":message", seq:m.seq, time:m.time, type, title, text:m.content, message:m, results:[], truncated:!!m.truncated});
-      for (const [i, call] of m.tool_calls.entries()) {
-        const info = toolSummary(call), receipts = results.get(call.id) || [];
-        receipts.forEach(r => linked.add(r));
-        const output = receipts.map(r => r.content).join("\n\n");
-        events.push({key:m.seq + ":call:" + (call.id || i) + ":" + i, seq:m.seq, time:m.time, type:"tool", title:info.args.description || "工具调用", name:info.name, args:info.args, call, message:m, text:"", output, results:receipts, hasResult:!!receipts.length, error:/^(?:error[:：]|failed\b)|\[exit code: [1-9]\d*\]/im.test(output), truncated:!!m.truncated || receipts.some(r => r.truncated)});
-      }
-      for (const [i, part] of m.parts.entries()) if (part.hosted) {
-        const h = part.hosted;
-        events.push({key:m.seq + ":hosted:" + (h.id || i), seq:m.seq, time:m.time, type:"tool", title:h.name === "image_generation" ? "图片生成" : "厂商工具记录", name:h.name, hosted:h, message:m, output:part.text || "", text:"", args:h.query ? {query:h.query} : {}, results:[], hasResult:["completed","failed"].includes(h.status), error:h.status === "failed", truncated:!!m.truncated});
-      }
-    }
-    for (const m of messages) if (m.role === "tool" && !linked.has(m)) events.push({key:m.seq + ":result", seq:m.seq, time:m.time, type:"tool", title:"工具结果", message:m, output:m.content, text:"", results:[], hasResult:true, orphan:true, truncated:!!m.truncated});
-    return events.sort((a,b) => a.seq - b.seq);
-  }
-
   function create(options) {
-    const {bot, api, el, icon, appendMarkdown, taskTitle, taskTypeLabel, taskProgress, taskAvatar, taskValue, taskSelected, sameValue, toolSummary, backParent, current, visibleError, copyText} = options;
+    const {bot, api, el, icon, appendMarkdown, taskTitle, taskTypeLabel, taskProgress, taskAvatar, taskValue, taskSelected, sameValue, backParent, current, visibleError} = options;
     const root = el("div", "subagents-view"), overview = el("div", "sa-overview"), childHost = el("div", "sa-child-host");
     const rows = new Map(), groups = new Map();
-    let tasks = [], child = null, disposed = false, adapter = options.traceAdapter;
+    let tasks = [], child = null, disposed = false;
+    const adapter = options.traceAdapter;
     root.append(overview, childHost);
     const valid = c => !disposed && current() && child === c;
     const route = id => "/api/bots/" + encodeURIComponent(bot) + "/agents/" + encodeURIComponent(id);
@@ -84,6 +55,8 @@
       n.stop.setAttribute("aria-label", n.stopLabel.textContent);
       n.form.hidden = t.continuable !== true;
       n.readonly.hidden = t.continuable === true;
+      n.delivery.hidden = !ACTIVE.includes(t.status);
+      n.target.hidden = ACTIVE.includes(t.status);
       n.field.placeholder = ACTIVE.includes(t.status) ? "给这个子代理补充要求…" : "继续和这个子代理说…";
       n.send.disabled = c.sending || c.stopping || !n.field.value.trim();
       write(n.send, c.sending ? "发送中…" : "发送");
@@ -167,14 +140,14 @@
       field.setAttribute("aria-label", "给当前子代理发消息"); field.value = storage.read(draftKey(id)); field.rows = 2; field.maxLength = 16384;
       field.oninput = () => { storage.write(draftKey(id), field.value); syncHeader(c); };
       field.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(c); } };
-      const bottom = el("div", "sa-composer-bottom"), delivery = el("select", "sa-delivery"); delivery.setAttribute("aria-label", "发送方式");
+      const bottom = el("div", "sa-composer-bottom"), delivery = el("select", "sa-delivery"), target = el("span", "sa-caption", "发给这个子代理"); delivery.setAttribute("aria-label", "发送方式");
       for (const [value, text] of [["steer","补充当前任务"],["queue","本轮结束后发送"]]) { const item = el("option", "", text); item.value = value; delivery.append(item); }
-      const sendButton = el("button", "primary", "发送"); sendButton.type = "submit"; sendButton.setAttribute("aria-label", "发送给这个子代理"); bottom.append(delivery, sendButton); form.append(field, bottom); form.onsubmit = e => { e.preventDefault(); send(c); };
+      const sendButton = el("button", "primary", "发送"); sendButton.type = "submit"; sendButton.setAttribute("aria-label", "发送给这个子代理"); bottom.append(delivery, target, sendButton); form.append(field, bottom); form.onsubmit = e => { e.preventDefault(); send(c); };
       const readonly = el("p", "hint", "这是旧的只读记录，无法继续发消息。"); dock.append(pending, form, readonly);
-      const detail = el("aside", "sa-detail"); detail.hidden = true; detail.setAttribute("aria-label", "记录详情");
+      const detail = el("aside", "sa-detail trace-detail"); detail.hidden = true; detail.setAttribute("aria-label", "记录详情");
       column.append(toolbar, errorBox, records, dock); main.append(column, detail); view.append(head, main); childHost.replaceChildren(view);
-      c.nodes = {view, head, title, type, status, step, stop, stopLabel, main, search, records, older, list, empty, range, form, field, delivery, send:sendButton, pending, readonly, detail, error:errorBox, errorText, resultRow, result, identityState};
-      c.traceUI = {selected:null, tab:"summary"}; c.traceThink = {}; c.traceNodes = {detail}; c.closeTraceDetail = () => selectRecord(c, null);
+      c.nodes = {view, head, title, type, status, step, stop, stopLabel, main, search, records, older, list, empty, range, form, field, delivery, target, send:sendButton, pending, readonly, detail, error:errorBox, errorText, resultRow, result, identityState};
+      c.traceUI = {selected:null, tab:"summary"}; c.traceThink = {}; c.traceNodes = {detail}; c.closeTraceDetail = () => selectRecord(c, null); c.recordSource = {bot,id};
       syncHeader(c); load(c);
     }
     async function load(c, direction = "refresh") {
@@ -206,8 +179,12 @@
         const anchorTop = anchor?.getBoundingClientRect().top;
         if (changed) {
           c.messages = messagesOf(sorted);
-          const projected = adapter?.project ? adapter.project(c.messages) : recordEvents(c.messages, toolSummary);
-          c.events = projected.map(e => ({...e, key:c.id + ":" + e.key}));
+          const selected = c.events.find(e => e.key === c.selected);
+          c.events = adapter.project(c.messages).filter(e => e.type !== "model" || e.text || e.thinking).map(e => ({...e, key:c.id + ":" + e.key}));
+          if (selected?.orphan) {
+            const call = c.events.find(e => e.call?.id === selected.message.tool_call_id);
+            if (call) c.selected = c.traceUI.selected = call.key;
+          }
           syncRecords(c); syncPending(c);
         } else syncRecordsMeta(c);
         if (direction === "before") scroll.scrollTop = anchor ? top + anchor.getBoundingClientRect().top - anchorTop : top + scroll.scrollHeight - height;
@@ -235,7 +212,7 @@
     function selectRecord(c, key) {
       if (!valid(c)) return;
       c.traceUI.selected = key; c.selected = key; syncRecords(c);
-      if (key && matchMedia("(max-width: 767px)").matches) c.nodes.detail.querySelector("button")?.focus({preventScroll:true});
+      if (key && matchMedia("(max-width: 767px)").matches) c.nodes.detail.querySelector('[aria-label="关闭详情"]')?.focus({preventScroll:true});
       if (!key) c.rowNodes.get(c.lastSelected)?.focus({preventScroll:true}); else c.lastSelected = key;
     }
     function syncRecords(c) {
@@ -247,14 +224,19 @@
           row = el(prose ? "article" : "button", "sa-record sa-record-" + event.type); row.dataset.eventKey = event.key;
           if (prose) { row.tabIndex = 0; row.setAttribute("role", "button"); } else row.type = "button";
           const heading = el("div", "sa-record-heading"), name = el("b"), time = el("time"), content = el("div", prose ? "prose sa-record-text" : "sa-record-summary"), preview = el("span", "sa-truncated", "公开预览已截断");
-          heading.append(icon(({input:"message-circle", model:"brain", context:"layers", tool:"terminal"})[event.type]), name, time, icon("chevron")); row.append(heading, content, preview);
-          row.nodes = {name, time, content, preview}; row.onclick = () => { if (!taskSelected(row)) selectRecord(c, event.key); };
+          const badge = el("span", "sa-record-badge"); badge.dataset.type = event.type;
+          badge.append(icon(({input:"message-circle", model:"brain", context:"layers", tool:"terminal"})[event.type]));
+          if (!prose) { badge.classList.add("trace-kind-badge"); badge.append(el("span", "", event.type === "context" ? "上下文" : "工具")); }
+          heading.append(badge, name, time, icon("chevron")); row.append(heading, content, preview);
+          row.nodes = {name, time, content, preview}; row.onclick = e => { if (prose && e.target.closest("a,button")) return; if (!taskSelected(row)) selectRecord(c, event.key); };
           row.onkeydown = e => { if ((e.key === "Enter" || e.key === " ") && e.target === row) { e.preventDefault(); selectRecord(c, event.key); } };
           c.rowNodes.set(event.key, row);
         }
         if (row !== cursor) c.nodes.list.insertBefore(row, cursor); cursor = row.nextSibling;
         row.hidden = !matches(c, event); row.classList.toggle("selected", event.key === c.selected); row.classList.toggle("failed", !!event.error);
-        write(row.nodes.name, event.title); write(row.nodes.time, event.time ? new Date(event.time).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) : "");
+        const sender = event.message.sender;
+        const title = event.type === "model" ? taskTypeLabel(c.task) + "子代理" : event.type === "input" ? sender === "owner" ? "你" : sender?.startsWith("bot:") ? sender.slice(4) : sender || "主 Bot" : event.type === "tool" && event.title === event.name ? "工具调用" : event.title;
+        write(row.nodes.name, title); write(row.nodes.time, event.time ? new Date(event.time).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) : "");
         const text = event.type === "tool" ? (event.orphan ? "调用不在已加载范围" : event.error ? "执行失败" : event.hasResult ? "已返回" : "已加载范围内尚无结果") : event.text || (event.message.status ? labels[event.message.status] || event.message.status : "");
         if (row.renderedText !== text && !taskSelected(row)) { row.renderedText = text; row.nodes.content.replaceChildren(); if (["input","model"].includes(event.type)) appendMarkdown(row.nodes.content, text); else row.nodes.content.textContent = text; }
         row.nodes.preview.hidden = !event.truncated;
@@ -266,19 +248,7 @@
     function syncDetail(c) {
       const event = c.events.find(e => e.key === c.selected), n = c.nodes;
       n.main.classList.toggle("with-detail", !!event); n.detail.hidden = !event;
-      if (!event) return;
-      if (adapter?.sync) { adapter.sync(c); return; }
-      // The integration adapter replaces this public-record fallback with the
-      // shared explorer's four views; no mock tab or private payload is exposed.
-      const raw = event.call ? {entry:event.message.publicEntry, tool_call:event.call, results:event.results.map(r => r.publicEntry)} : event.message.publicEntry;
-      const signature = JSON.stringify(raw);
-      if (n.detail.renderKey === signature || taskSelected(n.detail)) return;
-      n.detail.renderKey = signature;
-      const close = button("关闭详情", "text-btn", "x"); close.onclick = () => selectRecord(c, null);
-      const copy = button("复制公开记录", "text-btn", "copy"); copy.onclick = async () => { write(copy, await copyText(JSON.stringify(raw, null, 2)) ? "已复制" : "复制失败"); };
-      const actions = el("div", "sa-detail-actions"); actions.append(copy, close);
-      const heading = el("h3", "", event.title), note = el("p", "hint", event.truncated ? "公开预览已截断；这里显示当前接口返回的内容。" : "公开记录"), pre = el("pre", "sa-public-record", JSON.stringify(raw, null, 2));
-      const top = n.detail.scrollTop; n.detail.replaceChildren(actions, heading, note, pre); n.detail.scrollTop = top;
+      if (event) adapter.sync(c);
     }
     function syncPending(c) {
       const received = new Map(), settled = new Set();
@@ -335,7 +305,6 @@
     const selectionChanged = () => { if (child && valid(child) && !taskSelected(child.nodes.detail)) syncDetail(child); };
     document.addEventListener("selectionchange", selectionChanged);
     return {root, update, open, poll:() => child && !child.sending && !child.stopping ? load(child) : Promise.resolve(),
-      setTraceAdapter(value) { adapter = value; if (child?.messages) { child.events = adapter.project(child.messages).map(e => ({...e,key:child.id + ":" + e.key})); syncRecords(child); } },
       dispose() { if (child) storage.write(draftKey(child.id), child.nodes.field.value); disposed = true; document.removeEventListener("selectionchange", selectionChanged); }};
   }
   window.XBotSubagents = {create, isChild};
