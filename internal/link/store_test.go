@@ -3,6 +3,7 @@ package link
 import (
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"xbot/internal/config"
 	"xbot/internal/mcp"
@@ -97,6 +98,10 @@ func TestLoadMCPAllBotEntryWinsAndEnableIsIdempotent(t *testing.T) {
 }
 
 func TestResolveApp(t *testing.T) {
+	// Source labels remain useful after retiring executable MCP tool names.
+	if blurb := Blurb("mcp:docs"); blurb == "mcp:docs" || !strings.Contains(blurb, "untrusted") {
+		t.Fatal(blurb)
+	}
 	for in, want := range map[string]string{"电脑操作": "desktop", "浏览器": "browser", "Playwright": "mcp:playwright", "网页抓取": "网页抓取", "Gmail": "Gmail", "webhook": "webhook"} {
 		if got := ResolveApp(in); got != want {
 			t.Fatalf("%q -> %q, want %q", in, got, want)
