@@ -36,7 +36,7 @@ type ForkResult struct {
 // Fork creates a bot that starts from a handoff, not a copy of this bot.
 // The new bot gets the role as its persona, an empty transcript, and this bot's
 // provider binding. Person-scope memory is already shared and is not copied.
-// Each bot records the other so the new one asks for details with message_bot.
+// Each bot records the other so the new one asks for details with peer-message TARGET --self --text TEXT.
 func (k *Kernel) Fork(ctx context.Context, req ForkRequest) (ForkResult, error) {
 	if k == nil || k.Bot == nil {
 		return ForkResult{}, errors.New("fork: no bot")
@@ -97,11 +97,11 @@ func (k *Kernel) Fork(ctx context.Context, req ForkRequest) (ForkResult, error) 
 	if err := k.storeHandoff(ctx, child.Name(), summary); err != nil {
 		return ForkResult{}, err
 	}
-	note := fmt.Sprintf("Forked from %s for this role. Ask %s for details with message_bot. You cannot read %s's transcript.", k.currentName(), k.currentName(), k.currentName())
+	note := fmt.Sprintf("Forked from %s for this role. Ask %s for details with peer-message TARGET --self --text TEXT. You cannot read %s's transcript.", k.currentName(), k.currentName(), k.currentName())
 	if err := k.rememberBot(ctx, child.Name(), "fork-source", note); err != nil {
 		return ForkResult{}, err
 	}
-	srcNote := fmt.Sprintf("Forked %s for role %q. Reach them with message_bot. They cannot read your transcript.", name, clipNote(role, 240))
+	srcNote := fmt.Sprintf("Forked %s for role %q. Reach them with peer-message TARGET --self --text TEXT. They cannot read your transcript.", name, clipNote(role, 240))
 	if err := k.rememberBot(ctx, k.currentName(), "fork-"+name, srcNote); err != nil {
 		return ForkResult{}, err
 	}
@@ -276,7 +276,7 @@ type forkBotTool struct{ k *Kernel }
 
 func (forkBotTool) Name() string { return "fork_bot" }
 func (forkBotTool) Description() string {
-	return "Create a bot with its own role and an empty transcript. You write a handoff (project background, key decisions, context for that role) into its bot-scope memory. Person memory is not copied. It cannot read your transcript and will ask you with message_bot. Pass group to also create a group containing both of you."
+	return "Create a bot with its own role and an empty transcript. You write a handoff (project background, key decisions, context for that role) into its bot-scope memory. Person memory is not copied. It cannot read your transcript and will ask you with peer-message TARGET --self --text TEXT. Pass group to also create a group containing both of you."
 }
 func (forkBotTool) Parameters() any {
 	return schema(map[string]any{

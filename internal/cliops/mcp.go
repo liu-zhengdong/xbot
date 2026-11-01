@@ -64,4 +64,5 @@ type Handlers struct {
 	Routines      *RoutineHandlers
 	Bots          *BotHandlers
 	ChatGroups    *ChatGroupHandlers
+	PeerMessage   func(context.Context, PeerMessage) (PeerMessageReply, error)
 }
