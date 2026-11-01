@@ -12,6 +12,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
 	"xbot/internal/skill"
+	"xbot/internal/tools"
 	"xbot/internal/work"
 )
 
@@ -137,7 +138,7 @@ func TestRuntimeSkillReplyWireBoundary(t *testing.T) {
 	candidate := cliops.SkillReadReply{Slug: "ship", Name: "ship", Description: "publish", Body: &body}
 	for i := 0; i < 3; i++ {
 		raw, _ := json.Marshal(candidate)
-		body = strings.Repeat("x", len(body)+cliops.SkillMaxReply-len(raw)-1)
+		body = strings.Repeat("x", len(body)+tools.DefaultShellOutputBytes-len(raw)-1)
 		candidate.Bytes = int64(len(body))
 	}
 	if err := skill.Write(b.Root, "ship", "publish", body); err != nil {
@@ -145,7 +146,7 @@ func TestRuntimeSkillReplyWireBoundary(t *testing.T) {
 	}
 	reply, err := handlers.Read(context.Background(), "ship")
 	raw, _ := json.Marshal(reply)
-	if err != nil || reply.Body == nil || len(raw)+1 != cliops.SkillMaxReply {
+	if err != nil || reply.Body == nil || len(raw)+1 != tools.DefaultShellOutputBytes {
 		t.Fatalf("exact final JSON budget: bytes=%d body=%v err=%v", len(raw)+1, reply.Body != nil, err)
 	}
 	if err := skill.Write(b.Root, "ship", "publish", body+"x"); err != nil {
@@ -154,6 +155,11 @@ func TestRuntimeSkillReplyWireBoundary(t *testing.T) {
 	reply, err = handlers.Read(context.Background(), "ship")
 	if err != nil || reply.Body != nil || reply.File == "" {
 		t.Fatalf("budget+1 must use artifact: %+v %v", reply, err)
+	}
+	stored, readErr := os.ReadFile(filepath.Join(work.BotDir(b.Root, b.Name()), filepath.FromSlash(reply.File)))
+	raw, _ = json.Marshal(reply)
+	if readErr != nil || string(stored) != body+"x" || len(raw)+1 > tools.DefaultShellOutputBytes {
+		t.Fatalf("complete artifact and caller-safe reply: bytes=%d readErr=%v replyBytes=%d", len(stored), readErr, len(raw)+1)
 	}
 	// Metadata is not clipped and mislabeled as a complete read.
 	path := filepath.Join(k.SkillsDir, "ship", "SKILL.md")

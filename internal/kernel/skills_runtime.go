@@ -18,6 +18,7 @@ import (
 	"xbot/internal/fsutil"
 	"xbot/internal/inbox"
 	"xbot/internal/skill"
+	"xbot/internal/tools"
 	"xbot/internal/work"
 )
 
@@ -134,7 +135,9 @@ func (k *Kernel) SkillHandlers() *cliops.SkillHandlers {
 
 func skillReadReplyFits(reply cliops.SkillReadReply) bool {
 	raw, _ := json.Marshal(reply)
-	return len(raw)+1 <= cliops.SkillMaxReply
+	// The source CLI is consumed through the existing interpreter. Preserve the
+	// entire JSON (including its newline), not merely the larger HTTP budget.
+	return len(raw)+1 <= min(cliops.SkillMaxReply, tools.DefaultShellOutputBytes)
 }
 
 func readRuntimeSkill(dir, id string, disabled []string) (skill.Info, string, error) {
