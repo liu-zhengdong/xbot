@@ -8,6 +8,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/fsutil"
 	"xbot/internal/inbox"
+	"xbot/internal/tools"
 	"xbot/internal/work"
 )
 
@@ -100,6 +101,18 @@ func rebaseCodePath(path, oldCode, newCode string) string {
 		rel, err := filepath.Rel(pair[0], path)
 		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return filepath.Join(pair[1], rel)
+		}
+		// A physical cwd/repo and the mover root may spell the same prefix
+		// differently. Keep external paths unchanged when identities differ.
+		oldPhysical, oldErr := tools.ResolveRoot("", pair[0])
+		physical, pathErr := tools.ResolveRoot("", path)
+		nextPhysical, nextErr := tools.ResolveRoot("", pair[1])
+		if oldErr != nil || pathErr != nil || nextErr != nil {
+			continue
+		}
+		rel, err = filepath.Rel(oldPhysical, physical)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return filepath.Join(nextPhysical, rel)
 		}
 	}
 	return path

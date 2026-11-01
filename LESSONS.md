@@ -95,6 +95,8 @@
 
 ## 配置与兼容
 
+- **改名的路径前缀要匹配同一目录的逻辑与物理拼写，不能只比 name 和词法 Rel。** 原因：合法 `/var` 或用户 symlink root 下，原 Shell `pwd -P` 已保存物理目录；mover 用原 root 拼写，未匹配就把 atName 置新，后续原 project 永久留旧前缀并误退工作根。UseBot 的新配置也不能充当原 WorkDir 来源。复用现有路径 resolver 识别同一前缀；保外部/相对 Repo 与权限 roots，不改输入去绕过合法 alias。守护：`TestProfileAliasedRootKeepsPhysicalLiveProject` 先红 .659s、race 绿1.794s，`TestProfileChangeColdCwdUsesPhysicalRootIdentity` 先红 .634s、绿 .488s；独立 ONLYResources 在 `0004ad0f` 命中同 `/var`→`/private/var` 漏迁，不将其它通过组算作该 case 已过。Seen 1×（2026-11-01）。
+
 - **新增 fresh 读取时，消费到的字段要延续已有 Loader 的归一化。** 原因：头像读取直接解磁盘 config，遗漏 Load 对缺 name 使用目录名的既有回退，使受支持旧 Bot 的模板名字、seed 和生成器输入变空。复用归一化规则，不扩大到未使用字段。守护：`TestOldConfigWithoutAvatar` 的缺 name、模板与生成器断言在 `0053145b` 红、`3816c3bb` 定向 race 绿，并保留改名不换脸检查。Seen 1×（2026-11-01）。
 
 - **执行入口、发现和环境摘要必须读取同一个运行态有效配置。** 原因：Manager 保留了可用 MCP 会话，installed 摘要却重新读非法磁盘配置，导致模型轮次在调用前失败。守护：`TestMCPRuntimeReconcile` 在 `aaa66c49` 真入口红，`704f584d` 统一 mcpSpecs 后该项绿；离线配置仍按文件语义读取。Seen 1×（2026-11-01）。

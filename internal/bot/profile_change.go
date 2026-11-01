@@ -227,10 +227,16 @@ func (b *Bot) ApplyProfileChange(normalized ProfileChange) (current *Bot, result
 				if cwdErr == nil {
 					cwd := strings.TrimSpace(string(data))
 					nextCwd := cwd
-					for _, pair := range [][2]string{{Dir(b.Root, from), Dir(b.Root, to)}, {work.BotDir(b.Root, from), work.BotDir(b.Root, to)}} {
-						rel, relErr := filepath.Rel(pair[0], nextCwd)
-						if relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-							nextCwd = filepath.Join(pair[1], rel)
+					roots := []string{b.Root}
+					if physical, resolveErr := filepath.EvalSymlinks(b.Root); resolveErr == nil && physical != b.Root {
+						roots = append(roots, physical)
+					}
+					for _, root := range roots {
+						for _, pair := range [][2]string{{Dir(root, from), Dir(root, to)}, {work.BotDir(root, from), work.BotDir(root, to)}} {
+							rel, relErr := filepath.Rel(pair[0], nextCwd)
+							if relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+								nextCwd = filepath.Join(pair[1], rel)
+							}
 						}
 					}
 					if nextCwd != cwd {

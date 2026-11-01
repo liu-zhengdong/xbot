@@ -53,12 +53,18 @@ func (j *job) isContinuable() bool {
 }
 
 func rebasePath(path, old, next string) string {
-	if path == "" || old == "" || old == next {
+	if path == "" || old == "" || old == next || !filepath.IsAbs(path) {
 		return path
 	}
 	rel, err := filepath.Rel(old, path)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return path
+		// Shell cwd may use the physical root while the mover retains its
+		// symlink spelling. Resolve existing prefixes even after old moved.
+		rel, err = filepath.Rel(canonicalDir(old), canonicalDir(path))
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return path
+		}
+		next = canonicalDir(next)
 	}
 	return filepath.Join(next, rel)
 }

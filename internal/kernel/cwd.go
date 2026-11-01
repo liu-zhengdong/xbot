@@ -11,6 +11,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/fsutil"
 	"xbot/internal/inbox"
+	"xbot/internal/tools"
 	"xbot/internal/work"
 )
 
@@ -260,7 +261,23 @@ func rebasePath(path, previous, next string) string {
 	}
 	rel, err := filepath.Rel(previous, path)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return path
+		// pwd -P and cleanDir use physical paths. The previous directory may
+		// already have moved, so resolve its existing parent via the same
+		// resolver used by file tools before comparing that identical prefix.
+		if !filepath.IsAbs(path) {
+			return path
+		}
+		physicalPrevious, previousErr := tools.ResolveRoot("", previous)
+		physicalPath, pathErr := tools.ResolveRoot("", path)
+		physicalNext, nextErr := tools.ResolveRoot("", next)
+		if previousErr != nil || pathErr != nil || nextErr != nil {
+			return path
+		}
+		rel, err = filepath.Rel(physicalPrevious, physicalPath)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return path
+		}
+		return filepath.Join(physicalNext, rel)
 	}
 	return filepath.Join(next, rel)
 }
