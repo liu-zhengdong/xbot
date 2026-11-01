@@ -200,10 +200,59 @@ func TestCLIBotRuntimeListInfoProjectionCurrentRoute(t *testing.T) {
 		return data
 	}
 	for index, result := range results[1:] {
-		if !strings.HasPrefix(result, "exit 0\n") {
-			t.Fatalf("actual projection read %d failed: %.1024q", index, result)
+		var output string
+		if strings.HasPrefix(result, "background ") {
+			// The original Shell may promote slow actual host IO after two
+			// seconds. Consume that real completed Job once through the original
+			// native reader, with its unchanged32KiB limit; never redirect CLI.
+			line, _, _ := strings.Cut(result, "\n")
+			fields := strings.Fields(line)
+			if len(fields) != 2 {
+				t.Fatal("actual Shell returned no usable background Job ID")
+			}
+			jobID := fields[1]
+			var job struct {
+				Status         string
+				ExitCode       int `json:"exit_code"`
+				Bytes, Dropped int
+			}
+			WaitFor(t, 20*time.Second, "actual projected CLI Job completion", func() (bool, string) {
+				raw, err := os.ReadFile(filepath.Join(srv.Root, "bots", current, "shell-jobs", jobID+".json"))
+				if err != nil {
+					return false, "Job metadata not yet visible"
+				}
+				if json.Unmarshal(raw, &job) != nil {
+					return false, "Job metadata not complete"
+				}
+				return job.Status != "running", job.Status
+			})
+			if job.Status != "done" || job.ExitCode != 0 || job.Dropped != 0 || job.Bytes <= 0 || job.Bytes > 32<<10 {
+				t.Fatal("actual CLI background Job failed or exceeded complete native output budget")
+			}
+			readCue := fmt.Sprintf("CLI_BOT_PROJECTION_COMPLETED_OUTPUT_%d", index)
+			model.add(readCue, mcpRuntimeTool("shell_output", map[string]string{"id": jobID}))
+			cliSkillSend(t, srv, current, readCue)
+			read := model.results(readCue)
+			if len(read) != 1 || len(read[0]) > 32<<10 {
+				t.Fatal("actual native output consumer exceeded32KiB")
+			}
+			parts := strings.SplitN(read[0], "\n", 4)
+			if len(parts) != 4 || parts[0] != "status: done" || parts[1] != "offset: 0" || parts[2] != fmt.Sprintf("next_offset: %d", job.Bytes) {
+				t.Fatal("actual native Job consumer did not return the full untruncated result")
+			}
+			output = parts[3]
+			if strings.HasPrefix(output, "exit ") {
+				if !strings.HasPrefix(output, "exit 0\n") {
+					t.Fatal("background CLI actually exited nonzero")
+				}
+				output = commandOutput(output)
+			}
+		} else {
+			if !strings.HasPrefix(result, "exit 0\n") {
+				t.Fatalf("actual projection read %d failed: %.1024q", index, result)
+			}
+			output = commandOutput(result)
 		}
-		output := commandOutput(result)
 		if len(output) == 0 || len(output) > 32<<10 {
 			t.Fatalf("actual final JSON/human read %d exceeded native Shell32KiB: %d bytes", index, len(output))
 		}
@@ -280,7 +329,7 @@ func TestCLIBotRuntimeListInfoProjectionCurrentRoute(t *testing.T) {
 		} else {
 			var full cliBotInfoReply
 			strictJSON(data, &full)
-			if full.Bots == nil || full.Count != len(wantHost) || len(*full.Bots) != len(wantHost) || full.Steps != nil || full.File != "" || full.Access != "" || full.Bytes != 0 || full.Error != "" {
+			if full.Bots == nil || full.Count != len(wantHost) || len(*full.Bots) != len(wantHost) || (full.Steps != nil && len(*full.Steps) != 0) || full.File != "" || full.Access != "" || full.Bytes != 0 || full.Error != "" {
 				t.Fatal("Info artifact must be the full typed host Reply JSON without reference/step substitution")
 			}
 			var names []string

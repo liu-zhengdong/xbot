@@ -88,6 +88,10 @@ func TestCLIBotRuntimeCreatePolicyAndHostDelete(t *testing.T) {
 	}
 	localCLI("provider", "add", "bot-source-binding", "--base-url", model.server.URL+"/v1", "--api-key-env", "XBOT_API_KEY", "--model", "source-only-model", "--context", "1000000", "--hosted-web-search", "off")
 	localCLI("bind", primary.Name, "--provider", "bot-source-binding", "--model", "source-only-model", "--uncertified")
+	// Serve eagerly captures existing Bot resource refs during reconciliation.
+	// Finish persistent setup before the first runtime source call, then let
+	// the actual private serve reload them; all tested calls use this one entry.
+	srv.Restart()
 	workspace := filepath.Join(srv.Root, "work", primary.Name)
 	if err := os.MkdirAll(workspace, 0700); err != nil {
 		t.Fatal(err)
