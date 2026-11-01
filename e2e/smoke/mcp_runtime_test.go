@@ -90,6 +90,30 @@ func mcpRuntimeInbox(t *testing.T, srv *Server, bot string) []map[string]any {
 	return out
 }
 
+// The narrow 2b red starts with the one already specified runtime CLI entry.
+// It deliberately does not run the accepted 2a adapter cases or invent the
+// forthcoming discovery/result DTO shape. The full add-to-call path will use
+// the finalized CLI contract when that design has landed.
+func TestMCPRuntimeCLIEntry(t *testing.T) {
+	cliProfileIsolation(t)
+	model := newMCPRuntimeModel(t)
+	const cue = "MCP_RUNTIME_CLI_ENTRY"
+	model.add(cue, mcpRuntimeTool("sh", map[string]string{
+		"description": "List current Bot MCP configuration through the running binary",
+		"command":     `"$XBOT_BIN" mcp list --self --json`,
+	}))
+	srv := Start(t, &Stub{srv: model.server})
+	srv.CreateBot("Worker", "Independent MCP runtime CLI entry acceptance.")
+	srv.Send("Worker", cue)
+	result := model.results(cue)[0]
+	if !strings.HasPrefix(result, "exit 0\n") {
+		t.Fatalf("runtime MCP CLI did not complete successfully in its real source Shell: %s", result)
+	}
+	if !json.Valid([]byte(commandOutput(result))) {
+		t.Fatalf("MCP --json stdout is not one JSON document: %s", result)
+	}
+}
+
 func TestMCPRuntimeOwner(t *testing.T) {
 	cliProfileIsolation(t)
 	peer := newMCPRuntimePeer(t)
