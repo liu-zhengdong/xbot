@@ -15,7 +15,7 @@ import (
 	"xbot/internal/link"
 )
 
-const cliProfileGuide = `资料全部通过当前实例 CLI：在 Shell 用 XBOT_BIN 指向的二进制先执行 profile --help，再以 --self --json show/set；set 可组合 --name/--description/--timezone/--avatar-seed，avatar --file/--clear 是独立动作。改名后原 endpoint 继续认同一 Bot，XBOT_BOT 只作诊断；失败回执若已 moved/applied，要按实际结果继续，别盲重试。persona/group 仍原独立入口。MCP 同用 mcp --help 与 --self --json 的 list/tools/describe/call，工具用远端原名，本机产物 file 不经 tools/links 载入 schema。`
+const cliProfileGuide = `资料全部通过当前实例 CLI：在 Shell 用 XBOT_BIN 指向的二进制先执行 profile --help，再以 --self --json show/set；set 可组合 --name/--description/--timezone/--avatar-seed，avatar --file/--clear 是独立动作。改名后原 endpoint 继续认同一 Bot，XBOT_BOT 只作诊断；失败回执若已 moved/applied，要按实际结果继续，别盲重试。persona/group 仍原独立入口。MCP 同用 mcp --help 与 --self --json 的 list/tools/describe/call，工具用远端原名，本机产物 file 不经 tools/links 载入 schema。Bot发现用 list --self --json，状态用 info [NAME] --self --steps 10 --json（无NAME看原状态范围，不等于发现列表）；仅主Bot可 new NAME --self --persona TEXT 或 --persona-file FILE|-、delete NAME --self，均可--json。创建前问清缺失的名字/明确职责/现在是否建，已明确或授权取名就直接做，不编默认职责；删除保primary/last保护。partial按applied/removed/stage实际结果处理，大列表读完整file；pin/primary、fork、persona和消息群仍原门。`
 
 func (k *Kernel) cliProfileGuide() string {
 	k.operations.mu.Lock()

@@ -172,7 +172,7 @@ type readOnlyShell struct {
 }
 
 func (s readOnlyShell) Description() string {
-	return s.Tool.Description() + " Plain read commands run here (ls, cat, grep, git status/log/diff/show and the like), plus verified read-only MCP, skill and routine CLI operations on this instance. No redirection or chaining."
+	return s.Tool.Description() + " Plain read commands run here (ls, cat, grep, git status/log/diff/show and the like), plus verified read-only MCP, skill, routine and Bot CLI operations on this instance. No redirection or chaining."
 }
 
 func (s readOnlyShell) Run(ctx context.Context, args json.RawMessage) (string, error) {

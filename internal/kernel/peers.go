@@ -14,48 +14,6 @@ import (
 	"xbot/internal/remote"
 )
 
-type listBotsTool struct{ k *Kernel }
-
-func (listBotsTool) Name() string { return "list_bots" }
-func (listBotsTool) Description() string {
-	return "List other same-owner bots, including bot@device on paired devices. You cannot see bots owned by someone else."
-}
-func (listBotsTool) Parameters() any { return schema(nil, nil) }
-func (listBotsTool) Confirm(json.RawMessage) (bool, string, error) {
-	return false, "", nil
-}
-func (t listBotsTool) Run(context.Context, json.RawMessage) (string, error) {
-	cfgs, err := peer.VisibleBots(t.k.Bot.Root, t.k.currentName())
-	if err != nil {
-		return "", err
-	}
-	remotes, err := remote.VisibleBots(t.k.Bot.Root, t.k.Bot.Config().Owners, t.k.now())
-	if err != nil {
-		return "", err
-	}
-	var b strings.Builder
-	for _, cfg := range cfgs {
-		persona := strings.TrimSpace(cfg.Persona)
-		if len(persona) > 80 {
-			persona = persona[:80]
-		}
-		b.WriteString(cfg.Name)
-		if persona != "" {
-			b.WriteString(" — ")
-			b.WriteString(persona)
-		}
-		b.WriteByte('\n')
-	}
-	for _, remote := range remotes {
-		b.WriteString(remote.String(t.k.now()))
-		b.WriteByte('\n')
-	}
-	if b.Len() == 0 {
-		return "no other bots", nil
-	}
-	return strings.TrimRight(b.String(), "\n"), nil
-}
-
 type messageBotTool struct{ k *Kernel }
 
 func (messageBotTool) Name() string { return "message_bot" }
@@ -281,58 +239,6 @@ func hasMember(members []string, name string) bool {
 		}
 	}
 	return false
-}
-
-type botStatusTool struct{ k *Kernel }
-
-func (botStatusTool) Name() string { return "bot_status" }
-func (botStatusTool) Description() string {
-	return "Read the status of same-owner bots: idle, running, or awaiting a reply, plus the last tool and message. Runs no model call. Pass bot for one bot; omit for all. steps adds up to 10 recent steps of the current turn. Another owner's bot is not found."
-}
-func (botStatusTool) Parameters() any {
-	return schema(map[string]any{
-		"bot":   stringProp("optional same-owner bot; omit for every bot"),
-		"steps": intProp("optional recent steps to include, at most 10"),
-	}, nil)
-}
-func (botStatusTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
-func (t botStatusTool) Run(_ context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		Bot   string `json:"bot"`
-		Steps int    `json:"steps"`
-	}
-	if len(args) > 0 && string(args) != "null" {
-		if err := json.Unmarshal(args, &in); err != nil {
-			return "", err
-		}
-	}
-	name := strings.TrimSpace(in.Bot)
-	list := t.k.BotStatuses()
-	if name != "" {
-		filtered := list[:0:0]
-		for _, st := range list {
-			if st.Bot == name {
-				filtered = append(filtered, st)
-			}
-		}
-		if len(filtered) == 0 {
-			return "", fmt.Errorf("bot_status: %s is not a same-owner bot", name)
-		}
-		list = filtered
-	}
-	n := in.Steps
-	if n > 10 {
-		n = 10
-	}
-	var steps []Step
-	if n > 0 {
-		if name != "" {
-			steps = t.k.BotSteps(name, n)
-		} else if len(list) == 1 {
-			steps = t.k.BotSteps(list[0].Bot, n)
-		}
-	}
-	return botStatusText(list, steps), nil
 }
 
 type askTool struct{ k *Kernel }

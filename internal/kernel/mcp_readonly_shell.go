@@ -42,6 +42,10 @@ func (k *Kernel) allowReadOnlyPlatform(interpreter string, args json.RawMessage)
 	if len(argv) == 0 {
 		return false
 	}
+	if argv[0] == "list" || argv[0] == "info" || argv[0] == "new" || argv[0] == "delete" {
+		parsed, err := cliops.ParseBotRuntime(argv)
+		return err == nil && (parsed.Help || parsed.Self && !parsed.Offline && (parsed.Action == "list" || parsed.Action == "info"))
+	}
 	if argv[0] == "routine" {
 		parsed, err := cliops.ParseRoutineRuntime(argv[1:])
 		return err == nil && (parsed.Help || parsed.Self && parsed.Action == "list")

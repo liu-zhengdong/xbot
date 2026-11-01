@@ -2,13 +2,13 @@ package kernel
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -160,7 +160,7 @@ func TestIdleStatusTailPreviewRedacted(t *testing.T) {
 	}
 }
 
-func TestBotStatusToolSameOwner(t *testing.T) {
+func TestBotInfoHandlersSameOwner(t *testing.T) {
 	root := t.TempDir()
 	ada, err := bot.Create(root, "ada", "p", []string{link.NameTerminal})
 	if err != nil {
@@ -180,21 +180,22 @@ func TestBotStatusToolSameOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	k := &Kernel{Bot: ada, Memory: memory.NopStore{}}
-	out, err := (botStatusTool{k}).Run(context.Background(), json.RawMessage(`{}`))
+	handlers := k.BotHandlers()
+	out, err := handlers.Info(context.Background(), cliops.BotInfoQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "ada") || !strings.Contains(out, "bob") || !strings.Contains(out, "bob here") {
-		t.Fatalf("status %q", out)
+	if out.Bots == nil || len(*out.Bots) != 2 || (*out.Bots)[0].Bot != "ada" || (*out.Bots)[1].Bot != "bob" || (*out.Bots)[1].LastMessage != "bob here" {
+		t.Fatalf("status %+v", out)
 	}
-	out, err = (botStatusTool{k}).Run(context.Background(), json.RawMessage(`{"bot":"bob","steps":3}`))
+	out, err = handlers.Info(context.Background(), cliops.BotInfoQuery{Bot: "bob", Steps: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out, "ada") || !strings.Contains(out, "bob") {
-		t.Fatalf("filtered %q", out)
+	if out.Bots == nil || len(*out.Bots) != 1 || (*out.Bots)[0].Bot != "bob" || out.Steps == nil || len(*out.Steps) != 0 {
+		t.Fatalf("filtered %+v", out)
 	}
-	if _, err := (botStatusTool{k}).Run(context.Background(), json.RawMessage(`{"bot":"ghost"}`)); err == nil {
+	if _, err := handlers.Info(context.Background(), cliops.BotInfoQuery{Bot: "ghost"}); err == nil {
 		t.Fatal("unknown bot accepted")
 	}
 	other, err := bot.Create(root, "zed", "p", []string{link.NameTerminal})
@@ -204,8 +205,50 @@ func TestBotStatusToolSameOwner(t *testing.T) {
 	if err := other.SetOwners([]string{"u2"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (botStatusTool{k}).Run(context.Background(), json.RawMessage(`{"bot":"zed"}`)); err == nil {
+	if _, err := handlers.Info(context.Background(), cliops.BotInfoQuery{Bot: "zed"}); err == nil {
 		t.Fatal("other owner's bot visible")
+	}
+}
+
+type botInfoStatusSource struct {
+	statuses []BotStatus
+	name     string
+	limit    int
+	calls    int
+}
+
+func (s *botInfoStatusSource) BotStatuses() []BotStatus { return s.statuses }
+func (s *botInfoStatusSource) BotSteps(name string, n int) []Step {
+	s.name, s.limit = name, n
+	s.calls++
+	return []Step{{Time: time.Unix(12, 0), Tool: "recall_history", Summary: "inspect history", State: StepDone}}
+}
+
+func TestBotInfoHandlersUseLateStatusSourceAndNamedSteps(t *testing.T) {
+	k := &Kernel{Bot: testBot(t, link.NameTerminal)}
+	handlers := k.BotHandlers()
+	// The host attaches its status source after publishing the listener. Its
+	// owner view can contain a bot outside the source's fallback owner view.
+	source := &botInfoStatusSource{statuses: []BotStatus{{Bot: "host-only", State: StateRunning}, {Bot: "second", State: StateIdle}}}
+	k.Statuses = source
+	all, err := handlers.Info(context.Background(), cliops.BotInfoQuery{Steps: 20})
+	if err != nil || all.Bots == nil || len(*all.Bots) != 2 || (*all.Bots)[0].Bot != "host-only" || source.calls != 0 {
+		t.Fatalf("host all %+v, step calls %d: %v", all, source.calls, err)
+	}
+	named, err := handlers.Info(context.Background(), cliops.BotInfoQuery{Bot: "host-only", Steps: 20})
+	if err != nil || named.Bots == nil || len(*named.Bots) != 1 || source.name != "host-only" || source.limit != 10 || source.calls != 1 || named.Steps == nil || len(*named.Steps) != 1 {
+		t.Fatalf("named %+v, source %+v: %v", named, source, err)
+	}
+	step := (*named.Steps)[0]
+	if step.Tool != "recall_history" || step.State != StepDone || step.Summary != "inspect history" || !step.Time.Equal(time.Unix(12, 0)) {
+		t.Fatalf("step %+v", step)
+	}
+	source.statuses = source.statuses[:1]
+	if _, err := handlers.Info(context.Background(), cliops.BotInfoQuery{Steps: 3}); err != nil || source.name != "host-only" || source.limit != 3 || source.calls != 2 {
+		t.Fatalf("singleton steps %+v: %v", source, err)
+	}
+	if _, err := handlers.Info(context.Background(), cliops.BotInfoQuery{Bot: "host-only", Steps: 0}); err != nil || source.calls != 2 {
+		t.Fatalf("zero steps called source: %+v %v", source, err)
 	}
 }
 

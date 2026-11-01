@@ -183,13 +183,22 @@ func TestRoutineSkillsAbsorbedWhileBusy(t *testing.T) {
 	if err := tm.Save(link.Routine{ID: "check", Prompt: "inspect", At: now.Format(time.RFC3339), Skills: []string{"atlas"}, Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	p := &routinePostingProvider{scripted: scripted{resps: []provider.Message{assistantCall("status", "", "bot_status", `{}`), {Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")}}}, post: func() error { return tm.Fire(now, box.Post) }}
+	p := &routinePostingProvider{scripted: scripted{resps: []provider.Message{assistantCall("history", "", "recall_history", `{"query":"first work"}`), {Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")}}}, post: func() error { return tm.Fire(now, box.Post) }}
 	k.Provider = p
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "first work", now)); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.reqs) != 2 || !strings.Contains(messagesText(p.reqs[1].Messages), "BUSY_SKILL_BODY") {
 		t.Fatal("absorbed routine skill did not reach next model call")
+	}
+	historyRead := false
+	for _, message := range p.reqs[1].Messages {
+		if message.Role == provider.RoleTool && message.CallID() == "history" && message.Name == "recall_history" && strings.Contains(message.Text(), "first work") {
+			historyRead = true
+		}
+	}
+	if !historyRead {
+		t.Fatal("busy absorption stand-in did not perform the remaining native history read")
 	}
 	if strings.Contains(transcriptText(t, b), "BUSY_SKILL_BODY") {
 		t.Fatal("absorbed skill body persisted")

@@ -237,8 +237,8 @@ func TestRetainedKernelLocalPathsFollowRename(t *testing.T) {
 	if _, err := k.SkillHandlers().Read(ctx, "route-fixture"); err != nil {
 		t.Fatal("current skill switch", err)
 	}
-	if text, err := (listBotsTool{k}).Run(ctx, nil); err != nil || !strings.Contains(text, "other") {
-		t.Fatal("peer identity", text, err)
+	if reply, err := k.BotHandlers().List(ctx); err != nil || reply.Local == nil || len(*reply.Local) != 1 || (*reply.Local)[0].Name != "other" {
+		t.Fatal("peer identity", reply, err)
 	}
 	if _, err := (pinBotTool{k}).Run(ctx, json.RawMessage(`{"name":"after","pinned":true}`)); err != nil {
 		t.Fatal("primary/self identity", err)
