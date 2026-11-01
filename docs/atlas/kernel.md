@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/, internal/cliops/]
-verified: 2026-11-02 @ 6983ac09
+verified: 2026-11-02 @ 9b013438
 ---
 # 内核：Link、Event、收件箱
 
@@ -29,6 +29,14 @@ verified: 2026-11-02 @ 6983ac09
 HTTP原本没有调用turn。agent.execTool现把实际已包装approver、原Shell名/providerID/审批mutex接ctx；原Jobs.live只保Prepare后同一ctx，完成清除，CallContext只取内存Local/running/未finished，不读历史。最终Shell env携原JobID/header，listener只认自己原source，放全部锁后review/批准。main保冻结policy，卡片挂明确原owner看动态fork；child在实际Local.RunTool处明确untrusted/no-person，保它原subApprover，不冒父当前turn或new turn。缺原ctx的非空命令拒，code/remote不冒原park支持；普通CRUD及其它族不强制该关联。
 
 仅nested审批ToolArgs附规范typed请求/effective命令，真Shell.Run raw不变。现parkable/argsKey/deniedBefore同canonical，argsfile内容或保留命令A→B不会消费A，自动routineID审后生成且canonical无HTTP/Job/provider随机数；late决定仍指向可重复的原CLI Shell。四旧模型wrapper/registry/review及指引同cut退，保其它Tools门与research纯list/help分类。设计决定见 [ADR0051](../adr/0051-routine-runtime-cli.md)。
+
+## Bot 发现与管理实例入口
+
+原source listener以四typed handler提供平面list/info/new/delete --self，不借离线seed/terminal owner或new Kernel。List原peer.VisibleBots排self/非空owner交集，再接原remote目录缓存7天/每设备64；Info在请求时调用原k.BotStatuses/BotSteps，保整体injected Host/Web owner视图与fallback self+Visible的差异。Web在StartOperations后才挂Statuses，不能捕publish时nil；不新统一目录/remote状态。Host完成未读计数的Count/增量Walk同样沿其原Resources当前route，cache快照/发布在route外；cold nil资源直接读transcript，不借打开/扫描Inbox；不能读retained K.Bot旧快照，segStore只读也会ensure并重建旧transcript。完整字段、steps≤10及空数组见 [API](../API.md#bot-运行时-cli)。
+
+Create/Delete当刻当前source primary复核，Create继承全部Owners/Links（可空）与global默认binding，不继承source active model/role/budget、不新目标K或wake。原config→state→persona→owners后段以CreateCommitError/Unwrap透applied/stage，late persona32KiB仍原阶段，非整事务。资源/host/chat现回调传(removed,error)，保原同entry暂停→锁外owned Jobs join→重核→FinishDelete；removed后vaultkey错也终态清entry/hold/资源，不猜未删/恢复不存在对象，不扩大child/code/remote/MCP join。
+
+只有strict Delete经已存在live source ctx/原wrapped Shell approve，固定Delete语义不借退掉的Known名字；production permissive不增卡、不强普通操作关联。共享runtimeApprovalSource与approveRuntimeIntent仅服务当前两个真正caller，冻结policy/原owner卡branch/child原回调保持，deniedBefore即使need=false也生效；Bot canonical含delete/target，routine仍typed请求/effective命令，真Run raw不改。原call/header只是关联，不新权限/确认/任务表。JSON与human共用准确formatter双32KiB，大List/Info沿当前source工作区完整结果/真实bytes，HTTP64KiB/结果20MiB。四等价模型门退而pin/primary与peers群消息fork保，research仅list/info/help。见 [ADR0052](../adr/0052-bot-runtime-cli.md)。
 
 ## MCP 与每 Bot 进程资源
 

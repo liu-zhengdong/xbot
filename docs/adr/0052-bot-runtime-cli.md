@@ -10,7 +10,7 @@ date: 2026-11-02
 
 routine已合main2f03f51d；本刀仅沿母路线迁list_bots、bot_status、create_bot、delete_bot，不迁消息/群、fork、persona、role/budget或pin/primary。现CLI是平面list/new/delete，不存在bot子命令；list忽略余参，带--self仍走离线seed/全本地列表，独立真红89cea90b已固定在2f/validation4a8bfd14（exit0但不是runtime JSON）。用户另份cli-message-bot是主人SSE与外Agent send设计，不是Bot message_bot，本刀不修改。
 
-调用方：`"$XBOT_BIN" list --self --json`、`info [NAME] --self [--steps N] --json`、`new NAME --self (--persona TEXT|--persona-file FILE|-) --json`、`delete NAME --self --json`。--self只定位source endpoint，不指目标。精确DTO/路由/预算/生命周期及怎样算对见同份 [母dev具体合同](../dev/cli-platform-entry.md#批-bot发现状态创建删除具体合同pass实施中)。无--self的原list/new/delete、pin/primary/fork等保原离线含义，runtime失败不回落。
+调用方：`"$XBOT_BIN" list --self --json`、`info [NAME] --self [--steps N] --json`、`new NAME --self (--persona TEXT|--persona-file FILE|-) --json`、`delete NAME --self --json`。--self只定位source endpoint，不指目标。已实现的DTO/路由/预算见 [API](../API.md#bot-运行时-cli)，实际生命周期/原审批见 [内核](../atlas/kernel.md#bot-发现与管理实例入口)，[母dev](../dev/cli-platform-entry.md)继续保其它族路线。无--self的原list/new/delete、pin/primary/fork等保原离线含义，runtime失败不回落。
 
 ## 两种结构与决定
 
@@ -27,4 +27,4 @@ A仿离线Load/openKernel或new目标Kernel：会走terminal owner/seed/handle/p
 
 接受List与Info原来不同的可见范围、原StatusSource吞错/skip行为及limited owned-Job join，避免借迁移偷做统一目录或生命周期升级。接受config后partial/removed后清钥错误，不冒整事务或applied:false=全root零副作用。原上下文连接只有strict Delete实际需要时复用，不加新确认工具/表；生产无strict开关，不造独立strict E2E。
 
-具体合同单次窄核PASS后，首可编译链立即交独立 source Shell list/info→new→后续发现→delete，再仅补primary/owner/remote、原default继承、stagepartial/同host删除/32KiB双格式、research及剩余Tools入口。strict deny/park A→B/原child/complete与fault partial由实现方真实上下文单位守护。封存routine六项/skills/profile/MCP及最窄List红不重跑，不全仓/真模型/无关日用；母路线其它族保留。
+ccdc具体合同单次窄核PASS后，d7首source Shell list/info→new→后续发现→delete已独立通过；519完整共享原审批/退门增量静态PASS；primary/owner、原default继承、stagepartial/同host ownedJob删除/32KiB双格式、research与原Tools在各自独立phase所测通过，ddda补实际Host未读计数旧snapshot读取口后Projection通过。Remote/strict-child/keyfault归单位证据而非独立E2E；精确phase与合入级别见 [MILESTONES](../MILESTONES.md)。strict deny/park A→B/原child/complete与fault partial由实现方真实上下文单位守护。封存routine六项/skills/profile/MCP及最窄List红不重跑，不全仓/真模型/无关日用；母路线其它族保留。

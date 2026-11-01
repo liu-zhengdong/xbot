@@ -88,6 +88,8 @@
 
 ## 运行态与后台
 
+- **改名后的短存储读取也要走当前route；旧目录只有transcript/lock不能直接归因异步Append。** 原因：segStore.Count/Walk的WithLock+ensure会初始化目录；Web status已用current k.Status，却把retained k.Bot交给completed_unread而在真实Info后重建旧transcript。守护：独立519/438e Projection原work已无而旧bot仅transcript+lock，同reader TestBotInfoCompletionReadUsesRetainedSourceCurrentRoute在519精确RED.03s/包.880s（count错且oldpath在）；ddda18e6只给Count/增量Walk带原Resources完整短IO，host cache s.mu保持route外避免锁反序，新case/原owner-cursor两项race2.033s绿。后续必要增量P2还表明要核helper的nil语义：withInboxIO(nil,nil)会打开并扫描无关Inbox，坏行会让cold count归0；9b013438保nil直接原Count/Walk，nonnull仍同Resources短IO，TestColdCompletionReadHasNoInboxDependency完整坏行在ddda红.03s/包3.288s，only新cold+原cursor两项race1.478s绿。范围为本项目会初始化的transcript store与该helper契约，不泛指所有只读API有写副作用。Seen 1×（2026-11-02）。
+
 - **被调用者接 current IO 后，还要用实际装配后的旧调用方守住 Reload、延迟 Ack 和附属文件。** 原因：Kernel/Timer 方法已接新路由，原 proc 仍拿旧 Inbox 做 Reload/Ack，Web cleanup 保存旧 box，missed-watermark 又直接用旧 Timer.Dir；已成功的新任务随后复活旧目录。短 IO 取当前对象，Handle/SSE/回调与 flock 等待保持锁外，不以删除空旧锁或更新旧 K 指针遮盖。守护：`TestProcRetainedInboxFollowsHandleRename` 的实际 Drain/Run 与 Timer 后半先红后 race1.830s；`TestProfileInboxAckAfterHandleRename`、`TestProfileAbsorbedReplyUsesCurrentInboxAndTranscript` 真 HTTP 先红后 race2.315s；`43e97b41`/`93ff94e1`。继续原 Run 的下一真实 Timer 后，另命中 handle 与 closeDangling.OpenTools 旧存储，`0121ad6d` 同后半 race2.021s；生产 chatConfig 四实际 callbacks 的下一输入/通知/回放也以真红到 race2.005s 修于 `63762ae5`，不以首事件后立刻 cancel 冒领下一事件已验证。Seen 1×（2026-11-01）。
 
 - **跨目录改名的原调用要持真实文件资源，不能让退出闭包再开旧绝对路径。** 原因：组合改名已成功，Shell 的 cwd trap 仍打开旧 marker，stderr 混进同一次 JSON 回执；继承已打开 marker 的 inode、当前路径短段创建/清理，才能同时保 cwd 与严格输出。冷恢复还须在初始化 scope 前按 descriptor 原身份重基；只在最终保存 request 时改路径已经太晚。守护：`TestShellCwdMarkerFollowsRenameThroughOpenFile`、`TestProfileRestoreRebasesDescriptorBeforeScopeInitialization`、`TestProfileChangePersistsCurrentCwdForColdProcess`；独立 RenameEntry 在 `5ed71e5a` 红、`94f34c67` 绿。Seen 1×（2026-11-01）。
@@ -96,6 +98,8 @@
 - **后台仍在使用的运行入口不能随主轮结束释放，队列交接也必须保持连续持有。** 原因：serve.Pass 结束时关闭 Kernel，仍活的本机子代理随后得到空 XBOT_BIN；编码任务先从 live 删除再启动已排队任务，又会让退役检查误判空闲。复用原执行集合，真正空闲后释放，服务退出强制关闭，不另建任务账本。守护：`TestCLIProfileServeBackground` 在 `07f17164` 真二进制 exit 127、`fe7e1f83` 转绿；`TestRetiredRuntimeFollowsLocalTaskLifetime` 覆盖本机子代理和编码任务。Seen 1×（2026-11-01）。
 
 ## 配置与兼容
+
+- **运行态继承验收先核实际来源，合法空集合不能被夹具变成新领域前提。** 原因：Bot首链从primary.json取真实source后，夹具把Owners或Links非空合并断言；首次不能据此断言缺owner，后续明确是合法Links空。按真实API/配置确认owner可见条件，Links包括[]都逐值保留；若需区分自定义binding/非空继承，另在相关case明确布置，不改产品默认或偷补全局字段。守护：独立TestCLIBotRuntimePrimaryCreateDeleteEntry在d7/843a与89df仅setup失败，保实际Links空并去错误前提后d7/f3f0绿1.52s；实现方TestRuntimeBotCreateInheritanceAndPartial与TestPrimaryCanManageBots另核全Owners/Links及globaldefault不继承sourcebinding。补充同日实证：519/afb521fe独立诊断确认serve启动reconcile ALLcfg时已ResourcesFor造原owner1缓存entry；首次source调用前直接disk改owner2也未早于runtime装配，必须持久fixture后用现server Restart正确创建entry，再在其后保持同entry验证生命周期，不能松ALL owners断言或改产品。Seen 1×（2026-11-02），范围为本项目source型CLI夹具，不推广为全局授权规则。
 
 - **领域回包预算要服从实际下一消费者，并覆盖每一种合法输出格式。** 原因：skills按64KiB JSON投影，实际Shell只保32KiB stdout，40KiB正文exit0却截断JSON无全文引用；routine后来只按compactJSON32KiB内联，合法no-json人读逐字段输出又超32KiB。复用现Shell预算只读alias，source/CLI共用准确纯formatter，同时核整JSON含换行、人读文本与最终artifactmetadata，小引用自身也fit；不提高全Shell/强制json/让research重定向。守护：技能独立TestCLISkillRuntimeShellOutputBudget在9100c791红.94s，e21224cf新.13s+受影响预算1.10s绿；例程独立TestCLIRoutineRuntimePlainListBudget在43f实测canonicalJSON27287B、人读32781B被clip红.99s，3c同真caller/完整290记录产物绿1.07s。作者TestRuntimeRoutineHumanListBudgetArtifact在43f红300项json25227/human35111，sharedformatter后完整产物+87B引用通过；旧JSON绿不冒作人读已验。Seen 2×（2026-11-01、2026-11-02），本次先补同formatter机制，未达3个不同日子不升级全局硬约束。
 

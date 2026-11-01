@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot发现/状态/创建删除具体合同待窄核；其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作已实现，五项所测独立端到端分阶段通过，父集成待收；其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -8,7 +8,7 @@
 - MCP 的管理、发现、查看说明和调用都由 `xbot mcp …` 提供；模型按需读帮助和 schema，不常驻注入整套 MCP 或平台管理工具。
 - **退役 Link 作为统一能力接入抽象**，包括模型侧 `links` 管理入口；不是只把 `links` 工具改名。
 - **保留 Event → Inbox → 唤醒这条线**：外部消息、定时器、Webhook、文件监听、MCP 通知和任务完成仍沿已有路径投递。
-- 本文保留整体迁移路线；profile 完整族、MCP CLI、skills与routine已按切片提炼，其余平台族继续推进。不改旧 Accepted ADR 正文或 guard 旅程；后续继续先打通最窄端到端，再按能力切换并删除旧入口。
+- 本文保留整体迁移路线；profile 完整族、MCP CLI、skills、routine与Bot四操作已按切片提炼，其余平台族继续推进。不改旧 Accepted ADR 正文或 guard 旅程；后续继续先打通最窄端到端，再按能力切换并删除旧入口。
 
 ## 问题与边界
 
@@ -579,97 +579,9 @@ handlers.Skills = k.SkillHandlers() // 固定 Root、SkillsDir、动态 Redact �
 
 3e具体合同及0051窄核后，routine当前实例CLI/actual Timer/原调用审批桥与四模型门退役已提炼至 [API](../API.md#例程运行时-cli)、[内核](../atlas/kernel.md#例程实例与原调用审批)、[ADR0051](../adr/0051-routine-runtime-cli.md)。六项独立所测业务与实现方严格上下文单位的精确phase、fixture修正及当前合入级别只记 [MILESTONES](../MILESTONES.md)；不把它们抬成末docs SHA重跑。以下其它族仍沿母路线推进，不再保留已完成routine合同的重复副本。
 
-## 批 Bot：发现、状态、创建删除（具体合同PASS，实施中）
+## Bot四操作切片已提炼
 
-L档，基线main `2f03f51d`；本节具体合同ccdc3f72已由reviewer24单次CONCRETE SHAPE PASS、无必要结构阻断，[ADR0052](../adr/0052-bot-runtime-cli.md) Accepted；按同合同实施，首compiled链立即交独立首链，不再开概念轮。独立最窄List红89cea90bcf7ed5e5e9312cb9810dd0b111f61aa3/validation4a8bfd14dd8f8484c5151ecdd31d6f0e9f3a3cbf封存：真source Shell BIN list --self --json exit0却忽略flags、走旧seed/全本地人读，.93s/package2.129s；不重该红或routine/skills/profile/MCP旧绿。
-
-### Caller与准确边界
-
-```sh
-"$XBOT_BIN" list --self --json
-"$XBOT_BIN" info [NAME] --self [--steps N] --json
-"$XBOT_BIN" new NAME --self (--persona TEXT | --persona-file FILE|-) --json
-"$XBOT_BIN" delete NAME --self --json
-```
-
-平面拼写复用真实list/new/delete，info是新runtime-only命令，不造bot umbrella。self定位原source endpoint/ref而非目标或诊断XBOT_BOT。纯ParseBotRuntime按旗标arity/位置/--识别，旗标值恰为--self/--help不误分类；需认识原new的persona/provider/model arity以保离线。运行态new不接provider/model，只有明确职责二选一；persona-file/stdin只新runtime使用。bare list/new/delete等无self旧路径保留，不凭endpoint或flag字符串猜runtime；info缺self、新runtime-only参数缺self明确失败。help离线，list/new/delete help在早分流给离线+runtime用法；其余原pin/unpin/primary/fork/profile路径不变。main在resolveRoot/EnsureDefault/BindLegacy/HoldKeys前分流（当前list丢弃rest，不能只往cmdList加flag）；显式空root及规范root比对沿现约定，运行错误不回离线。
-
-同source Host/Origin/root guard，GET /v1/bot/list、GET /v1/bot/info?bot=NAME&steps=N、POST /v1/bot/create、DELETE /v1/bot/delete?name=NAME。create单typed JSON {name,persona}，拒未知字段/非对象/尾对象，原字节及最后JSON转义≤1MiB；文件stdin读max+1，help不读。query/typed领域值一次规范化：name/persona trim，persona非空；info Bot trim/steps整数，>10夹10，<=0无steps。delete name trim且只本地现可见目标，remote名称不当本地管理。
-
-### 两结构与真实调用
-
-A：CLI仿cmdNew/cmdDelete/cmdList Load/openKernel/handle/ensureSeed，再造目标K或以旧Tool.Run转发。会错terminal owner/默认persona/primary与当前source继承，丢原Statuses、host同entry/Jobs/MCP和原审批；淘汰。
-
-B：原StartOperations挂四具名typed callback，捕获原source K/root/Resources ref/动态脱敏与当前时钟，短lease复用holdOperations；current source name/Links/Owners在原current route短IO取得，释放route再调host/status/Jobs或批准，不新Kernel/会话/索引/pool/action bus。
-
-```go
-// cliops.BotHandlers / Kernel.BotHandlers(): source listener的四个领域动作。
-type BotHandlers struct {
-    List func(context.Context) (BotListReply, error)
-    Info func(context.Context, BotInfoQuery) (BotInfoReply, error)
-    Create func(context.Context, BotCreate) (BotCreateReply, error)
-    Delete func(context.Context, string) (BotDeleteReply, error)
-}
-type BotCreate struct { Name string `json:"name"`; Persona string `json:"persona"` }
-type BotInfoQuery struct { Bot string `json:"bot,omitempty"`; Steps int `json:"steps,omitempty"` }
-// cliops无kernel/bot.Config依赖，HTTP与CLI不解析旧文本。
-type BotListLocal struct { Name string `json:"name"`; PersonaPreview string `json:"persona_preview,omitempty"` }
-type BotListRemote struct { Name string `json:"name"`; Seen time.Time `json:"seen"` }
-type BotCreateReply struct { Name string `json:"name"`; Applied bool `json:"applied"`; Stage string `json:"stage"`; Error string `json:"error,omitempty"` }
-type BotDeleteReply struct { Name string `json:"name"`; Removed bool `json:"removed"`; Stage string `json:"stage"`; Error string `json:"error,omitempty"` }
-type BotListReply struct {
-    Local *[]BotListLocal `json:"local,omitempty"`; Remote *[]BotListRemote `json:"remote,omitempty"`
-    Count int `json:"count"`; File string `json:"file,omitempty"`; Access string `json:"access,omitempty"`
-    Bytes int64 `json:"bytes,omitempty"`; Error string `json:"error,omitempty"`
-}
-type BotInfoReply struct {
-    Bots *[]BotStatusView `json:"bots,omitempty"`; Steps *[]BotStepView `json:"steps,omitempty"`
-    Count int `json:"count"`; File string `json:"file,omitempty"`; Access string `json:"access,omitempty"`
-    Bytes int64 `json:"bytes,omitempty"`; Error string `json:"error,omitempty"`
-}
-// BotStatusView/TokenUse/Step为下段逐字段现公开类型的typed投影，不用any/RawMessage藏整份状态。
-```
-
-实际源调用保持 `peer.VisibleBots(root,currentName)`、`remote.VisibleBots(root,sourceOwners,sourceNow())`；Info请求时调原 `k.BotStatuses()`/`k.BotSteps(name,n)`，而不是另建K。关键装配：openKernel已StartOperations，Web返回后才 `k.Statuses=statusSource{s}`，所以不能在publish捕当时nil的Statuses接口；保原K动态方法。List current filesystem段完整结束才可调StatusSource/host等，禁止route内调用带owner/Jobs锁的方法。handler开始/产物短IO沿原source operation lease/current path，rename后原endpoint和旧诊断BOT都指原ref当前名。
-
-List保local排self与至少一个非空owner交集；shared有交集可见、orphan/foreign不互见，不取全root或group成员。local按原bot.List排序，PersonaPreview保trim后80字节预览语义。remote沿现文件缓存，无新网络/缓存：设备Person属于source Owners且未unpair；不擅加XKey/NoBotMessaging过滤；Received非零且now−Received<=7天，每设备先64再ValidName，name=bot@device、Seen=cache.Received（该值沿现接收的directory generation time语义），local后remote。无项inline两数组[]，Count为local+remote；读路径保原Load迁移/skip行为，不冒零文件写。
-
-Info承接原bot_status而非full Config/档案：Host `k.Statuses`非nil时原样委托，Web按s.owner OwnerBots含owned self/本地cached live或idle+hold，不偷加source交集；nil时自身Status+VisibleBots，others idle，无remote/跨进程活性。保原错误语义（host枚举失败nil、fallback可见性失败仅self、逐Load错skip），不造统一目录。Bot空=all；指定不在所得列表中明确same-owner错误；steps≤10，只named或结果恰1个才取，host仅existing cached K，fallback仅self。BotStatusView完整单次映射现公开字段：bot/state，tool/tool_summary/since/last_message/todo，backgrounds/agents/completed_unread，以及*BotTokenUse；后者prompt/completion/cached/turn_completion/session_prompt/session_completion/session_cached/window整数和estimated布尔，均沿原omitempty，既有session_*仅计数名非新session。BotStepView仅time(time.Time)/tool/state/summary，可选summary，不暴露private callID/description。原结构无node/stale_seconds，不能照旧atlas文字虚构。
-
-### Create事实与host Delete
-
-Create/Delete每次重验当前source为primary（原registry只primary、Run也重验），并非端点可达就放大管理权限。new要求来自明确用途的非空trim persona；name trim后走原ValidName/PortableName/ErrExists，不加默认职责/当前terminal owner。完整复制当刻source Links与全部Owners（空仍保空），调用原bot.Create选config.EnsureDefault的全局默认provider/model，不继承source activebinding/role/budget，不构造目标K/handle或post/wake。
-
-Create保真实顺序default binding→config→state→persona→owners。仅给原Create实际错误点附窄 `bot.CreateCommitError{Applied bool;Stage string;Err error}`/Error/Unwrap（保持现签名，成功仍*Bot）；successful config是已applied界线，后state/persona错为true，owner SetOwners错也true。stage为validation/default_binding/config/state/persona/owners/complete，complete在合法空Owners跳过或SetOwners成功后。原WritePersona32KiB限制仍在最后原写点（可已config/state再错），不偷偷提前改变partial；不stat猜、不回滚、不新创建事务/名字预占；EnsureDefault可能写全局registry，Applied=false不声称全root零副作用。
-
-Delete仅self或peer.VisibleBots内精确本地name；self虽绕排self筛选仍被primary/last保护拒，remote不接受。host callback捕原Resources.Delete闭包，不通过新K或Root表查另一owner。将现三个签名明确改为 `(removed bool,err error)`：BotResources.Delete、(*BotResources).DeleteRuntime、(*web.Server).DeleteRuntimeBot；chat当前ref走DeleteRuntime、其它target直接bot.DeleteWithResult，旧owner HTTP等接收_,err保原行为、CLI保bool。
-
-保原初CheckDelete短primary锁即放→host同entry BeginDelete(Pause Jobs/MCP)→全host/route/primary锁外Jobs.Shutdown cancel+join→reacquire host重查同entry/name→FinishDelete(Jobs metadata fence→route→primary再验/物理DeleteWithResult)→removed后清entry/hold并锁外Close资源/端点。false错仅原对象幸存且宿主未closed时恢复同准入；true+removeVaultKey错stage vault_key/non0仍Removed=true，不因err冒未删或重开不存在对象，不stat猜/rollback/第二pool。其它false错诚实stage validate/approval/delete，不从err文本猜细分；成功stage complete。原Jobs只join真实owned Local calls，CancelBackgrounds只取消，无全child/code/remote/MCP join承诺；原completion/MCP note join期间仍投既有目录，最终fence阻止删后复活，原锁序/通知不迁移。
-
-### strict Delete原回调，不复活旧工具
-
-原Delete类别在strict时恒需确认；具体动作固定为Delete，`!sourceK.permissive()`才需nested原审批，不在退掉delete_bot Known后查名（unknown会变Normal）。production alwaysallow不新增卡或把无必要原ctx变普通删除前提；Create仍Normal，List/Info只读。
-
-仅把现routine桥确有两个caller的机械源上下文/审批动作共用：`runtimeApprovalSource(httpCtx)(context.Context,func(),error)`检查当前k.liveShell().CallContext经Local/running/未finished、同listener/原owner或明确child及agent.ToolApprover真实Shell名，派生原+HTTP取消并把card turnKey回原owner（child nil），返回cleanup；原reviewIdentity仍读同冻结source metadata，不因card owner改变policy。routine与Bot各在此ctx做自己的typed领域审查，不设action dispatcher。`approveRuntimeIntent(ctx,approvalArgs json.RawMessage,summary string,need bool) error`复用原Shell名/agent.ToolApprover、原providerID/mutex、deniedBefore、ToolResult/parkable/trackApprove；denial先查，need=false也保现routine拒绝语义。现routineCallSource私有命名与RoutineCallID可仅在共用处中性化/委托共同SourceCallID，保持同原header/同一live字段/环境清理，无新记录或原始调用表。
-
-Bot strict Delete在原Shell JSON字段附 `_xbot_bot:{action:"delete",name:trimTarget}`，nested审批only，不改真正Shell.Run raw；不含HTTP/Job/provider随机nonce，不向退役delete_bot发grant，A→B不消费A、同A稳定重试。missing/foreign/completed call或need且nilapprover在任何Pause/删除前失败。所有锁外批准后重新解析current source primary/target visibility，之后原host/primary保护再验；拒绝/park不删、不冒自动重试事务。main政策/原owner fork卡、child原subApprove/subApprover与untrusted/no-person、late决定与done清ctx保原primitive；不新增生产strict选项或身份hook。
-
-### 双格式预算、退门与怎样算对
-
-HTTP request≤1MiB/reply≤64KiB，Final JSON含newline与同准确纯 `FormatBotList(reply)`/`FormatBotInfo(reply)`的人读文本都≤min(64K,tools.DefaultShellOutputBytes32K)。人读List显local预览/remote name+Seen绝对时间，不靠客户端时钟估age；Info显原status/steps，完整typed字段仍在JSON。inline空数组真实[]；超任一格式则现work.WriteResult存完整脱敏Reply JSON（现20MiB结果限），清inline数组、回Count/File/Access:local/Bytes，小引用两格式亦fit、Bytes==文件实际字节。不截数组/状态字段/remote伪成功、不抬Shell、不强制json或research重定向。CLI保partial回执先输出再非0，client无proxy/redirect/自动retry；create/delete小回执也核32K最终两格式。
-
-同cut只退listBotsTool/botStatusTool/createBotTool/deleteBotTool四wrapper、registry元素及专用review/index/schema/旧指引；bots row保pin_bot/setPrimary，peers row保message/groups/fork。实际无manage_bots符号，不粗删整组/Link配置grant；persona/rolebudget/profile、离线new/list/delete及用户cli-message-bot/SSE/send原样。research复用DirectXBotArgs+新纯parser只放list/info/help，write/离线/操作符先于实际解释器拒。Event→Inbox/waker与原Peer Bus/remote/group均不改，CRUD不造管理Event。
-
-|对照对象|怎样算对/最小增量|
-|---|---|
-|实际list红/首compiled链|红89cea/val4a8已封。PASS后首source list/info→new明确persona→后续发现→delete，真BIN原Shell与endpoint，typed JSON/真实config/state/persona/owners/defaultbinding/目标缺席；不Tool.Run冒入口|
-|owner与状态两视图|local self/owner交集/shared/foreign/orphan、remote7天边界/每设备64且不变原额外filter；Host迟挂不冻结nil、Web owner视图与fallback差异、named/全/steps10原规则，非global，不造remote status|
-|primary/create与partial|nonprimary无管理/缺职责不建；继承ALLowners/Links+globaldefaults而非sourcebinding/role；真实state/persona/owners后段失败回applied/stage，不猜零写或事务|
-|同entry冷活删除/strict原ctx|原ownedJob真join/同Jobs MCP/失败恢复/rename或保护变化拒/removed后keyfail仍true与terminal cleanup/不复活；strictDeny/Park A→B/child/fork/completed由实现方actual上下文单位，独立生产无strict hook|
-|实际32K读与退门|List/Info JSON与human均实际无redirect完整引用+当前rename workspace/20M限；main/research/dev/legacy只退等价四schema/index、list/info/help允许、writes/operators零副作用，其余pin/primary/fork/message/group/Tools有效行为保|
-|0021与既有守护|不新会话、任务/通知账本或管理wake，Bot协作与六基本/长程/界面旅程步骤不改；不抢主人消息SSE/外Agent send设计，pureDocs阶段不跑产品测试|
-
-当前只提交合同/0052待一次窄核。PASS后按同一合同分面实施、首compiled candidate立即给父，后实际受影响组再一次；已绿routine六项/skills/profile/MCP及原List红封存，不全包/全仓/真模型/完整矩阵、日用实例或无关性能，不改guard。其它母路线继续在下节。
+ccdc具体合同单次窄核后，原source平面list/info/new/delete、动态状态、primary管理、实际partial及原审批/四模型门退役已经提炼至 [API](../API.md#bot-运行时-cli)、[内核](../atlas/kernel.md#bot-发现与管理实例入口)、[ADR0052](../adr/0052-bot-runtime-cli.md)。首链d7、完整519增量与作者/独立各自精确phase及当前验收/合入级别只记 [MILESTONES](../MILESTONES.md)，不留完整合同重复副本。原pin/primary/fork/persona/rolebudget、peers消息/群及以下其余路线未借本刀迁移；主人cli-message-bot/SSE/send设计不在本刀内。
 
 ## 还没做的
 
@@ -677,7 +589,7 @@ HTTP request≤1MiB/reply≤64KiB，Final JSON含newline与同准确纯 `FormatB
 - 批 0 的后续实际操作及入站依赖清单、尚未迁族的 research 业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已提炼 atlas，固定五项独立所测端到端按各自精确版本通过，证据见 MILESTONES；原 chat loop 下一输入/Timer handle 及其 recover、回放、通知实际消费者也已以局部红绿和 reviewer24 至 `63762ae5` 连续增量 PASS 收口，已合入本地 main，尚未日用；合并时与主线持久选择的交叠补单项真实浏览器红绿，不重跑固定五项。已通过的普通字段、avatar_seed、MCP 和本刀五项不重复整批验收，母路线其它族继续在本 dev 中推进。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
-- skills read/write与routine已提炼现状，Bot/群/连接器及剩余目录管理等平台能力继续逐族迁移。
+- skills read/write与routine已提炼现状，Bot剩余管理动作/群/连接器及剩余目录管理等平台能力继续逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。
 - 各批独立冒烟、相关旅程回归、性能与上下文收益测量、主人日用验收。
