@@ -401,7 +401,7 @@ func (*Bot) ApplyProfileChange(normalized ProfileChange) (*Bot, ProfileChangeRes
 
 外部入口只规范化一次，内部传复制后的typed值。Validate提取现applyProfile的name flat/ValidName/PortableName、description limitText160、timezone flat/LoadLocation、seed Trim/ValidAvatarSeed；完整验证在任何业务写前。Check只读Stat/必要ReadFile+Unmarshal查目标Bot/work/key，不用会迁移的Load，更不ApplyProfile试校验。private checkLocked在primary提交锁内重核依赖；Bot/work/key统一same-file规则，moveWork同步修大小写同文件豁免；peer成员修改前先完成全部预期校验。
 
-无改名仍profile.mu→config.lock fresh merge→WriteAtomic→快照。改名经movers进入route→primary→profile.mu→config锁，持已打开config锁跨目录move，在新路径把name+请求fields+legacy seed pin一次fresh merge写入，保未请求skills/card/role/model。不能改b.cfg后SaveConfig（会回填磁盘profile旧值吞新字段），不在目标Load后嵌套迁移/SaveConfig抢同锁。旧Rename/RenameWithResult薄委托name-only同实现，保RenameBot/peer/primary/work/key职责，不留两套rename。
+无改名仍profile.mu→config.lock fresh merge→WriteAtomic→快照。改名经movers进入route→primary→profile.mu→config锁，持已打开config锁跨目录move，在新路径把name+请求fields+legacy seed pin一次fresh merge写入，保未请求skills/card/role/model。不能改b.cfg后SaveConfig（会回填磁盘profile旧值吞新字段），不在目标Load后嵌套迁移/SaveConfig抢同锁。旧Rename/RenameWithResult薄委托name-only同实现，保RenameBot/peer/primary/work/key职责，不留两套rename。kernel的peer.RenameMember改在提交返回实际moved=true之后执行，错误join入partial；这样primary锁内冲突复核之前不先写groups，不向bot包传通用before/rollback钩子。
 
 actual WriteAtomic成功点才记applied_fields，最终目录落点决定name/moved；同名no-op moved=false，大小写不靠old消失/new出现猜。预期无效/冲突零改。后期primary/work/key/重载IO仍现best-effort回滚：若名回旧而fields已存，回old/moved=false/fields非空；目录留新就回new/moved=true，全部mover/route必须跟新，失败不能复活旧目录。无现成physicalMovedResult或rename failurehook，不冒称已有；验证用真实文件故障/实际move回调结果，不提前造通用故障框架。
 
