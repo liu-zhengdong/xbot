@@ -2,11 +2,13 @@ package kernel
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
 	"xbot/internal/experience"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -16,11 +18,21 @@ import (
 func TestExperienceRecordShowsInNextEnvironment(t *testing.T) {
 	b := testBot(t, link.NameTerminal, link.NameMemory, link.NameContext)
 	p := &scripted{resps: []provider.Message{
-		toolCall("c1", "experience_record", `{"summary":"决定部署改成蓝绿发布","focus":"deploy"}`),
+		toolCall("c1", "sh", `{"command":"\"$XBOT_BIN\" experience record --self --summary '决定部署改成蓝绿发布' --focus deploy","description":"record the deployment decision"}`),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("记下了")},
 		{Role: provider.RoleAssistant, Content: provider.TextContent("在")},
 	}}
-	k := &Kernel{Bot: b, Provider: p, Memory: memory.Open(b.Root), MaxSteps: 4, Links: []link.Link{link.Memory{}, link.Context{}}}
+	k := &Kernel{Bot: b, Provider: p, Memory: memory.Open(b.Root), MaxSteps: 4}
+	// Replace only process execution: Handle still drives the real Agent, Jobs,
+	// source HTTP, transcript and next environment with the original provider.
+	k.Links = []link.Link{streamLink{tool: routineSourceShell{run: func(ctx context.Context, _ json.RawMessage) (string, error) {
+		reply, err := cliops.CallExperienceRecord(ctx, operationEndpoint(k), b.Root, cliops.ExperienceRecord{Summary: "决定部署改成蓝绿发布", Focus: "deploy"})
+		return cliops.FormatExperienceRecord(reply), err
+	}}}, link.Memory{}, link.Context{}}
+	if err := k.StartOperations(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = k.Close() })
 	ctx := context.Background()
 	if err := k.Handle(ctx, link.TerminalEvent("u1", "部署以后走蓝绿", time.Now())); err != nil {
 		t.Fatal(err)
@@ -29,8 +41,8 @@ func TestExperienceRecordShowsInNextEnvironment(t *testing.T) {
 	if !strings.Contains(messagesText(first.Messages), ExperienceRule) {
 		t.Fatal("experience rule missing from the request")
 	}
-	if !registered(k, "experience_record") {
-		t.Fatal("experience_record not offered")
+	if !registered(k, "sh") {
+		t.Fatal("sh not offered")
 	}
 	if got := messagesText(p.reqs[1].Messages); !strings.Contains(got, "recorded experience #1 (seq ") {
 		t.Fatalf("tool result: %s", got)
@@ -43,7 +55,7 @@ func TestExperienceRecordShowsInNextEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.Summary != "决定部署改成蓝绿发布" || e.Focus != "deploy" || e.To < e.From || !strings.Contains(owner[0].Message.Text(), "部署以后走蓝绿") || !strings.HasPrefix(e.Segment, "user: 部署以后走蓝绿\n") || !strings.Contains(e.Segment, "experience_record") {
+	if e.Summary != "决定部署改成蓝绿发布" || e.Focus != "deploy" || e.To < e.From || !strings.Contains(owner[0].Message.Text(), "部署以后走蓝绿") || !strings.HasPrefix(e.Segment, "user: 部署以后走蓝绿\n") || !strings.Contains(e.Segment, "assistant: [tools: sh]") {
 		t.Fatalf("stored %+v / %q", e, owner[0].Message.Text())
 	}
 	if err := k.Handle(ctx, link.TerminalEvent("u1", "在吗", time.Now())); err != nil {

@@ -119,7 +119,7 @@ var kernelTools = []struct {
 	}, nil},
 	{"audio", always, func(k *Kernel) []tools.Tool { return []tools.Tool{listenTool{k}, ttsTool{k}} }, nil},
 	{"memory", always, func(k *Kernel) []tools.Tool {
-		return []tools.Tool{recallTool{k}, experienceRecordTool{k}, experienceSearchTool{k}}
+		return []tools.Tool{recallTool{k}}
 	}, nil},
 	// The owner sees only what the bot sends, so every bot can send.
 	{"chat", always, func(k *Kernel) []tools.Tool { return []tools.Tool{sendMessageTool{k}} }, nil},
