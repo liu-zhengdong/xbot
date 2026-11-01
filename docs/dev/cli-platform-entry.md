@@ -494,14 +494,14 @@ Message冷续两段：owners→Local→storage→WithCurrentIO读currentdir/状�
 - 接受每次命令的进程启动与 IPC 开销，换来统一入口与脚本组合能力；帮助发现也会占 token，收益以代表任务测量。
 - 接受运行操作依赖当前实例可达，换来会话连续性；已有离线帮助/配置用途明确保留，不静默切实例。
 - 接受模型工具层对 MCP 内部细动作的可见性下降，轨迹首先保留真实 Shell 命令与结果；需要更细展示时复用原 trace，而不是假装旧工具仍被调用。
-- 后续具体设计先定：`--self` 跨完整改名的稳定定位、人用终端/外部脚本的显式实例地址；runner 不可直达原实例时如何沿既有链路回接；严格只读子代理如何按业务动作分类 CLI。chat/serve 的最小本机 HTTP 与当前调用方环境沿 [ADR 0043](../adr/0043-cli-platform-runtime-entry.md)，不再重新选择传输。
+- 后续具体设计先定：runner 不可直达原实例时如何沿既有链路回接；严格只读子代理如何按其它业务动作分类 CLI。当前实例 `--self` 跨完整改名的稳定 ref 与显式本机调用沿 [ADR 0048](../adr/0048-complete-runtime-profile-entry.md)，chat/serve 的最小本机 HTTP 与当前调用方环境沿 [ADR 0043](../adr/0043-cli-platform-runtime-entry.md)，不再重新选择传输。
 - 本文不预先锁死包名、socket 路径、所有 JSON 字段与完整基础工具白名单；在第一条真实调用路径上定形，不为将来猜测造框架。
 
 ## 还没做的
 
 - 主人日用验收尚未开始。普通资料首刀的独立审计、真入口验证与合入已完成；后续不重复该刀设计审批，按新切片复核实际增量。
 - 批 0 的后续实际操作及入站依赖清单、research 按业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
-- profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已实现于 feature 分支，当前合同见本份“批 profile 完整等价”，现状已提炼 atlas；独立 RenameEntry 在 94f34c67 通过并封存，Atomic/Resources/Avatar/Browser 仍待完整产品验收与最终增量审计，未合 main/日用。普通字段、avatar_seed 与 MCP 已绿证据继续复用，不重做整批。
+- profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已提炼 atlas，固定五项独立所测端到端按各自精确版本通过，证据见 MILESTONES；原 chat loop 下一输入/Timer handle 及其 recover、回放、通知实际消费者也已以局部红绿和 reviewer24 至 `63762ae5` 连续增量 PASS 收口，待父方合 main/尚未日用。已通过的普通字段、avatar_seed、MCP 和本刀五项不重复整批验收，母路线其它族继续在本 dev 中推进。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
 - 技能/例程/Bot/群/连接器等平台能力逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。

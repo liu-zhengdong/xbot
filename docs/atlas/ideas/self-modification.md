@@ -1,6 +1,6 @@
 ---
 kind: idea
-verified: 2026-11-01 @ 748ea940
+verified: 2026-11-01 @ 63762ae5
 parent: ../README.md
 guard: owner
 status: 候选，机制还没设计
