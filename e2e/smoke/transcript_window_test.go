@@ -10,7 +10,9 @@ import (
 	"os"
 	"os/exec"
 	"testing"
+
 	"time"
+	"xbot/internal/browsertest"
 
 	"xbot/internal/bot"
 	"xbot/internal/provider"
@@ -19,9 +21,7 @@ import (
 // The actual serve binary, real HTTP/FTS and shipped browser UI. No model is
 // called: the stub is configured only to keep this journey isolated.
 func TestTranscriptWindowJourney(t *testing.T) {
-	if _, err := os.Stat("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"); err != nil {
-		t.Skip("Chrome unavailable")
-	}
+	t.Setenv("XBOT_TEST_CHROME", browsertest.Chrome(t))
 	srv := Start(t, StartStub(t))
 	srv.CreateBot("History", "History window smoke")
 	b, err := bot.Load(srv.Root, "History")

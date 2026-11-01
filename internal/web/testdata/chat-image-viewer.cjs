@@ -15,7 +15,7 @@ const current=async(p,n)=>assert.ok((await p.locator(img).getAttribute('data-del
 const loaded=p=>p.waitForFunction(()=>{const n=document.querySelector('#lightbox img');return n?.naturalWidth&&!n.hidden});
 const screenshot=async(p,theme,name)=>{if(shots){const dir=path.join(shots,theme);fs.mkdirSync(dir,{recursive:true});await p.screenshot({path:path.join(dir,name+'.png')})}};
 (async()=>{
- const browser=await chromium.launch({channel:'chrome',headless:true});
+ const browser=await chromium.launch({executablePath:require('../../browsertest/chrome.cjs')(),headless:true});
  try {
   for(const theme of ['light','dark']) {
    const context=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:2,colorScheme:theme});

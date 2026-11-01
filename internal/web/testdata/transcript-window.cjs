@@ -4,7 +4,7 @@ const path = require('node:path');
 const cfg = JSON.parse(fs.readFileSync(0, 'utf8'));
 const assert = (ok, message) => { if (!ok) throw Error(message); };
 (async () => {
-  const browser = await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+  const browser = await chromium.launch({executablePath:require('../../browsertest/chrome.cjs')(),headless:true});
   try {
     for (const theme of ['light','dark']) {
       const context = await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:2,colorScheme:theme});

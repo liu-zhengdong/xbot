@@ -9,15 +9,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"xbot/internal/browsertest"
 )
 
 // Exercise the shipped page and computed geometry, including a nonzero safe
 // area. The iframe gives Chrome an exact viewport even below its window minimum.
 func TestBotPanelBrowser(t *testing.T) {
-	chrome, err := exec.LookPath("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
-	if err != nil {
-		t.Skip("Chrome unavailable")
-	}
+	chrome := browsertest.Chrome(t)
 	// The Windows/Linux desktop shell has a taller header; app.js marks it with
 	// these root classes, so the fixture adds them the same way.
 	for _, tc := range []struct {

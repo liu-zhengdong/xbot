@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"xbot/internal/browsertest"
 )
 
 // The composer journey end to end: draft URLs highlight, a click opens the
@@ -17,10 +19,8 @@ import (
 // survives the contenteditable switch. Runs the shipped page in headless
 // Chrome with the same scripted HTTP as the chat stream browser test.
 func TestComposerLinksBrowser(t *testing.T) {
-	chrome, err := exec.LookPath("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
-	if err != nil {
-		t.Skip("Chrome unavailable")
-	}
+	chrome := browsertest.Chrome(t)
+	var err error
 	dir := t.TempDir()
 	err = fs.WalkDir(staticFS, "static", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

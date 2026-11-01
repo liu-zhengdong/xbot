@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"xbot/internal/browsertest"
 )
 
 // A script that stops early (an awaited promise that never settles lets node exit 0) must fail, so each
@@ -272,16 +274,7 @@ func TestSkillsSettingsIgnoresLateAnswers(t *testing.T) {
 // shrinking under their text, so a long description never runs into the next row's name. Measured in a
 // real headless browser; skipped where none is installed.
 func TestImportChecklistRowsDoNotOverlap(t *testing.T) {
-	chrome := ""
-	for _, c := range []string{"google-chrome", "chromium", "chromium-browser", "chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"} {
-		if p, err := exec.LookPath(c); err == nil {
-			chrome = p
-			break
-		}
-	}
-	if chrome == "" {
-		t.Skip("no headless browser")
-	}
+	chrome := browsertest.Chrome(t)
 	css, err := staticFS.ReadFile("static/skills.css")
 	if err != nil {
 		t.Fatal(err)

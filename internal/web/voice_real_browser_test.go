@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
 	"time"
+	"xbot/internal/browsertest"
 
 	"xbot/internal/bot"
 	"xbot/internal/provider"
@@ -19,10 +20,7 @@ import (
 // Only the microphone device and chat model are fake; no browser media API or
 // application request is replaced. A fresh profile keeps service workers out.
 func TestVoiceRealBrowser(t *testing.T) {
-	chrome := "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-	if _, err := os.Stat(chrome); err != nil {
-		t.Skip("Chrome unavailable")
-	}
+	chrome := browsertest.Chrome(t)
 	root, upstream, cookie, _ := pasteTestServer(t, false)
 	defer upstream.Close()
 	id := uploadVoice(t, upstream.URL, cookie, voiceWAV())

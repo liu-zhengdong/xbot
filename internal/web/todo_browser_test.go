@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"xbot/internal/browsertest"
 )
 
 // Exercise the shipped app. Only HTTP and the model stream are scripted.
@@ -75,10 +77,8 @@ func TestBusyLineBrowser(t *testing.T) {
 
 func runTodoBrowser(t *testing.T, fixture, driver string) {
 	t.Helper()
-	chrome, err := exec.LookPath("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
-	if err != nil {
-		t.Skip("Chrome unavailable")
-	}
+	chrome := browsertest.Chrome(t)
+	var err error
 	dir := t.TempDir()
 	if evidence := os.Getenv("XBOT_TODO_EVIDENCE"); evidence != "" {
 		dir = filepath.Join(evidence, t.Name(), "fixture")

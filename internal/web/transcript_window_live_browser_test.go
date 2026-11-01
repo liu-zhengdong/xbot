@@ -9,7 +9,9 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
 	"time"
+	"xbot/internal/browsertest"
 
 	"xbot/internal/bot"
 	"xbot/internal/provider"
@@ -18,9 +20,7 @@ import (
 // A real HTTP handler, durable segmented records and shipped UI run together.
 // There are no model calls in this read-only journey.
 func TestTranscriptWindowLiveBrowser(t *testing.T) {
-	if _, err := os.Stat("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"); err != nil {
-		t.Skip("Chrome unavailable")
-	}
+	t.Setenv("XBOT_TEST_CHROME", browsertest.Chrome(t))
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("node unavailable")
@@ -62,9 +62,7 @@ func TestTranscriptWindowLiveBrowser(t *testing.T) {
 }
 
 func TestTranscriptWindowVisibleTailBrowser(t *testing.T) {
-	if _, err := os.Stat("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"); err != nil {
-		t.Skip("Chrome unavailable")
-	}
+	t.Setenv("XBOT_TEST_CHROME", browsertest.Chrome(t))
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("node unavailable")

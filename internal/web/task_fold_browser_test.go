@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"xbot/internal/browsertest"
 )
 
 func TestTaskFoldInPanelBrowser(t *testing.T) {
@@ -35,10 +37,8 @@ func TestTaskFoldInPanelBrowser(t *testing.T) {
 }
 
 func TestFinishedTaskFoldKeepsSameHeader(t *testing.T) {
-	chrome, err := exec.LookPath("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
-	if err != nil {
-		t.Skip("Chrome unavailable")
-	}
+	chrome := browsertest.Chrome(t)
+	var err error
 	js, _ := staticFS.ReadFile("static/app.js")
 	css, _ := staticFS.ReadFile("static/app.css")
 	src := string(js)

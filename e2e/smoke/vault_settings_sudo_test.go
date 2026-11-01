@@ -15,15 +15,14 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"xbot/internal/browsertest"
 )
 
 func TestVaultSettingsSudoBinary(t *testing.T) {
 	t.Setenv("XBOT_VAULT_SOCKET", "")
 	t.Setenv("XBOT_SMOKE_OAUTH", "")
-	chrome := "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-	if _, err := os.Stat(chrome); err != nil {
-		t.Skip("Chrome unavailable")
-	}
+	chrome := browsertest.Chrome(t)
 	const password = "scripted-local-sudo-123456"
 	var phase atomic.Int32
 	var injected atomic.Int32

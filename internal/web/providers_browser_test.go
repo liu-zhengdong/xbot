@@ -8,14 +8,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"xbot/internal/browsertest"
 )
 
 // Use the shipped app and settings entrypoint; only HTTP data is scripted.
 func TestProvidersSettingsBrowser(t *testing.T) {
-	chrome, err := exec.LookPath("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
-	if err != nil {
-		t.Skip("Chrome unavailable")
-	}
+	chrome := browsertest.Chrome(t)
+	var err error
 	dir := t.TempDir()
 	if evidence := os.Getenv("XBOT_PROVIDER_EVIDENCE"); evidence != "" {
 		dir = filepath.Join(evidence, "fixture")

@@ -10,6 +10,14 @@
 - gofmt 无输出、全仓 vet、diff check 通过；atlas audit 退出 0，保留既有链接/陈旧/未索引告警。cmd/xbot、bot、inbound、kernel、link、vault 整包三遍通过；web 本条缝上/API/应用/审批及 Chrome 专项三遍通过（17.451s），整包三遍在 600s 超时前出现 DevicesPairBrowser/remote、CLIEventQueue 清理竞态、QuestionTypedReplyStopsTimer 计时失败，未改用例或扩修。全仓 `go test -count=1 ./...` 已完整跑过，最终仅 OAuth 回调端口占用和旧 DevicesPairBrowser/remote 未绿；OAuth 单项三遍复跑通过，设备配对在未修改 6bd6c31f 归档复现相同失败；三遍另两类失败未重新归因。六基础旅程 smoke 在当前分支和原 tip 归档均因旧 done.text/delta 契约同样失败；长程测试随全量 e2e 通过。
 - 级别：分支专项真入口端到端通过；未合 main、未 push、未重启日用服务，不宣称整体旅程门禁或用户日用通过。设计保留，未改 guard/Agent 指令/发版文件；不安排合入后逛验收。Not run: 真实密码/系统 sudo 策略、真模型、Linux CI、独立设计/代码复审、设计师回签、用户日用、生产 p95/后台减速/持续帧率专项。日志 `/tmp/vault-{all-final,repeat3,web-seams3,binary3,old-red,baseline-device,guard-smoke,baseline-guard,atlas-final}.log`。
 
+## 2026-11-01 浏览器测试默认 headless-shell（feature/chrome-headless-shell）
+
+- S 档。只改测试启动与取证脚本：Go / Node 共用各语言的 `internal/browsertest` 选择器，优先 `XBOT_TEST_CHROME`，否则 PATH 的 `chrome-headless-shell`，再找已有 Playwright headless-shell 缓存；不回退完整 Chrome，不安装依赖，不改产品浏览器、UI 或日用服务。
+- 绿条验证选中的 executable 与真实启动路径：本机实际启动 `~/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell` 并读 DOM（0.61s）；选择回归覆盖 PATH / 缓存 / 显式覆盖，Go 与 Node 结果一致。把共享页面启动点回退成旧 Chrome.app 选择后，启动点回归实际失败；恢复后通过，未为验红启动完整 Chrome。
+- `go test -count=1 ./...`、`go vet ./...`、gofmt、diff check 通过。改动包整包 `-count=3`：browsertest / pipe 通过，web 唯一失败为既有 `TestCLIEventQueue` TempDir 清理竞态（上一条头像里程碑已有 HEAD 复现）；不扩修。新路径上的真实滚动帧测试通过，20 样本帧间隔 p95 19ms、锚偏移 3.66px，仅本机测试数字，不作 60fps 保证。
+- 真二进制自定义供应商 / 历史窗口 / 保险库三组 smoke 均连续三遍通过，启动日志明确记录 shell 路径；自定义目录 p95 0.71–1.77ms、保险库 GET p95 2–4ms（本机 scripted）。另显式启用外部 `xbot-account/public` 的 pipe 浏览器用例三遍均在脚本第 60 行失败：导航销毁 evaluate 上下文；已确认启动的是 shell，但这条外部资产旅程未绿，未扩修或声称是基线问题。
+- 级别：本地分支启动路径与三组真二进制专项端到端通过；整体门禁未全绿，未合 main、未 push。atlas audit 退出 0，保留既有链接 / stale / unmapped 告警。Not run: Linux / Windows CI、用户目视 Dock 日用验收、生产性能专项、独立评审；未调用真实模型。日志 `/tmp/xbot-headless-{target,red,all,vet,repeat,smoke,pipe-live,atlas}.log`。
+
 ## 2026-11-01 设置主人头像（feature/owner-avatar-settings）
 
 - M 档。通用「我的头像」复用现有 setpane/按钮/字体，无新 CSS、颜色或动效；data root `owner-avatar` 是唯一真源，GET/POST/DELETE 与 session 字段串起预览、侧栏即时更新和刷新读回。类型/大小对齐 Bot，无 localStorage 图片副本。

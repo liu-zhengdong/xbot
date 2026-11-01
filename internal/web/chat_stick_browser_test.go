@@ -5,11 +5,12 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"xbot/internal/browsertest"
 )
 
 func TestChatStickBrowser(t *testing.T) {
@@ -19,10 +20,7 @@ func TestChatStickBrowser(t *testing.T) {
 func runChatFramesBrowser(t *testing.T, fixture, driver string) {
 	t.Helper()
 	// ResizeObserver/rAF need real frames, not dump-dom's virtual timers.
-	chrome := "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-	if _, err := os.Stat(chrome); err != nil {
-		t.Skip("Chrome unavailable")
-	}
+	chrome := browsertest.Chrome(t)
 	assets, err := fs.Sub(staticFS, "static")
 	if err != nil {
 		t.Fatal(err)

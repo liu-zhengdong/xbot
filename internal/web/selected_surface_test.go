@@ -7,20 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"xbot/internal/browsertest"
 )
 
 // Check rendered selection and container surfaces in both themes.
 func TestSelectedCardSurfaces(t *testing.T) {
-	chrome := ""
-	for _, name := range []string{"google-chrome", "chromium", "chromium-browser", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"} {
-		if path, err := exec.LookPath(name); err == nil {
-			chrome = path
-			break
-		}
-	}
-	if chrome == "" {
-		t.Skip("Chrome is not installed")
-	}
+	chrome := browsertest.Chrome(t)
 	var styles strings.Builder
 	for _, file := range []string{"static/tokens.css", "static/app.css", "static/providers.css", "static/web-search.css", "static/skills.css", "static/image-gen.css", "static/devices.css"} {
 		data, err := staticFS.ReadFile(file)

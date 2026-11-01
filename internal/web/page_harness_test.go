@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"xbot/internal/browsertest"
 )
 
 // runPageInChrome writes the shipped page into a temp dir with the scripted
@@ -16,10 +18,8 @@ import (
 // data-test-result="passed". Same harness as TestComposerLinksBrowser.
 func runPageInChrome(t *testing.T, driver string) {
 	t.Helper()
-	chrome, err := exec.LookPath("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
-	if err != nil {
-		t.Skip("Chrome unavailable")
-	}
+	chrome := browsertest.Chrome(t)
+	var err error
 	dir := t.TempDir()
 	err = fs.WalkDir(staticFS, "static", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

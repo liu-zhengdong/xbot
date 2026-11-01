@@ -7,19 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"xbot/internal/browsertest"
 )
 
 func TestTaskIDSelectionSurvivesTwoPolls(t *testing.T) {
-	chrome := ""
-	for _, name := range []string{"google-chrome", "chromium", "chromium-browser", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"} {
-		if path, err := exec.LookPath(name); err == nil {
-			chrome = path
-			break
-		}
-	}
-	if chrome == "" {
-		t.Skip("Chrome is not installed")
-	}
+	chrome := browsertest.Chrome(t)
 	raw, err := staticFS.ReadFile("static/app.js")
 	if err != nil {
 		t.Fatal(err)

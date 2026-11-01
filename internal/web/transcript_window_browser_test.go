@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"xbot/internal/browsertest"
 )
 
 // The HTTP fixture supplies sequence windows; the shipped loadThread, paging,
@@ -223,10 +225,8 @@ document.addEventListener('history-transcript-partial',()=>{
 // scripts and styles remain unchanged; only HTTP is scripted as in runTodoBrowser.
 func runTranscriptReducedMotionBrowser(t *testing.T, fixture, driver string) {
 	t.Helper()
-	chrome, err := exec.LookPath("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
-	if err != nil {
-		t.Skip("Chrome unavailable")
-	}
+	chrome := browsertest.Chrome(t)
+	var err error
 	dir := t.TempDir()
 	err = fs.WalkDir(staticFS, "static", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

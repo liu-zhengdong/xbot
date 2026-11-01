@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"xbot/internal/browsertest"
 )
 
 func pathFunctions(t *testing.T, layout bool) string {
@@ -46,10 +48,7 @@ func TestCompactPathKeepsSegmentsAndTheWholeFilename(t *testing.T) {
 }
 
 func TestCardAndBubblePathsShareFittingAcrossWidths(t *testing.T) {
-	chrome := "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-	if _, err := os.Stat(chrome); err != nil {
-		t.Skip("Chrome unavailable")
-	}
+	chrome := browsertest.Chrome(t)
 	page := `<!doctype html><meta charset="utf-8"><style>.chat{width:520px}.msg{width:100%}.body{max-width:86%}.bot-bubble{padding:9px 15px}body{font:13px monospace}.notable-text{display:flex;width:320px}.notable-prefix{flex:none}.compact-path{min-width:0;display:inline-block;max-width:100%;overflow-wrap:anywhere;white-space:normal}.notable-text .compact-path{flex:1}</style><div class="chat"><div class="msg"><div class="body"><div class="bot-bubble"><p></p></div></div></div></div><div class="notable-text has-path"><span class="notable-prefix">写入了 </span></div><script>
  window.requestAnimationFrame=fn=>setTimeout(()=>fn(performance.now()),1);
  const el=(tag,cls,text)=>{const n=document.createElement(tag);n.className=cls||'';n.textContent=text||'';return n},taskSelected=()=>false;

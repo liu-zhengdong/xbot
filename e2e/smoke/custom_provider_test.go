@@ -14,16 +14,15 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"xbot/internal/browsertest"
 )
 
 // The real serve binary, shipped page and real browser exercise the entire
 // settings → registry → live catalog → Bot binding journey. Only /models is
 // scripted; the browser never replaces fetch or fabricates a provider list.
 func TestCustomProviderBrowserBinary(t *testing.T) {
-	chrome := "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-	if _, err := os.Stat(chrome); err != nil {
-		t.Skip("Chrome unavailable")
-	}
+	chrome := browsertest.Chrome(t)
 	if err := exec.Command("node", "-e", `require('playwright')`).Run(); err != nil {
 		t.Skip("Playwright unavailable")
 	}

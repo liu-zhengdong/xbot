@@ -5,7 +5,7 @@ let browser;
 (async () => {
  const base = process.argv[2];
  const dir = process.env.XBOT_PIPE_SHOTS;
- browser = await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+ browser = await chromium.launch({executablePath:require('../../browsertest/chrome.cjs')(),headless:true});
  const context = await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:2});
  const page = await context.newPage();
  const errors=[];
