@@ -69,8 +69,9 @@
     inboxData: null,
     editOpen: false,
     messages: [],
-    traceOpen: {},
-    traceOut: {},
+    traceMessages: [],
+    traceWindow: null,
+    traceUI: null,
     traceThink: {},
     // The context panel's own UI state: which request is shown, which band or
     // message is open, and the snapshot itself (fetched per bot, never cached
@@ -4555,8 +4556,8 @@
     paintHistory();
     state.panelData = null;
     state.inboxData = null;
-    state.traceOpen = {};
-    state.traceOut = {};
+    state.traceWindow = null;
+    state.traceUI = null;
     state.traceThink = {};
     // The snapshot belongs to one bot's one wake. Keeping it would show A's
     // context under B's name, so it is dropped and refetched on demand.
@@ -5047,7 +5048,8 @@
     if (id !== "chat") panelBody.scrollTop = workspaceView(id).savedScrollTop || 0;
     if (focus) ($("workspace-tab-" + id) || workspaceView(id)).focus({preventScroll:true});
     if (id !== "chat") {
-      if (!state.panelData || state.panelError === id || id === "context" || id === "trace") loadPanel();
+      if (id === "trace") { loadTrace(); if (!state.panelData) loadPanel(); }
+      else if (!state.panelData || state.panelError === id || id === "context") loadPanel();
       else if (id === "inbox") loadInbox();
     }
   }
@@ -5551,13 +5553,18 @@
     if (tasks && state.tab === "computer") { syncTaskView(tasks, data); return; }
     const memory = body.querySelector(".memory-view");
     if (memory && state.tab === "library") { libraryView(data, memory); return; }
-    const key = JSON.stringify(state.tab === "library" ? data.memory : state.tab === "trace" ? [state.traceMessages, state.traceOpen, state.traceOut, state.traceThink] : state.tab === "context" ? [state.ctxSnap, state.ctxStep, state.ctxMenu, state.ctxOpen, state.ctxRaw] : state.tab === "inbox" ? state.inboxData : [data, modelHits(data), state.ctxSnap?.ceiling, state.ctxSnap?.target]);
+    if (state.tab === "trace") {
+      let trace = body.querySelector(".trace-explorer");
+      if (!trace) { trace = traceView(); body.replaceChildren(trace); }
+      syncTrace(trace);
+      return;
+    }
+    const key = JSON.stringify(state.tab === "library" ? data.memory : state.tab === "context" ? [state.ctxSnap, state.ctxStep, state.ctxMenu, state.ctxOpen, state.ctxRaw] : state.tab === "inbox" ? state.inboxData : [data, modelHits(data), state.ctxSnap?.ceiling, state.ctxSnap?.target]);
     if (body.renderKey === key || taskSelected(body)) return;
     body.renderKey = key;
     let content;
     if (state.tab === "library") content = libraryView(data);
     else if (state.tab === "computer") content = computerView(data);
-    else if (state.tab === "trace") content = traceView();
     else if (state.tab === "context") content = contextView(data);
     else if (state.tab === "inbox") content = inboxView();
     else content = detailsView(data);
@@ -5608,77 +5615,73 @@
     return view;
   }
 
-  function durText(ms) {
-    const s = Math.max(1, Math.round(ms / 1000));
-    if (s < 60) return s + " 秒";
-    const m = Math.round(s / 60);
-    if (m < 60) return m + " 分";
-    return Math.round(m / 60) + " 小时";
-  }
-
   function argText(args) {
-    if (!args || typeof args !== "object") return "";
-    if (typeof args.command === "string" && args.command) return args.command;
-    const keys = Object.keys(args);
-    if (!keys.length) return "";
-    try { return JSON.stringify(args, null, 2); } catch (e) { return ""; }
+    return args && typeof args === "object" ? JSON.stringify(args, null, 2) : "";
   }
 
-  function previewOutput(text) {
-    const raw = String(text || "");
-    const lines = raw.split("\n");
-    let short = lines.slice(0, 4).join("\n");
-    if (short.length > 280) short = short.slice(0, 280);
-    const truncated = short.length < raw.length;
-    return { text: truncated ? short.replace(/\s+$/, "") + "…" : raw, truncated: truncated };
-  }
+  const TRACE_TYPES = [
+    ["all", "全部", "git-branch"], ["input", "输入", "message-circle"], ["model", "模型", "brain"],
+    ["tool", "工具", "terminal"], ["context", "上下文", "layers"], ["error", "错误", "x"],
+  ];
 
-  function traceTurns(messages) {
-    const results = {};
-    for (const m of messages || []) {
-      if (m.role === "tool" && m.tool_call_id) results[m.tool_call_id] = m;
+  // One read-only projection of the public window. Calls have independent keys
+  // even when the provider puts several in one assistant record.
+  function traceEvents(messages) {
+    const results = new Map(), linked = new Set(), events = [];
+    for (const m of messages) {
+      if (m.role !== "tool" || !m.tool_call_id) continue;
+      if (!results.has(m.tool_call_id)) results.set(m.tool_call_id, []);
+      results.get(m.tool_call_id).push(m);
     }
-    const turns = [];
-    for (const m of messages || []) {
-      if (m.role !== "assistant") continue;
-      const calls = [];
-      for (const call of m.tool_calls || []) {
-        const info = toolSummary(call);
-        if (info.name === "ask_user") continue;
-        const result = results[call.id || ""];
-        calls.push({
-          name: info.name,
-          args: info.args,
-          output: result ? (result.content || "") : "",
-          hasResult: !!result,
-          resultTime: result && result.time,
-        });
+    let round = 0, invocation = 0;
+    const fail = text => /^(?:error[:：]|failed\b)|exit(?:ed)?(?: code| status)?[:= ]+[1-9]\d*|\[exit code: [1-9]\d*\]/im.test(text);
+    const compact = text => String(text || "").replace(/\s+/g, " ").trim();
+    const titleOf = text => compact(text).slice(0, 64);
+    for (const m of messages) {
+      const text = String(m.content || ""), context = !!m.internal || m.role === "system" || !!m.kind || /^<(?:environment_|memory(?:>|\s))/.test(text.trim());
+      if (m.role === "user" && !context) round++;
+      if (m.role === "assistant") invocation++;
+      if (m.role === "tool") continue;
+      const type = context ? "context" : m.role === "assistant" ? "model" : "input";
+      const unwrapped = unwrap(text);
+      const readable = context ? unwrapped.text.replace(/<\/?(?:environment_[\w-]+|memory)\b[^>]*>/g, "").trim() : unwrapped.text;
+      const title = titleOf(readable) || (m.kind === "fork" ? "分支开始" : m.kind === "fork_end" ? "分支结束" : type === "model" ? "模型调用" : type === "context" ? "上下文记录" : "输入记录");
+      const event = { key: m.seq + ":message", seq: m.seq, time: m.time, type, title, text,
+        summary: compact(readable).slice(title.length).trim() || (m.thinking ? "含思考" : (m.tool_calls || []).length ? (m.tool_calls.length + " 个工具调用") : ""),
+        message: m, round, invocation, results: [], thinking: (m.thinking || "").trim(),
+        error: m.status === "failed", truncated: !!m.truncated };
+      events.push(event);
+      for (const [i, call] of (m.tool_calls || []).entries()) {
+        const info = toolSummary(call), receipts = results.get(call.id) || [];
+        receipts.forEach(r => linked.add(r));
+        const output = receipts.map(r => r.content || "").join("\n\n");
+        const tool = { ...event, key: m.seq + ":call:" + (call.id || i) + ":" + i, type: "tool", call,
+          name: info.name, args: info.args, output, results: receipts, hasResult: !!receipts.length, text:"", thinking: "",
+          title: titleOf(info.args.description) || info.name, error: fail(output),
+          truncated: !!m.truncated || receipts.some(r => r.truncated) };
+        if (tool.name === "todo") tool.title = todoTrace(tool).title;
+        tool.summary = info.name + " · " + (tool.error ? "执行失败" : tool.hasResult ? "已返回" : "尚无结果");
+        events.push(tool);
       }
-      // Hosted generation is projected onto the same trace calls as local
-      // tools; it stays a hosted protocol item and is never re-executed.
-      for (const part of m.parts || []) {
+      for (const [i, part] of (m.parts || []).entries()) {
         const h = part.hosted;
         if (!h || h.name !== "image_generation") continue;
-        calls.push({ name: h.name, args: h.query ? { prompt: h.query } : {}, output: part.text || "", hasResult: ["completed", "failed"].includes(h.status), resultTime: m.time });
+        const tool = { ...event, key: m.seq + ":hosted:" + (h.id || i) + ":" + i, type: "tool", hosted: h,
+          name: h.name, args: h.query ? { prompt: h.query } : {}, output: part.text || "", results: [], text:"", thinking: "",
+          title: "图片生成", hasResult: ["completed", "failed"].includes(h.status), error: h.status === "failed" };
+        tool.summary = h.name + " · " + ({completed:"已返回",failed:"执行失败",in_progress:"生成中"}[h.status] || h.status || "已记录");
+        events.push(tool);
       }
-      if (!calls.length) continue;
-      const start = m.time ? new Date(m.time).getTime() : 0;
-      let end = start;
-      for (const c of calls) {
-        if (!c.resultTime) continue;
-        const t = new Date(c.resultTime).getTime();
-        if (!Number.isNaN(t) && t > end) end = t;
-      }
-      turns.push({
-        key: (state.sel ? state.sel.id : "") + ":" + (m.seq != null ? m.seq : (m.time || turns.length)),
-        time: m.time,
-        names: calls.map((c) => c.name === "todo" ? todoTrace(c).title : c.name),
-        dur: start && end > start ? end - start : 0,
-        thinking: (m.thinking || "").trim(),
-        calls: calls,
-      });
     }
-    return turns;
+    // A tail window can start after its call. Keep these receipts accessible;
+    // loading an earlier page naturally replaces them with the associated call.
+    for (const m of messages) {
+      if (m.role !== "tool" || linked.has(m)) continue;
+      const text = String(m.content || "");
+      events.push({ key: m.seq + ":result", seq: m.seq, time: m.time, type:"tool", title:"工具结果", summary:"调用不在已加载范围", name:m.name || "", output:text,
+        message:m, results:[], hasResult:true, orphan:true, round:0, invocation:0, error:fail(text), truncated:!!m.truncated });
+    }
+    return events.sort((a, b) => a.seq - b.seq);
   }
 
   // A receipt confirms the write; arguments alone are only a proposed list.
@@ -5701,85 +5704,269 @@
     return { title, lines };
   }
 
-  function traceBody(turn) {
-    const box = el("div", "trace-body");
-    // Thinking stays folded until the owner opens it; repaints keep the choice.
-    if (turn.thinking) {
-      const think = el("details", "trace-think");
-      think.open = !!state.traceThink[turn.key];
-      think.append(el("summary", "text-btn", "思考"), el("pre", "trace-out", turn.thinking));
-      think.addEventListener("toggle", () => { state.traceThink[turn.key] = think.open; });
-      box.append(think);
+  function traceView() {
+    state.traceUI ||= { query:"", filter:"all", mode:"seq", selected:null, tab:"summary" };
+    const root = el("div", "trace-explorer");
+    const overview = el("section", "trace-overview"); overview.setAttribute("aria-label", "轨迹总览");
+    const head = el("div", "trace-overview-head"), range = el("span", "trace-range"), modes = el("div", "trace-modes");
+    modes.setAttribute("aria-label", "概览模式");
+    for (const [key, label] of [["seq","序号"],["round","轮次"],["call","调用"]]) {
+      const button = el("button", "", label); button.type = "button"; button.dataset.mode = key;
+      button.onclick = () => { state.traceUI.mode = key; syncTrace(root); }; modes.append(button);
     }
-    turn.calls.forEach((call, i) => {
-      const item = el("div", "trace-call");
-      if (call.name === "todo") {
-        const view = todoTrace(call);
-        item.append(el("div", "trace-call-name", view.title));
-        if (view.lines.length) item.append(el("pre", "trace-args", view.lines.join("\n")));
-        const raw = el("details");
-        raw.append(el("summary", "text-btn", "调用原文"));
-        const args = argText(call.args);
-        if (args) raw.append(el("pre", "trace-args", args));
-        if (call.output) raw.append(el("pre", "trace-out", call.output));
-        item.append(raw);
-        box.append(item);
-        return;
+    head.append(el("strong", "", "记录概览"), range, modes);
+    const axis = el("div", "trace-axis"); axis.append(el("span"), el("span"), el("span"));
+    overview.append(head, axis);
+    const grids = {};
+    for (const [type, label] of [["input","输入"],["model","模型"],["tool","工具"]]) {
+      const track = el("div", "trace-track"), name = el("span", "trace-track-name", label), grid = el("div", "trace-track-grid");
+      name.dataset.type = type; grids[type] = grid; track.append(name, grid); overview.append(track);
+    }
+    const bar = el("div", "trace-filterbar"), filters = el("div", "trace-filters"); filters.setAttribute("aria-label", "事件类型");
+    for (const [type, label] of TRACE_TYPES) {
+      const button = el("button"); button.type = "button"; button.dataset.type = type;
+      button.append(el("span", "", label), el("small"));
+      button.onclick = () => { state.traceUI.filter = type; syncTrace(root); }; filters.append(button);
+    }
+    const actions = el("div", "trace-filter-actions"), searchBox = el("label", "trace-search"), search = el("input"), clear = el("button", "trace-clear");
+    search.type = "search"; search.setAttribute("aria-label", "搜索轨迹"); search.placeholder = "搜索已加载记录…"; search.value = state.traceUI.query;
+    clear.type = "button"; clear.setAttribute("aria-label", "清除搜索"); clear.append(icon("x"));
+    search.addEventListener("input", () => { if (!search.composing) { state.traceUI.query = search.value; syncTrace(root); } });
+    search.addEventListener("compositionstart", () => { search.composing = true; });
+    search.addEventListener("compositionend", () => { search.composing = false; state.traceUI.query = search.value; syncTrace(root); });
+    clear.onclick = () => { search.value = ""; state.traceUI.query = ""; syncTrace(root); search.focus(); };
+    searchBox.append(icon("search"), search, clear);
+    const count = el("span", "trace-count"); actions.append(searchBox, count); bar.append(filters, actions);
+    const main = el("div", "trace-main"), list = el("div", "trace-event-list"); list.setAttribute("aria-label", "轨迹事件");
+    const columns = el("div", "trace-table-head");
+    for (const label of ["序号","记录时间","类型","内容",""]) columns.append(el("span", "", label));
+    const rows = el("div", "trace-event-rows"), older = el("button", "text-btn trace-page", "更早的记录"), newer = el("button", "text-btn trace-page", "更新的记录");
+    older.type = newer.type = "button"; older.onclick = () => loadTrace("before"); newer.onclick = () => loadTrace("after");
+    const empty = el("div", "trace-empty"), emptyText = el("p"), reset = el("button", "text-btn", "清除筛选"); reset.type = "button";
+    reset.onclick = () => { state.traceUI.query = ""; state.traceUI.filter = "all"; search.value = ""; syncTrace(root); };
+    empty.append(emptyText, reset);
+    const end = el("div", "trace-list-end"); list.append(columns, older, rows, empty, newer, end);
+    const detail = el("aside", "trace-detail"); detail.hidden = true; detail.setAttribute("aria-label", "记录详情");
+    const error = el("div", "trace-load-error"), retry = el("button", "text-btn", "重试");
+    error.setAttribute("role", "status"); retry.type = "button"; retry.onclick = () => loadTrace(state.sel.traceFailedDirection || "refresh");
+    error.append(el("span", "", "轨迹加载失败"), retry);
+    main.append(list, detail); root.append(overview, bar, error, main);
+    root.traceNodes = {overview, range, modes, axis, grids, filters, search, clear, count, main, list, rows, older, newer, empty, emptyText, reset, end, detail, error};
+    root.rowNodes = new Map(); root.markNodes = new Map();
+    return root;
+  }
+
+  function traceMatches(event) {
+    const ui = state.traceUI, q = ui.query.trim().toLocaleLowerCase();
+    if (ui.filter === "error" ? !event.error : ui.filter !== "all" && ui.filter !== event.type) return false;
+    return !q || [event.title, event.summary, event.text, event.thinking, event.output, argText(event.args), event.name,
+      ...event.results.map(r => r.content)].join("\n").toLocaleLowerCase().includes(q);
+  }
+
+  function selectTraceEvent(root, key, locate = false) {
+    state.traceUI.selected = key;
+    syncTrace(root);
+    if (locate) root.rowNodes.get(key)?.scrollIntoView({block:"nearest"});
+    if (window.matchMedia("(max-width: 767px)").matches) root.traceNodes.detail.querySelector('[aria-label="关闭详情"]')?.focus({preventScroll:true});
+  }
+
+  function closeTraceDetail(root) {
+    const key = state.traceUI.selected;
+    state.traceUI.selected = null; syncTrace(root);
+    root.rowNodes.get(key)?.focus({preventScroll:true});
+  }
+
+  function syncTrace(root) {
+    const ui = state.traceUI, n = root.traceNodes, messages = state.traceMessages;
+    const viewKey = JSON.stringify([ui.query, ui.filter, ui.mode, ui.selected, ui.tab, state.traceWindow, state.sel?.traceLoading, state.sel?.traceError]);
+    if (root.messages === messages && root.viewKey === viewKey) return;
+    root.viewKey = viewKey;
+    // The window is immutable between responses. Typing only filters the
+    // existing projection rather than reparsing every tool argument.
+    if (root.messages !== messages) {
+      const previous = root.events?.find(e => e.key === ui.selected);
+      root.messages = messages; root.events = traceEvents(messages);
+      if (previous?.orphan) {
+        const call = root.events.find(e => e.call?.id === previous.message.tool_call_id);
+        if (call) ui.selected = call.key;
       }
-      item.append(el("div", "trace-call-name", call.name));
-      const args = argText(call.args);
-      if (args) item.append(el("pre", "trace-args", args));
-      if (call.output) {
-        const outKey = turn.key + ":" + i;
-        const open = !!state.traceOut[outKey];
-        const preview = previewOutput(call.output);
-        item.append(el("pre", "trace-out", open || !preview.truncated ? call.output : preview.text));
-        if (preview.truncated) {
-          const more = el("button", "text-btn trace-more", open ? "收起" : "展开");
-          more.type = "button";
-          more.addEventListener("click", (ev) => {
-            ev.stopPropagation();
-            state.traceOut[outKey] = !state.traceOut[outKey];
-            paintPanel();
-          });
-          item.append(more);
+    }
+    n.error.hidden = !state.sel?.traceError;
+    const events = root.events, visible = events.filter(traceMatches), visibleKeys = new Set(visible.map(e => e.key));
+    if (ui.selected && !visibleKeys.has(ui.selected)) ui.selected = null;
+    n.main.classList.toggle("with-detail", !!ui.selected);
+    n.clear.hidden = !ui.query; n.count.textContent = visible.length + " 个事件";
+    const meta = state.traceWindow, first = messages[0]?.seq, last = messages[messages.length - 1]?.seq;
+    taskValue(n.range, first ? "#" + first + "—" + last : "");
+    taskValue(n.end, first ? "已加载范围 #" + first + "—" + last + " · 搜索仅限此范围" : "");
+    n.overview.hidden = !events.length;
+    for (const button of n.filters.children) {
+      const type = button.dataset.type;
+      button.setAttribute("aria-pressed", String(ui.filter === type));
+      taskValue(button.lastChild, String(events.filter(e => type === "all" || (type === "error" ? e.error : e.type === type)).length));
+    }
+    const loading = !!state.sel?.traceLoading;
+    n.older.hidden = !meta?.has_more_before; n.newer.hidden = !meta?.has_more_after;
+    n.older.disabled = n.newer.disabled = loading;
+    taskValue(n.older, state.sel?.traceLoading === "before" ? "正在加载…" : "更早的记录");
+    taskValue(n.newer, state.sel?.traceLoading === "after" ? "正在加载…" : "更新的记录");
+    n.empty.hidden = !!visible.length;
+    taskValue(n.emptyText, !events.length ? (!meta ? "正在读取轨迹…" : "还没有轨迹") : "没有匹配的记录");
+    n.reset.hidden = !events.length || !(ui.query || ui.filter !== "all");
+    const allKeys = new Set(events.map(e => e.key));
+    for (const [key, row] of root.rowNodes) if (!allKeys.has(key)) { row.remove(); root.rowNodes.delete(key); }
+    let cursor = n.rows.firstChild;
+    for (const event of events) {
+      let row = root.rowNodes.get(event.key);
+      if (!row) {
+        row = el("button", "trace-event-row trace-row"); row.type = "button"; row.dataset.eventKey = event.key; row.dataset.seq = event.seq;
+        row.append(el("span", "trace-seq"), el("time", "trace-record-time"), el("span", "trace-type"), el("span", "trace-summary"), icon("chevron", "trace-row-chevron"));
+        row.children[3].append(el("b"), el("small"));
+        row.onclick = () => selectTraceEvent(root, event.key);
+        root.rowNodes.set(event.key, row);
+      }
+      if (row !== cursor) n.rows.insertBefore(row, cursor); else cursor = cursor.nextSibling;
+      row.hidden = !visibleKeys.has(event.key);
+      row.dataset.type = event.type; row.classList.toggle("error", event.error); row.classList.toggle("selected", ui.selected === event.key);
+      row.setAttribute("aria-pressed", String(ui.selected === event.key));
+      taskValue(row.children[0], event.seq);
+      const date = new Date(event.time);
+      taskValue(row.children[1], Number.isNaN(+date) ? "—" : date.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}));
+      row.children[1].title = Number.isNaN(+date) ? "追加时间未记录" : date.toLocaleString() + "（追加时间）";
+      const type = TRACE_TYPES.find(t => t[0] === event.type);
+      if (row.children[2].dataset.type !== event.type) { row.children[2].dataset.type = event.type; row.children[2].replaceChildren(icon(type[2]), el("span", "", type[1])); }
+      taskValue(row.children[3].firstChild, event.title);
+      taskValue(row.children[3].lastChild, event.summary + (event.truncated ? " · 公开预览已截断" : ""));
+    }
+    syncTraceOverview(root, visibleKeys);
+    syncTraceDetail(root);
+  }
+
+  function syncTraceOverview(root, visibleKeys) {
+    const {modes, axis, grids} = root.traceNodes, ui = state.traceUI, events = root.events;
+    for (const button of modes.children) button.setAttribute("aria-pressed", String(button.dataset.mode === ui.mode));
+    const marks = [];
+    for (const event of events) {
+      marks.push({key:event.key, event, seq:event.seq});
+      for (const result of event.results) marks.push({key:event.key + ":result:" + result.seq, event, seq:result.seq, result:true});
+    }
+    marks.sort((a,b) => a.seq - b.seq);
+    const groups = [...new Set(marks.map(m => ui.mode === "round" ? m.event.round : ui.mode === "call" ? m.event.invocation : m.seq))];
+    const label = value => ui.mode === "seq" ? "#" + value : (ui.mode === "round" ? "轮 " : "调用 ") + value;
+    for (const [i, index] of [0, Math.floor((groups.length - 1) / 2), groups.length - 1].entries()) taskValue(axis.children[i], groups.length ? label(groups[index]) : "");
+    axis.title = ui.mode === "seq" ? "记录顺序；时间为追加时间" : "按已加载范围内的" + (ui.mode === "round" ? "用户输入分轮" : "模型调用分组");
+    const keys = new Set(marks.map(m => m.key));
+    for (const [key, mark] of root.markNodes) if (!keys.has(key)) { mark.remove(); root.markNodes.delete(key); }
+    const groupCounts = new Map(), groupAt = new Map();
+    for (const m of marks) { const group = ui.mode === "round" ? m.event.round : ui.mode === "call" ? m.event.invocation : m.seq; groupCounts.set(group, (groupCounts.get(group) || 0) + 1); }
+    for (const m of marks) {
+      let mark = root.markNodes.get(m.key);
+      if (!mark) {
+        mark = el("button", "trace-event-mark"); mark.type = "button"; mark.dataset.eventKey = m.event.key; mark.dataset.seq = m.seq;
+        mark.onclick = () => { const event = root.events.find(e => e.key === m.event.key); if (!traceMatches(event)) { ui.query = ""; ui.filter = "all"; root.traceNodes.search.value = ""; } selectTraceEvent(root, event.key, true); };
+        root.markNodes.set(m.key, mark);
+      }
+      const lane = m.event.type === "context" ? "input" : m.event.type;
+      if (mark.parentNode !== grids[lane]) grids[lane].append(mark);
+      mark.dataset.type = m.event.type; mark.classList.toggle("result", !!m.result); mark.classList.toggle("error", m.event.error);
+      mark.classList.toggle("selected", ui.selected === m.event.key); mark.classList.toggle("dim", !visibleKeys.has(m.event.key));
+      const group = ui.mode === "round" ? m.event.round : ui.mode === "call" ? m.event.invocation : m.seq;
+      const at = groupAt.get(group) || 0; groupAt.set(group, at + 1);
+      const groupIndex = groups.indexOf(group), count = groupCounts.get(group), span = 100 / Math.max(1, groups.length);
+      mark.style.left = ((groupIndex + at / count) * span) + "%";
+      mark.style.width = Math.min(3.5, span * .7 / count) + "%";
+      const title = "#" + m.seq + (m.result ? " 结果 · " : " · ") + m.event.title;
+      mark.setAttribute("aria-label", title); mark.setAttribute("aria-pressed", String(ui.selected === m.event.key)); mark.title = title;
+    }
+  }
+
+  function traceRaw(event) {
+    // Only the already-public HTTP DTO is available here. Never read provider
+    // transport payloads, vendor_raw or reasoning signatures.
+    if (event.call) return { seq:event.seq, time:event.time, tool_call:event.call, results:event.results };
+    if (event.hosted) return { seq:event.seq, time:event.time, hosted:event.hosted, output:event.output };
+    return event.message;
+  }
+
+  function syncTraceDetail(root) {
+    const ui = state.traceUI, detail = root.traceNodes.detail, event = root.events.find(e => e.key === ui.selected);
+    detail.hidden = !event;
+    if (!event) return;
+    const raw = traceRaw(event), signature = JSON.stringify([event.key, raw, ui.tab]);
+    if (detail.renderKey === signature || taskSelected(detail)) return;
+    const sameEvent = detail.dataset.eventKey === event.key, scroll = sameEvent ? detail.scrollTop : 0;
+    const focused = detail.contains(document.activeElement) ? document.activeElement : null;
+    const focusTab = focused?.dataset.tab, focusLabel = focused?.getAttribute("aria-label");
+    const focusThinking = focused?.parentNode?.classList.contains("trace-think");
+    detail.renderKey = signature; detail.dataset.eventKey = event.key;
+    const inner = el("div", "trace-detail-inner"), head = el("div", "trace-detail-heading"), kind = el("div", "trace-detail-kind"), badge = el("span", "trace-kind-badge"), type = TRACE_TYPES.find(t => t[0] === event.type);
+    kind.dataset.type = event.type; kind.classList.toggle("error", event.error); badge.append(icon(type[2]), el("span", "", type[1]));
+    kind.append(badge, el("span", "trace-seq", "#" + event.seq));
+    const actions = el("div", "trace-detail-actions"), copy = el("button", "icon-btn"), close = el("button", "icon-btn"); copy.type = close.type = "button";
+    copy.setAttribute("aria-label", "复制原文"); copy.append(icon("copy"));
+    copy.onclick = async () => { const copied = await copyText(JSON.stringify(raw, null, 2)); showToast(copied ? "已复制" : "复制失败，请手动选择"); };
+    close.setAttribute("aria-label", "关闭详情"); close.append(icon("x")); close.onclick = () => closeTraceDetail(root);
+    actions.append(copy, close); head.append(kind, actions);
+    const date = new Date(event.time), meta = el("p", "trace-detail-meta", (Number.isNaN(+date) ? "" : date.toLocaleString() + " · ") + (event.name || "transcript"));
+    const tabs = el("nav", "trace-detail-tabs"); tabs.setAttribute("aria-label", "详情视图");
+    for (const [key, label] of [["summary","概述"],["preview","预览"],["raw","原始内容"],["source","来源"]]) {
+      const button = el("button", "", label); button.type = "button"; button.dataset.tab = key; button.setAttribute("aria-pressed", String(ui.tab === key));
+      button.onclick = () => { ui.tab = key; syncTraceDetail(root); root.traceNodes.detail.querySelector('[data-tab="' + key + '"]')?.focus({preventScroll:true}); }; tabs.append(button);
+    }
+    const content = el("div", "trace-detail-content");
+    const section = (title, text, code = false) => { content.append(el("h3", "", title)); const node = el(code ? "pre" : "div", code ? "trace-source-text" : "trace-record-text"); if (code) node.textContent = text; else appendMarkdown(node, text); content.append(node); };
+    if (event.truncated) content.append(el("p", "trace-truncated", "公开预览已截断；这里显示的是当前接口返回的内容。"));
+    if (ui.tab === "raw") section("公开记录 JSON", JSON.stringify(raw, null, 2), true);
+    else if (ui.tab === "source") {
+      const fields = [["记录位置", "transcript #" + event.seq], ["角色", event.message.role], ["追加时间", Number.isNaN(+date) ? "未记录" : date.toLocaleString()]];
+      if (event.message.branch) fields.push(["分支", event.message.branch]);
+      if (event.message.reply_to) fields.push(["引用记录", "#" + event.message.reply_to]);
+      if (event.call?.id || event.message.tool_call_id || event.hosted?.id) fields.push(["调用 ID", event.call?.id || event.message.tool_call_id || event.hosted.id]);
+      if (event.results.length) fields.push(["关联结果", event.results.map(r => "#" + r.seq).join("、")]);
+      const source = unwrap(event.text || "");
+      if (source.source) fields.push(["来源", source.source]);
+      if (source.sender) fields.push(["发送者", source.sender]);
+      if (event.hosted) fields.push(["已记录状态", event.hosted.status || "未记录"]);
+      const dl = el("dl", "trace-source-fields"); for (const [label, value] of fields) dl.append(el("dt", "", label), el("dd", "", value)); content.append(dl);
+      content.append(el("p", "hint", "记录时间表示追加时间；执行耗时及未记录的注入来源不可用。"));
+    } else {
+      if (event.type === "tool") {
+        if (event.name === "todo" && ui.tab === "summary") {
+          const todo = todoTrace(event); section("待办", todo.title + (todo.lines.length ? "\n\n" + todo.lines.join("\n") : ""));
+        } else {
+          if (ui.tab === "summary" && event.args) section("调用内容", event.args.description || event.name);
+          if (ui.tab === "summary" && event.args) section("参数", argText(event.args), true);
+          if (event.output) section(event.orphan ? "工具结果" : "关联结果" + (event.error ? " · 执行失败" : ""), event.output, true);
+          else content.append(el("p", "hint", event.hasResult ? "已记录返回状态，暂无文本结果" : "已加载范围内尚无结果"));
+          if (ui.tab === "preview" && event.args && (!event.output || event.name === "todo")) section("调用参数", argText(event.args), true);
+        }
+        if (event.orphan) content.append(el("p", "hint", "关联调用不在已加载范围，可加载更早的记录。"));
+      } else {
+        if (event.text) section(ui.tab === "preview" ? "记录预览" : "记录内容", event.text, ui.tab === "preview");
+        if (event.message.images?.length) section("图片附件", event.message.images.join("\n"), true);
+        if (event.message.audios?.length) section("语音附件", event.message.audios.join("\n"), true);
+        if (!event.text && !event.thinking) content.append(el("p", "hint", (event.message.tool_calls || []).length ? "工具调用列在同序号的独立事件中。" : "这条记录没有文本正文"));
+        if (event.thinking) {
+          const thinking = el("details", "trace-think"); thinking.open = !!state.traceThink[event.key];
+          thinking.append(el("summary", "text-btn", "思考"), el("pre", "trace-source-text", event.thinking));
+          thinking.addEventListener("toggle", () => { state.traceThink[event.key] = thinking.open; }); content.append(thinking);
         }
       }
-      box.append(item);
-    });
-    return box;
+    }
+    inner.append(head, el("h2", "", event.title), meta, tabs, content); detail.replaceChildren(inner); detail.scrollTop = scroll;
+    if (focused && sameEvent) {
+      const target = focusTab ? detail.querySelector('[data-tab="' + focusTab + '"]') : focusLabel ? detail.querySelector('[aria-label="' + focusLabel + '"]') : focusThinking ? detail.querySelector(".trace-think summary") : null;
+      target?.focus({preventScroll:true});
+    }
   }
 
-  function traceView() {
-    const wrap = document.createDocumentFragment();
-    const turns = traceTurns(state.traceMessages || []);
-    if (!turns.length) {
-      wrap.append(panelEmpty("trace", "没有轨迹", "它每做一件事，都会在这里留下一行。"));
-      return wrap;
-    }
-    const list = el("div", "trace");
-    for (const turn of turns) {
-      const open = !!state.traceOpen[turn.key];
-      const row = el("button", "trace-row" + (open ? " open" : ""));
-      row.type = "button";
-      row.setAttribute("aria-expanded", open ? "true" : "false");
-      row.append(
-        el("span", "trace-time", when(turn.time) || "—"),
-        el("span", "trace-tools", turn.names.join(" · ")),
-        el("span", "trace-dur", turn.dur ? durText(turn.dur) : ""),
-        icon("chevron", "chev")
-      );
-      row.addEventListener("click", () => {
-        state.traceOpen[turn.key] = !state.traceOpen[turn.key];
-        paintPanel();
-      });
-      list.append(row);
-      if (open) list.append(traceBody(turn));
-    }
-    wrap.append(list);
-    return wrap;
-  }
-
+  // If a receipt arrived while text was selected, update it after selection is
+  // released. Polling itself never replaces the selected subtree.
+  document.addEventListener("selectionchange", () => {
+    if (state.tab !== "trace" || !state.traceUI?.selected) return;
+    const root = panelBody.querySelector(".trace-explorer");
+    if (root && !taskSelected(root.traceNodes.detail)) syncTraceDetail(root);
+  });
 
   // ---- 上下文检视 ------------------------------------------------------
   // One card: how full the working set is, what fills it, and the rows behind
@@ -6827,25 +7014,48 @@
     }
   }
 
-  async function loadTrace() {
+  async function loadTrace(direction = "refresh") {
     const selection = state.sel;
-    if (selection?.type !== "bot" || state.tab !== "trace" || !panel.classList.contains("open")) return;
+    if (selection?.type !== "bot" || state.tab !== "trace" || !panel.classList.contains("open") || selection.traceLoading) return;
+    const meta = state.traceWindow;
+    let query = "";
+    if (meta?.tail_seq) query = direction === "before" ? "?before=" + meta.head_seq : "?after=" + meta.tail_seq + "&limit=200";
+    selection.traceLoading = direction;
+    if (direction !== "refresh") paintPanel();
     try {
-      const res = await apiFetch("/api/bots/" + encodeURIComponent(selection.id) + "/transcript", {
-        credentials:"same-origin", headers:selection.traceETag ? {"If-None-Match":selection.traceETag} : {},
+      const res = await apiFetch("/api/bots/" + encodeURIComponent(selection.id) + "/transcript" + query, {
+        credentials:"same-origin", headers:selection.traceQuery === query && selection.traceETag ? {"If-None-Match":selection.traceETag} : {},
       });
-      if (res.status === 304 || state.sel !== selection) return;
+      if (state.sel !== selection) return;
+      if (res.status === 304) { selection.traceError = false; return; }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "request failed");
       if (state.sel !== selection) return;
-      selection.traceETag = res.headers.get("ETag");
-      if (sameTranscriptValue(state.traceMessages || [], data.messages || [])) return;
-      state.traceMessages = data.messages || [];
-      if (state.tab === "trace") paintPanel();
+      selection.traceQuery = query; selection.traceETag = res.headers.get("ETag"); selection.traceError = false;
+      const incoming = data.messages || [], previous = state.traceMessages, bySeq = new Map(previous.map(m => [m.seq, m]));
+      for (const message of incoming) if (!sameTranscriptValue(bySeq.get(message.seq), message)) bySeq.set(message.seq, message);
+      const merged = [...bySeq.values()].sort((a,b) => a.seq - b.seq);
+      const page = data.window || {head_seq:incoming[0]?.seq || 0, tail_seq:incoming[incoming.length-1]?.seq || 0, total:incoming[incoming.length-1]?.seq || 0, has_more_before:false, has_more_after:false};
+      state.traceWindow = !meta ? page : {
+        ...page, head_seq:merged[0]?.seq || 0, tail_seq:merged[merged.length-1]?.seq || 0,
+        has_more_before:direction === "before" ? page.has_more_before : meta.has_more_before,
+        has_more_after:direction === "before" ? meta.has_more_after : page.has_more_after,
+        total:Math.max(meta.total || 0, page.total || 0),
+      };
+      const root = panelBody.querySelector(".trace-explorer"), list = root?.traceNodes.list;
+      const anchor = list && [...root.traceNodes.rows.children].find(row => !row.hidden && row.getBoundingClientRect().bottom > list.getBoundingClientRect().top && row.getBoundingClientRect().top < list.getBoundingClientRect().bottom);
+      const top = anchor?.getBoundingClientRect().top;
+      if (!sameTranscriptValue(previous, merged)) state.traceMessages = merged;
+      selection.traceLoading = false;
+      if (state.tab === "trace") {
+        paintPanel();
+        if (anchor?.isConnected) list.scrollTop += anchor.getBoundingClientRect().top - top;
+      }
     } catch (e) {
-      if (state.sel !== selection || state.tab !== "trace") return;
-      state.panelError = "trace";
-      paintPanel();
+      if (state.sel === selection) { selection.traceError = true; selection.traceFailedDirection = direction; }
+    } finally {
+      selection.traceLoading = false;
+      if (state.sel === selection && state.tab === "trace") paintPanel();
     }
   }
 
@@ -6856,24 +7066,22 @@
     const request = ++state.panelLoad;
     const targetTab = state.tab;
     try {
-      const [data, snap, inbox, transcript] = await Promise.all([
+      const [data, snap, inbox] = await Promise.all([
         fetchBotProfile(selection.id),
         api("/api/bots/" + encodeURIComponent(selection.id) + "/context").catch(() => ({ error: true })),
         api("/api/bots/" + encodeURIComponent(selection.id) + "/inbox").catch(() => ({ error: true })),
-        state.tab === "trace" ? api("/api/bots/" + encodeURIComponent(selection.id) + "/transcript") : Promise.resolve(null),
       ]);
       await loadModelCatalog();
       if (state.sel !== selection || request !== state.panelLoad) return;
       state.panelData = data;
       state.panelError = false;
-      if (transcript) state.traceMessages = transcript.messages || [];
       state.inboxData = inbox;
       state.ctxSnap = snap;
       paintPanel();
       paintWorkStatus();
     } catch (e) {
       if (state.sel === selection && request === state.panelLoad) {
-        state.panelError = targetTab;
+        if (targetTab !== "trace") state.panelError = targetTab;
         paintPanel();
       }
     }
@@ -8823,6 +9031,11 @@
   }
 
   document.addEventListener("keydown", (ev) => {
+    if (state.tab === "trace" && (ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "f" && modal.hidden && $("setpage").hidden && lightbox.hidden && !deviceLayerOpen()) {
+      const search = panelBody.querySelector('.trace-explorer input[aria-label="搜索轨迹"]');
+      if (search) { ev.preventDefault(); search.focus(); search.select(); }
+      return;
+    }
     if (ev.key !== "Escape") return;
     if (deviceLayerOpen()) return;
     if (!$("setpage").hidden && modal.hidden) return;
@@ -8832,6 +9045,10 @@
     if (!lightbox.hidden) { closeShots(); return; }
     if (!modal.hidden) { closeModal(); return; }
     if (stpState.open) { closeStp(); return; }
+    if (state.tab === "trace" && state.traceUI?.selected) {
+      const root = panelBody.querySelector(".trace-explorer");
+      if (root) { ev.preventDefault(); closeTraceDetail(root); return; }
+    }
     if (state.replyTo) { clearQuote(); return; }
     if (!$("account-menu").hidden) { closePops(); return; }
     if (panel.classList.contains("open")) {

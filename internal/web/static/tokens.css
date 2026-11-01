@@ -137,3 +137,34 @@ html[data-theme="dark"] {
 @media(min-width:1600px) { :root { --workspace-thread:860px; --workspace-reading:1040px; } }
 @media(max-width:1100px) { :root { --workspace-gutter:24px; } }
 @media(max-width:767px) { :root { --workspace-gutter:16px; } }
+
+/* Approved trace explorer: compact rows, semantic accents, neutral selection. */
+:root {
+  --trace-input:#3d65ad; --trace-input-mark:#6c95ed; --trace-input-bg:#edf3ff;
+  --trace-context:#2e7544; --trace-context-mark:#6dba85; --trace-context-bg:#edf8f0;
+  --trace-model:#765398; --trace-model-mark:#886bae; --trace-model-bg:#f3edf9;
+  --trace-tool:#9b5d13; --trace-tool-mark:#dd852a; --trace-tool-bg:#fff4e4;
+  --trace-row-height:34px; --trace-body-size:13px; --trace-detail-width:390px;
+  --trace-search-width:270px; --trace-search-min:160px; --trace-search-height:38px;
+  --trace-seq-width:36px; --trace-time-width:64px; --trace-type-width:64px;
+  --trace-chevron-width:12px; --trace-badge-radius:4px; --trace-overview-radius:10px;
+  --trace-track-height:20px; --trace-track-name:48px; --trace-track-grid:17px;
+  --trace-mark-height:10px; --trace-mark-result:4px; --trace-mark-selected:15px;
+  --trace-mark-min:3px; --trace-mark-top:3px; --trace-result-top:7px; --trace-selected-top:1px;
+  --trace-mark-radius:3px; --trace-dim-opacity:.22; --trace-axis-size:9px;
+  --trace-axis-height:10px; --trace-detail-title:21px; --trace-enter-offset:8px;
+  --trace-source-line:1.75; --trace-record-line:1.8;
+}
+html[data-theme="dark"] {
+  --trace-input:#a9c3ff; --trace-input-bg:#222f49;
+  --trace-context:#92d5a5; --trace-context-bg:#213b2a;
+  --trace-model:#c4ace6; --trace-model-bg:#332840;
+  --trace-tool:#f0bb76; --trace-tool-bg:#3f3021;
+}
+@media(max-width:1200px) { :root { --trace-detail-width:340px; --trace-search-width:230px; } }
+@media(max-width:767px) {
+  :root {
+    --trace-row-height:44px; --trace-seq-width:34px; --trace-time-width:55px;
+    --trace-track-name:32px; --trace-track-height:26px; --trace-mark-min:4px;
+  }
+}
