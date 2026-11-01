@@ -82,8 +82,8 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const waitFor=async(f,m)=>{for(let i=0;i<900;i++){if(f())return;await sleep(10)}throw Error(m)};
 const tab=name=>[...document.querySelectorAll('#workspace-tabs [role=tab]')].find(n=>n.textContent.trim()===name);
 (async()=>{
- await waitFor(()=>$('#thread [data-seq="420"]')&&!$('.thread-loading-cover')&&tab('轨迹'),'chat boot');
- holdPrimaryContext=true;tab('轨迹').click();
+ await waitFor(()=>$('#thread [data-seq="420"]')&&!$('.thread-loading-cover')&&tab('上下文'),'chat boot');
+ holdPrimaryContext=true;tab('上下文').click();
  await waitFor(()=>releasePrimaryContext,'did not start delayed profile load');
  const other=document.querySelector('[data-bot="'+bots[1].name+'"]');other.click();
  await waitFor(()=>$('#title').textContent.includes(bots[1].name)&&$('#thread').textContent.includes('独立对话'),'second bot did not open');

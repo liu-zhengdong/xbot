@@ -56,12 +56,23 @@ const openGenerated=async()=>{
  if(shot==='reply'){document.body.dataset.testResult='passed';return}
  await waitFor(()=>$('#workspace-tabs [role=tab]'),'panel missing');
  [...document.querySelectorAll('#workspace-tabs [role=tab]')].find(n=>n.textContent==='轨迹').click();
- await waitFor(()=>$('.trace-row'),'generation absent from ordinary trace');
- $('.trace-row').click();
- assert($('.trace-call-name').textContent==='image_generation','wrong trace call');
- assert($('.trace-args').textContent.includes(prompt),'trace lost prompt');
- assert($('.trace-out').textContent.includes('generated/real.png')&&!$('.trace-out').textContent.includes('已挂'),'trace lost receipt');
+ const generation=()=>[...document.querySelectorAll('button.trace-event-row[data-event-key]')].find(n=>n.textContent.includes('image_generation'));
+ await waitFor(()=>generation(),'generation absent from ordinary trace');generation().click();
+ const detail=()=>$('aside[aria-label="记录详情"]');
+ await waitFor(()=>visible(detail()),'generation detail missing');
+ const detailTab=async name=>{button($('nav[aria-label="详情视图"]'),name).click();await new Promise(r=>setTimeout(r,20))};
+ await detailTab('概述');
+ assert(detail().textContent.includes(prompt),'trace lost prompt');
+ assert(detail().textContent.includes('generated/real.png')&&!detail().textContent.includes('已挂'),'trace lost receipt');
+ await detailTab('原始内容');
+ assert(detail().textContent.includes('hosted')&&detail().textContent.includes('completed'),'hosted generation became a local tool call');
+ assert(!detail().textContent.includes('tool_calls'),'hosted generation fabricated an executable call');
  assert(!$('#panel img[src*="paste"]'),'trace displayed an image');
+ detail().querySelector('[aria-label="关闭详情"]').click();
+ await waitFor(()=>!visible(detail()),'generation detail did not close');generation().click();await detailTab('概述');
+ assert(detail().textContent.includes('generated/real.png'),'generation receipt lost after reopening');
+ detail().querySelector('[aria-label="关闭详情"]').click();
+ assert(fixture.streams.length===0,'opening hosted trace executed a model/tool turn');
  if(shot==='trace'){document.body.dataset.testResult='passed';return}
  // Preserve the optional workspace menu; it is no longer a reply step.
  await openGenerated();
