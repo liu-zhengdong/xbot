@@ -45,6 +45,32 @@ type CallRequest struct {
 	Run                func(context.Context) CallResult
 	Prepare            func(context.Context, string) (context.Context, func())
 	OnDone             func(Job)
+	// Redact and Forms are dynamic source callbacks, captured once per call.
+	// Missing callbacks use the corresponding Jobs default.
+	Redact func(string) string
+	Forms  func() []string
+}
+
+// A changed diagnostic keeps the original error available to errors.Is/As.
+// Unchanged errors retain their identity and need no wrapper.
+type redactedCallError struct {
+	err  error
+	text string
+}
+
+func (e *redactedCallError) Error() string { return e.text }
+func (e *redactedCallError) Unwrap() error { return e.err }
+
+func redactCallError(err error, redact func(string) string) error {
+	if err == nil {
+		return nil
+	}
+	original := err.Error()
+	text := redact(original)
+	if text == original {
+		return err
+	}
+	return &redactedCallError{err: err, text: text}
 }
 
 type callKey struct{}
@@ -72,7 +98,23 @@ func CallWait(t Tool, args json.RawMessage) (time.Duration, bool) {
 // RunCall separates the lifetime of a call from the foreground's wait. Only
 // live.mu may choose completion, detachment, or cancellation. A detached call
 // keeps the captured context values, but no longer follows the waiter's cancel.
-func (j *Jobs) RunCall(ctx context.Context, req CallRequest) CallResult {
+func (j *Jobs) RunCall(ctx context.Context, req CallRequest) (result CallResult) {
+	redact, forms := req.Redact, req.Forms
+	if j != nil {
+		if redact == nil {
+			redact = j.Redact
+		}
+		if forms == nil {
+			forms = j.Forms
+		}
+	}
+	if redact == nil {
+		redact = func(s string) string { return s }
+	}
+	defer func() {
+		result.Text = redact(result.Text)
+		result.Err = redactCallError(result.Err, redact)
+	}()
 	if j == nil || j.dir() == "" || req.Run == nil {
 		return CallResult{Err: errors.New("tool job: missing directory or execution")}
 	}
@@ -81,11 +123,23 @@ func (j *Jobs) RunCall(ctx context.Context, req CallRequest) CallResult {
 	}
 	// metaMu holds off Move until the record is on disk at the path it names.
 	j.metaMu.Lock()
+	j.mu.Lock()
+	// Admission and registration share this critical section. A paused or
+	// closed table must not recreate even its directory.
+	if j.admissionClosed || j.admissionPaused {
+		closed := j.admissionClosed
+		j.mu.Unlock()
+		j.metaMu.Unlock()
+		if closed {
+			return CallResult{Err: errors.New("tool job: admission closed")}
+		}
+		return CallResult{Err: errors.New("tool job: admission paused")}
+	}
 	if err := os.MkdirAll(j.dir(), 0700); err != nil {
+		j.mu.Unlock()
 		j.metaMu.Unlock()
 		return CallResult{Err: err}
 	}
-	j.mu.Lock()
 	if j.jobs == nil {
 		j.jobs = map[string]*live{}
 	}
@@ -107,10 +161,10 @@ func (j *Jobs) RunCall(ctx context.Context, req CallRequest) CallResult {
 		j.metaMu.Unlock()
 		return CallResult{Err: err}
 	}
-	w := newJobWriter(f, j.outputCap(), j.redact)
-	w.forms = j.Forms
+	w := newJobWriter(f, j.outputCap(), redact)
+	w.forms = forms
 	pid, start := CurrentProcess()
-	lv := &live{job: Job{ID: id, Tool: req.Name, Command: clipCommand(j.redact(req.Command)), Status: "running", Output: path, Started: j.now(), Cwd: req.Dir, Local: true, PID: pid, ProcStart: start}, w: w, done: make(chan struct{}), detached: req.Background, onDone: req.OnDone}
+	lv := &live{job: Job{ID: id, Tool: req.Name, Command: clipCommand(redact(req.Command)), Status: "running", Output: path, Started: j.now(), Cwd: req.Dir, Local: true, PID: pid, ProcStart: start}, w: w, done: make(chan struct{}), detached: req.Background, onDone: req.OnDone, redact: redact}
 	if lv.onDone == nil {
 		lv.onDone = j.OnDone
 	}
@@ -228,13 +282,16 @@ func (j *Jobs) completeCall(lv *live, res CallResult) {
 	// take the answer away while output and cwd are being published.
 	lv.finished = true
 	detached := lv.detached
+	failed := res.Err != nil || strings.HasPrefix(strings.TrimSpace(res.Text), "error:")
+	res.Text = lv.redact(res.Text)
+	res.Err = redactCallError(res.Err, lv.redact)
 	lv.result = res
 	if res.Err != nil {
 		lv.result.Text = "error: " + res.Err.Error()
 	}
-	lv.result.Text = j.redact(lv.result.Text)
+	lv.result.Text = lv.redact(lv.result.Text)
 	status := "done"
-	if res.Err != nil || strings.HasPrefix(strings.TrimSpace(res.Text), "error:") {
+	if failed {
 		status = "failed"
 	}
 	if lv.killed {
@@ -254,7 +311,7 @@ func (j *Jobs) completeCall(lv *live, res CallResult) {
 		close(lv.done)
 	}()
 	_ = lv.w.Close()
-	text := j.redact(lv.result.Text)
+	text := lv.redact(lv.result.Text)
 	res.Text = text
 	res.Err = nil
 	if !detached && onCwd != nil && ended != "" {
@@ -273,10 +330,10 @@ func (j *Jobs) completeCall(lv *live, res CallResult) {
 		job.Bytes = len(body)
 		if err := fsutil.WriteAtomic(job.Output, []byte(body), 0600); err != nil {
 			job.Status = "failed"
-			text = "保存工具结果失败：" + j.redact(err.Error())
+			text = "保存工具结果失败：" + lv.redact(err.Error())
 			res.Text = text
 			lv.mu.Lock()
-			lv.result.Err = err
+			lv.result.Err = redactCallError(err, lv.redact)
 			lv.mu.Unlock()
 		}
 	}
@@ -288,9 +345,14 @@ func (j *Jobs) completeCall(lv *live, res CallResult) {
 		job, err = lv.finalize(job, res)
 		if err != nil {
 			job.Status = "failed"
-			job.Result = "保存工具结果失败：" + j.redact(err.Error())
+			job.Result = "保存工具结果失败：" + lv.redact(err.Error())
 		}
 	}
+	// Finalize may introduce new free text; writeMeta deliberately has no
+	// redaction fallback, so the source call masks these fields here.
+	job.Result = lv.redact(job.Result)
+	job.Command = lv.redact(job.Command)
+	job.Description = lv.redact(job.Description)
 	if review.IsShellTool(job.Tool) {
 		job.Bytes, job.Dropped = lv.w.span()
 	}
@@ -301,9 +363,9 @@ func (j *Jobs) completeCall(lv *live, res CallResult) {
 	j.metaMu.Unlock()
 	if err != nil {
 		lv.mu.Lock()
-		lv.result.Err = err
+		lv.result.Err = redactCallError(err, lv.redact)
 		lv.job.Status = "failed"
-		lv.job.Result = "保存工具状态失败：" + j.redact(err.Error())
+		lv.job.Result = "保存工具状态失败：" + lv.redact(err.Error())
 		job = lv.job
 		lv.mu.Unlock()
 	}
@@ -320,7 +382,11 @@ func (j *Jobs) completeCall(lv *live, res CallResult) {
 
 // runProcess is only the shell process adapter. It has no timer or separate
 // background decision; RunCall owns both for shell and every other tool.
-func (j *Jobs) runProcess(ctx context.Context, lv *live, req RunRequest) (string, error) {
+func (j *Jobs) runProcess(ctx context.Context, lv *live, req RunRequest) (text string, err error) {
+	defer func() {
+		text = lv.redact(text)
+		err = redactCallError(err, lv.redact)
+	}()
 	if req.OnExit != nil {
 		defer req.OnExit()
 	}
@@ -347,15 +413,15 @@ func (j *Jobs) runProcess(ctx context.Context, lv *live, req RunRequest) (string
 	}
 	lv.mu.Lock()
 	lv.cmd = cmd
-	lv.job.Command = clipCommand(j.redact(req.Command))
-	lv.job.Description = clipCommand(j.redact(req.Description))
+	lv.job.Command = clipCommand(lv.redact(req.Command))
+	lv.job.Description = clipCommand(lv.redact(req.Description))
 	lv.job.PID = cmd.Process.Pid
 	lv.job.ProcStart = processStartTicks(cmd.Process.Pid)
 	lv.mu.Unlock()
 	if req.onStart != nil {
 		req.onStart()
 	}
-	err := cmd.Wait()
+	err = cmd.Wait()
 	if closeErr := lv.w.Close(); closeErr != nil {
 		return "", closeErr
 	}

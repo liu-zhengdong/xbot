@@ -109,6 +109,9 @@ type Jobs struct {
 	metaMu sync.Mutex
 	dirMu  sync.RWMutex
 	jobs   map[string]*live
+	// Admission is resource lifetime only; Shutdown does not change it.
+	admissionPaused bool
+	admissionClosed bool
 }
 
 type live struct {
@@ -122,6 +125,7 @@ type live struct {
 	cancel                     context.CancelFunc
 	result                     CallResult
 	onDone                     func(Job)
+	redact                     func(string) string
 	onCwd                      func(string)
 	finalCwd                   string
 	cleanup                    func()
@@ -375,6 +379,9 @@ func (j *Jobs) Output(id string, offset, tail int) (string, error) {
 	chunk = clip.Valid(chunk)
 	// The file was redacted as it was written. A value the vault learned since
 	// is caught here; offsets still count the stream as written.
+	if lv.redact != nil {
+		chunk = lv.redact(chunk)
+	}
 	chunk = j.redact(chunk)
 	var b strings.Builder
 	fmt.Fprintf(&b, "status: %s\noffset: %d\nnext_offset: %d\n", job.Status, offset, next)
@@ -425,6 +432,54 @@ func (j *Jobs) Deliver(id string, send func(Job, CallResult) error) error {
 	job = lv.job
 	lv.mu.Unlock()
 	return j.writeMeta(job)
+}
+
+// PauseAdmission rejects new calls without changing existing jobs or controls.
+func (j *Jobs) PauseAdmission() error {
+	if j == nil {
+		return errors.New("tool job: no job table")
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.admissionClosed {
+		return errors.New("tool job: admission closed")
+	}
+	j.admissionPaused = true
+	return nil
+}
+
+// ResumeAdmission reopens a temporary pause, never a permanently closed table.
+func (j *Jobs) ResumeAdmission() error {
+	if j == nil {
+		return errors.New("tool job: no job table")
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.admissionClosed {
+		return errors.New("tool job: admission closed")
+	}
+	j.admissionPaused = false
+	return nil
+}
+
+func (j *Jobs) AdmissionOpen() bool {
+	if j == nil {
+		return false
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return !j.admissionPaused && !j.admissionClosed
+}
+
+// Close permanently rejects new calls, then cancels and joins owned calls.
+func (j *Jobs) Close() {
+	if j == nil {
+		return
+	}
+	j.mu.Lock()
+	j.admissionClosed = true
+	j.mu.Unlock()
+	j.Shutdown()
 }
 
 // Shutdown cancels and joins every call this Jobs value owns. Shell adapters
