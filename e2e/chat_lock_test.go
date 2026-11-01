@@ -23,7 +23,7 @@ func (echoCompactor) Compact(context.Context, string, []provider.Message) (strin
 
 func TestIdleChatLetsWebStreamAndFork(t *testing.T) {
 	root, client, ui, _ := m5Stack(t)
-	ui.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
+	ui.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		k, err := m5Kernel(b, client)
 		if err != nil {
 			return nil, err

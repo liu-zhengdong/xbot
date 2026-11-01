@@ -163,8 +163,7 @@ func TestBotStepsEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.mu.Lock()
-	s.kernels = map[string]*kernel.Kernel{bots[0].Name(): k}
-	s.gate = map[string]*sync.Mutex{bots[0].Name(): {}}
+	s.kernels = map[string]*kernelEntry{bots[0].Name(): {Kernel: k, Gate: &sync.Mutex{}}}
 	s.mu.Unlock()
 	ui := httptest.NewServer(muxOf(s))
 	defer ui.Close()

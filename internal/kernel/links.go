@@ -88,11 +88,23 @@ func (t linksTool) Run(ctx context.Context, args json.RawMessage) (string, error
 	switch strings.ToLower(strings.TrimSpace(in.Action)) {
 	case "search":
 		return t.search(in.Query), nil
-	case "install":
-		return t.install(strings.TrimSpace(in.ID))
-	case "remove":
-		return t.remove(strings.TrimSpace(in.ID))
+	case "install", "remove":
+		var text string
+		var err error
+		if strings.EqualFold(strings.TrimSpace(in.Action), "install") {
+			text, err = t.install(strings.TrimSpace(in.ID))
+		} else {
+			text, err = t.remove(strings.TrimSpace(in.ID))
+		}
+		if err == nil && t.k.Resources != nil {
+			_ = t.k.Resources.manager.Reconcile(ctx)
+			t.k.snapshotLinks()
+		}
+		return text, err
 	case "load":
+		if t.k.Resources != nil {
+			_ = t.k.Resources.MCP.Reconcile(ctx)
+		}
 		return t.loadContext(ctx, strings.TrimSpace(in.ID))
 	default:
 		return "", fmt.Errorf("links: action must be search, install, remove, or load")
@@ -124,7 +136,7 @@ func (t linksTool) search(query string) string {
 		}
 		b.WriteByte('\n')
 	}
-	servers, _ := link.LoadMCPAll(t.k.Bot.GlobalMCPPath(), t.k.Bot.MCPPath())
+	servers, _ := t.k.mcpSpecs()
 	store := map[string]bool{}
 	if list, err := link.Connectors(); err == nil {
 		for _, c := range list {
@@ -312,7 +324,7 @@ func (t linksTool) loadContext(ctx context.Context, id string) (string, error) {
 	}
 	if strings.HasPrefix(id, "mcp:") {
 		name := strings.TrimPrefix(id, "mcp:")
-		servers, err := link.LoadMCPAll(t.k.Bot.GlobalMCPPath(), t.k.Bot.MCPPath())
+		servers, err := t.k.mcpSpecs()
 		if err != nil {
 			return "", err
 		}
@@ -469,8 +481,17 @@ func MountOrgans(b *bot.Bot, links []link.Link) []link.Link {
 // mcp.json: a server the store added is mounted, one it removed is closed, and
 // one whose definition changed is replaced by a fresh instance. An unreadable
 // file leaves the mounted set as it is.
+// mcpSpecs is authoritative for runtime metadata and adapter discovery. The
+// Manager retains the last effective inputs when an external file is invalid.
+func (k *Kernel) mcpSpecs() ([]link.MCPServer, error) {
+	if k.Resources != nil {
+		return k.Resources.MCP.Specs(), nil
+	}
+	return link.LoadMCPAll(k.Bot.GlobalMCPPath(), k.Bot.MCPPath())
+}
+
 func (k *Kernel) syncMCPLocked(links []link.Link) []link.Link {
-	servers, err := link.LoadMCPAll(k.Bot.GlobalMCPPath(), k.Bot.MCPPath())
+	servers, err := k.mcpSpecs()
 	if err != nil {
 		return links
 	}
@@ -504,7 +525,12 @@ func (k *Kernel) syncMCPLocked(links []link.Link) []link.Link {
 		s.Secret = link.GlobalSecretLookup(k.Bot.Root)
 		mk := k.newMCP
 		if mk == nil {
-			mk = func(s link.MCPServer) link.Link { return link.NewMCP(s) }
+			mk = func(s link.MCPServer) link.Link {
+				if k.Resources != nil {
+					return link.NewBorrowedMCP(s, k.Resources.MCP)
+				}
+				return link.NewMCP(s)
+			}
 		}
 		out = append(out, mk(s))
 	}
@@ -532,7 +558,11 @@ func (k *Kernel) storeSecrets(values map[string]string) error {
 	if err != nil {
 		return err
 	}
-	return link.SetProductSecrets(backend, values)
+	err = link.SetProductSecrets(backend, values)
+	if local, ok := backend.(*vault.Store); ok && err == nil {
+		vault.Register(local)
+	}
+	return err
 }
 
 // dropSecrets removes shared link credentials.
@@ -660,7 +690,7 @@ func (k *Kernel) installedSection() (string, error) {
 			refs = append(refs, link.InstalledRef{ID: a.Title, Summary: a.Summary})
 		}
 	}
-	servers, err := link.LoadMCPAll(k.Bot.GlobalMCPPath(), k.Bot.MCPPath())
+	servers, err := k.mcpSpecs()
 	if err != nil {
 		return "", err
 	}
@@ -814,7 +844,11 @@ func (k *Kernel) redactor() func(string) string {
 		base = k.Redact
 	}
 	return func(s string) string {
-		return config.RedactHeld(base(s))
+		s = config.RedactHeld(base(s))
+		if k != nil && k.Resources != nil {
+			s = k.Resources.Redact(s)
+		}
+		return s
 	}
 }
 

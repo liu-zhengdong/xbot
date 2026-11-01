@@ -107,12 +107,12 @@ func contextFixture(t *testing.T) (*Server, string, *bot.Bot, *kernel.Kernel) {
 // contextServer wires the kernel in the way serve does, so the handler reads a
 // live snapshot rather than a fabricated one.
 func contextServer(s *Server, b *bot.Bot, k *kernel.Kernel) *Server {
-	s.NewKernel = func(*bot.Bot) (*kernel.Kernel, error) { return k, nil }
+	s.NewKernel = func(*bot.Bot, *kernel.BotResources) (*kernel.Kernel, error) { return k, nil }
 	s.mu.Lock()
 	if s.kernels == nil {
-		s.kernels = map[string]*kernel.Kernel{}
+		s.kernels = map[string]*kernelEntry{}
 	}
-	s.kernels[b.Name()] = k
+	s.kernels[b.Name()] = &kernelEntry{Kernel: k}
 	s.mu.Unlock()
 	return s
 }

@@ -41,7 +41,7 @@ func TestResponsesStreamPersistence(t *testing.T) {
 			if err := b.SetOwners([]string{"u1"}); err != nil {
 				t.Fatal(err)
 			}
-			s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
+			s.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 				return &kernel.Kernel{Bot: b, Provider: &provider.Responses{Client: provider.Client{BaseURL: model.URL, APIKey: "fake", Model: "fake"}}, Memory: memory.NopStore{}, MaxSteps: 2}, nil
 			}
 			ui := httptest.NewServer(muxOf(s))

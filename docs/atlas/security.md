@@ -1,8 +1,8 @@
 ---
 kind: part
 parent: README.md
-code: [internal/vault/, internal/review/, internal/tools/guard.go]
-verified: 2026-11-01 @ feature/vault-global-shared (global Open/API/NeedsSecret/egress/askpass + binary Chrome smoke); 2026-10-31 @ feature/vault-settings-sudo (Store/API/Shell/Chrome); 2026-10-31 @ feature/always-allow-no-permission-cards (permission regression tests); 2026-10-31 @ feature/custom-provider (provider HTTP policy); 2026-10-30 @ c4d67b18 + image-gen-local-proxy (review tests); 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome); 2026-11-01 @ a407f83b (child continuation/route/review targeted and independent scripted binary checks)
+code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
+verified: 2026-11-01 @ 704f584d (MCP source masking and credentials; prior continuation, vault and review evidence retained)
 ---
 # 安全：保险箱与权限表
 
@@ -13,6 +13,12 @@ verified: 2026-11-01 @ feature/vault-global-shared (global Open/API/NeedsSecret/
 ## 子代理工具分类
 
 统一权限表把 `agent_message`、`agent_stop`、`send_message_to_parent` 归 Normal，`list_subagents` 归 Readonly；沿既有registry与review，不添加工具内确认或新的审批UI。孩子的父信目标由scope固定，Web直接输入与模型父信来源由内核装配，不接受任意sender/target；HTTP沿Bot owner鉴权，descriptor不保存密钥。可继续能力与旧记录兼容见[子代理](subagents.md)。
+
+## 共享慢调用的脱敏
+
+每 Bot 原 Jobs 由进程资源持有，默认脱敏/形式只装一次；实际 CallRequest 保 source 的动态 Redact/Forms，不继承后来 K 的私有状态。初始 Command、进程 Command/Description、text/error、日志、Finalize Result/Command/Description 及失败诊断在各真实出口遮盖；writeMeta 不作补救。读 Output 在原 offset 切片后叠原 source 与当前进程已知秘密，offset/cap 不变。错误文本实际变化时才包一层保 errors.Is/As 的遮盖对象。
+
+MCP 按引用名字、存在性与实际值比较输入；真实 env/HTTP header/启动 stderr 共用一次冻结快照，旧会话至少保到真实退出，仍叠当前 redactor。缺失/不可导出是 credentials 失败，不偷偷保旧 header 或降级；配置 vaultd 时不转本地/环境。无关密钥、同值与仅域名更新不全局重连。后端策略见 [生态](ecosystem.md#怎么运转)。本段验证基线 `aaa66c49`，沿定向 source/masking/credentials race 证据，不重验本页其它安全功能。
 
 ## 音频工具
 

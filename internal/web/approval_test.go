@@ -44,7 +44,7 @@ func TestWebApprovalAllowAndDeny(t *testing.T) {
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
+	s.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		return &kernel.Kernel{
 			Bot: b, Provider: client, MaxSteps: 4, Budget: compact.DefaultBudget(),
 			Links:   []link.Link{link.Web{}, link.NewToolsLinkAt(work, "")},
@@ -201,7 +201,7 @@ func TestWebApprovalTimeoutAutomaticallyAllows(t *testing.T) {
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
+	s.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		return &kernel.Kernel{
 			Bot: b, Provider: client, MaxSteps: 4, Budget: compact.DefaultBudget(),
 			Links:   []link.Link{link.Web{}, link.NewToolsLinkAt(work, "")},

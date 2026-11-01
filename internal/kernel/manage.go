@@ -76,7 +76,7 @@ func (deleteBotTool) Confirm(args json.RawMessage) (bool, string, error) {
 	}
 	return false, "delete bot " + strings.TrimSpace(in.Name), nil
 }
-func (t deleteBotTool) Run(_ context.Context, args json.RawMessage) (string, error) {
+func (t deleteBotTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	if !t.k.isPrimary() {
 		return "", errNotPrimary
 	}
@@ -103,7 +103,13 @@ func (t deleteBotTool) Run(_ context.Context, args json.RawMessage) (string, err
 			return "", errNotVisible
 		}
 	}
-	if err := bot.Delete(t.k.Bot.Root, name); err != nil {
+	var err error
+	if r := t.k.Resources; r != nil && r.Delete != nil {
+		err = r.Delete(ctx, name)
+	} else {
+		err = bot.Delete(t.k.Bot.Root, name)
+	}
+	if err != nil {
 		return "", err
 	}
 	return "deleted " + name, nil

@@ -399,13 +399,15 @@ Bot 不存在、名字不合法、或没有装上这条 Link，是 404 `{"status
 
 ## 连接应用安装
 
-`POST /api/apps` 接收 `{"id":"context7","secrets":["密钥值"]}`；无密钥条目省略 `secrets`。密钥按 `GET /api/apps` 每行 `fields`（人话标签，如「API 密钥」）的顺序提交，只在探测通过后保存，不出现在列表。真实探测失败返回 422，未添加；需要密钥却未填齐返回 400。Telegram、飞书及 Context7 的密钥全部保存于整机全局保险库；连接器授权仍按既有规则保存。探测方式见 [ADR 0031](adr/0031-store-keys-in-settings.md)；飞书只发一个不存在的消息类型，不会投递到群。同一时间只处理一个添加或移除，单次上限 45 秒；请求取消时在途探测终止。旧的自定义应用接口不在此变更范围。
+`POST /api/apps` 接收 `{"id":"context7","secrets":["密钥值"]}`；无密钥条目省略 `secrets`。密钥按 `GET /api/apps` 每行 `fields`（人话标签，如「API 密钥」）的顺序提交，只在探测通过后保存，不出现在列表。真实探测失败返回 422，未添加；需要密钥却未填齐返回 400。Telegram、飞书及 Context7 的密钥全部保存于整机全局保险库；连接器授权仍按既有规则保存。探测方式见 [ADR 0031](adr/0031-store-keys-in-settings.md)；飞书只发一个不存在的消息类型，不会投递到群。同一时间只处理一个添加或移除，单次上限 45 秒；请求取消时在途探测终止。MCP 长期会话后的自定义配置回执见下节。
 
 ## 连接应用的运行状态
 
 `GET /api/apps` 沿用 owner 登录校验和全局安装列表。MCP 商店条目增加 `load_id`（如 `mcp:playwright`）；已配置的 MCP 增加 `runtime`，键为当前用户的 Bot 名，值为 `{state, tool_count, error?}`。`configured` 表示当前配置尚未成功取得工具；`ready` 表示该 Bot 的匹配实例取得非空工具表；`error` 附带有界、脱敏的失败原因。没有 Bot 时不返回 runtime。读取不启动 MCP 进程、不发网络请求，不将其他配置实例或其他用户的状态混入。
 
 旧 `state=connected` 和顶层 `connected` 仍表达安装/凭据状态，不代表工具可用；前端本次未接入 runtime。`load_id` 可直接交给 `links` 的 load 动作，成功后返回工具名；错误在原工具结果通路内返回。ready 不保证某个工具的浏览器等外部依赖可用。
+
+`POST /api/apps/custom` 保存命令/地址配置后返回 `{id,state:"configured",saved:true}`，保存成功不冒称运行 ready。现 Bot MCP POST/DELETE、全局应用添加/移除与 `/api/secrets` 成功写入都会触发同进程 reconcile；同 spec POST 仍 409，不新增 PUT。外部文件变化按现 serve Pass 读取，坏配置保当前有效会话但报告读错，仍引用的凭据失效单独关闭对应旧输入。
 
 ## MCP 服务器
 

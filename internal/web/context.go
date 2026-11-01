@@ -29,7 +29,7 @@ func (s *Server) botContextAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
-	k := s.kernels[b.Name()]
+	k := s.cachedKernelLocked(b.Name())
 	s.mu.Unlock()
 	snap := kernel.ContextSnap{Bot: b.Name()}
 	if k != nil {

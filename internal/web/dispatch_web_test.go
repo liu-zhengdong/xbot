@@ -79,7 +79,7 @@ func TestDispatchKeepsTheForegroundFree(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := &dispatchModel{hold: make(chan struct{})}
-	s.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
+	s.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		box, err := inbox.Open(b.InboxPath())
 		if err != nil {
 			return nil, err

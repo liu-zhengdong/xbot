@@ -1,4 +1,4 @@
-package link
+package mcp
 
 import (
 	"bufio"
@@ -16,7 +16,7 @@ import (
 // message. A JSON body or an SSE data line is written back as one line so the
 // existing read loop can dispatch it. GET, after a session id, carries server
 // notifications. A 405 means the server has no inbound stream.
-func openStreamable(ctx context.Context, spec MCPServer) (io.ReadWriteCloser, error) {
+func openStreamable(ctx context.Context, spec Spec, options Options) (io.ReadWriteCloser, error) {
 	if err := validateURL(spec.URL); err != nil {
 		return nil, err
 	}
@@ -25,14 +25,14 @@ func openStreamable(ctx context.Context, spec MCPServer) (io.ReadWriteCloser, er
 		ctx:     ctx,
 		url:     strings.TrimSpace(spec.URL),
 		hc:      &http.Client{},
-		headers: secretHeaders(spec.SecretEnvs, spec.secretLookup()),
+		headers: secretHeaders(spec.SecretEnvs, options.secretLookup(spec), options.providerKey),
 		pr:      pr,
 		pw:      pw,
 	}
 	return h, nil
 }
 
-func secretHeaders(names []string, lookup func(string) (string, bool)) http.Header {
+func secretHeaders(names []string, lookup func(string) (string, bool), providerKey func(string) bool) http.Header {
 	h := make(http.Header)
 	if lookup == nil {
 		return h
@@ -61,6 +61,8 @@ type httpConn struct {
 	mu        sync.Mutex
 	session   string
 	listen    bool
+	closed    bool
+	active    sync.WaitGroup
 	pushMu    sync.Mutex
 	closeOnce sync.Once
 	closeErr  error
@@ -68,10 +70,18 @@ type httpConn struct {
 
 func (h *httpConn) Read(p []byte) (int, error) { return h.pr.Read(p) }
 
-func (h *httpConn) Write(p []byte) (int, error) { return h.WriteContext(h.ctx, p) }
+func (h *httpConn) Write(p []byte) (int, error) { return h.WriteRequest(h.ctx, p) }
 
-func (h *httpConn) WriteContext(ctx context.Context, p []byte) (int, error) {
-	ctx, cancel := context.WithTimeout(ctx, mcpRPCWait)
+func (h *httpConn) WriteRequest(ctx context.Context, p []byte) (int, error) {
+	h.mu.Lock()
+	if h.closed {
+		h.mu.Unlock()
+		return 0, io.ErrClosedPipe
+	}
+	h.active.Add(1)
+	h.mu.Unlock()
+	defer h.active.Done()
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop := context.AfterFunc(h.ctx, cancel)
 	defer stop()
@@ -104,9 +114,12 @@ func (h *httpConn) WriteContext(ctx context.Context, p []byte) (int, error) {
 	if id := strings.TrimSpace(res.Header.Get("Mcp-Session-Id")); id != "" {
 		h.noteSession(id)
 	}
-	raw, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	raw, err := io.ReadAll(io.LimitReader(res.Body, (1<<20)+1))
 	if err != nil {
 		return 0, err
+	}
+	if len(raw) > 1<<20 {
+		return 0, fmt.Errorf("mcp: HTTP response exceeds 1 MiB")
 	}
 	if res.StatusCode == http.StatusAccepted || res.StatusCode == http.StatusNoContent {
 		return len(p), nil
@@ -135,11 +148,14 @@ func (h *httpConn) WriteContext(ctx context.Context, p []byte) (int, error) {
 func (h *httpConn) noteSession(id string) {
 	h.mu.Lock()
 	h.session = id
-	start := !h.listen
+	start := !h.listen && !h.closed
 	h.listen = true
+	if start {
+		h.active.Add(1)
+	}
 	h.mu.Unlock()
 	if start {
-		go h.listenGET()
+		go func() { defer h.active.Done(); h.listenGET() }()
 	}
 }
 
@@ -214,7 +230,11 @@ func (h *httpConn) pushJSON(raw []byte) error {
 
 func (h *httpConn) Close() error {
 	h.closeOnce.Do(func() {
+		h.mu.Lock()
+		h.closed = true
+		h.mu.Unlock()
 		h.closeErr = h.pw.Close()
+		h.active.Wait()
 	})
 	return h.closeErr
 }

@@ -56,7 +56,7 @@ func TestStreamableHTTPRoundTrip(t *testing.T) {
 		w.Header().Set("Mcp-Session-Id", "sess-1")
 		switch msg.Method {
 		case "initialize":
-			writeRPC(w, msg.ID, map[string]any{"protocolVersion": mcpProtocol})
+			writeRPC(w, msg.ID, map[string]any{"protocolVersion": "2024-11-05"})
 		case "tools/list":
 			w.Header().Set("Content-Type", "text/event-stream")
 			payload := rpcLine(msg.ID, map[string]any{

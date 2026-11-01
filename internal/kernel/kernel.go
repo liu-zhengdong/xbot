@@ -70,6 +70,7 @@ import (
 // Kernel is the bot's turn runner.
 type Kernel struct {
 	Bot       *bot.Bot
+	Resources *BotResources
 	Provider  provider.Provider
 	Links     []link.Link
 	Inbox     *inbox.Inbox
@@ -233,6 +234,12 @@ func (k *Kernel) stepGuard() int {
 // Handle runs one event to a final assistant message, or returns the agent error.
 // A repeated event whose turn is already complete does not call the model again.
 func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
+	if k.Resources != nil {
+		if !k.Resources.AdmissionOpen() {
+			return errors.New("bot resources unavailable")
+		}
+		_ = k.Resources.MCP.Reconcile(ctx)
+	}
 
 	if err := ev.Validate(); err != nil {
 		return err
@@ -879,6 +886,9 @@ func (k *Kernel) StartEmitters(ctx context.Context) {
 			return
 		}
 		for _, l := range k.snapshotLinks() {
+			if m, ok := l.(*link.MCP); ok && m.Borrowed() {
+				continue
+			}
 			em, ok := l.(link.Emitter)
 			if !ok {
 				continue
@@ -907,7 +917,7 @@ func (k *Kernel) Close() error {
 	k.shellMu.Lock()
 	jobs := k.shell
 	k.shellMu.Unlock()
-	if jobs != nil {
+	if jobs != nil && k.Resources == nil {
 		jobs.Shutdown()
 	}
 	var first error

@@ -41,7 +41,9 @@ func TestBindingAPIProtocolsPersistenceBusyAndPublicParts(t *testing.T) {
 	}
 	// Replacing an unavailable old client with a same/larger window needs no
 	// model construction and must remain usable to repair credentials.
-	s := &Server{Root: root, Owner: "u1", NewKernel: func(*bot.Bot) (*kernel.Kernel, error) { return nil, errors.New("old client unavailable") }}
+	s := &Server{Root: root, Owner: "u1", NewKernel: func(*bot.Bot, *kernel.BotResources) (*kernel.Kernel, error) {
+		return nil, errors.New("old client unavailable")
+	}}
 	token, _, err := s.EnsureToken()
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +117,7 @@ func TestBindingPreservesRunningAndQueuedExecutor(t *testing.T) {
 	}
 	jobs := &bindingTasks{}
 	k := &kernel.Kernel{Bot: b, Exec: jobs}
-	s := &Server{Root: root, Owner: "u1", kernels: map[string]*kernel.Kernel{"ada": k}}
+	s := &Server{Root: root, Owner: "u1", kernels: map[string]*kernelEntry{"ada": {Kernel: k}}}
 	token, _, err := s.EnsureToken()
 	if err != nil {
 		t.Fatal(err)
@@ -135,7 +137,7 @@ func TestBindingPreservesRunningAndQueuedExecutor(t *testing.T) {
 		if res.StatusCode != 409 {
 			t.Fatalf("%s executor orphaned: %d", status, res.StatusCode)
 		}
-		if s.kernels["ada"] != k {
+		if s.kernels["ada"] == nil || s.kernels["ada"].Kernel != k {
 			t.Fatal("running executor was replaced")
 		}
 	}
@@ -154,7 +156,7 @@ func TestKernelRebuildReadsCurrentBindingAfterStaleProfile(t *testing.T) {
 	if err := b.SetBinding("openai", "gpt-5.5"); err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{Root: root, NewKernel: func(b *bot.Bot) (*kernel.Kernel, error) { return &kernel.Kernel{Bot: b}, nil }}
+	s := &Server{Root: root, NewKernel: func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) { return &kernel.Kernel{Bot: b}, nil }}
 	k, _, err := s.kernel(stale)
 	if err != nil {
 		t.Fatal(err)
@@ -262,7 +264,7 @@ func TestBindingSmallWindowCompactsBeforeSwitchAndFirstRequestFits(t *testing.T)
 	}
 	c := &bindingCompactor{b: b}
 	model := &bindingWindowModel{}
-	s := &Server{Root: root, Owner: "u1", NewKernel: func(b *bot.Bot) (*kernel.Kernel, error) {
+	s := &Server{Root: root, Owner: "u1", NewKernel: func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		return &kernel.Kernel{Bot: b, Compactor: c, Provider: model}, nil
 	}}
 	token, _, err := s.EnsureToken()

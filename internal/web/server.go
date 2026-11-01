@@ -48,7 +48,9 @@ type Server struct {
 	Root         string
 	Owner        string
 	DefaultLinks []string
-	NewKernel    func(*bot.Bot) (*kernel.Kernel, error)
+	NewKernel    func(*bot.Bot, *kernel.BotResources) (*kernel.Kernel, error)
+	NewResources func(*bot.Bot) (*kernel.BotResources, error)
+	ReconcileMCP func()
 
 	// SkillHome is the home directory whose Agent, Codex and Claude skill libraries
 	// the import list reads. Empty means the serving user's own home.
@@ -106,8 +108,7 @@ type Server struct {
 	PollInterval time.Duration
 
 	mu        sync.Mutex
-	kernels   map[string]*kernel.Kernel
-	gate      map[string]*sync.Mutex
+	kernels   map[string]*kernelEntry
 	completed map[string]completionCount
 	holds     map[string]*handleHold
 	approvals map[string]*pendingApproval
@@ -587,7 +588,7 @@ func (s *Server) deleteBot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := b.Name()
-	if err := bot.Delete(s.Root, name); err != nil {
+	if err := s.DeleteRuntimeBot(r.Context(), name); err != nil {
 		if errors.Is(err, bot.ErrPrimary) || errors.Is(err, bot.ErrLast) {
 			writeErr(w, http.StatusConflict, err.Error())
 			return
@@ -595,7 +596,6 @@ func (s *Server) deleteBot(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.forgetKernel(name)
 	writeJSON(w, http.StatusOK, map[string]string{"name": name})
 }
 
@@ -1647,27 +1647,18 @@ func (s *Server) kernel(b *bot.Bot) (*kernel.Kernel, *sync.Mutex, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.kernels == nil {
-		s.kernels = map[string]*kernel.Kernel{}
-		s.gate = map[string]*sync.Mutex{}
-		if !s.ForkTurns {
-			// A late decision on a parked card wakes the bot at once.
-			kernel.SetWaker(s.Root, s.wakeBot)
-		}
+	entry, err := s.entryLocked(b)
+	if err != nil {
+		return nil, nil, err
 	}
-	if s.gate[b.Name()] == nil {
-		s.gate[b.Name()] = &sync.Mutex{}
-	}
-	k := s.kernels[b.Name()]
+	k := entry.Kernel
 	if k == nil {
-		// A profile may have been read before a concurrent binding update.
-		// Refresh under the same mutex that removes the previous cache entry.
 		fresh, err := bot.Load(b.Root, b.Name())
 		if err != nil {
 			return nil, nil, err
 		}
 		*b = *fresh
-		k, err = s.NewKernel(b)
+		k, err = s.NewKernel(b, entry.Resources)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1675,13 +1666,11 @@ func (s *Server) kernel(b *bot.Bot) (*kernel.Kernel, *sync.Mutex, error) {
 		k.AllowFork = s.ForkTurns
 		k.Statuses = statusSource{s}
 		if s.ForkTurns || k.Dispatch {
-			// A background's or a subagent's confirmation becomes a card in the
-			// transcript for the owner.
 			k.BackgroundApprove = s.webApprove(b, k, func(string, any) {})
 		}
-		s.kernels[b.Name()] = k
+		entry.Kernel = k
 	}
-	return k, s.gate[b.Name()], nil
+	return k, entry.Gate, nil
 }
 
 func (s *Server) cursorPath() string { return filepath.Join(s.Root, "web-cursor.json") }
@@ -1773,8 +1762,24 @@ func (s *Server) cancelQueued(w http.ResponseWriter, r *http.Request) {
 // turn. When the handle lock is taken, the turn holding it reads the inbox
 // at its next step, so there is nothing to do here.
 func (s *Server) wakeBot(b *bot.Bot) {
+	s.mu.Lock()
+	var resources *kernel.BotResources
+	if entry := s.kernels[b.Name()]; entry != nil {
+		resources = entry.Resources
+	}
+	s.mu.Unlock()
 	go func() {
-		lock, ok, err := b.TryLockHandle()
+		var lock *fsutil.FileLock
+		var ok bool
+		var err error
+		if resources != nil {
+			b, lock, ok, err = resources.TryCurrentHandle()
+		} else {
+			b, err = bot.Load(b.Root, b.Name())
+			if err == nil {
+				lock, ok, err = b.TryLockHandle()
+			}
+		}
 		if err != nil || !ok {
 			return
 		}
@@ -1785,6 +1790,16 @@ func (s *Server) wakeBot(b *bot.Bot) {
 		}
 		gate.Lock()
 		defer gate.Unlock()
+		if resources != nil {
+			b, err = resources.CurrentBot()
+			if err != nil {
+				return
+			}
+			k, _, err = s.kernel(b)
+			if err != nil {
+				return
+			}
+		}
 		k.UseBot(b)
 		_ = proc.Drain(context.Background(), k)
 	}()

@@ -21,6 +21,12 @@ import (
 // Once built, the set is returned without reading k.Bot: only renameBot moves
 // it, so a caller holding a stale bot name can never point it back.
 func (k *Kernel) shellJobs() *tools.Jobs {
+	if k != nil && k.Resources != nil {
+		k.shellMu.Lock()
+		k.shell = k.Resources.Jobs
+		k.shellMu.Unlock()
+		return k.Resources.Jobs
+	}
 	if jobs := k.liveShell(); jobs != nil {
 		return jobs
 	}
@@ -57,6 +63,9 @@ func (k *Kernel) attachShellJobs() {
 		if l == nil {
 			continue
 		}
+		if _, ok := l.(*link.MCP); ok {
+			continue
+		}
 		for _, t := range l.Tools() {
 			sh, ok := t.(*tools.Shell)
 			if ok {
@@ -74,6 +83,9 @@ func (k *Kernel) attachShell() {
 	}
 	for _, l := range k.snapshotLinks() {
 		if l == nil {
+			continue
+		}
+		if _, ok := l.(*link.MCP); ok {
 			continue
 		}
 		for _, t := range l.Tools() {
@@ -106,6 +118,9 @@ func (k *Kernel) bindShellRuntime(sh *tools.Shell) {
 func shellBackgroundOn(links []link.Link) bool {
 	for _, l := range links {
 		if l == nil {
+			continue
+		}
+		if _, ok := l.(*link.MCP); ok {
 			continue
 		}
 		for _, t := range l.Tools() {

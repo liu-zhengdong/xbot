@@ -194,7 +194,7 @@ func (k *Kernel) restoreSubagent(_ context.Context, d exec.Descriptor) (exec.Sta
 		TimeoutSec: d.TimeoutSec, Descriptor: &d,
 		Resource: writeResource(agenttype.Type{Tools: d.Tools}, cwd)}
 	if jobs := k.shellJobs(); jobs != nil {
-		req.JobDir = jobs.Dir
+		req.JobDir = jobs.Directory()
 	}
 	return req, nil
 }

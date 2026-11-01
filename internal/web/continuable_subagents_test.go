@@ -318,7 +318,7 @@ func TestContinuableSubagentContinuesCompletedHTTP(t *testing.T) {
 			}
 		}
 	})
-	s.NewKernel = func(loaded *bot.Bot) (*kernel.Kernel, error) {
+	s.NewKernel = func(loaded *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		return &kernel.Kernel{Bot: loaded, Provider: local.Prov, Exec: local}, nil
 	}
 	base := "/api/bots/ada/agents/" + id
@@ -362,7 +362,7 @@ func TestContinuableSubagentContinuesCompletedHTTP(t *testing.T) {
 
 func TestContinuableSubagentLegacyControls(t *testing.T) {
 	s, b, _, request := subagentHTTPRig(t)
-	s.NewKernel = func(loaded *bot.Bot) (*kernel.Kernel, error) {
+	s.NewKernel = func(loaded *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		return &kernel.Kernel{Bot: loaded, Exec: &bindingTasks{}}, nil
 	}
 	_, gate, err := s.kernel(b)
@@ -433,7 +433,7 @@ func TestContinuableSubagentControlsReachActiveOwnerWithoutGate(t *testing.T) {
 	other := exec.NewLocal(exec.Limits{MaxConcurrent: 3})
 	other.AgentsDir = b.AgentsDir()
 	other.Prov = subagentHoldingModel{calls: calls}
-	s.NewKernel = func(loaded *bot.Bot) (*kernel.Kernel, error) {
+	s.NewKernel = func(loaded *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		return &kernel.Kernel{Bot: loaded, Exec: other, Provider: other.Prov}, nil
 	}
 	k, gate, err := s.kernel(b)

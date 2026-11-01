@@ -161,40 +161,92 @@ func setPrimaryLocked(root, name string) error {
 	return b.SetPinned(true)
 }
 
-// Delete removes a bot directory. The primary and the last bot stay.
-func Delete(root, name string) error {
+// CheckDelete checks the existing protection rules without retaining the primary
+// lock while a runtime pauses and joins its owned calls. Delete rechecks them.
+func CheckDelete(root, name string) error {
 	if !ValidName(name) {
 		return fmt.Errorf("bot: invalid name %q", name)
 	}
 	return fsutil.WithLock(primaryLock(root), func() error {
-		if _, err := Load(root, name); err != nil {
+		return checkDeleteLocked(root, name)
+	})
+}
+
+func checkDeleteLocked(root, name string) error {
+	if _, err := Load(root, name); err != nil {
+		return err
+	}
+	all, err := List(root)
+	if err != nil {
+		return err
+	}
+	if len(all) <= 1 {
+		return ErrLast
+	}
+	primary, err := Primary(root)
+	if err != nil && !errors.Is(err, ErrNoPrimary) && !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	if name == primary {
+		return ErrPrimary
+	}
+	return nil
+}
+
+// Delete removes a bot directory. The primary and the last bot stay.
+func Delete(root, name string) error {
+	_, err := DeleteWithResult(root, name)
+	return err
+}
+
+// DeleteWithResult distinguishes physical removal from a later vault-key cleanup
+// error. A runtime must not reopen admission after its directory has gone.
+func DeleteWithResult(root, name string) (removed bool, err error) {
+	if !ValidName(name) {
+		return false, fmt.Errorf("bot: invalid name %q", name)
+	}
+	err = fsutil.WithLock(primaryLock(root), func() error {
+		if err := checkDeleteLocked(root, name); err != nil {
 			return err
 		}
-		all, err := List(root)
-		if err != nil {
-			return err
-		}
-		if len(all) <= 1 {
-			return ErrLast
-		}
-		primary, err := Primary(root)
-		if err != nil && !errors.Is(err, ErrNoPrimary) && !errors.Is(err, ErrNotFound) {
-			return err
-		}
-		if name == primary {
-			return ErrPrimary
-		}
-		// Old product credentials must survive deleting their former Bot bucket.
-		// This is migration only; daemon installations still use secret migrate
-		// to move local credentials across the process boundary.
+		// Migrate old product credentials before removing their former bucket.
 		if _, err := vault.OpenLocalProduct(root); err != nil {
 			return err
 		}
 		if err := os.RemoveAll(Dir(root, name)); err != nil {
 			return err
 		}
+		removed = true
 		return removeVaultKey(root, name)
 	})
+	return removed, err
+}
+
+// RenameWithResult reports the actual directory outcome, including a failed
+// best-effort rollback. The returned handle always names the moved directory,
+// even if reloading its configuration fails after the move.
+func RenameWithResult(root, from, to string) (current *Bot, moved bool, err error) {
+	original, err := Load(root, from)
+	if err != nil {
+		return nil, false, err
+	}
+	err = Rename(root, from, to)
+	moved = err == nil
+	if !moved {
+		_, oldErr := os.Stat(Dir(root, from))
+		_, newErr := os.Stat(Dir(root, to))
+		moved = errors.Is(oldErr, os.ErrNotExist) && newErr == nil
+	}
+	if !moved {
+		return original, false, err
+	}
+	current, loadErr := Load(root, to)
+	if loadErr != nil || current.Name() != to {
+		cfg := original.Config()
+		cfg.Name = to
+		current = &Bot{Root: root, cfg: cfg, profile: newProfileState(cfg)}
+	}
+	return current, true, errors.Join(err, loadErr)
 }
 
 // PostUnaddressed delivers an event that named no bot into the primary inbox.

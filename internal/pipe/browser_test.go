@@ -45,7 +45,7 @@ func TestBrowserRemoteUI(t *testing.T) {
 	if err := config.Add(w.root, config.Provider{Name: "fake", Protocol: config.ChatCompletions, BaseURL: "http://127.0.0.1:1", APIKeyEnv: "XBOT_PIPE_BROWSER_FAKE_KEY"}, config.ModelSpec{Name: "fake", Context: 32768}); err != nil {
 		t.Fatal(err)
 	}
-	w.ui.NewKernel = func(b *bot.Bot) (*kernel.Kernel, error) {
+	w.ui.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		return &kernel.Kernel{Bot: b, Provider: browserScripted{}, Memory: memory.NopStore{}, MaxSteps: 4}, nil
 	}
 	original := w.device.Handler

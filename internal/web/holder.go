@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"xbot/internal/bot"
@@ -104,7 +105,10 @@ func (s *Server) releaseWhenIdle(name string, h *handleHold, k *kernel.Kernel) {
 		// Backgrounds are still running, so the serve loop cannot take the lock: handle
 		// timers, messages from other channels, and finished backgrounds here.
 		h.users++
-		gate := s.gate[name]
+		var gate *sync.Mutex
+		if entry := s.kernels[name]; entry != nil {
+			gate = entry.Gate
+		}
 		s.mu.Unlock()
 		if gate != nil && k.Inbox != nil {
 			gate.Lock()

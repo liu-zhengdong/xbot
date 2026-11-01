@@ -18,7 +18,7 @@ func TestDiscardedKernelClosesProfileEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{Root: root, NewKernel: func(b *bot.Bot) (*kernel.Kernel, error) {
+	s := &Server{Root: root, NewKernel: func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		k := &kernel.Kernel{Bot: b}
 		return k, k.StartOperations()
 	}}

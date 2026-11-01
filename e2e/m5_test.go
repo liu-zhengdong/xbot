@@ -328,7 +328,7 @@ func m5Stack(t *testing.T) (string, *provider.Client, *web.Server, *httptest.Ser
 	ui := &web.Server{
 		Root:  root,
 		Owner: "u1",
-		NewKernel: func(b *bot.Bot) (*kernel.Kernel, error) {
+		NewKernel: func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 			return m5Kernel(b, client)
 		},
 	}
