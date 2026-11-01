@@ -180,6 +180,9 @@ func Start(root string, handlers Handlers) (*Server, error) {
 	mux.HandleFunc("/v1/chat-group/", func(w http.ResponseWriter, r *http.Request) {
 		serveChatGroup(w, r, handlers.ChatGroups)
 	})
+	mux.HandleFunc("/v1/peer/message", func(w http.ResponseWriter, r *http.Request) {
+		servePeerMessage(w, r, handlers.PeerMessage)
+	})
 	guarded := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fail := func(code int, message string) {
 			w.Header().Set("Content-Type", "application/json")

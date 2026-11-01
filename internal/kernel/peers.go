@@ -5,54 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"xbot/internal/peer"
-	"xbot/internal/remote"
 )
-
-type messageBotTool struct{ k *Kernel }
-
-func (messageBotTool) Name() string { return "message_bot" }
-func (messageBotTool) Description() string {
-	return "Post a message into another same-owner bot's inbox. bot@device reaches the owner's bot on another paired device. They see it as untrusted data, not as their own instructions, and they do not see your private memory. Chains stop after a few hops."
-}
-func (messageBotTool) Parameters() any {
-	return schema(map[string]any{
-		"bot":  stringProp("bot name"),
-		"text": stringProp("message text"),
-	}, []string{"bot", "text"})
-}
-func (messageBotTool) Confirm(json.RawMessage) (bool, string, error) {
-	return false, "", nil
-}
-func (t messageBotTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		Bot  string `json:"bot"`
-		Text string `json:"text"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	kt := t.k.turnFor(ctx)
-	chain := kt.turnChain
-	if chain == "" {
-		chain = "ch_" + t.k.currentName()
-	}
-	addr := strings.TrimSpace(in.Bot)
-	var err error
-	var queued bool
-	if strings.Contains(addr, "@") {
-		queued, err = remote.Send(ctx, t.k.Bot.Root, t.k.currentName(), addr, in.Text, chain, kt.turnHops+1, t.k.now())
-	} else {
-		err = (&peer.Bus{Root: t.k.Bot.Root, Now: t.k.now}).Message(t.k.currentName(), addr, in.Text, chain, kt.turnHops+1, t.k.now())
-	}
-	if err != nil {
-		return "", err
-	}
-	if queued {
-		return "gateway unreachable; message to " + addr + " queued and retried for up to 24 hours", nil
-	}
-	return "sent to " + strings.TrimSpace(in.Bot), nil
-}
 
 func hasMember(members []string, name string) bool {
 	for _, m := range members {

@@ -322,29 +322,29 @@ func (s *Stub) foreground(w http.ResponseWriter, r *http.Request, req stubReques
 	case strings.Contains(text, "B_OPINION_77"):
 		streamOwner(w, req, strings.Join([]string{"B 的意见是：" + lineWith(text, "B_OPINION_77")}, ""))
 	case strings.Contains(text, "SMOKE_ASK_B"):
-		if !sawTool(req, "message_bot") {
-			streamTool(w, "call_ask", "message_bot", argsJSON(map[string]string{
-				"bot": "bob", "text": "SMOKE_Q 你怎么看方案 X",
+		if !sawTool(req, "sh") {
+			streamTool(w, "call_ask", "sh", argsJSON(map[string]string{
+				"description": "Ask the same-owner Bot through its current source CLI", "command": `"$XBOT_BIN" peer-message bob --self --text 'SMOKE_Q 你怎么看方案 X' --json`,
 			}))
 			return
 		}
 		streamOwner(w, req, "已经问 B 了")
 	case strings.Contains(text, "SMOKE_Q"):
-		if !sawTool(req, "message_bot") {
-			streamTool(w, "call_reply", "message_bot", argsJSON(map[string]string{
-				"bot": "ada", "text": "B_OPINION_77：建议先做 X",
+		if !sawTool(req, "sh") {
+			streamTool(w, "call_reply", "sh", argsJSON(map[string]string{
+				"description": "Answer the original Bot through the preserved local message writer", "command": `"$XBOT_BIN" peer-message ada --self --text 'B_OPINION_77：建议先做 X' --json`,
 			}))
 			return
 		}
 		streamText(w, []string{"sent"})
 	case strings.Contains(text, "SMOKE_LOOP"):
-		if !sawTool(req, "message_bot") {
+		if !sawTool(req, "sh") {
 			other := "bob"
 			if botName(joined(req)) == "bob" {
 				other = "ada"
 			}
-			streamTool(w, "call_loop", "message_bot", argsJSON(map[string]string{
-				"bot": other, "text": "SMOKE_LOOP",
+			streamTool(w, "call_loop", "sh", argsJSON(map[string]string{
+				"description": "Keep the original Bot chain and hop limit through the actual Shell Job", "command": `"$XBOT_BIN" peer-message ` + other + ` --self --text SMOKE_LOOP --json`,
 			}))
 			return
 		}

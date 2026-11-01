@@ -79,7 +79,7 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	var sawShell, sawWrite, sawMemoryWrite, sawNotify, sawRecall, sawSpawn, sawPeer, sawReadSub bool
 	var lastTool, lastUser string
 	for _, m := range req.Messages {
-		if m.Role == "user" && !strings.HasPrefix(m.Content, "<environment_") {
+		if m.Role == "user" && !strings.HasPrefix(m.Content, "<environment_") && !(strings.HasPrefix(m.Content, "<peer_message_outgoing>\n") && strings.HasSuffix(m.Content, "\n</peer_message_outgoing>")) {
 			lastUser = m.Content
 			lastTool = ""
 			sawShell, sawWrite, sawMemoryWrite, sawNotify, sawRecall, sawSpawn, sawPeer = false, false, false, false, false, false, false
@@ -92,6 +92,12 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 			switch tc.Function.Name {
 			case "sh":
 				sawShell = true
+				var invocation struct {
+					Command string `json:"command"`
+				}
+				if json.Unmarshal([]byte(tc.Function.Arguments), &invocation) == nil && strings.HasPrefix(invocation.Command, `"$XBOT_BIN" peer-message `) {
+					sawPeer = true
+				}
 			case "write_file":
 				sawWrite = true
 				sawMemoryWrite = strings.Contains(tc.Function.Arguments, "memory.md") || sawMemoryWrite
@@ -101,8 +107,6 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 				sawRecall = true
 			case "spawn":
 				sawSpawn = true
-			case "message_bot":
-				sawPeer = true
 			case "read_subagent":
 				sawReadSub = true
 			}
@@ -114,13 +118,13 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 	w.Header().Set("Cache-Control", "no-cache")
 	switch {
 	case strings.Contains(lastUser, "REMOTE_PING_RETRY") && !sawPeer:
-		writeTool(w, "call_remote_retry", "message_bot", `{"bot":"bob@b","text":"REMOTE_OUTAGE_DELIVERY"}`)
+		writePeerMessage(w, "call_remote_retry", "bob@b", "REMOTE_OUTAGE_DELIVERY")
 		return
 	case strings.Contains(lastUser, "REMOTE_PING") && !sawPeer:
-		writeTool(w, "call_remote_ping", "message_bot", `{"bot":"bob@b","text":"REMOTE_HELLO"}`)
+		writePeerMessage(w, "call_remote_ping", "bob@b", "REMOTE_HELLO")
 		return
 	case strings.Contains(lastUser, "REMOTE_HELLO") && !sawPeer:
-		writeTool(w, "call_remote_reply", "message_bot", `{"bot":"ada@a","text":"REMOTE_REPLY"}`)
+		writePeerMessage(w, "call_remote_reply", "ada@a", "REMOTE_REPLY")
 		return
 	case strings.Contains(lastUser, "REMOTE_REPLY"):
 		writeText(w, "got remote reply\n")
@@ -311,13 +315,13 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 		writeText(w, "terminal hello\n")
 		return
 	case strings.Contains(lastUser, "MSG_BOB") && !sawPeer:
-		writeTool(w, "call_peer", "message_bot", `{"bot":"bob","text":"hello from ada"}`)
+		writePeerMessage(w, "call_peer", "bob", "hello from ada")
 		return
 	case strings.Contains(lastUser, "MSG_BOB"):
 		writeText(w, "sent\n")
 		return
 	case strings.Contains(lastUser, "hello from ada") && !sawPeer:
-		writeTool(w, "call_peer", "message_bot", `{"bot":"ada","text":"reply from bob"}`)
+		writePeerMessage(w, "call_peer", "ada", "reply from bob")
 		return
 	case strings.Contains(lastUser, "hello from ada"):
 		writeText(w, "sent\n")
@@ -330,7 +334,7 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 		if scanBotName(req) == "bob" {
 			other = "ada"
 		}
-		writeTool(w, "call_peer", "message_bot", fmt.Sprintf(`{"bot":%q,"text":"LOOP"}`, other))
+		writePeerMessage(w, "call_peer", other, "LOOP")
 		return
 	case strings.Contains(lastUser, "LOOP"):
 		writeText(w, "stopped\n")
@@ -407,6 +411,14 @@ func writeToolContent(w http.ResponseWriter, content, id, name, args string) {
 	}}}})
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flush(w)
+}
+
+func writePeerMessage(w http.ResponseWriter, id, target, text string) {
+	args, _ := json.Marshal(map[string]string{
+		"description": "Post the scripted Bot message through its original source CLI",
+		"command":     `"$XBOT_BIN" peer-message ` + shellQuote(target) + " --self --text " + shellQuote(text) + " --json",
+	})
+	writeTool(w, id, "sh", string(args))
 }
 
 func writeTool(w http.ResponseWriter, id, name, args string) {
