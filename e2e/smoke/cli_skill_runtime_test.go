@@ -18,8 +18,8 @@ import (
 )
 
 // Only the provider is scripted: this calls the actual shipped binary through
-// a source Shell. The later write/read DTO and scope assertions wait for the
-// concrete skills contract; this first case only establishes runtime read.
+// a source Shell. This sealed baseline predates the ca6a8530 contract; first
+// candidates use WriteReadEntry below without repeating this accepted red.
 func TestCLISkillRuntimeReadEntry(t *testing.T) {
 	for _, key := range []string{"XBOT_VAULT_SOCKET", "XBOT_SMOKE_OAUTH", "XBOT_DEV_STATIC", "XBOT_ROOT", "XBOT_ENDPOINT", "XBOT_BIN", "XBOT_BOT", "XBOT_RUNNER_URL", "XBOT_RUNNER_TOKEN", "XBOT_CODE_AGENT"} {
 		t.Setenv(key, "")
@@ -44,6 +44,72 @@ func TestCLISkillRuntimeReadEntry(t *testing.T) {
 	raw := []byte(commandOutput(results[0]))
 	if len(raw) > 64<<10 || !json.Valid(raw) {
 		t.Fatalf("runtime skill read did not return bounded JSON: %.1024q", raw)
+	}
+}
+
+// The first product run is only this chain. It proves both typed source
+// operations with title/full body and the existing omitted-scope all-local
+// semantics, independently of the later budget/readonly/schema cases.
+func TestCLISkillRuntimeWriteReadEntry(t *testing.T) {
+	cliSkillIsolation(t)
+	model := newMCPRuntimeModel(t)
+	const cue = "CLI_SKILL_RUNTIME_WRITE_READ_ENTRY"
+	const slug, title, description = "runtime-write-entry", "Runtime entry 标题", "Independent runtime skill fixture"
+	const body = "# Runtime entry\n\nPreserve this complete body.\n\nRUNTIME_WRITE_READ_TAIL"
+	write := "printf '%s' " + shellQuote(body) + ` > runtime-entry-body.md
+"$XBOT_BIN" skill write ` + slug + " --title " + shellQuote(title) + " --description " + shellQuote(description) + ` --body-file runtime-entry-body.md --self --json`
+	model.add(cue,
+		mcpRuntimeTool("sh", map[string]string{"description": "Write a complete skill through the bound runtime source", "command": write}),
+		mcpRuntimeTool("sh", map[string]string{"description": "Read the written skill through the original source", "command": `"$XBOT_BIN" skill read ` + slug + ` --self --json`}),
+	)
+	srv := Start(t, &Stub{srv: model.server})
+	srv.CreateBot("SkillWorker", "Independent runtime skill write/read acceptance.")
+	srv.CreateBot("SkillPeer", "Omitted write scope still includes the other local Bot.")
+	cliSkillSend(t, srv, "SkillWorker", cue)
+	results := model.results(cue)
+	if len(results) != 2 {
+		t.Fatalf("runtime write/read results=%d", len(results))
+	}
+	var written cliSkillWriteReply
+	cliSkillDecode(t, results[0], &written)
+	if written.Slug != slug || !written.Written || written.Error != "" {
+		t.Fatalf("write receipt did not report the real file: %+v", written)
+	}
+	for _, name := range []string{"SkillWorker", "SkillPeer"} {
+		found := false
+		for _, updated := range written.UpdatedBots {
+			found = found || updated == name
+		}
+		if !found {
+			t.Fatalf("omitted scope lost local Bot %s: %+v", name, written)
+		}
+		cfg, err := os.ReadFile(filepath.Join(srv.Root, "bots", name, "config.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var config struct {
+			Disabled []string `json:"disabled_skills"`
+		}
+		if err := json.Unmarshal(cfg, &config); err != nil {
+			t.Fatal(err)
+		}
+		for _, disabled := range config.Disabled {
+			if disabled == slug {
+				t.Fatalf("omitted scope disabled %s on %s", slug, name)
+			}
+		}
+	}
+	var read cliSkillReadReply
+	cliSkillDecode(t, results[1], &read)
+	if read.Slug != slug || read.Name != slug || read.Title != title || read.Description != description || read.Body == nil || *read.Body != body || read.File != "" || read.Error != "" {
+		t.Fatalf("read did not preserve metadata and complete inline body: slug=%q name=%q title=%q description=%q bodyPresent=%t file=%q error=%q", read.Slug, read.Name, read.Title, read.Description, read.Body != nil, read.File, read.Error)
+	}
+	raw, err := os.ReadFile(filepath.Join(srv.Root, "skills", slug, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `title: "`+title+`"`) || !strings.HasSuffix(string(raw), body+"\n") {
+		t.Fatal("actual SKILL.md lost title/full body")
 	}
 }
 
