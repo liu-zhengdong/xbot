@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-01 @ c3cd3f0c (profile Sink refresh and avatar regression; single-column memory/search retained)
+verified: 2026-11-01 @ b1bd9c9b (merged memory/search and runtime profile; real-browser streaming refresh passed)
 
 ---
 # 网页界面

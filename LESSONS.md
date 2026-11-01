@@ -86,6 +86,10 @@
 
 - **保存成功与交付成功要分开回报。** hosted 生图先落工作区，再走同轮挂图；挂图超限时保留真实文件路径和失败原因，当前模型响应看不到的本机失败由程序追加到回复，不能只靠下一轮提示纠正。守护：`TestImageGenerationAttachmentFailureKeepsPathAndReceipt`、`TestHostedImageDeliveryLimitsAndIdempotency`。Seen 1×（2026-10-27）。
 
+## 运行态与后台
+
+- **后台仍在使用的运行入口不能随主轮结束释放，队列交接也必须保持连续持有。** 原因：serve.Pass 结束时关闭 Kernel，仍活的本机子代理随后得到空 XBOT_BIN；编码任务先从 live 删除再启动已排队任务，又会让退役检查误判空闲。复用原执行集合，真正空闲后释放，服务退出强制关闭，不另建任务账本。守护：`TestCLIProfileServeBackground` 在 `07f17164` 真二进制 exit 127、`fe7e1f83` 转绿；`TestRetiredRuntimeFollowsLocalTaskLifetime` 覆盖本机子代理和编码任务。Seen 1×（2026-11-01）。
+
 ## 界面交互
 
 - **消息投影里的头像和装饰必须稳定，分页锚点不能依赖会重播的位移动画。** 头像 SVG 的递增 ID 会让未变消息比较失败并替换播放器；display 切页重播 4px 动画会使历史位置偏移。守护：`TestTranscriptIncrementalBrowser`、`TestVoiceChatBrowser`、`TestChatTabsPreserveChatBrowser`、`TestTranscriptWindowVisibleTailBrowser` 与真实 serve 的 `TestChatTabsJourney`。Seen 1×（2026-11-01）。

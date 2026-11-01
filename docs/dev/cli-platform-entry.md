@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**普通资料首刀分支端到端通过，待合入；后续批次未实施**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**普通资料首刀已合入本地 main、端到端通过；后续批次未实施**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -105,7 +105,7 @@ Agent → Shell → xbot CLI ─┐
 
 批 2 和批 4 共享 MCP 生命周期，批 3 和批 4 共享连接器出站与安装配置，不能在同一份装配代码上各自迁一半。独立文档/验证可以并行，核心运行态按批串行落地。开发期只保留切换所需的短暂双入口，不增加长期兼容开关。
 
-## 批 0/1 实施设计（2026-11-01，独立复核检查点）
+## 批 0/1 实施约束（2026-11-01，独立复核通过）
 
 **第一刀**：普通 `description/timezone`，不迁移头像、改名、role/persona，不删除 `bot_update_profile`（它还承担头像/改名）。现有 Event/Inbox、权限默认放行、脱敏及 Jobs 不改。
 
@@ -123,11 +123,11 @@ Agent → Shell → xbot CLI ─┐
 
 **生命周期与发布锁**：入口在 openKernel 全部可能失败的装配完成后最后创建；创建失败关闭该 Kernel 已有资源。提供窄 `CloseOperations`，由 chat 返回、web forget/binding rebuild、service ctx 取消强制关闭。短命 serve.Pass 的 Kernel.Close 仅在已有 exec.Local/code.Link 活任务清空后退役入口：复用现有 live 集合与真正结束后的 OnIdle 回调，不造任务表、不轮询、不常驻空闲 Kernel；服务 ctx 的可撤销回调在入口关闭后移除。不为释放 endpoint 重做 Jobs 生命周期。profile 领域写锁/配置文件锁均在通知前释放，SSE 写出经原 replyStream 的锁；不拿资源锁等网络。活轮次 Sink 在插话时随原路移交，通知归当前持有者，不广播、不追加另一条账本。
 
-**预计变更**：`cmd/xbot/{main,cmd_bot,cmd_serve,cmd_chat}.go`（命令/装配/关闭）；新增窄包 `internal/cliops`（定位契约、handler/client）；`internal/bot/{bot,profile}.go` 及必要配置访问点（共享配置写入与快照）；`internal/kernel/{kernel,shelljob,agents}.go`（caller 绑定与生命周期）；`internal/tools/shell.go`、`internal/code/{link,run}.go`（共用环境）；`internal/kernel/interject.go` 与 `internal/web/server.go`（原 Sink 的窄 profile 通知）；`internal/web/static/app.js`（收到业务变更后立即刷新）；相关定向单测、atlas、多 Bot/UI/生态节点、MILESTONES。正式决定另写 ADR 0043；旧 Accepted 正文不动，仅说明实际切换普通 profile/UI 刷新范围，尚无工具族整体退役。
+**预计变更**：`cmd/xbot/{main,cmd_bot,cmd_serve,cmd_chat}.go`（命令/装配/关闭）；新增窄包 `internal/cliops`（定位契约、handler/client）；`internal/bot/{bot,profile}.go` 及必要配置访问点（共享配置写入与快照）；`internal/kernel/{kernel,shelljob,agents}.go`（caller 绑定与生命周期）；`internal/tools/shell.go`、`internal/code/{link,run}.go`（共用环境）；`internal/kernel/interject.go` 与 `internal/web/server.go`（原 Sink 的窄 profile 通知）；`internal/web/static/app.js`（收到业务变更后立即刷新）；相关定向单测、atlas、多 Bot/UI/生态节点、MILESTONES。决定见 [ADR 0043](../adr/0043-cli-platform-runtime-entry.md)；旧 Accepted 正文不动，仅说明实际切换普通 profile/UI 刷新范围，尚无工具族整体退役。
 
 **独立冒烟可观测接口**：真二进制 serve/chat + scripted 模型发出 Shell 命令，stdout 可直接解析上述 JSON；GET 列表/详情核对磁盘与当前资料；用下一次模型请求的环境时间/指纹核对活 Kernel 已感知；保持 SSE 尚未结束，收到 profile 提示后打开现有编辑资料表单观察新简介，API 核对时区；自然短轮同样立即刷新资料，不仅依赖收尾；双 root 并跑确认另一实例没改变；显式 root mismatch、无 endpoint、非法 timezone 都返回非 0 且不改资料；旧工具仍可换头像/改名。实现方不改独立 smoke 期望。最小验证先 CLIops、bot、CLI、Kernel 的相关测试，随后独立真入口及一个代表浏览器场景；不全仓、不三遍、不真模型。
 
-**复核与进度**：2026-11-01 独立设计审计与主管复核放行批 0/1；产品提交 `07f17164`，按独立代码审计命中的短命 Kernel 后台寿命问题修复为 `fe7e1f83`，coding 队列交接与跨活句柄同步增量为 `c3cd3f0c`。定向真实业务、保留头像浏览器行为与 race 已通过，独立真二进制验证由非实现方运行，尚不宣称全部路线完成。独立冒烟为 `e2e/smoke/cli_profile_test.go`、`e2e/smoke/cli_profile_background_test.go` 和 `e2e/smoke/testdata/cli-profile.cjs`，实现方不改期望。
+**复核约束**：后续扩展沿 [ADR 0043](../adr/0043-cli-platform-runtime-entry.md) 的身份、锁和生命周期边界，先复核具体设计，再扩大产品范围；已完成的验证记录见 [MILESTONES](../MILESTONES.md)。独立冒烟为 `e2e/smoke/cli_profile_test.go`、`e2e/smoke/cli_profile_background_test.go` 和 `e2e/smoke/testdata/cli-profile.cjs`，实现方不改期望。
 
 ## 对照回顾
 
@@ -165,19 +165,19 @@ Agent → Shell → xbot CLI ─┐
 
 **冒烟用例**：独立验证方的 `e2e/smoke/cli_profile_test.go`、`e2e/smoke/cli_profile_background_test.go` 与 `e2e/smoke/testdata/cli-profile.cjs`，实现方不改期望；未移入 guard。
 
-**级别**：普通 description/timezone 首刀的分支真入口端到端通过（独立 serve 双 root、chat、长/短轮浏览器及 serve.Pass 本机后台），整条路线仍在实施；尚未合入或主人日用通过。
+**级别**：普通 description/timezone 首刀已合入本地 main，所测真入口端到端通过（独立 serve 双 root、chat、长/短轮浏览器及 serve.Pass 本机后台）；整条路线仍在实施，主人日用尚未验收。
 
 ## 接受的代价与待定细节
 
 - 接受每次命令的进程启动与 IPC 开销，换来统一入口与脚本组合能力；帮助发现也会占 token，收益以代表任务测量。
 - 接受运行操作依赖当前实例可达，换来会话连续性；已有离线帮助/配置用途明确保留，不静默切实例。
 - 接受模型工具层对 MCP 内部细动作的可见性下降，轨迹首先保留真实 Shell 命令与结果；需要更细展示时复用原 trace，而不是假装旧工具仍被调用。
-- 开编码前定：chat 与 serve 复用何种最小本机 IPC、实例发现方式、`--self` 跨改名的稳定定位方式；runner 不可直达原实例时如何沿既有链路回接；严格只读子代理如何按业务动作分类 CLI。
+- 后续具体设计先定：`--self` 跨完整改名的稳定定位、人用终端/外部脚本的显式实例地址；runner 不可直达原实例时如何沿既有链路回接；严格只读子代理如何按业务动作分类 CLI。chat/serve 的最小本机 HTTP 与当前调用方环境沿 [ADR 0043](../adr/0043-cli-platform-runtime-entry.md)，不再重新选择传输。
 - 本文不预先锁死包名、socket 路径、所有 JSON 字段与完整基础工具白名单；在第一条真实调用路径上定形，不为将来猜测造框架。
 
 ## 还没做的
 
-- 完成首刀增量独立审计与合入；主人日用验收尚未开始。批 0/1 的实施设计/候选依赖核对和 ADR 0043 已通过独立复核，不重复走设计审批。
+- 主人日用验收尚未开始。普通资料首刀的独立审计、真入口验证与合入已完成；后续不重复该刀设计审批，按新切片复核实际增量。
 - 批 0 的后续实际操作及入站依赖清单、research 按业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - profile 的头像/改名完整运行时 CLI 与组合更新；在真正覆盖前保留旧工具和原头像即时刷新，未整族移除。
 - MCP 管理、发现、调用、通知、生命周期与慢调用的 CLI 通路。
