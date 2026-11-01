@@ -163,17 +163,60 @@ func TestCLIRoutineRuntimePlainListBudget(t *testing.T) {
 	}
 	const cue = "CLI_ROUTINE_PLAIN_LIST_CONSUMER_BUDGET"
 	model.add(cue,
-		mcpRuntimeTool("sh", map[string]string{"description": "Verify the compact actual routine list still fits inline", "command": `"$XBOT_BIN" routine list --self --json`}),
+		mcpRuntimeTool("sh", map[string]string{"description": "Read the complete JSON routine list through its valid inline or local artifact reply", "command": `"$XBOT_BIN" routine list --self --json`}),
 		mcpRuntimeTool("sh", map[string]string{"description": "Read the same complete human routine list through normal Shell output", "command": `"$XBOT_BIN" routine list --self`}),
 	)
 	cliSkillSend(t, srv, worker, cue)
 	results := model.results(cue)
 	var compact cliRoutineListReply
 	cliRoutineDecode(t, results[0], &compact)
-	if compact.Count != count || compact.File != "" || compact.Routines == nil || len(*compact.Routines) != count || len(commandOutput(results[0])) >= 32<<10 {
-		t.Fatal("plain expansion fixture did not retain an actual complete inline JSON reply below32KiB")
+	if compact.Count != count || compact.Error != "" || len(commandOutput(results[0])) > 32<<10 {
+		t.Fatal("JSON consumer lost its complete bounded reply/count")
 	}
-	t.Logf("actual compact JSON=%d bytes, routines=%d", len(commandOutput(results[0])), compact.Count)
+	jsonViews := compact.Routines
+	if compact.File != "" {
+		rel := filepath.Clean(filepath.FromSlash(compact.File))
+		if compact.Access != "local" || filepath.IsAbs(rel) || !strings.HasPrefix(rel, "results"+string(filepath.Separator)) {
+			t.Fatal("JSON consumer has no valid current local artifact")
+		}
+		raw, err := os.ReadFile(filepath.Join(srv.Root, "work", worker, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if int64(len(raw)) != compact.Bytes || len(raw) > 20<<20 {
+			t.Fatal("JSON consumer artifact byte facts changed")
+		}
+		var views []cliRoutineView
+		if bytes.HasPrefix(bytes.TrimSpace(raw), []byte("[")) {
+			if err := json.Unmarshal(raw, &views); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			var full cliRoutineListReply
+			if err := json.Unmarshal(raw, &full); err != nil {
+				t.Fatal(err)
+			}
+			if full.Routines == nil || full.Count != count || full.Error != "" {
+				t.Fatal("JSON artifact lacks the complete list")
+			}
+			views = *full.Routines
+		}
+		jsonViews = &views
+	}
+	if jsonViews == nil || len(*jsonViews) != count {
+		t.Fatal("JSON consumer lost actual complete routine definitions")
+	}
+	// Prove this is compact-JSON-fit/human-expansion data using all actual
+	// returned definitions. Inline is a possible representation, not a mandate.
+	normalized := make([]map[string]any, 0, count)
+	for _, routine := range *jsonViews {
+		normalized = append(normalized, map[string]any{"id": routine.ID, "name": routine.Name, "prompt": routine.Prompt, "at": routine.At, "zone": routine.Zone, "enabled": routine.Enabled})
+	}
+	canonical, _ := json.Marshal(map[string]any{"routines": normalized, "count": count})
+	if len(canonical)+1 > 32<<10 {
+		t.Fatalf("actual complete normalized JSON no longer fits the fixture premise: %d bytes", len(canonical)+1)
+	}
+	t.Logf("actual complete canonical JSON=%d bytes, routines=%d, response artifact=%t", len(canonical)+1, compact.Count, compact.File != "")
 	if !strings.HasPrefix(results[1], "exit 0\n") {
 		t.Fatalf("actual plain list did not succeed: %.256q", results[1])
 	}
@@ -217,16 +260,18 @@ func TestCLIRoutineRuntimePlainListBudget(t *testing.T) {
 	if len(all) != count {
 		t.Fatalf("plain list full artifact contains%d routines", len(all))
 	}
-	seen := map[string]bool{}
-	for _, routine := range all {
-		if routine.ID == "" || seen[routine.ID] || routine.Name != "" || routine.Prompt != "p" || routine.Enabled || routine.At != at || routine.Zone != "UTC" || routine.Cron != "" || routine.Precheck != "" || routine.LastSlot != "" || len(routine.Skills) != 0 {
-			t.Fatal("plain list artifact truncated, duplicated or changed a real definition")
+	for _, complete := range [][]cliRoutineView{*jsonViews, all} {
+		seen := map[string]bool{}
+		for _, routine := range complete {
+			if routine.ID == "" || seen[routine.ID] || routine.Name != "" || routine.Prompt != "p" || routine.Enabled || routine.At != at || routine.Zone != "UTC" || routine.Cron != "" || routine.Precheck != "" || routine.LastSlot != "" || len(routine.Skills) != 0 {
+				t.Fatal("JSON or plain full list truncated, duplicated or changed a real definition")
+			}
+			seen[routine.ID] = true
 		}
-		seen[routine.ID] = true
-	}
-	for i := 0; i < count; i++ {
-		if !seen[fmt.Sprintf("p%03d", i)] {
-			t.Fatal("plain list artifact lost an actual routine identity")
+		for i := 0; i < count; i++ {
+			if !seen[fmt.Sprintf("p%03d", i)] {
+				t.Fatal("JSON or plain full list lost an actual routine identity")
+			}
 		}
 	}
 }
