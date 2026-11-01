@@ -187,11 +187,12 @@ func TestContinuableSubagentBinary(t *testing.T) {
 	}
 	waitContinuationEnd(t, srv, childID, first.ResultPath, 1)
 
-	status, raw := srv.do(http.MethodPost, "/api/bots/collaborator/agents/"+childID+"/messages", map[string]string{
-		"text": feedback, "delivery": "steer",
-	})
+	// The same real serve process now receives the follow-up from its shipped
+	// browser UI, connecting the binary/tool evidence to the actual user entry.
+	releaseSecond()
+	status, raw := continueSubagentViaBrowser(t, srv, childID, feedback, firstBody, firstConclusion, secondConclusion)
 	if status != http.StatusOK {
-		t.Fatalf("HTTP follow-up to completed child: %d %s", status, raw)
+		t.Fatalf("browser follow-up to completed child: %d %s", status, raw)
 	}
 	var receipt struct {
 		ID       string `json:"id"`
@@ -205,7 +206,6 @@ func TestContinuableSubagentBinary(t *testing.T) {
 	if receipt.ID != childID || receipt.Status != "running" {
 		t.Fatalf("idle child did not resume under its original identity with free admission: %s", raw)
 	}
-	releaseSecond()
 
 	var second continuationAgent
 	WaitFor(t, 15*time.Second, "second completed turn on the original child", func() (bool, string) {
