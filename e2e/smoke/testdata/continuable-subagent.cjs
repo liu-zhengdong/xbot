@@ -63,11 +63,16 @@ const cfg = JSON.parse(fs.readFileSync(0, 'utf8'));
     assert(originalEvidence.includes('accept_write_1') && originalEvidence.includes(cfg.firstBody.trim()) && originalEvidence.includes('wrote '), 'the visible reader did not show the real first tool call with its successful result');
 
     const endpoint = '/api/bots/' + encodeURIComponent(cfg.bot) + '/agents/' + cfg.id + '/messages';
-    const responsePending = page.waitForResponse(response => new URL(response.url()).pathname === endpoint && response.request().method() === 'POST');
     await page.getByRole('textbox', {name: '给当前子代理发消息', exact: true}).fill(cfg.feedback);
-    await page.getByRole('combobox', {name: '发送方式', exact: true}).selectOption('steer');
-    await page.getByRole('button', {name: '发送给这个子代理', exact: true}).click();
-    const response = await responsePending;
+    const delivery = page.getByRole('combobox', {name: '发送方式', exact: true});
+    if (await delivery.isVisible()) await delivery.selectOption('steer');
+    const send = page.getByRole('button', {name: '发送给这个子代理', exact: true});
+    await send.waitFor({state: 'visible'});
+    assert(await send.isEnabled(), 'completed child feedback is not ready to send');
+    const [response] = await Promise.all([
+      page.waitForResponse(response => new URL(response.url()).pathname === endpoint && response.request().method() === 'POST'),
+      send.click()
+    ]);
     const receipt = await response.json();
     assert.equal(response.status(), 200);
     assert.equal(receipt.id, cfg.id, 'browser continuation changed child identity');
