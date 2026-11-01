@@ -32,7 +32,6 @@ func TestTableHasEveryClass(t *testing.T) {
 		"write_file":     SelfEdit,
 		"edit_file":      SelfEdit,
 		"message_bot":    Normal,
-		"post_group":     Normal,
 		"code_start":     Normal,
 		"browser_stop":   Normal,
 		"todo":           Normal,
@@ -185,8 +184,19 @@ func TestRetiredRoutineToolsAreUnknown(t *testing.T) {
 	}
 }
 
+func TestRetiredChatGroupToolsAreUnknown(t *testing.T) {
+	for _, name := range []string{"list_groups", "get_group_message_history", "create_group", "post_group"} {
+		if Known(name) {
+			t.Errorf("retired policy %s is still known", name)
+		}
+	}
+}
+
 func TestBotToBotAreNormal(t *testing.T) {
-	for _, name := range []string{"message_bot", "post_group"} {
+	for _, name := range []string{"message_bot"} {
+		if !Known(name) || ClassOf(name) != Normal {
+			t.Fatalf("%s is not classified as Normal", name)
+		}
 		if need(t, name, `{"bot":"bob","text":"hi","id":"r1"}`) {
 			t.Fatalf("%s asked", name)
 		}
@@ -215,7 +225,7 @@ func TestSelfEditAndReadOnlyClasses(t *testing.T) {
 	if need(t, "edit_file", `{"path":"plans/2026.md"}`) {
 		t.Fatal("edit_file asked without a path check")
 	}
-	for _, name := range []string{"read_file", "list_secrets", "list_groups", "recall_history", "expand", "read_subagent", "expand_subagent", "browser_snapshot", "code_show", "web_fetch", "web_search", "view_image"} {
+	for _, name := range []string{"read_file", "list_secrets", "recall_history", "expand", "read_subagent", "expand_subagent", "browser_snapshot", "code_show", "web_fetch", "web_search", "view_image"} {
 		if need(t, name, `{}`) {
 			t.Fatalf("%s asked", name)
 		}

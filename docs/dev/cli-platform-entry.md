@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过，父集成待收，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过，父集成待收，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -590,6 +590,12 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 ## 完整self职责切片已提炼
 
 2d9具体合同单次窄核后，所有原source Bot的persona set self完整text/file/stdin、原WritePersona单atomic提交、下一真实wake正文/hash与SelfEdit实际Shell原调用审批已提炼至 [API](../API.md#自身职责运行时-cli)、[内核](../atlas/kernel.md#自身职责与原-selfedit-审批)、[ADR0054](../adr/0054-self-persona-runtime-cli.md)。260首file→nextwake与546完整边界的作者/独立精确phase、当前合入级别仅记 [MILESTONES](../MILESTONES.md)，不留完成合同重复副本。卡/role预算/fork/消息群/vault连接器/用户owner-SSE原边界保；后续remaining平台与Event/Link母路线按实际下一切片继续，不借persona扩展或提前抢步骤。
+
+## 成员聊天群切片已提炼
+
+7bd具体合同单次SINGLE ACTUAL CONCRETE SHAPE PASS后，原list_groups/get_group_message_history/create_group/post_group四动作沿新chat-group list/history/create/post --self提炼至 [API](../API.md#成员聊天群运行时-cli)、[内核](../atlas/kernel.md#成员聊天群与原消息链)、[ADR0055](../adr/0055-chat-groups-runtime-cli.md)。source MEMBER范围/auto-self原Bus、Post原prepared冻结chain-hops及Normal无额外审批、真实群append→Inbox逐投的partial、双32KiB与current FULLartifact边界在实际接缝一处维护，不留完成合同副本。dfe首RO与2bed后四项各精确phase/当前合入级别只记 [MILESTONES](../MILESTONES.md)，五项所测独立端到端分阶段通过，非末SHA整组重跑；owner侧栏group与用户独立owner message-SSE/externalAgent send各原义不混。
+
+单聊message_bot（含bot@device/remoteoutbox≤24h）和fork及其它平台继续按新具体切片推进，仍有native消费者；不借群切片删Link.Tools/Emitter/Messenger/SendPolicy/DeliverDraft，Event/入站Link装配待逐族等价后独立切。用户root四dirtydocs/owner-SSE设计只读避冲突，guard步骤/日用边界保。
 
 ## 还没做的
 
