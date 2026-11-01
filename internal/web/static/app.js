@@ -6119,6 +6119,40 @@
     node.append(document.createTextNode(text.slice(from)));
   }
 
+  function experienceDetail(item, query, botName) {
+    const detail = el("div", "memory-detail");
+    if (item.focus) {
+      const focus = el("p", "memory-focus"); appendMemoryMatch(focus, item.focus, query);
+      detail.append(el("span", "memory-detail-label", "关注点"), focus);
+    }
+    if (!item.segment) return detail;
+    // This is a reading projection. The saved digest remains available verbatim
+    // below, including background receipts and the original truncation markers.
+    const turns = [];
+    for (const line of item.segment.split("\n")) {
+      const match = /^(user|assistant|system|tool|用户|Bot)[：:]\s*(.*)$/.exec(line);
+      if (match) turns.push({role:match[1], text:match[2]});
+      else if (turns.length) turns[turns.length - 1].text += "\n" + line;
+      else turns.push({role:"", text:line});
+    }
+    const conversation = el("div", "memory-dialogue");
+    for (const turn of turns) {
+      if (["system", "tool"].includes(turn.role) || /^工具\s+\S+\s*\([^)]*\)\s*已结束[：:]/.test(turn.text)) continue;
+      const text = turn.text.replace(/\s*\[tools:[^\]]*\]/g, "").replace(/(?:^|\n)(?:\[truncated\]|… \d+ more lines)\s*$/g, "").trim();
+      if (!text) continue;
+      const utterance = el("div", "memory-utterance"), body = el("p", "memory-turn-text");
+      if (turn.role) utterance.append(el("span", "memory-speaker", ["user", "用户"].includes(turn.role) ? "你" : botName));
+      else utterance.classList.add("memory-utterance-plain");
+      appendMemoryMatch(body, text, query); utterance.append(body); conversation.append(utterance);
+    }
+    if (conversation.childElementCount) detail.append(conversation);
+    const raw = el("details", "memory-raw"), toggle = el("summary", "", "原始提纲");
+    toggle.prepend(icon("chevron"));
+    const source = el("pre", "memory-source"); appendMemoryMatch(source, item.segment, query);
+    raw.append(toggle, source); detail.append(raw);
+    return detail;
+  }
+
   function libraryView(data, view = el("div", "memory-view")) {
     const memory = data.memory;
     view.memoryName = data.name; view.memoryData = memory;
@@ -6206,11 +6240,7 @@
         time.dateTime = item.created_at;
         const summary = el("span", "memory-summary"); appendMemoryMatch(summary, item.summary, search.query);
         head.append(time, summary, icon("chevron")); row.replaceChildren(head);
-        for (const [key, label] of [["focus", "关注点"], ["segment", "对话提纲"]]) {
-          if (!item[key]) continue;
-          const block = el("div", "memory-detail"), text = el("p", "memory-" + key);
-          appendMemoryMatch(text, item[key], search.query); block.append(el("span", "memory-detail-label", label), text); row.append(block);
-        }
+        if (item.focus || item.segment) row.append(experienceDetail(item, search.query, data.name));
       }
       if (row !== next) rows.insertBefore(row, next);
       next = row.nextElementSibling;
