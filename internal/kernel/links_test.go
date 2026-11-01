@@ -307,7 +307,7 @@ func TestLinksInstallMountsToolsImmediately(t *testing.T) {
 	if err != nil || !strings.Contains(out, "telegram_send") || strings.Contains(out, "no tools") {
 		t.Fatalf("load %q %v", out, err)
 	}
-	for _, name := range []string{"bot_propose_persona", "routine_create", "code_start"} {
+	for _, name := range []string{"bot_propose_persona", "recall", "code_start"} {
 		if !registered(k, name) {
 			t.Fatalf("native tool %s missing", name)
 		}

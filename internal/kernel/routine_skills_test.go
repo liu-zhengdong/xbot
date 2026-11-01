@@ -2,15 +2,16 @@ package kernel
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
@@ -34,9 +35,11 @@ func TestRoutineSkillsWake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = (routineCreate{k}).Run(context.Background(), json.RawMessage(`{"id":"morning","name":"morning","prompt":"inspect","cron":"0 * * * *","skills":["atlas","missing","ship"]}`))
-	if err != nil {
-		t.Fatal(err)
+	created, err := k.RoutineHandlers().Create(context.Background(), cliops.RoutineCreate{
+		ID: "morning", Name: "morning", Prompt: "inspect", Cron: "0 * * * *", Skills: []string{"atlas", "missing", "ship"},
+	})
+	if err != nil || !created.Applied || created.ID != "morning" || created.Stage != "complete" || created.Error != "" {
+		t.Fatalf("create %+v: %v", created, err)
 	}
 	in, err := inbox.Open(b.InboxPath())
 	if err != nil {
@@ -97,9 +100,10 @@ func TestRoutineSkillsWake(t *testing.T) {
 	if !strings.Contains(text, `Routine skill "atlas" skipped:`) || strings.Contains(text, "UPDATED_BODY_SENTINEL") {
 		t.Fatalf("deleted skill: %s", text)
 	}
-	_, err = (routineUpdate{k}).Run(context.Background(), json.RawMessage(`{"id":"morning","skills":[]}`))
-	if err != nil {
-		t.Fatal(err)
+	emptySkills := []string{}
+	updated, err := k.RoutineHandlers().Update(context.Background(), "morning", cliops.RoutinePatch{Skills: &emptySkills})
+	if err != nil || !updated.Applied || updated.ID != "morning" || updated.Stage != "complete" || updated.Error != "" {
+		t.Fatalf("update %+v: %v", updated, err)
 	}
 	text = fire(now.Add(3 * time.Hour))
 	if strings.Contains(text, "Routine skill") || strings.Contains(text, "BODY_SENTINEL") {
@@ -107,23 +111,43 @@ func TestRoutineSkillsWake(t *testing.T) {
 	}
 }
 
-func TestRoutineSkillsToolUpdates(t *testing.T) {
+func TestRoutineSkillsRuntimeUpdates(t *testing.T) {
 	b := testBot(t, link.NameTimer)
 	k := skillKernel(b)
-	k.Links = append(k.Links, &link.Timer{Dir: b.RoutineDir()})
-	if _, err := (routineCreate{k}).Run(context.Background(), json.RawMessage(`{"id":"r1","name":"routine","prompt":"inspect","cron":"0 * * * *","skills":["ship","atlas"]}`)); err != nil {
-		t.Fatal(err)
+	tm := &link.Timer{Dir: b.RoutineDir()}
+	k.Links = append(k.Links, tm)
+	handlers := k.RoutineHandlers()
+	created, err := handlers.Create(context.Background(), cliops.RoutineCreate{
+		ID: "r1", Name: "routine", Prompt: "inspect", Cron: "0 * * * *", Skills: []string{"ship", "atlas"},
+	})
+	if err != nil || !created.Applied || created.ID != "r1" || created.Stage != "complete" || created.Error != "" {
+		t.Fatalf("create %+v: %v", created, err)
 	}
-	for _, tc := range []struct{ args, want string }{{`{"id":"r1","enabled":false}`, `skills ["ship","atlas"]`}, {`{"id":"r1","skills":["atlas"]}`, `skills ["atlas"]`}, {`{"id":"r1","skills":[]}`, ""}} {
-		if _, err := (routineUpdate{k}).Run(context.Background(), json.RawMessage(tc.args)); err != nil {
-			t.Fatal(err)
+	disabled := false
+	atlas, empty := []string{"atlas"}, []string{}
+	for _, tc := range []struct {
+		patch cliops.RoutinePatch
+		want  []string
+	}{
+		{cliops.RoutinePatch{Enabled: &disabled}, []string{"ship", "atlas"}},
+		{cliops.RoutinePatch{Skills: &atlas}, atlas},
+		{cliops.RoutinePatch{Skills: &empty}, empty},
+	} {
+		updated, err := handlers.Update(context.Background(), "r1", tc.patch)
+		if err != nil || !updated.Applied || updated.ID != "r1" || updated.Stage != "complete" || updated.Error != "" {
+			t.Fatalf("update %+v: %v", updated, err)
 		}
-		out, err := (routineList{k}).Run(context.Background(), nil)
-		if err != nil {
-			t.Fatal(err)
+		out, err := handlers.List(context.Background())
+		if err != nil || out.Error != "" || out.Routines == nil || len(*out.Routines) != 1 || out.Count != 1 {
+			t.Fatalf("list %+v: %v", out, err)
 		}
-		if tc.want != "" && !strings.Contains(out, tc.want) || tc.want == "" && strings.Contains(out, "skills") {
-			t.Fatalf("list %s want %s", out, tc.want)
+		listed := (*out.Routines)[0]
+		if listed.Enabled || !slices.Equal(listed.Skills, tc.want) {
+			t.Fatalf("listed routine %+v, want disabled with skills %v", listed, tc.want)
+		}
+		saved, err := tm.Load("r1")
+		if err != nil || saved.Enabled || !slices.Equal(saved.Skills, tc.want) {
+			t.Fatalf("persisted routine %+v, want disabled with skills %v: %v", saved, tc.want, err)
 		}
 	}
 }
@@ -159,7 +183,7 @@ func TestRoutineSkillsAbsorbedWhileBusy(t *testing.T) {
 	if err := tm.Save(link.Routine{ID: "check", Prompt: "inspect", At: now.Format(time.RFC3339), Skills: []string{"atlas"}, Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	p := &routinePostingProvider{scripted: scripted{resps: []provider.Message{assistantCall("list", "", "routine_list", `{}`), {Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")}}}, post: func() error { return tm.Fire(now, box.Post) }}
+	p := &routinePostingProvider{scripted: scripted{resps: []provider.Message{assistantCall("status", "", "bot_status", `{}`), {Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")}}}, post: func() error { return tm.Fire(now, box.Post) }}
 	k.Provider = p
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "first work", now)); err != nil {
 		t.Fatal(err)

@@ -2,12 +2,12 @@ package kernel
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"testing"
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
 	"xbot/internal/link"
 	"xbot/internal/mcp"
 )
@@ -44,9 +44,9 @@ func TestProfileMountedTimerBindsActualKernelBeforeRename(t *testing.T) {
 	if err := resources.RenameTo(next); err != nil {
 		t.Fatal(err)
 	}
-	raw, _ := json.Marshal(map[string]string{"id": "original-timer", "prompt": "after rename"})
-	if _, err := (routineUpdate{k: k}).Run(ctx, raw); err != nil {
-		t.Fatal(err)
+	out, err := k.RoutineHandlers().Update(ctx, "original-timer", cliops.RoutinePatch{Prompt: "after rename"})
+	if err != nil || !out.Applied || out.ID != "original-timer" || out.Stage != "complete" || out.Error != "" {
+		t.Fatalf("update %+v: %v", out, err)
 	}
 	same, err := k.timer()
 	if err != nil || same != timer {

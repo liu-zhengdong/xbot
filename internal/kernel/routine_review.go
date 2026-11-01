@@ -12,40 +12,6 @@ import (
 	"xbot/internal/tools"
 )
 
-// routinePrecheck includes the existing command when an update leaves it in
-// place, so re-enabling or rescheduling a check cannot bypass command review.
-func (k *Kernel) routinePrecheck(name string, args json.RawMessage) (string, error) {
-	if name == "routine_create" {
-		in, err := parseRoutineCreate(args)
-		if err != nil {
-			return "", err
-		}
-		if in.Precheck == nil {
-			return "", nil
-		}
-		return *in.Precheck, nil
-	}
-	var in struct {
-		ID       string  `json:"id"`
-		Precheck *string `json:"precheck"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	if in.Precheck != nil {
-		return *in.Precheck, nil
-	}
-	if name != "routine_update" || k == nil || k.Bot == nil {
-		return "", nil
-	}
-	tm, err := k.timer()
-	if err != nil {
-		return "", err
-	}
-	r, err := tm.Load(in.ID)
-	return r.Precheck, err
-}
-
 func (k *Kernel) reviewPrecheck(ctx context.Context, command, summary string) (bool, string, error) {
 	if k == nil {
 		k = &Kernel{}
@@ -79,7 +45,7 @@ func CheckRoutinePrecheck(ctx context.Context, b *bot.Bot, command string) error
 		return err
 	}
 	if need {
-		return errors.New("precheck requires shell approval; use routine_update in chat")
+		return errors.New("precheck requires shell approval; use the original source routine CLI in chat")
 	}
 	return nil
 }

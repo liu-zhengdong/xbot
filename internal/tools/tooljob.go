@@ -27,6 +27,26 @@ func CallID(ctx context.Context) string {
 	return ""
 }
 
+// CallContext returns only an actual running local call, never disk history.
+// Callers must validate their source identity before using the retained values.
+func (j *Jobs) CallContext(id string) (context.Context, bool) {
+	if j == nil {
+		return nil, false
+	}
+	j.mu.Lock()
+	lv := j.jobs[id]
+	j.mu.Unlock()
+	if lv == nil {
+		return nil, false
+	}
+	lv.mu.Lock()
+	defer lv.mu.Unlock()
+	if !lv.job.Local || lv.job.Status != "running" || lv.finished || lv.callContext == nil {
+		return nil, false
+	}
+	return lv.callContext, true
+}
+
 // CallResult is the fully processed result, including images on the fast path.
 // Background images are persisted by the existing owner of the job callback.
 type CallResult struct {
@@ -185,6 +205,9 @@ func (j *Jobs) RunCall(ctx context.Context, req CallRequest) (result CallResult)
 	if req.Prepare != nil {
 		runCtx, cleanup = req.Prepare(runCtx, id)
 	}
+	lv.mu.Lock()
+	lv.callContext = runCtx
+	lv.mu.Unlock()
 	lv.cleanup = cleanup
 	lv.finalize = req.Finalize
 	stopParent := context.AfterFunc(ctx, func() {
@@ -281,6 +304,7 @@ func (j *Jobs) completeCall(lv *live, res CallResult) {
 	// This is the completion commit point; no late timer or owner word can
 	// take the answer away while output and cwd are being published.
 	lv.finished = true
+	lv.callContext = nil
 	detached := lv.detached
 	failed := res.Err != nil || strings.HasPrefix(strings.TrimSpace(res.Text), "error:")
 	res.Text = lv.redact(res.Text)

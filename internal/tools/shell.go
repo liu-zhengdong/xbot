@@ -51,14 +51,15 @@ type Shell struct {
 	// startDir and afterDir persist the working directory for one execution
 	// context. Nil leaves every call in Dir. The mutex covers the func fields
 	// and markerDir; Run copies them before it starts the process.
-	sessMu      sync.Mutex
-	startDir    func(context.Context) (dir, notice string)
-	afterDir    func(context.Context, string) (kept, notice string)
-	markerDir   string
-	markerIO    func(func(string) error) error
-	startIO     func(context.Context, func(string) error) error
-	localSudo   func() (vault.Backend, error)
-	environment func([]string) []string
+	sessMu             sync.Mutex
+	startDir           func(context.Context) (dir, notice string)
+	afterDir           func(context.Context, string) (kept, notice string)
+	markerDir          string
+	markerIO           func(func(string) error) error
+	startIO            func(context.Context, func(string) error) error
+	localSudo          func() (vault.Backend, error)
+	environment        func([]string) []string
+	contextEnvironment func(context.Context, []string) []string
 }
 
 // BindSession installs the working directory for this shell. start reports
@@ -314,7 +315,7 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	if startDir != nil {
 		dir, notice = startDir(ctx)
 	}
-	env := s.commandEnv(in.Keys)
+	env := s.commandEnvContext(ctx, in.Keys)
 	command := in.Command
 	var marker string
 	var markerFile *os.File
@@ -482,19 +483,32 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 func (s *Shell) BindEnvironment(fn func([]string) []string) {
 	s.sessMu.Lock()
 	s.environment = fn
+	s.contextEnvironment = nil
+	s.sessMu.Unlock()
+}
+
+// BindContextEnvironment binds the actual tool call at process start.
+func (s *Shell) BindContextEnvironment(fn func(context.Context, []string) []string) {
+	s.sessMu.Lock()
+	s.contextEnvironment = fn
+	s.environment = nil
 	s.sessMu.Unlock()
 }
 
 func (s *Shell) commandEnv(passKeys bool) []string {
+	return s.commandEnvContext(context.Background(), passKeys)
+}
+
+func (s *Shell) commandEnvContext(ctx context.Context, passKeys bool) []string {
 	s.sessMu.Lock()
-	environment := s.environment
+	environment, contextEnvironment := s.environment, s.contextEnvironment
 	s.sessMu.Unlock()
 	blocked := s.blockedKeys()
 	extra := map[string]string{}
 	if passKeys {
 		extra = heldFor(blocked)
 	}
-	if environment == nil && s.Dir == "" && s.Shared == "" && len(extra) == 0 && (passKeys || len(blocked) == 0) {
+	if environment == nil && contextEnvironment == nil && s.Dir == "" && s.Shared == "" && len(extra) == 0 && (passKeys || len(blocked) == 0) {
 		return nil
 	}
 	env := append([]string{}, os.Environ()...)
@@ -509,7 +523,9 @@ func (s *Shell) commandEnv(passKeys bool) []string {
 	if s.Shared != "" {
 		env = append(env, "XBOT_SHARED="+s.Shared)
 	}
-	if environment != nil {
+	if contextEnvironment != nil {
+		env = contextEnvironment(ctx, env)
+	} else if environment != nil {
 		env = environment(env)
 	}
 	return env

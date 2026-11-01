@@ -165,15 +165,6 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 	if review.ClassOf(name) == review.Restart {
 		return false, summary, nil
 	}
-	if name == "routine_create" || name == "routine_update" {
-		command, err := k.routinePrecheck(name, args)
-		if err != nil {
-			return false, "", err
-		}
-		if strings.TrimSpace(command) != "" {
-			return k.reviewPrecheck(ctx, command, summary)
-		}
-	}
 	// The machine switch is orthogonal to the class: it applies to every tool
 	// that touches this machine. off refuses, ask confirms each action, and
 	// allow falls through to the table.
@@ -194,18 +185,22 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 	if !k.permissive() && k.protectedCall(ctx, tool, args) {
 		return true, summary + review.ProtectedSuffix, nil
 	}
+	trusted, person := true, ""
+	if !k.permissive() && (isFileEdit(name) || review.IsShellTool(name)) {
+		trusted, person = k.reviewIdentity(ctx)
+	}
 	// A turn from outside (a webhook, another bot) touching memory asks only
 	// while permission checks are on: with them off, such an event may
 	// change memory like the owner can (ADR 0019).
-	if isFileEdit(name) && !k.permissive() && !k.turnFor(ctx).turnTrusted {
+	if isFileEdit(name) && !k.permissive() && !trusted {
 		if _, dir, _, _ := k.memoryCall(ctx, tool, args); dir != "" {
 			return true, summary + " (untrusted turn: memory write)", nil
 		}
 	}
-	if review.IsShellTool(name) && !k.permissive() && !k.turnFor(ctx).turnTrusted && k.Bot != nil && !review.ShellToolIsReadOnly(name, args) {
+	if review.IsShellTool(name) && !k.permissive() && !trusted && k.Bot != nil && !review.ShellToolIsReadOnly(name, args) {
 		root := k.Bot.Root
 		memoryDirs := []string{filepath.Join(root, "bots", k.currentName(), "memory")}
-		if person := k.memoryPersonOf(k.turnFor(ctx)); person != "" {
+		if person != "" {
 			memoryDirs = append(memoryDirs, filepath.Join(root, "people", person, "memory"))
 		}
 		for _, kind := range []string{"bots", "people"} {
