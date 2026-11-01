@@ -14,6 +14,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/clock"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/mcp"
@@ -127,12 +128,31 @@ func cmdChat(root string, args []string) error {
 	defer k.CloseOperations()
 	k.BindOperationsContext(ctx)
 	k.StartEmitters(ctx)
-	seen, err := b.Count()
+	cfg, err := chatConfig(k, who.ID, lines, pr)
 	if err != nil {
 		return err
 	}
 	go feedLines(bufio.NewReader(os.Stdin), lines)
-	return proc.Run(ctx, proc.Config{
+	return proc.Run(ctx, cfg)
+}
+
+// withChatIO keeps each short file operation on the original resource's current
+// Bot/Inbox. Terminal output and interactive callbacks run after it returns.
+func withChatIO(k *kernel.Kernel, fn func(*bot.Bot, *inbox.Inbox) error) error {
+	if k.Resources != nil {
+		return k.Resources.WithCurrentIO(fn)
+	}
+	return fn(k.Bot, k.Inbox)
+}
+
+// chatConfig assembles the terminal callbacks used by the ordinary proc loop.
+func chatConfig(k *kernel.Kernel, who string, lines <-chan proc.Line, pr *printer) (proc.Config, error) {
+	var seen int
+	err := withChatIO(k, func(current *bot.Bot, _ *inbox.Inbox) error { var err error; seen, err = current.Count(); return err })
+	if err != nil {
+		return proc.Config{}, err
+	}
+	return proc.Config{
 		K:     k,
 		Lines: lines,
 		Accept: func(text string) (link.Event, error) {
@@ -143,43 +163,56 @@ func cmdChat(root string, args []string) error {
 			if strings.TrimSpace(text) == "" {
 				return link.Event{}, nil
 			}
-			ev := link.TerminalEvent(who.ID, strings.TrimSpace(text), time.Now())
-			if err := k.Inbox.Post(ev); err != nil {
+			ev := link.TerminalEvent(who, strings.TrimSpace(text), time.Now())
+			if err := withChatIO(k, func(_ *bot.Bot, box *inbox.Inbox) error { return box.Post(ev) }); err != nil {
 				return link.Event{}, err
 			}
 			return ev, nil
 		},
 		Idle: func() {
-			if err := showNotes(b); err != nil {
+			if err := showNotes(k); err != nil {
 				fmt.Fprintln(os.Stderr, "xbot:", err)
 			}
-			fmt.Fprintf(os.Stderr, "%s › ", b.Name())
+			name := k.Bot.Name()
+			if k.Resources != nil {
+				name = k.Resources.Name()
+			}
+			fmt.Fprintf(os.Stderr, "%s › ", name)
 		},
 		CatchUp: func() bool {
-			return showTranscriptSince(b, &seen)
+			return showTranscriptSince(k, &seen)
 		},
 		After: func(_ link.Event, err error) {
 			pr.Break()
 			if err != nil && !errors.Is(err, context.Canceled) {
 				fmt.Fprintln(os.Stderr, "xbot:", err)
 			}
-			if n, err := b.Count(); err == nil {
-				seen = n
-			}
-			if err := showNotes(b); err != nil {
+			_ = withChatIO(k, func(current *bot.Bot, _ *inbox.Inbox) error {
+				n, err := current.Count()
+				if err == nil {
+					seen = n
+				}
+				return err
+			})
+			if err := showNotes(k); err != nil {
 				fmt.Fprintln(os.Stderr, "xbot:", err)
 			}
 		},
-	})
+	}, nil
 }
 
 // showTranscriptSince prints user and assistant lines appended by another
 // process, such as a web turn that ran while this chat sat at the prompt.
-func showTranscriptSince(b *bot.Bot, seen *int) bool {
-	if b == nil || seen == nil {
+func showTranscriptSince(k *kernel.Kernel, seen *int) bool {
+	if k == nil || k.Bot == nil || seen == nil {
 		return false
 	}
-	entries, err := b.Entries()
+	var entries []bot.Entry
+	err := withChatIO(k, func(current *bot.Bot, _ *inbox.Inbox) error {
+		var err error
+		entries, err = current.Entries()
+		return err
+	})
 	if err != nil || len(entries) <= *seen {
 		return false
 	}
