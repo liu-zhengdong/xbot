@@ -75,19 +75,13 @@ func (s *Server) patchBot(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "bad request")
 		return
 	}
-	if in.AvatarSeed != nil {
-		if err := b.SetAvatarSeed(*in.AvatarSeed); err != nil {
-			writeErr(w, http.StatusBadRequest, err.Error())
-			return
-		}
-	}
 	if in.Persona != nil {
 		if err := b.WritePersona(*in.Persona); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
-	u := bot.ProfileUpdate{Description: in.Description, Timezone: in.Timezone}
+	u := bot.ProfileUpdate{Description: in.Description, Timezone: in.Timezone, AvatarSeed: in.AvatarSeed}
 	if u != (bot.ProfileUpdate{}) {
 		if err := b.ApplyProfile(u); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())

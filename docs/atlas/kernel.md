@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/, internal/cliops/]
-verified: 2026-11-01 @ c599679f (environment sender name and stable ID); 2026-11-01 @ c3cd3f0c (runtime profile, local task lifetime and live handle synchronization)
+verified: 2026-11-01 @ 3816c3bb (runtime profile and avatar seed; named environment sender semantics retained)
 ---
 # 内核：Link、Event、收件箱
 
@@ -10,9 +10,9 @@ verified: 2026-11-01 @ c599679f (environment sender name and stable ID); 2026-11
 
 ## 当前实例的 CLI 资料入口
 
-`openKernel` 最后为已有 Kernel 绑定 `127.0.0.1` 随机端口的窄 HTTP 操作入口（`internal/cliops`），serve、桌面和独立 chat 同协议；只提供普通 profile 读取/更新，不另起 Kernel。CLI 自操作直接执行领域合并，不拿对话处理锁、web gate 或 turnMu，不投 message/send；保存后解业务锁，若现有 liveTurns 指向另一个活 Kernel 则刷新其普通字段快照，使下一步环境采样可见，再经当前活轮次 Sink 发 `profile` SSE 提示；通知随原插话出口移交。刷新读取失败不将已落盘的保存回执伪报失败。请求/响应各上限 64 KiB，须匹配规范数据根；只接受本机非浏览器调用，身份与命令见 [多 Bot](multibot.md#运行时普通资料)。
+`openKernel` 最后为已有 Kernel 绑定 `127.0.0.1` 随机端口的窄 HTTP 操作入口（`internal/cliops`），serve、桌面和独立 chat 同协议；只提供简介/时区/生成头像 seed 的 profile 读取/更新，不另起 Kernel。CLI 自操作直接执行领域合并，不拿对话处理锁、web gate 或 turnMu，不投 message/send；保存后解业务锁，若现有 liveTurns 指向另一个活 Kernel 则刷新其 profile（含头像）快照，使下一步环境采样与读取可见，再经当前活轮次 Sink 发 `profile` SSE 提示；通知随原插话出口移交。刷新读取失败不将已落盘的保存回执伪报失败。请求/响应各上限 64 KiB，须匹配规范数据根；只接受本机非浏览器调用，身份与命令见 [多 Bot](multibot.md#运行时普通资料)。
 
-操作入口由实际持有者释放：chat 退出、web 淘汰/换绑或服务 context 取消强制关闭；serve.Pass 的 Kernel.Close 请求退役，有本机子代理或编码任务时复用原执行集合保持入口，实际任务移除并排空原队列后的无锁 OnIdle 回调关闭空闲入口。没有第二张任务表或定期寿命轮询；已关闭入口会撤销宿主 context 回调。主线与可写本机子代理有一条短 CLI 帮助指引，不注入子命令 schema。决定见 [ADR 0043](../adr/0043-cli-platform-runtime-entry.md)。
+操作入口由实际持有者释放：chat 退出、web 淘汰/换绑或服务 context 取消强制关闭；serve.Pass 的 Kernel.Close 请求退役，有本机子代理或编码任务时复用原执行集合保持入口，实际任务移除并排空原队列后的无锁 OnIdle 回调关闭空闲入口。没有第二张任务表或定期寿命轮询；已关闭入口会撤销宿主 context 回调。主线与可写本机子代理有一条短 CLI 帮助指引，普通字段与头像 seed 优先 CLI、改名仍走旧工具，不注入子命令 schema。决定见 [ADR 0043](../adr/0043-cli-platform-runtime-entry.md)。
 
 ## 语音工具与挂泡
 

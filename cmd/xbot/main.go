@@ -62,8 +62,8 @@ Usage:
   xbot [--root DIR] primary
   xbot [--root DIR] primary set <name>
   xbot [--root DIR] profile show (--self | <name>) [--json]
-  xbot [--root DIR] profile set --self [--description TEXT] [--timezone ZONE] [--json]
-  xbot [--root DIR] profile set <name> [--description TEXT] [--timezone ZONE] [--role chat|dev] [--background-max-time MIN] [--name NEW]
+  xbot [--root DIR] profile set --self [--description TEXT] [--timezone ZONE] [--avatar-seed SEED] [--json]
+  xbot [--root DIR] profile set <name> [--description TEXT] [--timezone ZONE] [--avatar-seed SEED] [--role chat|dev] [--background-max-time MIN] [--name NEW]
   xbot [--root DIR] profile avatar <name> (--file PATH | --clear)
   xbot [--root DIR] template export <name> --out FILE
   xbot [--root DIR] template import --file FILE [--name NAME]

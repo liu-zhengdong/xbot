@@ -47,12 +47,15 @@ func CanonicalRoot(root string) (string, error) {
 type Update struct {
 	Description *string `json:"description,omitempty"`
 	Timezone    *string `json:"timezone,omitempty"`
+	AvatarSeed  *string `json:"avatar_seed,omitempty"`
 }
 
 type Profile struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Timezone    string `json:"timezone"`
+	Avatar      string `json:"avatar"`
+	AvatarSeed  string `json:"avatar_seed"`
 	Scope       string `json:"scope"`
 	Applied     bool   `json:"applied"`
 }
@@ -115,7 +118,7 @@ func Start(root string, profile func(*Update) (Profile, error)) (*Server, error)
 				fail(400, "invalid profile request")
 				return
 			}
-			if update.Description == nil && update.Timezone == nil {
+			if update.Description == nil && update.Timezone == nil && update.AvatarSeed == nil {
 				fail(400, "profile: nothing to change")
 				return
 			}

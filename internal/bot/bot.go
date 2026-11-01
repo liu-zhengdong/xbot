@@ -362,6 +362,7 @@ func (b *Bot) saveConfig() error {
 		}
 		cfg.Description, cfg.Timezone = saved.Description, saved.Timezone
 		cfg.Role, cfg.BackgroundMaxTime = saved.Role, saved.BackgroundMaxTime
+		cfg.Avatar, cfg.AvatarSeed = saved.Avatar, saved.AvatarSeed
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
