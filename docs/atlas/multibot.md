@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/, internal/peer/, internal/cron/, internal/notify/]
-verified: 2026-11-01 @ f5b6702e (avatar fresh merge/readback, legacy rename and concurrent save/race)
+verified: 2026-11-01 @ 3816c3bb (avatar fresh merge/readback, legacy nameless config/rename and concurrent save/race)
 ---
 # 多 Bot
 
@@ -42,7 +42,7 @@ verified: 2026-11-01 @ f5b6702e (avatar fresh merge/readback, legacy rename and 
 
 简介/时区/生成头像 seed 与旧工具、网页 PATCH 共用一次 `ApplyProfile`：完整校验后在已有 config 文件锁内读 fresh 配置、合并显式字段、原子保存；成功后才发布受独立锁保护的 profile 快照，旧配置副本保存其它设置时保留磁盘上最新普通资料与头像元数据。`--self show` 现读同组字段，所以网页 PATCH 的独立 Bot 副本更新也能读回；不重建 Kernel 或中断 Jobs。上传/clear、改名、persona 和运行预算尚不支持此运行时 set；旧 `profile avatar <name> --file/--clear` 在有 endpoint 时明确拒绝，仅无 endpoint 可离线使用。完整旧工具仍在，未整族退役；research 只读分类和远端 runner 回连未覆盖。
 
-生成 seed、上传、clear 复用私有 typed 写缝，锁序为 profile 快照 → config 文件锁，资源文件读写也在同一 config 锁内。clear 保留 fresh seed；生成态元数据保存后才 best-effort 清旧 upload/MIME，清理仍在锁内，不删掉并发新 upload，清理失败不伪报未保存。上传文件/MIME/配置分别原子写，不承诺三文件崩溃事务。`AvatarState` 只读受锁头像字段；`AvatarBytes/ExportTemplate` 在锁内 fresh metadata 判 custom，再读同一状态的 bytes/MIME，旧 custom 句柄不能服务已 generated 的遗留文件；generator 在锁外调用。既有离线 Rename 的空 seed 钉原名也走 typed 缝并保留 custom 模式，不扩展运行时改名所有权。
+生成 seed、上传、clear 复用私有 typed 写缝，锁序为 profile 快照 → config 文件锁，资源文件读写也在同一 config 锁内。clear 保留 fresh seed；生成态元数据保存后才 best-effort 清旧 upload/MIME，清理仍在锁内，不删掉并发新 upload，清理失败不伪报未保存。上传文件/MIME/配置分别原子写，不承诺三文件崩溃事务。`AvatarState` 只读受锁头像字段；`AvatarBytes/ExportTemplate` 在锁内 fresh metadata 判 custom，再读同一状态的 bytes/MIME，旧 custom 句柄不能服务已 generated 的遗留文件；缺 name 的受支持旧配置沿 Load 语义补目录名，再计算 seed fallback/导出名字；generator 在锁外调用并使用同一规范名字。既有离线 Rename 的空 seed 钉原名也走 typed 缝并保留 custom 模式，不扩展运行时改名所有权。
 
 ## 人设组成与提示词边界
 

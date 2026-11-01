@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-01 @ f5b6702e (avatar profile API combination tests; prior merged memory/search and streaming browser checks retained)
+verified: 2026-11-01 @ f5b6702e (independent avatar long/short browser refresh and profile API tests; prior merged memory/search checks retained)
 
 ---
 # 网页界面

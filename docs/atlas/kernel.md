@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/, internal/cliops/]
-verified: 2026-11-01 @ f5b6702e (runtime profile and avatar seed; live handle synchronization/race)
+verified: 2026-11-01 @ 3816c3bb (runtime profile and avatar seed; live handle synchronization/race)
 ---
 # 内核：Link、Event、收件箱
 
