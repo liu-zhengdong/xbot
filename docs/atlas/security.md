@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
-verified: 2026-11-01 @ e21224cf
+verified: 2026-11-02 @ 6983ac09
 ---
 # 安全：保险箱与权限表
 
@@ -112,12 +112,12 @@ WantedBy=multi-user.target
 生产路径只保留审查入口和分类，不出工具许可卡；`links` 填 key 输入例外。下列确认规则属于严格测试/评测模式：执行前审查动作本身，看工具名和参数，不看模型怎么说。要确认的走已有的确认卡。
 
 - **一张表定权限**：确认只经过这一张表；工具自己从不确认。内核里有一份显式的权限表，按工具名给出类别，`http`、`shell`、`self_edit` 再按参数判定。工具自己的 `Confirm` 只负责生成确认卡上的摘要，返回值一律不参与决定；模型改不了这个判断。
-- **permissions on 时只确认四类**：对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改；另外触及保险箱/密钥路径的 `shell`/文件工具总是确认。不含前置命令的 routine 创建、修改、暂停、删除，Bot 之间的 `message_bot`/`post_group`，写计划文件、写技能、编码任务都是 `normal`，不弹确认卡。
-- **例程前置命令同表审核**：`routine_create/update` 只把纯排期部分归 Normal；创建的审核与落盘共用 `parseRoutineCreate`，`precheck` 以 `*string` 解析：重复字段的末位 null 清除先前值，两边都视为无命令，不会落盘并执行先前字符串。有效 `precheck` 非空时转成 `sh` 调用，沿原 `Kernel.reviewCall` 做机器开关、保护路径、不可信记忆写及命令分类审核。更新省略字段时也检查保留的命令，清空则没有待执行命令。确认摘要包含命令，决定与原 routine 工具调用一起走原审批记录；路径按实际进程 cwd 解析，不借用对话 shell 的 cwd。已登录用户的 HTTP 修改也用同一审核；需确认的命令返回 403，交给聊天工具走现有卡片，不新增 HTTP 审批机制。到点读取现有实时机器 gate 的有效模式，仅 allow 可无交互执行，ask/off/读取错误均静默跳过并 Commit slot；有效模式仍由现有 permissions 开关决定（ADR 0019）。
+- **permissions on 时只确认四类**：对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改；另外触及保险箱/密钥路径的 `shell`/文件工具总是确认。Bot之间的 `message_bot`/`post_group`、写计划文件、写技能、编码任务为normal。routine纯排期不额外加审批，承载它的原Shell仍受自身机器gate/分类，非空命令另沿原ctx审查。
+- **例程前置命令同表审核**：四旧模型门及Known策略项已退，排期沿当前source CLI；同typed请求解码保末位null语义，update省字段仍审保留命令、空串清除。非空命令在所有Timer/route/Jobs锁外用原source reviewPrecheck，按process cwd及既有machine/protected/untrusted-memory/Shell表。原live Job保实际prepared ctx与wrapped approver，main审冻结身份、卡片跟原owner fork，child用明确untrusted/no-person与自己的subApprover，不借最新父turn。nested审批只向原Shell args附规范请求/effective命令，现grant与deniedBefore同键，argsfile A→B不吃A，原执行raw不变；autoID审后生、无HTTP随机nonce，不发不可调用旧工具grant。缺/旧/foreign/completed原call非空命令拒且定义不写；普通无命令CRUD不强制bridge。owner HTTP仍原临时Permissive专缝，不能拿来冒source审批。触发live gate另读，仅allow执行，ask/off/错静默skip并Commit，详见 [原调用连接](kernel.md#例程实例与原调用审批)及 [ADR0051](../adr/0051-routine-runtime-cli.md)。
 - **机器开关在核心里**：对本机工具（`shell`、`read_file`、`write_file`、`edit_file`、`view_image`、桌面、浏览器）统一在核心的 review 路径处理：`off` 直接拒绝；`ask` 每次都要确认；`allow` 按下面的表走。`browser_stop` 不在此列，`off` 时仍可用来关掉进程。`web_fetch` 和 `web_search` 不碰本机文件，不走这道开关。`shell` 的 `keys:true` 也要确认。
 - **HTTP**：`http_request` 只在注入 `{{secret:名字}}`（URL、请求头或正文任意一处），或者方法不是 `GET`/`HEAD` 时确认。
 - **shell**：删除命令（`rm`、`rmdir`、`unlink`、`shred`、`find -delete`、`git clean` 等）和真正离开 XBot 的发送（`curl`/`wget` 上传或 POST/PUT、`mail`/`sendmail`、`nc`、发往远端的 `scp`/`rsync`、Python 的 `requests.post` 等）确认。
-- **删除**：文件/数据删除工具、`delete_bot`、`secret rm`、删除 Link 或 MCP 服务器确认；`routine_delete` 是 Bot 自己的排期，不算数据删除。
+- **删除**：文件/数据删除工具、`delete_bot`、`secret rm`、删除 Link 或 MCP 服务器确认；routine CLI delete是Bot自己的排期，不额外走数据删除模型工具确认，外Shell原policy保持。
 - **对外发送**：连接器（`telegram_send`、`lark_send` 等）、`links` 的 `install`/`remove`、未知工具和没标 `readOnlyHint` 的 MCP 工具确认；标了 `readOnlyHint` 的 MCP 工具是 `readonly`。用户自己 Bot 之间的消息不算对外发送。
 - **代理门**：`tools` 的 search、describe 归 `readonly`；call 在 agent 层转发成被调用的工具，确认卡、拒绝表和决定记录都用那个工具的名字和参数，跟直接调用一模一样，代理门本身不增加确认，也不能绕开确认（见 [内核](kernel.md#工具注册与代理门)、[ADR 0035](../adr/0035-unified-tool-registry.md)）。
 - **self_edit**：严格测试/评测内核仍按 `bot_propose_persona` 分类审核职责修改；`write_file`/`edit_file` 只在解析后的路径正是本 Bot 的 `persona.md` 或 `config.json` 时按自改审核。资料更新已经由当前实例 CLI 领域入口承接，旧 profile 模型工具没有注册、Known 或专用审批卡入口；生产默认放行与现有 persona/group 规则保持。
@@ -129,8 +129,8 @@ WantedBy=multi-user.target
 
 | 类别 | 工具 | 确认条件 |
 |---|---|---|
-| `readonly` | `tools`（代理门的 search/describe）、`kernel_manual`、`read_file`、`web_fetch`、`web_search`、`view_image`、`shell_output`、`shell_status`、`list_secrets`、`list_bots`、`list_groups`、`get_group_message_history`、`routine_list`、`recall`、`recall_history`、`expand`、`read_subagent`、`expand_subagent`、`code_show`、`bot_status`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不（`read_file` 或 `view_image` 触及保险箱/密钥路径时确认） |
-| `normal` | `generate_image`（复用全局 OAuth 的生图代理）、`send_message_to_user`、`compact`、`routine_create`、`routine_update`、`routine_delete`、`routine_pause`、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`shell_cancel`、`ask_user`、`todo`、`create_bot`、`pin_bot`、`set_primary`、`create_group`、`message_bot`、`post_group`、`fork_bot`、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
+| `readonly` | `tools`（代理门的 search/describe）、`kernel_manual`、`read_file`、`web_fetch`、`web_search`、`view_image`、`shell_output`、`shell_status`、`list_secrets`、`list_bots`、`list_groups`、`get_group_message_history`、`recall`、`recall_history`、`expand`、`read_subagent`、`expand_subagent`、`code_show`、`bot_status`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不（`read_file` 或 `view_image` 触及保险箱/密钥路径时确认） |
+| `normal` | `generate_image`（复用全局 OAuth 的生图代理）、`send_message_to_user`、`compact`、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`shell_cancel`、`ask_user`、`todo`、`create_bot`、`pin_bot`、`set_primary`、`create_group`、`message_bot`、`post_group`、`fork_bot`、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
 | `delete` | `delete_bot`、`delete_file`、`remove_file`、`secret_rm`、`delete_link`、`remove_mcp` 等名称明确的删除工具 | 总是 |
 | `external_send` | `telegram_send`、`lark_send`、`send_email`、`send_webhook`、其余 `mcp_*`（按前缀规则，没标 `readOnlyHint` 的），以及 `links` 的 `install`/`remove` | 总是（`links` 只在 install/remove） |
 | `http` | `http_request` | 注入 `{{secret:}}` 或方法非 `GET`/`HEAD` |
@@ -139,7 +139,7 @@ WantedBy=multi-user.target
 
 完成标准：
 1. 执行前在内核里审查动作本身（工具加参数），不依赖模型的说明，也不依赖工具自己的 `Confirm`；工具自己的 `Confirm` 只给出摘要。
-2. permissions on 时，只有对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改需要用户确认卡；其余动作按表放行。不含前置命令的 routine 增删改暂停、Bot 之间的消息、写计划/技能、编码任务都不问。
+2. permissions on 时，只有对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改需要用户确认卡；其余动作按表放行。Bot之间的消息、写计划/技能、编码任务按normal；routine纯排期不额外加审批，原Shell gate与分类仍有效。
 3. 只读动作（`read_file`、列表、搜索、只看不发的检查、`list_secrets`）不问。
 4. 每次决定（allowed/declined/expired、工具、摘要、时间）追加进每个 Bot 的 `bots/<name>/decisions.jsonl`（0600），时间带本地时区偏移，真值脱敏。
 

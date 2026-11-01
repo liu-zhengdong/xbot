@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile 完整族与 MCP 已合本地 main；skills read/write 已实施并通过独立所测入口，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile 完整族、MCP与skills已合本地main；routine已通过独立所测入口及增量静态，待父方本地main整合；其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -8,7 +8,7 @@
 - MCP 的管理、发现、查看说明和调用都由 `xbot mcp …` 提供；模型按需读帮助和 schema，不常驻注入整套 MCP 或平台管理工具。
 - **退役 Link 作为统一能力接入抽象**，包括模型侧 `links` 管理入口；不是只把 `links` 工具改名。
 - **保留 Event → Inbox → 唤醒这条线**：外部消息、定时器、Webhook、文件监听、MCP 通知和任务完成仍沿已有路径投递。
-- 本文保留整体迁移路线；profile 完整族、MCP CLI 与 skills read/write 已按切片落地，其余平台族继续推进。不改旧 Accepted ADR 正文或 guard 旅程；后续继续先打通最窄端到端，再按能力切换并删除旧入口。
+- 本文保留整体迁移路线；profile 完整族、MCP CLI、skills与routine已按切片提炼，其余平台族继续推进。不改旧 Accepted ADR 正文或 guard 旅程；后续继续先打通最窄端到端，再按能力切换并删除旧入口。
 
 ## 问题与边界
 
@@ -575,69 +575,9 @@ handlers.Skills = k.SkillHandlers() // 固定 Root、SkillsDir、动态 Redact �
 
 本切片已按单一phase合同落地，现状提炼至 [生态](../atlas/ecosystem.md)、[API](../API.md#技能运行时-cli) 与 [ADR0050](../adr/0050-skills-runtime-cli.md)；独立固定五项按首read/write及退门完整候选的精确版本封存，实际级别见 [MILESTONES](../MILESTONES.md)。不重跑已绿profile/MCP或本刀整批；此节保留同母路线已定调用合同，后续仅按新族实际增量推进，不重新开概念审批。
 
-## 批 routine：actual Timer typed CRUD（具体合同窄核PASS，实施中）
+## routine 切片已提炼
 
-L 档；沿母路线，只做当前source的routine CRUD及同刀退旧。以下具体合同 `3e3067d4` 已由reviewer24单次窄核正式PASS，ADR0051 Accepted，按同一合同分面实施。父方已封最窄真红：`c5605860` / validation `c4046a7f9399ca14979c9942feb3b210c462c782`，真source Shell的BIN `routine list --self --json` 不识别--self，.93s/package2.730s；独立 `f29761cd` 仅新29行文件。不重复该红或已绿skills/profile/MCP。
-
-### Caller、两结构与typed边界
-
-```sh
-"$XBOT_BIN" routine list --self --json
-"$XBOT_BIN" routine create --self --args '{"id":"morning","name":"早检","prompt":"检查","cron":"0 9 * * *","skills":["ship"]}' --json
-"$XBOT_BIN" routine update morning --self --args-file ./patch.json --json
-"$XBOT_BIN" routine delete morning --self --json
-```
-
-create/update的--args与--args-file FILE|-互斥；文件/stdin max+1，最终含转义请求≤1MiB；单对象+EOF，拒未知字段/越动作或重复flags。list/delete不收args。runtime/help在本地root初始化前分流，help离线可用，runtime缺endpoint明确失败不回落离线。无--self的migrate、list --bot、update ID --bot --skills保持旧离线，即使有endpoint环境也不偷换。
-
-A：CLI仿离线new Timer{Dir}写文件，丢实际Timer/Loc及source审批，淘汰。B：CLI→原listener→捕获actual mounted cached Timer的四具名typed领域操作，采用；不new Timer/Kernel/scheduler/Jobs，不旧Tool.Run或action bus。
-
-```go
-RoutineCreate{ID,Name,Prompt,Cron,At string; Precheck *string; Skills []string}
-RoutinePatch{Name,Prompt,Cron string; Enabled *bool; Precheck *string; Skills *[]string}
-RoutineWriteReply{ID string; Applied bool; Stage string; Error string}
-RoutineListReply{Routines *[]RoutineView; Count int; File,Access string; Bytes int64; Error string}
-RoutineHandlers{
-  Create(context.Context,RoutineCreate)(RoutineWriteReply,error)
-  List(context.Context)(RoutineListReply,error)
-  Update(context.Context,string,RoutinePatch)(RoutineWriteReply,error)
-  Delete(context.Context,string)(RoutineWriteReply,error)
-}
-```
-
-GET `/v1/routine/list`、POST `/v1/routine/create`、POST `/v1/routine/update?id=ID`、DELETE `/v1/routine/delete?id=ID`；同root/Host/browser guard与LocalHTTPClient/source lease。RoutineView具名保现ID/name/prompt/cron/at/zone/enabled/precheck/有序skills/last_slot。写回Stage=complete只称CRUD完成，不称已触发；非2xx/CLI非0保实际回执，不重试写。
-
-StartOperations现先Start后bind；本刀将现snapshotLinks/bindCurrentPaths置发布前，再捕获同一个实际Timer、source Root/Now/动态Redact/Resources/Jobs/listener身份。缺Timer仅routine动作报原 `timer: link is not mounted`，其它入口正常。Timer.WithDirectoryIO已持当前route；handler直接用捕获Timer的方法，外层不再currentIO，Update闭包仅merge，不嵌bound Load/Save。
-
-### 原业务、锁与partial
-
-create空白ID在审批后crypto/rand4字节生成r+8hex，Enabled恒true，同显式ID覆盖；cron设local，at规范解析RFC3339/offset存UTC，严格早于source now−2min才拒。原wrapper先验未trim的at会漏带空白的过期值；本刀同规范值检查并保存，明确封住该差异，不改Timer内部Commit的时间规则。name不加原来没有的必填/长度限制；prompt trim后必需，cron仍5段/最小5分钟。precheck≤16KiB；skills≤32、每条trim后1–240字节/单行，copy后规范，保顺序及重复，写时不检查存在/启用。
-
-update只替换nonblank name/prompt/cron（name保原字串，prompt/cron由原Timer规范）；改cron设local但不清At。Enabled *bool支持false；Precheck省/null保持、空串清；Skills省/null保持、[]清；不接at/zone/LastSlot。边界一次decode/规范typed输入，review与mutation不另parse；Timer.Update仍route→目录flock内fresh重读、merge并验证最新完整不变量，例如once加cron仍拒两者互斥。此为状态不变量检查，不能为“单次校验”删掉；不冒称校验失败连.lock目录都零写，只保证定义未错误更新。
-
-Save定义原子写后才saveZone；Delete实际remove/已缺失后才load/writeZones。仅现后段错误包装 `link.RoutineCommitError{Applied:true,Stage:"zone_index",Err}`，Error/Unwrap保原错，边界errors.As映回执。此前失败Applied=false；缺项delete成功仅指目标已缺失。不事后stat猜提交，不回滚、不建事务账。update原预Load审→Update重读窗口保留，不加CAS/冲突重试或锁内审批。
-
-### 跨HTTP原审批：具体连接位置
-
-HTTPctx没有原turn/完整approver；owner用CheckRoutinePrecheck会new Permissive/trusted K，禁止借用。现Handle局部的trackApprove→begin/endAwait→fork BackgroundApprove→parkable才是原审批链，旧live也未存该ctx。本刀仅连接该实际调用：
-
-1. agent.execTool解析真实target、设置原raw/provider ToolCallID后、opt.RunTool前，向ctx绑定窄审批callable，捕获实际opt.Approve、Shell名/provider ID及现batch审批mutex；允许内部审批args/summary，真Shell.Run raw不改。nil approver保原语义。
-2. kernel.runToolCall/CallRequest.Prepare随原source lease取确切listener身份和来源政策；不机械改skills正使用的holdOperations签名。tools.RunCall在Prepare后/Run前将prepared ctx附原live的一个字段。仅原Jobs.jobs内存表中Local/running/未finished/保留ctx的call可取，放全部Jobs锁再调用；不走可冷读历史的get/Status。原complete清字段，不留历史可复用审批。
-3. 将Shell现最终BindEnvironment/commandEnv接成ctx-aware，以tools.CallID(ctx)导出XBOT_CALL_ID；Caller.Env覆盖/剥除继承值，CLI发X-XBot-Call-ID。HTTP只在effective precheck非空需审时查该source原Jobs并核原listener身份；共享Jobs、XBOT_BOT、provider ID不等于source。它仅关联原call，不新宣称本机认证边界；bridge不强制到profile/MCP/skills或routine无precheckCRUD。
-4. 主线policy用原prepared冻结trust/source/cwd；审批卡ctx只把明确原callTurnKey owner挂回turnKey，保实际fork后的branch/await/park，不用fork前冻结branch。local child从Background起，不能把runToolCall现fallback的父turn冒原child：在实际Local.RunTool(req.ID)处仅标记此nested review的source-untrusted/no-person权限取值，review的trust/person取值缝消费，保原subApprove/subApprover；不造turn/role/persona、不借最新父turn或主线park。child卡ctx不携带人为补出的父turn。
-5. create从同typed请求取precheck；update先由actualTimer.Load取effective命令，省仍审旧、空清不审，退出route后在原source K.reviewPrecheck审process cwd/长度/machine/protected/untrusted-memory及原表。need=true才调用保留wrapped approver；原policy ctx与审批ctx均来自此call，不用HTTPctx fallback turnFor。拒绝/expired/parked/noapprover皆不写，ToolResult措辞转普通非0诊断；source/HTTP取消接原ctx，获准后验取消再进Timer，不持route/目录/Jobs锁等卡，不新等待endpoint。
-6. --args-file同路径A→B不能吃旧批准：仅nested审批ToolArgs在原Shell JSON字段上由服务端覆盖附canonical `{action,requestID,typedPayload,effectivePrecheck}`；原Shell执行args不变。requestID是请求的routine ID（create未指定保持空，审批后才随机生成），不是新HTTP随机ID；canonical不含本次HTTP/Job/provider随机标识，重试同A稳定。复用现argsKey/takeGrant/deniedBefore/trackApprove，外Shell原raw吃不到nested grant，进入nested重新decode/取effective，A只匹配A、B按原policy再问。仍原Shell名/command/provider ToolCallID，summary含真实precheck并指明重复原CLI，late消息不指向退役工具。外Shell既有machine确认不绕过。
-7. 有原ctx无approver，仅need=true才noapprover。code.Link的Background/外部命令、remote及复制环境的人没有此实际ShellJob/原回调：非空effective precheck明确source approval context unavailable、定义不写；其它无precheckCRUD/list正常。不偷Permissive/另turn，不冒code/runner已有原park/grant。
-
-触发阶段仍ShellPrecheck重读live gate，只allow、process cwd、2s硬限/无stdin无输出无Jobs；失败/ask/off消耗slot不唤醒。Due→Deliver（锁外precheck/emit）→Commit、稳定rt_ID_slot/一次性窗口及禁用/NoticeMissed水印、唯一Inbox/waker、emit失败不commit均原样；CRUD不手动post/wake、不增轮询器。
-
-### 预算、退门与怎样算对
-
-HTTP request≤1MiB/reply≤64KiB；最终JSON含换行还须≤min(64KiB,tools.DefaultShellOutputBytes32KiB)。完整redacted list不fit则现work.WriteResult保存完整json（现20MiB上限），回count/file/access:local/bytes；最终metadata回执也fit，产物过限/失败非0，不截prompt/precheck/定义伪成功。Timer.List先退route，再由当前Resources短currentIO存产物，不套Timer锁。这里只约束新CLI输入/传输/结果，不谎称旧Timer.read已有文件字节上限。
-
-同cut退四旧routine wrapper/registry/legacy来源/主线与两类本机子schema、指引和旧review分支，保Timer器官/Emitter/其它Tools门。research共用DirectXBotArgs窄lexer与新纯ParseRoutineRuntime，只放help/list--self，写/离线/操作符拒绝。once/cron/DST/migrate/skills引用16KiB当轮投影及只追加历史保留。
-
-验收先真source BIN create→list→update→delete，再补实际新增/受影响束：actual Timer/同endpoint改名/缺timer不妨其它族；typed空省false/[]/sameID覆盖/once边界/cronlocal/LastSlot/非法merge定义不改；原strict批准拒绝与park（argsfile A→B不吃A）、child政策/原回调与已结束Job不可借；实际Shell32KiB完整list产物当前目录；原Due→Deliver→唯一Inbox→Commit/livegate skip/emit失败不commit/zone-index partial。A→B与child实际上下文单位由实现方守，不让独立造新身份hook/harness。迁移现有效routine_tz/oneshot/routine_review/routine_skills/Timer断言的driver，不留失效skip；不跑封存skills六项/profile/MCP、全包/全仓/真模型或无关日用。
+3e具体合同及0051窄核后，routine当前实例CLI/actual Timer/原调用审批桥与四模型门退役已提炼至 [API](../API.md#例程运行时-cli)、[内核](../atlas/kernel.md#例程实例与原调用审批)、[ADR0051](../adr/0051-routine-runtime-cli.md)。六项独立所测业务与实现方严格上下文单位的精确phase、fixture修正及当前合入级别只记 [MILESTONES](../MILESTONES.md)；不把它们抬成末docs SHA重跑。以下其它族仍沿母路线推进，不再保留已完成routine合同的重复副本。
 
 ## 还没做的
 
@@ -645,7 +585,7 @@ HTTP request≤1MiB/reply≤64KiB；最终JSON含换行还须≤min(64KiB,tools.
 - 批 0 的后续实际操作及入站依赖清单、尚未迁族的 research 业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已提炼 atlas，固定五项独立所测端到端按各自精确版本通过，证据见 MILESTONES；原 chat loop 下一输入/Timer handle 及其 recover、回放、通知实际消费者也已以局部红绿和 reviewer24 至 `63762ae5` 连续增量 PASS 收口，已合入本地 main，尚未日用；合并时与主线持久选择的交叠补单项真实浏览器红绿，不重跑固定五项。已通过的普通字段、avatar_seed、MCP 和本刀五项不重复整批验收，母路线其它族继续在本 dev 中推进。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
-- skills read/write 已提炼现状，例程/Bot/群/连接器及剩余目录管理等平台能力继续逐族迁移。
+- skills read/write与routine已提炼现状，Bot/群/连接器及剩余目录管理等平台能力继续逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。
 - 各批独立冒烟、相关旅程回归、性能与上下文收益测量、主人日用验收。

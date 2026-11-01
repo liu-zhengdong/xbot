@@ -97,7 +97,7 @@
 
 ## 配置与兼容
 
-- **领域回包预算要服从实际下一消费者，HTTP通过不能证明模型拿到完整数据。** 原因：skills按64KiB JSON投影，实际Shell只保32KiB stdout，40KiB普通正文成功exit0却给模型截断JSON且无完整引用。复用现Shell预算只读alias决定整个JSON含换行是否内联，最终artifactreply/metadata也校较小预算；不提高全Shell或让research重定向。守护：独立 `TestCLISkillRuntimeShellOutputBudget` 在`9100c791`真source无redirect红 .94s，`e21224cf`该项 .13s与受影响预算1.10s绿；精确caller边界单位 .979s。Seen 1×（2026-11-01）。
+- **领域回包预算要服从实际下一消费者，并覆盖每一种合法输出格式。** 原因：skills按64KiB JSON投影，实际Shell只保32KiB stdout，40KiB正文exit0却截断JSON无全文引用；routine后来只按compactJSON32KiB内联，合法no-json人读逐字段输出又超32KiB。复用现Shell预算只读alias，source/CLI共用准确纯formatter，同时核整JSON含换行、人读文本与最终artifactmetadata，小引用自身也fit；不提高全Shell/强制json/让research重定向。守护：技能独立TestCLISkillRuntimeShellOutputBudget在9100c791红.94s，e21224cf新.13s+受影响预算1.10s绿；例程独立TestCLIRoutineRuntimePlainListBudget在43f实测canonicalJSON27287B、人读32781B被clip红.99s，3c同真caller/完整290记录产物绿1.07s。作者TestRuntimeRoutineHumanListBudgetArtifact在43f红300项json25227/human35111，sharedformatter后完整产物+87B引用通过；旧JSON绿不冒作人读已验。Seen 2×（2026-11-01、2026-11-02），本次先补同formatter机制，未达3个不同日子不升级全局硬约束。
 
 - **绕开有副作用的Load不等于可以丢掉它原本保护的未迁移字段。** 原因：skills只读scope预检需要避免Load触发style→memory；但非迁移开关入口复用整Config marshal后，Config不认识的style被无声删掉。原config锁内只merge请求开关并保其它raw字段，不另建writer或把记忆迁移塞回route。守护：`TestNonmigratingSkillSwitchPreservesLegacyStyle` 在首`1551c71e`实际红3.168s，`9100c791`同缝绿 .375s；保偏好/未知字段与当前fresh配置，同时回执仍按真实成功项。Seen 1×（2026-11-01）。
 

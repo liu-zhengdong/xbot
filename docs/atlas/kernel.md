@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/, internal/cliops/]
-verified: 2026-11-01 @ e21224cf
+verified: 2026-11-02 @ 6983ac09
 ---
 # 内核：Link、Event、收件箱
 
@@ -21,6 +21,14 @@ verified: 2026-11-01 @ e21224cf
 ## 技能实例入口
 
 原 listener 以 typed read/write handlers 捕获该 source 的 Root、配置 SkillsDir、动态脱敏函数与原 Resources ref。self/停用配置和大正文产物写入在当前 route，库文件沿原排序/id解析，runtime 完整读取有20MiB上限，HTTP最多64KiB而整JSON实际投影还服从原Shell32KiB输出预算；routine 仍保16KiB。写入先纯scope预检，再按 route→现库锁→逐config锁配套文件/defaults，返回实际written/updated_bots partial；scope覆盖全部本地Bot且仅self保留，后续手动开关现读。开关写在既有fresh写缝只merge请求字段，保legacy style/未知配置，不Load进route内触发记忆迁移。两旧模型wrapper/registry/load/schema已退役，其它Tools门与原Jobs不变。协议见 [API](../API.md#技能运行时-cli)，决定见 [ADR0050](../adr/0050-skills-runtime-cli.md)。
+
+## 例程实例与原调用审批
+
+原listener的四个typed routine CRUD捕获actual mounted cached Timer；StartOperations先bindCurrentPaths再publish，缺Timer只本族失败。Timer自身经WithDirectoryIO持当前route，handler不外套currentIO，Update闭包不嵌bound IO；list结束后才另在当前Resources工作区存完整JSON产物。写定义后zone-index失败有真实applied/stage partial，排期/slot/Due/Deliver/emit/Inbox/Commit与水印仍原Timer，不加调度器或CRUD唤醒。人读和JSON沿同纯formatter双32KiB预算投影，协议硬限64KiB，完整产物结果限20MiB；字段与空省语义见 [API](../API.md#例程运行时-cli)。
+
+HTTP原本没有调用turn。agent.execTool现把实际已包装approver、原Shell名/providerID/审批mutex接ctx；原Jobs.live只保Prepare后同一ctx，完成清除，CallContext只取内存Local/running/未finished，不读历史。最终Shell env携原JobID/header，listener只认自己原source，放全部锁后review/批准。main保冻结policy，卡片挂明确原owner看动态fork；child在实际Local.RunTool处明确untrusted/no-person，保它原subApprover，不冒父当前turn或new turn。缺原ctx的非空命令拒，code/remote不冒原park支持；普通CRUD及其它族不强制该关联。
+
+仅nested审批ToolArgs附规范typed请求/effective命令，真Shell.Run raw不变。现parkable/argsKey/deniedBefore同canonical，argsfile内容或保留命令A→B不会消费A，自动routineID审后生成且canonical无HTTP/Job/provider随机数；late决定仍指向可重复的原CLI Shell。四旧模型wrapper/registry/review及指引同cut退，保其它Tools门与research纯list/help分类。设计决定见 [ADR0051](../adr/0051-routine-runtime-cli.md)。
 
 ## MCP 与每 Bot 进程资源
 
