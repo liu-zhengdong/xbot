@@ -1,5 +1,15 @@
 # XBot 里程碑与进度
 
+## 2026-11-01 可继续本机子代理，对齐 DSH 主旅程
+
+- L档，用户确认五项并授权并行实现；原型后进一步指定独立「子代理」Tab，「任务」Tab查看Routine。已落地同id完成/失败/停止后继续、fresh/已完成父轮fork、双向来源消息与每轮自动结算、单次provider/model/thinking/effort、公开子记录与真实继续/停止。采用持久身份+有限执行，决定见[ADR0045](adr/0045-continuable-local-subagents.md)，现状见[子代理](atlas/subagents.md)、[界面](atlas/ui.md)、[API](API.md#子代理通知群)。已完成dev提炼撤下，跨入口新id共享入场仍在仓库外候选，原每Local 3+8/resource边界保持。
+- 执行器、Kernel、Web与UI分块实现，另有独立设计/代码审计、独立用例作者和视觉顾问。核心提交为exec `9bcaa85f`/`86f77156`、Kernel `67aba3b1`/`1f44abf4`、Web `26ca38b2`、UI `03e119d9`/`45938570`。使用已独立验收的轨迹explorer `f8f88322` 作为共享详情依赖，没有复制第二套详情renderer。最终静态复审无剩余P1/P2；修复重复queued Stop、BLOCKED已消费steer、拒绝冷入场scope清理、工具预算早返、跨模型MCP拒绝缓存及看图实例复制锁。
+- exec核心定向0.706s、整包race5.834s、后续生命周期增量race1.755s及scope清理race1.206s通过。Kernel受影响包仅旧注入Local夹具缺AgentsDir，迁到实际记录根后相关两例0.256s通过；实际模型搜索/vision双向、子窗口/工具定义、摘要route、overflow隔离、空历史fork与MCP跨route定向3.299s通过。agenttype/review定向与相关包vet通过。Web11项1.540s通过，最终exec读帽增量后4项1.277s通过。通过即停，日志按具体代码状态复用，没有再扫全仓。
+- 独立二进制验收先在 `f80d53cd` 取得红：真serve/HTTP派发、实际v1文件与父自动回报成功，子transcript GET返回404。集成 `908dab62` 后，Context/Delivery/ParentMessages/Model/StopRestart五组Binary通过，覆盖默认fresh/fork边界、cwd隔离、父忙闲消息、显式选模与重启route、stop/failed/真正kill后的显式继续及Shell副作用不重放。3个旧入口与TraceExplorer浏览器回归通过。
+- 真Chrome主链路抓到新脚本/样式未注册本机route的产品装配缺陷，由 `113c8a2f` 补齐。独立夹具另修正了选区误命中正文/textarea焦点，以及完成态隐藏delivery控件与未承接Promise；保留全部业务断言，不为实现放宽期望。`2595697f` 的 `TestContinuableSubagentBinary` 真二进制+HTTP+Chrome同服务主链路2.85s通过：原孩子看首轮工具/结果、反馈实际写v2、两轮turn_seq2/8、旧结果字节和旧记录前缀不变、主Bot草稿不被提交。
+- 对照已有界面guard，补回孩子迁Tab后遗失的notable短事实与完整对象，复用原renderer。`e1ea53cf` 独立代表浏览器最终0.38s/包1.307s通过，含真实终态profile事实、路径选择、草稿/输入焦点、工具正文选区跨两poll及相同childID跨Bot迟到隔离。新真实Chrome主链路截图桌面/390均DPR2，主管与独立顾问实际看图PASS，未冒称深色或原生窗口。完整日志、截图及独立 `ACCEPTANCE.md` 在 `~/.xbot-build/continuable-subagents/`；原型视觉复核在 `~/.xbot-build/continuable-subagents-ui/REVIEW.md`。
+- 级别：已确认本机主旅程端到端自动验收通过，随本次提交集成本地main，待用户日用。Not run：真实模型/外部服务、全仓/全smoke/全Web、无关旅程、Windows/原生壳、深色新增截图和专项性能；没有将局部通过写成整仓或所有后续SHA重跑。未push/发版，不自动重启日用实例。
+
 ## 2026-11-01 轨迹总览与点击详情
 
 - M 档，用户确认紧凑布局、无斑马纹与 DSH 配色原型后授权实现。正式轨迹改为三轨总览、类型／错误／当前范围搜索、34px 单行事件与右侧概述／预览／原始内容／来源；手机 44px，详情覆盖内容区并可返回。工具结果按调用关联，孤立结果在加载更早调用后归并；颜色只点在类别标记和标签。实现 `f8f88322`，现状见 [网页界面](atlas/ui.md)。

@@ -2,33 +2,43 @@
 kind: part
 parent: README.md
 code: [internal/exec/, internal/agent/, internal/notable/]
-verified: 2026-11-01 @ c3cd3f0c (local task endpoint lifetime and race)
+verified: 2026-11-01 @ a407f83b (local continuation, per-turn lifecycle, selected-model HTTP and scripted binary checks)
 ---
 # 后台工作与子代理
 
-> **30 秒版**：耗时长的事交给子代理，主线保持随时能响应；子代理可以被补充、排队、打断、取消。
+> **30 秒版**：长活交给有独立记录的子代理，主线保持响应。本机孩子完成、失败或停止后仍可沿原 id 继续；fresh/fork、双向消息、单次选模与独立「子代理」Tab 使用同一执行入口。
 
 ## 边界
-负责：子代理与执行者（`xbot runner`）。不负责：长编码任务（见 [生态](ecosystem.md) 的编码代理 Link）、插话分叉（见 [插话时分叉](fork.md)）。
 
-## 怎么运转
-- **本机 CLI 身份与寿命**：dev/general 的 scoped Shell 继承原 Bot 的当前二进制、数据根和操作 endpoint。短命 serve.Pass 收尾后，本机子代理仍沿既有 Local 执行集合持有入口；任务实际退出、移出 admission 并排空原队列后，OnIdle 在无执行器锁时回调释放已退役入口。服务退出与显式 Kernel 淘汰强制关闭。research 只读 CLI 分类和远端 runner 回连尚未覆盖，不声明全部执行路径可用；入口与锁见 [内核](kernel.md#当前实例的-cli-资料入口)。
-- **解释器工具白名单**：`dev` 按具体解释器名授权；`research` 的 `shell:readonly` 是权限标记，包装已安装解释器，不是工具名。只读包装沿用集中分类器，cmd / PowerShell 不放行 POSIX 读命令。自定义写类型使用具体解释器名，写资源排队识别任一种解释器。发现与参数规格见 [生态](ecosystem.md)。
-- Agent 主循环与收尾总结共用 [输出截断续写](providers.md#输出截断)，本地子代理和 runner 同样使用；续写期间不执行本地工具，不新增工具权限或任务记录。
-- **主线全工具，长活派子代理**（[ADR 0028](../adr/0028-no-foreground-background-split.md)，取代 0016；`Kernel.Dispatch`，`serve` 和 `chat` 打开，Bot 要有 agents link）：没有前后台之分，主线拿挂载目录里的全部工具，`Dispatch` 打开也不砍，写文件、写类 shell、`http_request`、对外发送都照常走权限表；短活主线自己干，长活用 `dispatch(type, task)` 交给一种预制子代理。`Dispatch` 只决定起子代理的入口是按类型的 `dispatch` 还是旧的 `spawn`，两者不同时出现。主线没有步数或秒数上限，也没有「到点只剩 `dispatch`」的收尾。规则里多一条 `DispatchRule`（`dispatch.go`）：先用一两句回用户说明要做什么，再自己干或派活；多步、长构建或调研、用户不该等的活交给子代理。旧的「你是前台、自己不干活」措辞只在迁移 Bot 规则文件时被认出删掉（`legacyDispatchRule`）。守门测试 `TestMainLineAndSubagentsReachTheMountedTools`、`TestMainLineDoesTheWork`。
-- **子代理类型**（`internal/agenttype`）：一个类型是工具白名单、提示片段、墙钟预算和交回格式。内置 `research`（20 分钟；读文件、只读 shell、搜索、读网页、看图，不能写）、`dev`（2 小时；读写文件、shell、搜索、看图，以及 `read_skill` / `write_skill` 读写本机用户技能库）、`general`（45 分钟；全部）。`bots/<name>/agents/types/<name>.md` 覆盖同名内置或新增一种（头部 `when`、`tools`、`budget`、`report`，正文是提示片段），解析不了的文件跳过。子代理的工具从整个挂载目录出发（`subagentBase`：`toolsForScope` 打底，再补上挂载目录里其余的工具，去掉 `dispatch`、`spawn` 防递归），类型白名单在目录之内过滤；执行器每一步都按这个请求重建一次工具集（`Local.refreshTools`），所以子代理中途 `links load` 出来的工具下一步就能调用，不是启动时的快照。子代理的系统提示是子代理规则、类型提示、交回格式和 Bot 自己的固定记忆快照；任务说明是第一条消息；工具集里永远没有 `dispatch`。墙钟预算按类型，步数只有防呆上限 1000，最多 3 个同时跑、8 个等待；派活与 spawn 回执共用真实 `started/queued` 和排位，并明确让前台告知排队。完成结论全文写入任务已有目录 `result.txt`，普通回报只给 id、状态、步数和路径；超过 256 字节时附最多 256 字节的开头，短结论只给指针，前台用 `read_file` 读，写失败就报失败；`meta.json` 记 `type`。子代理的请求和前台一样过两条线（`fitProvider`），被省略的结果提示「再读一次或再跑一次」。确认在网页上变成卡片（`BackgroundApprove`），没有时按 `AllowBackground`。
-- **主线只记派出和交回**：子代理的 `progress` 事件不进主线收件箱，只留在它自己的 transcript；`done`/`failed`/`blocked` 照旧投进来。投进来之后经 `kernel.SetWaker` 当场叫醒 Bot（网页注册），不等 serve 下一轮，前台以完整工具集正常思考和回复。结果与已经说过的回复都保留在同一条对话串，没有单独签收标记或短引用。前台提示只讲新回来的结果，汇总不重列旧细节；主线自己核对已约定验收的产物与测试证据，缺证据标未验证；扩大范围才问用户，不私派额外核验或重复调研。
-- **需要用户决定**：子代理按原 `BLOCKED:` 回报前台，前台正常问用户，再用 `steer` 把决定交回原任务；元数据和环境流保持等待状态直到恢复。任务环境直接采样执行器，在有效对话中回放已公布值，只追加状态或排位变化；压缩后快照恢复完整任务说明与当前状态，不另存后台清单。阻塞说明沿现有 2048 字节上限，等待仍计入原墙钟预算。
-- **恢复**：复用任务原 meta 的进程身份与现有进程检查。仍能核实存活的任务继续观察；无法核实的 running/queued 标中断，普通回报进原收件箱，不猜测参数重跑。编码代理复用其记录同样处理；工具 Job 沿共用 lost/普通 Inbox 路径，卡片、例程与远端沿原策略。
-- **「值得留意」清单**（`internal/notable`）：子代理跑的时候，内核记下四类已经实际发生的事：删除、对外部服务发消息、在 Bot 工作区以外写入、全局安装。写文件和改文件的工具按路径判断；shell 只在命令明确以 0 退出后才看，只认能直接读懂的简单命令，带展开、管道、子命令的不下结论，`--dry-run`、`-n` 这类预演不算。它只是记录，不拦也不确认任何操作。每类记下对象（文件、软件名、收件方），每个任务的对象明细最多 64 KiB，超了就标不完整，不编数字。任务结束时清单写进 `meta.json` 的 `notable`，接口在详情的 `agents[].notable` 带出；交回前台的结果末尾加一句 `notable.Line` 生成的话（「值得留意：…。」），所以 Bot 的汇报和任务卡说的是同一批事。界面怎么显示见 [ui.md](ui.md)「值得留意」。
-- **写东西的子代理按资源排队**：`dev`、`general`（能写文件或跑 shell 的类型）起步时记下资源，起步目录所在的 git 检出（`repo:<根>`），不在检出里就是这个目录（`dir:<目录>`）。资源相同的两个不同时跑：后来的写成 `queued`，前一个结束后接着起；排队的可以取消（「cancelled before it started」），补充和排队消息在它起步后送到。`research` 没有资源，随时并行。排队最多 8 个。墙钟预算从真正起步时算。
-- **插话**：前台不分叉；用户的话直接插进正在跑的一轮，见 [内核](kernel.md) 和 [ADR 0017](../adr/0017-owner-words-go-straight-into-the-turn.md)。
-- 真实 DeepSeek（2026-10-20，`chat`）：「写 fib.go 和测试并跑通」，前台一步派给 dev 并转述任务；子代理建 go.mod、写两份文件、跑 `go test` 通过；结果回来后前台转告。中途问时间，前台用只读 `date` 直接答。
-- 快的事主线自己做；耗时长的任务交给子代理，主线保持随时能响应。
-- 子代理有两种起步方式：空白上下文加任务说明，或者 fork 主线当前的上下文。
-- 主线可以随时对运行中的子代理**补充**（不丢已完成的工作）、**排队**、**打断**、**取消**。子代理会把进度、卡住、完成等事件发回主线的收件箱。
-- 每个子代理都有自己的记录，主线可以查阅。创建时抄下调用方当时的工作目录；子代理里的 `cd` 只改自己的那份，不改前台，也不写入 `bots/<name>/cwd`。子代理拿到的工具集里也有 `web_fetch`、`web_search` 和 `view_image`；搜索工具按绑定遵循 [供应商](providers.md) 的互斥规则，作用于主线、scoped 工具集和子代理刷新路径。看图成功时，还在调用工具的轮次里只留最新一批图片（新一批进来就去掉旧的，连续看第 5 张也不会撞上限），仍受 4 张、合计 10 MiB 限制，不写入 transcript。模型给出没有工具调用的回复之后，图片就从后续请求里去掉，发生在排队任务、插话或下一轮之前，所以看过几张之后下一轮还能再看。主线那一轮结束时也会清掉。工具 panic，包括确认回调里的 panic，收成工具错误并放开确认锁，文本先脱敏再截断。子代理这套工具目前没有包进主线的 `reviewedTool`（既有行为，权限表仍在主线生效）。
-- **工具 Job 与子代理分开**：本地子代理与 runner 的实际工具调用同样接原 Jobs，慢调用 2 秒或用户插话后交还等待，运行本身不被打断；不占子代理 3+8。父任务结束或取消不杀已经转后台的调用，显式工具取消沿原 runner 控制接口，完成沿原事件流投普通 Inbox。输出、图片和已发生副作用的整理在实际结束时完成，规则见 [内核](kernel.md)「慢工具后台化」。
-- **执行者**是一个独立服务（`xbot runner`），通过 Link 接入；本地 goroutine 和远程执行者只是同一接口的两种部署方式。
-- 长时间的编码任务不放进这条子代理循环。子代理仍是内核里的执行器，默认最多 16 步、10 分钟。编码代理是单独的 Link，见生态，步数和时间按那次任务另定。
+负责：内核本机子代理与执行者接口（`xbot runner`）。长编码 Link 见 [生态](ecosystem.md)，旧插话分叉见 [fork](fork.md)。新续聊只适用于带 descriptor 的本机记录；旧一次性 spawn/runner 仍可读取、控制活任务，不猜参数冷恢复。决定见 [ADR 0045](../adr/0045-continuable-local-subagents.md)。
 
+## 创建、上下文与模型
+
+- **主线全工具，长活派子代理**：[ADR 0028](../adr/0028-no-foreground-background-split.md) 仍有效。`Kernel.Dispatch` 在 serve/chat 打开，Bot 挂 agents link 时提供 `dispatch`；否则保留旧 `spawn`，两入口不同时出现。短活主线自己做，先经 `send_message_to_user` 回用户；没有前台只剩派活工具或强制步数/秒数收尾。
+- **typed 创建**：`dispatch(type,task,context?,provider?,model?,thinking?,reasoning_effort?)`。context 默认 `fresh`，只有孩子系统前缀与任务；`fork` 继承父当前轮开轮之前的已完成上下文，不带当前轮未完成工具调用或插话。父固定模型补丁不作为子补丁；即使父历史为空，子规则、类型、所选模型 overlay 与任务仍存在。工具结果按调用配对投影，原文只追加。
+- **类型与工具**：`internal/agenttype` 内置 research（20分钟，读文件/只读解释器/搜索/网页/看图）、dev（2小时，读写/解释器/搜索/看图/本机技能库）、general（45分钟，挂载目录内全部）。`bots/<name>/agents/types/<name>.md` 可覆盖或新增，头部为 when/tools/budget/report，坏文件跳过；没有类型默认模型字段。每一步从当前挂载目录刷新工具，再用创建时白名单过滤，懒加载 Link 可在后续步出现。research 的 `shell:readonly` 是权限标记，按集中分类器包装实际解释器，cmd/PowerShell 不放行 POSIX 读命令。
+- 孩子不持有 dispatch/spawn、父/兄弟控制或给主人直发工具；只有 scoped `send_message_to_parent(text)`，没有任意 target。read_subagent/expand_subagent 在孩子内限定自己的记录。工具仍沿原工具确认和 Jobs 行为；本批未把整套子工具升级为主线 reviewedTool。
+- **单次选模**：省略沿父当前绑定，只给 model 沿父 provider，只给 provider 取其已配置首模型。显式组合和推理值沿既有 config.Resolve/协议校验；创建时固定有效身份，继续时重新解析当前凭据与能力，不换绑父 Bot，不保存密钥、Endpoint 或旧 listener。孩子实际 route 决定 overlay、vision、hosted/本地搜索互斥、T/H、工具定义预算和摘要器。fit/overflow ratio 每激活独立，派生摘要只在请求投影，冷恢复从原文重新 fit；超 H 无法压入时明确失败。MCP schema 拒绝冷却按实际子 provider/model 隔离，不污染父或其他 route。协议见 [供应商](providers.md)。
+
+## 身份、执行与消息
+
+- `agents/<id>/descriptor.json` 保留无密钥重建事实；同目录 `transcript.jsonl` 是单一只追加原文。物理行 seq 为稳定身份，message_received 存一次正文，consumed/dropped 引用 input_seq，turn_end 记录逐轮结算；meta 只是最新状态投影，不是另一份待做账。主线不复制子步骤。
+- **持久身份 + 有限执行**：Local.jobs/waiting 只存活执行和入场。完成后释放 goroutine、并发槽、repo 写资源和旧 scope，不保常驻 idle job。新消息走同一 Message 路径；进程内 canonical child 目录只索引实际 active Local 指针，Web/例程的另一个 Kernel 可命中同 id 原 owner。跨进程仍能核实存活而无法控制时返回冲突，不复制冷启动。
+- **容量沿原每 Local 边界**：最多3运行、8等待，同一个 git 检出 `repo:<根>`（非git为 `dir:<目录>`）的写类型串行；research 可并行。跨 Kernel 新建不同 id 不构成全 Bot 总池。等待不计墙钟，BLOCKED 仍计类型预算，步数防呆上限1000。已接受后续输入有16条上限；首 queue/finishing 后消息为该身份预留原等待容量，交接转换成同一 waiting 项，不能成功受理后丢失。
+- `agent_message(id,text,delivery="steer|queue")`：活轮 steer 在下一步消费，不打断已跑工具；queue 在自然结算后另开轮，每轮重新预算并重新 admission，原等待任务优先。最后回复到释放之间的新消息进有界 pending，不投死通道。`list_subagents` 能发现近期完成的可继续孩子。
+- `agent_stop(id)` 与 Web stop 共用原 owner 原子入口。停止当前执行、丢弃此前未消费输入并记原文；已结束重复停止幂等，排队轮只结算一次。新消息是显式继续；未响应取消的工具真正退出前保持 stopping。已转独立工具 Job 的调用仍沿原取消政策，不因停孩子谎称副作用已撤销。
+- **父子通信**：模型父信由内核固定 `bot:<name>`，认证网页直发固定 `owner`，HTTP不能自报来源；模型投影带可读来源。孩子主动父信先记子原文、以真实执行 context 投原 Inbox，忙闲均可接收；来源为孩子而非主人。每轮终结另有自动回报，两者不互相代替，不建签收/已转告账。
+- **结果与通知**：每轮首输入 seq 为 turn_seq，结论写不可覆盖 `results/<turn_seq>.txt`。普通回报给状态、步数、轮次、路径和有界预览，主线按路径读取并核对约定证据；写失败报失败。终态和重启中断统一 `subagent:<id>:turn:<seq>:end`，显式父信按实际子记录 seq 独立编号；异步事件自带闭轮身份，不读取下一轮 meta 猜归属。progress 只留子记录，done/failed/blocked 和主动父信沿普通 Inbox、环境流与既有 Waker 唤醒，主线只讲新结果。
+
+## 工作目录、恢复与实际工具
+
+- 创建继承调用方 cwd，孩子 cd 不改父 cwd 或 bots/<name>/cwd。真实结算先同步采样 cwd 落 descriptor、再释放旧 scope，才交接 admission/terminal；旧异步终态不能删除同 id 下一轮 scope。新轮绑定当前实际 runtime，不恢复旧端口。
+- dev/general scoped Shell 沿当前 Bot 二进制、数据根和操作 endpoint。短命 serve.Pass 请求退役后，活 Local 执行仍持有入口；实际任务移出并排空队列后，无锁 OnIdle 关闭退役入口。服务退出/明确 Kernel 淘汰沿原关闭政策。research CLI只读分类及远程 runner 回连仍是既有边界，入口见 [内核](kernel.md#当前实例的-cli-资料入口)。
+- 服务重启按 PID+ProcStart 核实，失联 running/queued 标 interrupted；补齐悬空 tool_call 的取消结果、丢旧 pending，沿逐轮稳定 ID 报原 Inbox。不自动消费旧消息、不重放工具；显式新消息才继续。保留旧结果引用，不承诺跨文件任意崩溃点 exactly-once。
+- 看图每执行只留最新一批，最多4张/合计10MiB，字节不写 transcript；模型无调用回复后、下一轮前清理。工具 panic（含确认回调）收为工具错误并放锁，先脱敏再截断。搜索/看图按所选子模型，而非父绑定。
+- **工具 Job 独立**：慢调用2秒或插话后交还等待，实际工具继续，不占子代理3+8。父任务结束/取消不杀已后台化调用；输出、图片和副作用在真实结束时整理，沿原事件回报。详情见 [内核](kernel.md)「慢工具后台化」。Agent主循环与收尾共用[输出截断续写](providers.md#输出截断)，续写时不执行本地工具。
+- **值得留意**：`internal/notable` 记录实际删除、对外发送、工作区外写入、全局安装，不拦操作。shell只认明确exit0的简单命令，展开/管道/预演不猜。每任务对象明细最多64KiB，超限标不完整；meta.notable、父结算和UI读同一事实。界面规则见 [ui](ui.md)。
+
+## 读取与界面
+
+独立「子代理」Tab 展示所属孩子、公开对话/工具、继续和停止；Routine 留「任务」。GET transcript 只读不创建模型轮，before 排他、默认40/max200、正序、单行64KiB公开预览、响应700KiB预算；原始恢复记录不截断。公开剥 reasoning/vendor_raw，保工具关联、来源及 truncation；草稿/选区/详情按 Bot+id 保留，迟到读回不串对象。HTTP见 [API](../API.md#子代理通知群)，界面见 [ui](ui.md)，模型读同份[机制手册](../../internal/manual/sections/subagents.md)。

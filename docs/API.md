@@ -285,7 +285,17 @@ Bot 正在这个进程里跑一轮时，用户的消息直接插进那一轮（[
 
 ## 子代理、通知、群
 
-`POST /api/bots/{name}/agents/{id}/steer`，body `{"text":"..."}`。`POST /api/bots/{name}/agents/{id}/cancel` 可以没有 body。成功 200 `{"status":"<内核返回的一句>"}`。
+本机可继续子代理归属当前 Bot，在独立「子代理」标签查看；「任务」标签用于 Routine。以下接口沿当前 owner 登录鉴权，只能操作自己的 Bot 和子记录。旧的一次性记录仍可读，`continuable:false` 时不能靠新消息接口猜参数重开。
+
+- `GET /api/bots/{name}/agents/{id}/transcript?before=<seq>&limit=40`：读取孩子的公开记录，不创建模型轮次、不等待主 Bot 对话锁。默认40条、最多200条，`before` 是排他物理行序号，返回正序；响应为 `{id,entries,has_more,next_before,turn_seq,status,continuable}`。`entries` 含 `{seq,time,message:{role,content}}`，可带 `kind,sender,input_seq,delivery,turn_seq,status,result_path,internal,truncated`；工具调用与结果保留块和调用关联，思考块与厂商原始包不公开，文本脱敏。每行最多64 KiB公开预览，超大原行使用带 `truncated:true` 的占位；响应整体不超过700 KiB，收窗仍保留可推进的游标，预览不冒充原始全文。原始子记录不因此截断或改写。
+- `POST /api/bots/{name}/agents/{id}/messages`：body `{text,delivery:"steer"|"queue"}`，delivery 默认 steer，text trim 后非空且不超过16 KiB。请求JSON最多64 KiB，拒绝未知字段、额外JSON值及任意自报sender。运行中 steer 在下一步接入，queue 在本轮自然结束后另开一轮；空闲、完成、失败或停止后均按原 id 和记录显式继续。成功200返回 `{id,status,position?,blocked?,turn_seq?}`，表示已接受；不代表已经执行完成。网页直发来源固定为 `owner`，主 Bot 工具发信来源由内核固定为 `bot:<name>`，原文只记一次。
+- `POST /api/bots/{name}/agents/{id}/stop`：body `{}`，停止当前执行并丢弃此前未消费消息，保留对话以供以后显式继续。成功200返回同形回执，真实执行未退出时为 `stopping`，未入场取消为 `cancelled`，终态重复停止幂等返回其当前状态；不把尚未停止的工具报告成已撤销。已经转为独立工具 Job 的调用仍沿其原取消规则。
+
+新消息和停止都不等待主 Bot 的生成锁；活动任务可能由例程或其他本机 Kernel 持有，按同 id 的真实活动 owner 路由。3运行+8等待及同资源排队保留原每Local边界，不代表跨Kernel新建不同 id 的全 Bot 总池。不存在/非本 owner 的记录404，旧不可继续或原进程仍存活但本进程无法控制为409，无效输入400，等待/消息队列已满429。`status:done` 只表示当前轮结束，不表示孩子永久不可联系。
+
+Bot 详情的 `agents[]` 补 `continuable`、`turn_seq`、`result_path`。每轮结果保存到该孩子 `results/<turn_seq>.txt`，旧引用不会因下一轮覆盖；恢复中断与正常完成共用稳定的逐轮终态身份。服务重启不自动重放孩子旧工具或未消费输入，新消息到来才继续。
+
+旧 `POST .../agents/{id}/steer` / `queue` / `cancel` 为轻适配：可继续本机孩子转对应新领域入口，一次性/runner 活任务沿原控制；`interrupt` 与旧 `bg_` 控制保留原语义。不把旧记录标为可冷恢复。
 
 `GET /api/notes` 返回 `{"notes":[{"id","bot","text","time"}]}`，只含未读。`POST /api/notes/read`，body `{"bot":"ada","ids":["..."]}`，200 `{"status":"ok"}`。不可信来源（webhook、watch、其他 Bot、定时器）的最终回复如果不是空也不是 `SILENT`，也会出现在这里。同一轮里 Bot 已经调用 `send_message_to_user` 时，不再把结尾那句回复再推一条。
 
