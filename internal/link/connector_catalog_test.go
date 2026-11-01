@@ -99,16 +99,13 @@ func TestEnableConnectorUpgradesAndKeyReachesSpawn(t *testing.T) {
 	t.Setenv("CONTEXT7_API_KEY", "from-env")
 	s := list[0]
 	s.Secret = SecretLookup(secrets)
-	env := strings.Join(spawnEnv(s.SecretEnvs, s.secretLookup()), "\n")
-	if !strings.Contains(env, "CONTEXT7_API_KEY=from-bot") || strings.Contains(env, "from-env") || strings.Contains(env, "/evil") {
-		t.Fatalf("env %q", env)
+	// The file lookup remains a Link adapter seam; transport credential precedence
+	// and filtering are asserted in the core package.
+	if value, ok := s.Secret("CONTEXT7_API_KEY"); !ok || value != "from-bot" || !s.HasSecretValues([]string{"CONTEXT7_API_KEY"}) {
+		t.Fatalf("stored credential not available: found=%v", ok)
 	}
-	if h := secretHeaders(s.SecretEnvs, s.secretLookup()); h.Get("CONTEXT7_API_KEY") != "from-bot" {
-		t.Fatalf("headers %v", h)
-	}
-	// Without a stored key the environment is still the fallback.
 	s.Secret = SecretLookup(filepath.Join(t.TempDir(), "none.json"))
-	if env := strings.Join(spawnEnv(s.SecretEnvs, s.secretLookup()), "\n"); !strings.Contains(env, "CONTEXT7_API_KEY=from-env") {
-		t.Fatalf("fallback %q", env)
+	if !s.HasSecretValues([]string{"CONTEXT7_API_KEY"}) {
+		t.Fatal("environment fallback not available")
 	}
 }

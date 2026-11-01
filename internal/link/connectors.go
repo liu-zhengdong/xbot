@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 
+	"xbot/internal/mcp"
+
 	_ "embed"
 )
 
@@ -104,21 +106,7 @@ func EnableConnector(path, id string) error {
 }
 
 // HasSecretEnvs says the entry names every key in names.
-func HasSecretEnvs(s MCPServer, names []string) bool {
-	for _, n := range names {
-		found := false
-		for _, have := range s.SecretEnvs {
-			if have == n {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-	return true
-}
+func HasSecretEnvs(s MCPServer, names []string) bool { return mcp.HasSecretEnvs(s, names) }
 
 // SecretLookup reads one value from a Bot's secrets file at call time, so a
 // key filled after the server was mounted is still found on its next start.

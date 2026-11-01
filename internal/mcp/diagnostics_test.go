@@ -1,4 +1,4 @@
-package link
+package mcp
 
 import (
 	"bufio"
@@ -38,12 +38,12 @@ func TestMCPStartupStderrAndStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := NewMCP(MCPServer{Name: "playwright", Command: exe, Args: []string{"-test.run=^TestMCPDiagnosticProcess$", "mcp-diagnostic-child"}, SecretEnvs: []string{"MCP_TEST_SECRET"}, Secret: func(string) (string, bool) { return "fixture-private-value", true }})
+	m := NewSession(Spec{Name: "playwright", Command: exe, Args: []string{"-test.run=^TestMCPDiagnosticProcess$", "mcp-diagnostic-child"}, SecretEnvs: []string{"MCP_TEST_SECRET"}, Secret: func(string) (string, bool) { return "fixture-private-value", true }}, Options{})
 	defer m.Close()
 	if state := m.Status(); state.State != "configured" {
 		t.Fatal(state)
 	}
-	if list := m.Tools(); len(list) != 0 {
+	if list, _ := m.LoadTools(context.Background()); len(list) != 0 {
 		t.Fatal("unexpected tools")
 	}
 	state := m.Status()
@@ -59,7 +59,7 @@ func TestMCPStartupStderrAndStatus(t *testing.T) {
 func TestMCPDiscoveryFailures(t *testing.T) {
 	for _, mode := range []string{"initialize", "tools/list", "empty", "timeout"} {
 		t.Run(mode, func(t *testing.T) {
-			m := NewMCP(MCPServer{Name: "fixture", Command: "fake", Dial: dialFake(t, func(msg rpcMessage) []rpcMessage {
+			m := NewSession(Spec{Name: "fixture", Command: "fake", Dial: dialFake(t, func(msg rpcMessage) []rpcMessage {
 				if msg.Method == mode && mode != "timeout" {
 					return []rpcMessage{{JSONRPC: "2.0", ID: msg.ID, Error: &rpcError{Code: -32000, Message: "dependency unavailable"}}}
 				}
@@ -73,7 +73,7 @@ func TestMCPDiscoveryFailures(t *testing.T) {
 					return []rpcMessage{rpcOK(msg.ID, `{"tools":[]}`)}
 				}
 				return nil
-			})})
+			})}, Options{})
 			defer m.Close()
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 			defer cancel()
@@ -96,7 +96,7 @@ func TestMCPDiscoveryFailures(t *testing.T) {
 }
 
 func TestMCPDiagnosticsBoundAndRedact(t *testing.T) {
-	m := NewMCP(MCPServer{Name: "fixture", SecretEnvs: []string{"KEY"}, Secret: func(string) (string, bool) { return "private-fixture", true }})
+	m := NewSession(Spec{Name: "fixture", SecretEnvs: []string{"KEY"}, Secret: func(string) (string, bool) { return "private-fixture", true }}, Options{})
 	m.redact = m.diagnosticRedactor()
 	var wg sync.WaitGroup
 	for range 8 {
@@ -118,7 +118,7 @@ func TestMCPDiagnosticsBoundAndRedact(t *testing.T) {
 }
 
 func TestMCPDiscoveryStatusAfterClose(t *testing.T) {
-	m := NewMCP(MCPServer{Name: "fixture", Dial: dialFake(t, func(msg rpcMessage) []rpcMessage {
+	m := NewSession(Spec{Name: "fixture", Dial: dialFake(t, func(msg rpcMessage) []rpcMessage {
 		if msg.Method == "initialize" {
 			return []rpcMessage{rpcOK(msg.ID, `{}`)}
 		}
@@ -126,7 +126,7 @@ func TestMCPDiscoveryStatusAfterClose(t *testing.T) {
 			return []rpcMessage{rpcOK(msg.ID, `{"tools":[{"name":"test"}]}`)}
 		}
 		return nil
-	})})
+	})}, Options{})
 	if _, err := m.LoadTools(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestMCPHTTPLoadDeadline(t *testing.T) {
 	}))
 	defer srv.Close()
 	defer close(release)
-	m := NewMCP(MCPServer{Name: "slow", URL: srv.URL})
+	m := NewSession(Spec{Name: "slow", URL: srv.URL}, Options{})
 	defer m.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -180,7 +180,7 @@ func TestMCPFailedDiscoveryReapsProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := NewMCP(MCPServer{Name: "oversized", Command: exe, Args: []string{"-test.run=^TestMCPDiagnosticProcess$", "mcp-oversized-child"}})
+	m := NewSession(Spec{Name: "oversized", Command: exe, Args: []string{"-test.run=^TestMCPDiagnosticProcess$", "mcp-oversized-child"}}, Options{})
 	defer m.Close()
 	if _, err := m.LoadTools(context.Background()); err == nil {
 		t.Fatal("oversized protocol line accepted")

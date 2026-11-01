@@ -1,4 +1,4 @@
-package link
+package mcp
 
 import (
 	"bufio"
@@ -270,7 +270,7 @@ func (c *mcpClient) initialize(ctx context.Context) error {
 	return c.writeContext(ctx, rpcMessage{JSONRPC: "2.0", Method: "notifications/initialized", Params: json.RawMessage(`{}`)})
 }
 
-type mcpToolSpec struct {
+type ToolSpec struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
 	InputSchema json.RawMessage `json:"inputSchema"`
@@ -279,8 +279,8 @@ type mcpToolSpec struct {
 	} `json:"annotations"`
 }
 
-func (c *mcpClient) listTools(ctx context.Context) ([]mcpToolSpec, error) {
-	var all []mcpToolSpec
+func (c *mcpClient) listTools(ctx context.Context) ([]ToolSpec, error) {
+	var all []ToolSpec
 	cursor := ""
 	for page := 0; page < mcpPageCap; page++ {
 		params := map[string]any{}
@@ -292,8 +292,8 @@ func (c *mcpClient) listTools(ctx context.Context) ([]mcpToolSpec, error) {
 			return nil, err
 		}
 		var res struct {
-			Tools      []mcpToolSpec `json:"tools"`
-			NextCursor string        `json:"nextCursor"`
+			Tools      []ToolSpec `json:"tools"`
+			NextCursor string     `json:"nextCursor"`
 		}
 		if len(bytes.TrimSpace(raw)) > 0 && string(raw) != "null" {
 			if err := json.Unmarshal(raw, &res); err != nil {

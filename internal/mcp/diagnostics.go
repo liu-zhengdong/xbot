@@ -1,4 +1,4 @@
-package link
+package mcp
 
 import (
 	"errors"
@@ -12,15 +12,15 @@ import (
 
 const mcpDiagnosticCap = 8 << 10
 
-// MCPStatus describes this instance, not installation or browser readiness.
+// Status describes this instance, not installation or browser readiness.
 // Reading it never starts a process or performs an RPC.
-type MCPStatus struct {
+type Status struct {
 	State     string `json:"state"` // configured, ready, error
 	ToolCount int    `json:"tool_count"`
 	Error     string `json:"error,omitempty"`
 }
 
-func (m *MCP) Status() MCPStatus {
+func (m *Session) Status() Status {
 	m.mu.Lock()
 	err, client, listed, count := m.lastErr, m.client, m.listed, len(m.tools)
 	m.mu.Unlock()
@@ -30,15 +30,15 @@ func (m *MCP) Status() MCPStatus {
 		}
 	}
 	if err != nil {
-		return MCPStatus{State: "error", Error: err.Error()}
+		return Status{State: "error", Error: err.Error()}
 	}
 	if listed {
-		return MCPStatus{State: "ready", ToolCount: count}
+		return Status{State: "ready", ToolCount: count}
 	}
-	return MCPStatus{State: "configured"}
+	return Status{State: "configured"}
 }
 
-func (m *MCP) diagnostic(stage string, cause error) error {
+func (m *Session) diagnostic(stage string, cause error) error {
 	text := cause.Error()
 	if stderr := m.stderr.String(); stderr != "" {
 		text += "; stderr: " + stderr
@@ -64,7 +64,7 @@ func (m *MCP) diagnostic(stage string, cause error) error {
 
 // Snapshot launch credentials so rotation cannot expose an older value printed
 // by this process. Redact before truncating the returned diagnostic.
-func (m *MCP) diagnosticRedactor() func(string) string {
+func (m *Session) diagnosticRedactor() func(string) string {
 	var values []string
 	lookup := m.Spec.secretLookup()
 	for _, name := range m.Spec.SecretEnvs {

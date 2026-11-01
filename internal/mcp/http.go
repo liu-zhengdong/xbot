@@ -1,4 +1,4 @@
-package link
+package mcp
 
 import (
 	"bufio"
@@ -16,7 +16,7 @@ import (
 // message. A JSON body or an SSE data line is written back as one line so the
 // existing read loop can dispatch it. GET, after a session id, carries server
 // notifications. A 405 means the server has no inbound stream.
-func openStreamable(ctx context.Context, spec MCPServer) (io.ReadWriteCloser, error) {
+func openStreamable(ctx context.Context, spec Spec, options Options) (io.ReadWriteCloser, error) {
 	if err := validateURL(spec.URL); err != nil {
 		return nil, err
 	}
@@ -25,14 +25,14 @@ func openStreamable(ctx context.Context, spec MCPServer) (io.ReadWriteCloser, er
 		ctx:     ctx,
 		url:     strings.TrimSpace(spec.URL),
 		hc:      &http.Client{},
-		headers: secretHeaders(spec.SecretEnvs, spec.secretLookup()),
+		headers: secretHeaders(spec.SecretEnvs, spec.secretLookup(), options.providerKey),
 		pr:      pr,
 		pw:      pw,
 	}
 	return h, nil
 }
 
-func secretHeaders(names []string, lookup func(string) (string, bool)) http.Header {
+func secretHeaders(names []string, lookup func(string) (string, bool), providerKey func(string) bool) http.Header {
 	h := make(http.Header)
 	if lookup == nil {
 		return h
