@@ -116,7 +116,14 @@ func TestDispatchStartsATypedSubagent(t *testing.T) {
 	}
 	close(m.hold)
 	ev := waitEvent(t, box, exec.EvDone)
-	path := filepath.Join(b.AgentDir(ev.Sender), "result.txt")
+	status, err := exec.ReadMeta(b.AgentDir(ev.Sender))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := status.ResultPath
+	if status.TurnSeq <= 0 || !strings.HasPrefix(path, filepath.Join(b.AgentDir(ev.Sender), "results")+string(os.PathSeparator)) {
+		t.Fatalf("missing immutable round result: %+v", status)
+	}
 	if strings.Contains(ev.Content, "Sources") || !strings.Contains(ev.Content, path) {
 		t.Fatalf("event %q", ev.Content)
 	}
@@ -144,7 +151,7 @@ func TestDispatchStartsATypedSubagent(t *testing.T) {
 			t.Fatalf("system prompt lacks %q: %q", want, sys)
 		}
 	}
-	if got := sub.Messages[1].Text(); got != "find the release date of Go 1.30" {
+	if got := sub.Messages[1].Text(); !strings.HasSuffix(got, "find the release date of Go 1.30") || !strings.Contains(got, "来自 Bot "+b.Name()+" 的消息：") {
 		t.Fatalf("task %q", got)
 	}
 	metas, _ := filepath.Glob(filepath.Join(b.Root, "bots", b.Name(), "agents", "sa_*", "meta.json"))

@@ -98,14 +98,18 @@ var Table = map[string]Class{
 	"detail":         Readonly,
 
 	// Subagents.
-	"spawn":           Normal,
-	"dispatch":        Normal,
-	"steer":           Normal,
-	"queue":           Normal,
-	"interrupt":       Normal,
-	"cancel":          Normal,
-	"read_subagent":   Readonly,
-	"expand_subagent": Readonly,
+	"spawn":                  Normal,
+	"dispatch":               Normal,
+	"agent_message":          Normal,
+	"agent_stop":             Normal,
+	"list_subagents":         Readonly,
+	"send_message_to_parent": Normal,
+	"steer":                  Normal,
+	"queue":                  Normal,
+	"interrupt":              Normal,
+	"cancel":                 Normal,
+	"read_subagent":          Readonly,
+	"expand_subagent":        Readonly,
 
 	// Skills.
 	"read_skill":  Readonly,

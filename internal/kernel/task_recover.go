@@ -57,6 +57,9 @@ func (k *Kernel) recoverTasks() error {
 			if live[id] {
 				continue
 			}
+			if _, ok := exec.ActiveTask(k.Bot.AgentDir(id)); ok {
+				continue
+			}
 			m, err := exec.Interrupt(k.Bot.AgentDir(id))
 			if err != nil {
 				if m.Status != bot.ForkInterrupted {
@@ -69,7 +72,11 @@ func (k *Kernel) recoverTasks() error {
 			if m.Status != bot.ForkInterrupted || k.Inbox == nil {
 				continue
 			}
-			if err := k.Inbox.Post(link.Event{ID: "ev_" + id + "_interrupted", Source: link.SourceSubagent, Type: exec.EvFailed, Sender: id, Content: m.Summary, Time: m.FinishedAt, Untrusted: true}); err != nil {
+			eventID := "ev_" + id + "_interrupted"
+			if m.TurnSeq > 0 {
+				eventID = exec.TerminalEventID(id, m.TurnSeq)
+			}
+			if err := k.Inbox.Post(link.Event{ID: eventID, Source: link.SourceSubagent, Type: exec.EvFailed, Sender: id, Content: m.Summary, Time: m.FinishedAt, Untrusted: true}); err != nil {
 				return err
 			}
 		}
