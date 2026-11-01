@@ -4524,7 +4524,10 @@
     subtitle.hidden = !text;
   }
 
+  let subagentsView = null;
   function resetConversation() {
+    subagentsView?.dispose(); subagentsView = null;
+    $("workspace-view-agents")?.replaceChildren();
     state.tab = "chat";
     state.panelError = false;
     document.getElementById("workspace-chat").hidden = false;
@@ -4956,7 +4959,7 @@
     return row;
   }
 
-  const TABS = [["chat", "聊天", "message-circle"], ["library", "记忆", "brain"], ["trace", "轨迹", "git-branch"], ["computer", "任务", "list-checks"], ["context", "上下文", "layers"], ["inbox", "收件箱", "inbox"]];
+  const TABS = [["chat", "聊天", "message-circle"], ["library", "记忆", "brain"], ["trace", "轨迹", "git-branch"], ["agents", "子代理", "git-branch"], ["computer", "任务", "list-checks"], ["context", "上下文", "layers"], ["inbox", "收件箱", "inbox"]];
   const hiddenWorkspaceTabs = new Set();
   try { for (const id of JSON.parse(localStorage.getItem("xbot-workspace-hidden") || "[]")) if (id !== "chat") hiddenWorkspaceTabs.add(id); } catch (e) {}
   function availableWorkspaceTabs() { return state.sel?.type === "bot" && !state.peer ? TABS : TABS.slice(0, 1); }
@@ -5051,6 +5054,7 @@
       if (id === "trace") { loadTrace(); if (!state.panelData) loadPanel(); }
       else if (!state.panelData || state.panelError === id || id === "context") loadPanel();
       else if (id === "inbox") loadInbox();
+      else if (id === "agents") subagentsView?.poll().catch(() => {});
     }
   }
   $("workspace-tabs").addEventListener("keydown", ev => {
@@ -5549,6 +5553,19 @@
       return;
     }
     const data = state.panelData || {name:state.sel.id};
+    if (state.tab === "agents") {
+      if (!subagentsView) {
+        const selection = state.sel;
+        subagentsView = window.XBotSubagents.create({
+          bot:selection.id, api, el, icon, appendMarkdown, taskTitle, taskTypeLabel, taskProgress,
+          taskAvatar, taskValue, taskSelected, sameValue:sameTranscriptValue, toolSummary, visibleError, copyText,
+          current:() => state.sel === selection && !state.peer,
+          backParent:() => selectWorkspaceTab("chat"),
+        });
+        body.replaceChildren(subagentsView.root);
+      }
+      subagentsView.update(data); return;
+    }
     const tasks = body.querySelector(".task-view");
     if (tasks && state.tab === "computer") { syncTaskView(tasks, data); return; }
     const memory = body.querySelector(".memory-view");
@@ -6563,8 +6580,12 @@
     host.dataset.sig = signature;
     host.replaceChildren();
     if (!agents.length) return;
-    const row = el("button", "wrow"); row.type = "button"; row.title = "打开任务";
-    row.addEventListener("click", () => selectWorkspaceTab("computer"));
+    const row = el("button", "wrow"); row.type = "button"; row.title = "打开子代理";
+    row.addEventListener("click", () => {
+      const children = agents.filter(window.XBotSubagents.isChild);
+      selectWorkspaceTab(children.length ? "agents" : "computer");
+      if (children.length === 1) subagentsView?.open(children[0].id);
+    });
     const stack = el("span", "work-stack");
     for (const ag of agents.slice(0, 3)) stack.append(taskAvatar(ag, "xs"));
     if (agents.length > 3) stack.append(el("span", "", "+" + (agents.length - 3)));
@@ -6813,7 +6834,8 @@
   }
 
   function syncTaskView(root, data) {
-    const agents = data.agents || [];
+    // The task page keeps routines, fork backgrounds and external coding jobs.
+    const agents = (data.agents || []).filter(a => !window.XBotSubagents.isChild(a));
     const sections = [
       ["进行中", agents.filter(a => ["running", "awaiting"].includes(a.status)), "agent"],
       ["排队中", agents.filter(a => a.status === "queued"), "agent"],
@@ -9266,6 +9288,7 @@
     setInterval(() => {
       if (shell.hidden) return;
       if (!document.hidden) refreshStatus().catch(() => {});
+      if (!document.hidden && state.tab === "agents") subagentsView?.poll().catch(() => {});
       if (state.streaming) return;
       if (!document.hidden) refreshUpdate().catch(() => {});
       refreshNotes().catch(() => {});
