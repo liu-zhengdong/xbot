@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0051 当前 source 的实际 Timer 经 CLI 做例程 CRUD

@@ -69,6 +69,11 @@ Usage:
   xbot [--root DIR] profile avatar <name> (--file PATH | --clear)
   xbot [--root DIR] template export <name> --out FILE
   xbot [--root DIR] template import --file FILE [--name NAME]
+  xbot routine --help
+  xbot [--root DIR] routine list --self [--json]
+  xbot [--root DIR] routine create --self (--args JSON_OBJECT | --args-file FILE|-) [--json]
+  xbot [--root DIR] routine update ID --self (--args JSON_OBJECT | --args-file FILE|-) [--json]
+  xbot [--root DIR] routine delete ID --self [--json]
   xbot [--root DIR] routine migrate [--dry-run] [--bot NAME]
   xbot [--root DIR] routine list --bot NAME
   xbot [--root DIR] routine update ID --bot NAME --skills id1,id2
@@ -197,6 +202,9 @@ func run(argv []string) error {
 			// Preserve explicit empty --root instead of treating it as omitted.
 			return cmdSkillRuntime(root, len(argv) > len(rest), rest[1:])
 		}
+	}
+	if len(rest) > 0 && rest[0] == "routine" && routineUsesRuntime(rest[1:]) {
+		return cmdRoutineRuntime(root, len(argv) > len(rest), rest[1:])
 	}
 	// The embedded reference needs no data root, credentials, or running service.
 	if len(rest) > 0 && rest[0] == "manual" {

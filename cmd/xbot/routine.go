@@ -16,6 +16,9 @@ import (
 )
 
 func cmdRoutine(root string, args []string) error {
+	if routineUsesRuntime(args) {
+		return cmdRoutineRuntime(root, root != "", args)
+	}
 	if len(args) > 0 && (args[0] == "list" || args[0] == "update") {
 		return cmdRoutineSkills(root, args)
 	}

@@ -58,7 +58,13 @@ func (k *Kernel) StartOperations() error {
 	if k.workOrigin == "" {
 		k.workOrigin = k.Bot.Name()
 	}
-	handlers := cliops.Handlers{Profile: k.profileOperation, ProfileAvatar: k.profileAvatarOperation, Skills: k.SkillHandlers()}
+	for _, item := range k.snapshotLinks() {
+		k.bindCurrentPaths(item)
+		if coding, ok := item.(*code.Link); ok {
+			coding.UseEnvironment(k.CLIEnvironment, k.closeIdleOperations)
+		}
+	}
+	handlers := cliops.Handlers{Profile: k.profileOperation, ProfileAvatar: k.profileAvatarOperation, Skills: k.SkillHandlers(), Routines: k.RoutineHandlers()}
 	if k.Resources != nil {
 		mcpHandlers := k.Resources.MCPHandlers()
 		handlers.MCP = &mcpHandlers
@@ -68,12 +74,6 @@ func (k *Kernel) StartOperations() error {
 		return err
 	}
 	k.operations.server, k.operations.binary, k.operations.root = server, binary, root
-	for _, item := range k.snapshotLinks() {
-		k.bindCurrentPaths(item)
-		if coding, ok := item.(*code.Link); ok {
-			coding.UseEnvironment(k.CLIEnvironment, k.closeIdleOperations)
-		}
-	}
 	return nil
 }
 

@@ -575,9 +575,9 @@ handlers.Skills = k.SkillHandlers() // 固定 Root、SkillsDir、动态 Redact �
 
 本切片已按单一phase合同落地，现状提炼至 [生态](../atlas/ecosystem.md)、[API](../API.md#技能运行时-cli) 与 [ADR0050](../adr/0050-skills-runtime-cli.md)；独立固定五项按首read/write及退门完整候选的精确版本封存，实际级别见 [MILESTONES](../MILESTONES.md)。不重跑已绿profile/MCP或本刀整批；此节保留同母路线已定调用合同，后续仅按新族实际增量推进，不重新开概念审批。
 
-## 批 routine：actual Timer typed CRUD（待窄结构核）
+## 批 routine：actual Timer typed CRUD（具体合同窄核PASS，实施中）
 
-L 档；沿母路线，只做当前source的routine CRUD及同刀退旧。先固定以下合同，ADR0051窄核PASS后才实现。父方已封最窄真红：`c5605860` / validation `c4046a7f9399ca14979c9942feb3b210c462c782`，真source Shell的BIN `routine list --self --json` 不识别--self，.93s/package2.730s；独立 `f29761cd` 仅新29行文件。不重复该红或已绿skills/profile/MCP。
+L 档；沿母路线，只做当前source的routine CRUD及同刀退旧。以下具体合同 `3e3067d4` 已由reviewer24单次窄核正式PASS，ADR0051 Accepted，按同一合同分面实施。父方已封最窄真红：`c5605860` / validation `c4046a7f9399ca14979c9942feb3b210c462c782`，真source Shell的BIN `routine list --self --json` 不识别--self，.93s/package2.730s；独立 `f29761cd` 仅新29行文件。不重复该红或已绿skills/profile/MCP。
 
 ### Caller、两结构与typed边界
 
