@@ -222,14 +222,13 @@ func ClassOf(tool string) Class {
 	return Normal
 }
 
-// Known reports whether the tool has an explicit table entry, or is an MCP
-// tool covered by the mcp_* rule.
+// Known reports whether the tool has an explicit table entry.
 func Known(tool string) bool {
 	name := normalize(tool)
 	if _, ok := Table[name]; ok {
 		return true
 	}
-	return strings.HasPrefix(name, mcpPrefix)
+	return false
 }
 
 // MachineTouching reports whether the tool acts on the local machine. The

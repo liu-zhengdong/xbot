@@ -14,6 +14,7 @@ var (
 	ErrClosed        = errors.New("mcp: owner closed")
 	ErrConfigChanged = errors.New("mcp: configuration_changed")
 	ErrPaused        = errors.New("mcp: calls paused")
+	ErrNotReadOnly   = errors.New("mcp: tool is not read-only")
 )
 
 // Binding supplies short configuration IO and the existing notification route.
@@ -226,7 +227,7 @@ func (r *BotRef) Reconcile(ctx context.Context) error {
 	inputs := make([]input, 0, len(specs))
 	for _, spec := range specs {
 		spec = copySpec(spec)
-		secrets, err := r.resolveSecrets(ctx, spec)
+		secrets, err := r.manager.options.resolveSecrets(ctx, spec)
 		inputs = append(inputs, input{spec: spec, secrets: secrets, err: err})
 	}
 	if err := ctx.Err(); err != nil {
@@ -242,7 +243,7 @@ func (r *BotRef) Reconcile(ctx context.Context) error {
 	var starts []replacement
 	for _, in := range inputs {
 		old := r.slots[in.spec.Name]
-		if old != nil && sameSpec(old.spec, in.spec) && maps.Equal(old.secrets, in.secrets) && sameError(old.resolveErr, in.err) {
+		if old != nil && SameSpec(old.spec, in.spec) && maps.Equal(old.secrets, in.secrets) && sameError(old.resolveErr, in.err) {
 			next[in.spec.Name] = old
 			continue
 		}
@@ -271,45 +272,6 @@ func (r *BotRef) Reconcile(ctx context.Context) error {
 	return configErr
 }
 
-func (r *BotRef) resolveSecrets(ctx context.Context, spec Spec) (map[string]string, error) {
-	names := make([]string, 0, len(spec.SecretEnvs))
-	for _, name := range spec.SecretEnvs {
-		if !r.manager.options.providerKey(name) {
-			names = append(names, name)
-		}
-	}
-	var resolved map[string]string
-	if resolve := r.manager.options.ResolveSecrets; resolve != nil {
-		var err error
-		resolved, err = resolve(ctx, names)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		resolved = map[string]string{}
-		lookup := spec.secretLookup()
-		for _, name := range names {
-			if value, ok := lookup(name); ok {
-				resolved[name] = value
-			}
-		}
-	}
-	// Copy only declared inputs. The resolver may return a reused or broader map;
-	// neither its later mutation nor unrelated credentials affect this session.
-	snapshot := make(map[string]string, len(names))
-	var missing []error
-	for _, name := range names {
-		value, ok := resolved[name]
-		if ok {
-			snapshot[name] = value
-		}
-		if !ok || value == "" {
-			missing = append(missing, fmt.Errorf("mcp: missing credential %q", name))
-		}
-	}
-	return snapshot, errors.Join(missing...)
-}
-
 func (r *BotRef) LoadTools(ctx context.Context, server string) ([]ToolSpec, error) {
 	slot, err := r.slot(server)
 	if err != nil {
@@ -324,34 +286,38 @@ func (r *BotRef) LoadTools(ctx context.Context, server string) ([]ToolSpec, erro
 	return slot.session.LoadTools(ctx)
 }
 
-func (r *BotRef) CallTool(ctx context.Context, server, remote string, arguments any) (json.RawMessage, error) {
+type CallOptions struct {
+	ReadOnly bool
+}
+
+// CallTool selects one session for both permission discovery and execution.
+// Configuration changes never redirect a call to a different session.
+func (r *BotRef) CallTool(ctx context.Context, server, remote string, arguments any, options CallOptions) (json.RawMessage, error) {
 	slot, err := r.slot(server)
 	if err != nil {
 		return nil, err
 	}
-	return r.callTool(ctx, server, remote, arguments, slot)
-}
-
-// CallToolForSpec admits an adapter call only against the configuration whose
-// schema and annotations the caller received. It never redirects to a new slot.
-func (r *BotRef) CallToolForSpec(ctx context.Context, expected Spec, remote string, arguments any) (json.RawMessage, error) {
-	r.mu.Lock()
-	if r.closed {
-		r.mu.Unlock()
-		return nil, ErrClosed
-	}
-	slot := r.slots[expected.Name]
-	if slot == nil || !sameSpec(slot.spec, expected) {
-		r.mu.Unlock()
-		return nil, ErrConfigChanged
-	}
-	r.mu.Unlock()
-	return r.callTool(ctx, expected.Name, remote, arguments, slot)
-}
-
-func (r *BotRef) callTool(ctx context.Context, server, remote string, arguments any, slot *sessionSlot) (json.RawMessage, error) {
 	if err := slot.wait(ctx); err != nil {
 		return nil, err
+	}
+	if options.ReadOnly {
+		tools, err := slot.session.LoadTools(ctx)
+		if err != nil {
+			if !r.current(server, slot) {
+				return nil, ErrConfigChanged
+			}
+			return nil, err
+		}
+		allowed := false
+		for _, tool := range tools {
+			if tool.Name == remote {
+				allowed = tool.Annotations.ReadOnlyHint
+				break
+			}
+		}
+		if !allowed {
+			return nil, fmt.Errorf("%w: %q", ErrNotReadOnly, remote)
+		}
 	}
 	r.mu.Lock()
 	var admission error
@@ -511,7 +477,8 @@ func copySpec(s Spec) Spec {
 	return s
 }
 
-func sameSpec(a, b Spec) bool {
+// SameSpec compares only effective transport configuration, not credential or fixture callbacks.
+func SameSpec(a, b Spec) bool {
 	return a.Name == b.Name && a.Command == b.Command && a.URL == b.URL && slices.Equal(a.Args, b.Args) && slices.Equal(a.SecretEnvs, b.SecretEnvs)
 }
 

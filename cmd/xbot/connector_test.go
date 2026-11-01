@@ -38,7 +38,7 @@ func TestConnectorCLI(t *testing.T) {
 	if strings.Contains(string(raw), "localhttp") {
 		t.Fatalf("still there %s", raw)
 	}
-	if err := cmdMCP(root, []string{"add", "ada", "remote", "--url", "http://127.0.0.1:9/mcp", "--secret-env", "MCP_TOKEN"}); err != nil {
+	if err := cmdMCP(root, []string{"offline", "add", "ada", "remote", "--url", "http://127.0.0.1:9/mcp", "--secret-env", "MCP_TOKEN"}); err != nil {
 		t.Fatal(err)
 	}
 	raw, err = os.ReadFile(b.MCPPath())

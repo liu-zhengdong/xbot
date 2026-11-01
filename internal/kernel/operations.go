@@ -13,7 +13,7 @@ import (
 	"xbot/internal/exec"
 )
 
-const cliProfileGuide = `资料（简介、时区、生成头像 seed）优先通过当前实例 CLI 操作：在 Shell 中用环境变量 XBOT_BIN 指向的当前二进制（按该解释器语法）先执行 profile --help，再用 --self --json。实例和当前 Bot 身份由 XBOT_* 环境提供；换头像用 profile set --self --avatar-seed；改名仍用现有 profile 工具。`
+const cliProfileGuide = `资料（简介、时区、生成头像 seed）优先通过当前实例 CLI 操作：在 Shell 中用环境变量 XBOT_BIN 指向的当前二进制（按该解释器语法）先执行 profile --help，再用 --self --json。实例和当前 Bot 身份由 XBOT_* 环境提供；换头像用 profile set --self --avatar-seed；改名仍用现有 profile 工具。MCP 管理、发现和调用使用同一当前二进制的 mcp --help，再以 --self --json 执行 list/tools/describe/call；工具用远端原名，产物 file 是本机工作区相对路径；不要经 tools/links 加载 MCP schema。`
 
 func (k *Kernel) cliProfileGuide() string {
 	k.operations.mu.Lock()
@@ -53,7 +53,12 @@ func (k *Kernel) StartOperations() error {
 	if k.operations.server != nil {
 		return nil
 	}
-	server, err := cliops.Start(root, k.profileOperation)
+	handlers := cliops.Handlers{Profile: k.profileOperation}
+	if k.Resources != nil {
+		mcpHandlers := k.Resources.MCPHandlers()
+		handlers.MCP = &mcpHandlers
+	}
+	server, err := cliops.Start(root, handlers)
 	if err != nil {
 		return err
 	}

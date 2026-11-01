@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-01
 ---
 # 0047 MCP 经实例 CLI 进入领域方法，退役模型适配

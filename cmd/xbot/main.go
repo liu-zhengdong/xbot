@@ -14,7 +14,6 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/clip"
 	"xbot/internal/config"
-	"xbot/internal/link"
 	"xbot/internal/machine"
 	"xbot/internal/proc"
 	"xbot/internal/tools"
@@ -182,6 +181,9 @@ func run(argv []string) error {
 			}
 		}
 	}
+	if len(rest) > 0 && rest[0] == "mcp" {
+		return cmdMCP(root, rest[1:])
+	}
 	// The embedded reference needs no data root, credentials, or running service.
 	if len(rest) > 0 && rest[0] == "manual" {
 		return cmdManual(rest[1:], os.Stdout)
@@ -218,7 +220,6 @@ func run(argv []string) error {
 	if err := config.HoldSearchCredentials(root); err != nil {
 		return fmt.Errorf("载入搜索密钥失败：%w", err)
 	}
-	link.SetProviderKey(config.ProviderKey)
 	tools.UseKeyEnv(keyNames)
 	tools.SetKeyLookup(config.Held)
 	bot.SetRedactText(vault.Redact)
@@ -241,8 +242,6 @@ func run(argv []string) error {
 		return cmdGroup(root, rest[1:])
 	case "link":
 		return cmdLink(root, rest[1:])
-	case "mcp":
-		return cmdMCP(root, rest[1:])
 	case "secret":
 		return cmdSecret(root, rest[1:])
 	case "vaultd":

@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"testing"
+	"xbot/internal/config"
+	"xbot/internal/mcp"
 )
 
 func TestStoreAppsCurated(t *testing.T) {
@@ -76,20 +78,20 @@ func TestLoadMCPAllBotEntryWinsAndEnableIsIdempotent(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := AddMCP(own, MCPServer{Name: "playwright", Command: "/bin/echo"}); err != nil {
+	if err := mcp.AddMCP(own, mcp.Spec{Name: "playwright", Command: "/bin/echo"}, mcp.Options{IsProviderKey: config.ProviderKey}); err != nil {
 		t.Fatal(err)
 	}
-	if err := AddMCP(own, MCPServer{Name: "mine", Command: "/bin/echo"}); err != nil {
+	if err := mcp.AddMCP(own, mcp.Spec{Name: "mine", Command: "/bin/echo"}, mcp.Options{IsProviderKey: config.ProviderKey}); err != nil {
 		t.Fatal(err)
 	}
-	list, err := LoadMCPAll(global, own)
+	list, err := mcp.LoadMCPAll(mcp.Options{IsProviderKey: config.ProviderKey}, global, own)
 	if err != nil || len(list) != 2 {
 		t.Fatalf("%v %v", list, err)
 	}
 	if list[0].Name != "playwright" || list[0].Command != "/bin/echo" {
 		t.Fatalf("bot entry must override: %+v", list[0])
 	}
-	if list, err := LoadMCPAll(filepath.Join(dir, "none.json")); err != nil || list == nil || len(list) != 0 {
+	if list, err := mcp.LoadMCPAll(mcp.Options{IsProviderKey: config.ProviderKey}, filepath.Join(dir, "none.json")); err != nil || list == nil || len(list) != 0 {
 		t.Fatalf("%v %v", list, err)
 	}
 }

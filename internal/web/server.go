@@ -307,6 +307,9 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/bots/{name}/skills/{slug}/enable", s.enableSkill)
 	mux.HandleFunc("POST /api/bots/{name}/links", s.installLink)
 	mux.HandleFunc("DELETE /api/bots/{name}/links/{id}", s.removeLink)
+	for _, route := range []string{"GET /api/bots/{name}/mcp/servers", "POST /api/bots/{name}/mcp/servers", "DELETE /api/bots/{name}/mcp/servers", "GET /api/bots/{name}/mcp/tools", "GET /api/bots/{name}/mcp/describe", "POST /api/bots/{name}/mcp/call"} {
+		mux.HandleFunc(route, s.mcpRuntime)
+	}
 	mux.HandleFunc("GET /api/bots/{name}/mcp", s.listMCP)
 	mux.HandleFunc("POST /api/bots/{name}/mcp", s.addMCP)
 	mux.HandleFunc("DELETE /api/bots/{name}/mcp/{server}", s.removeMCP)

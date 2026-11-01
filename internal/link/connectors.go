@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"xbot/internal/config"
 	"xbot/internal/mcp"
 
 	_ "embed"
@@ -69,7 +70,7 @@ func catalogRows() ([]CatalogItem, error) {
 		return nil, err
 	}
 	for i := range list {
-		if err := ValidateMCP(catalogServer(list[i])); err != nil {
+		if err := mcp.ValidateMCP(catalogServer(list[i]), mcp.Options{IsProviderKey: config.ProviderKey}); err != nil {
 			return nil, err
 		}
 	}
@@ -98,15 +99,12 @@ func EnableConnector(path, id string) error {
 	if err != nil {
 		return err
 	}
-	err = AddMCP(path, catalogServer(c))
-	if !errors.Is(err, ErrMCPExists) {
+	err = mcp.AddMCP(path, catalogServer(c), mcp.Options{IsProviderKey: config.ProviderKey})
+	if !errors.Is(err, mcp.ErrMCPExists) {
 		return err
 	}
-	return ReplaceMCP(path, catalogServer(c), func(old MCPServer) bool { return !HasSecretEnvs(old, c.SecretEnvs) })
+	return mcp.ReplaceMCP(path, catalogServer(c), func(old mcp.Spec) bool { return !mcp.HasSecretEnvs(old, c.SecretEnvs) }, mcp.Options{IsProviderKey: config.ProviderKey})
 }
-
-// HasSecretEnvs says the entry names every key in names.
-func HasSecretEnvs(s MCPServer, names []string) bool { return mcp.HasSecretEnvs(s, names) }
 
 // SecretLookup reads one value from a Bot's secrets file at call time, so a
 // key filled after the server was mounted is still found on its next start.
@@ -121,8 +119,8 @@ func SecretLookup(path string) func(string) (string, bool) {
 	}
 }
 
-func catalogServer(c CatalogItem) MCPServer {
-	return MCPServer{
+func catalogServer(c CatalogItem) mcp.Spec {
+	return mcp.Spec{
 		Name:       c.ID,
 		Command:    c.Command,
 		Args:       append([]string{}, c.Args...),

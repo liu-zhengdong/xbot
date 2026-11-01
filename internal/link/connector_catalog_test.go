@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"xbot/internal/config"
+	"xbot/internal/mcp"
 )
 
 func TestConnectorCatalogEnable(t *testing.T) {
@@ -52,7 +54,7 @@ func TestConnectorCatalogEnable(t *testing.T) {
 	if err := EnableConnector(path, "nope"); err == nil {
 		t.Fatal("unknown connector installed")
 	}
-	if err := RemoveMCP(path, "localhttp"); err != nil {
+	if err := mcp.RemoveMCP(path, "localhttp", mcp.Options{IsProviderKey: config.ProviderKey}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -66,10 +68,10 @@ func TestFilesystemConnectorIsGone(t *testing.T) {
 	if _, err := os.Stat(path); err == nil {
 		t.Fatal("a rejected connector wrote mcp.json")
 	}
-	if err := AddMCP(path, MCPServer{Name: "filesystem", Command: "mcp-server-filesystem"}); err != nil {
+	if err := mcp.AddMCP(path, mcp.Spec{Name: "filesystem", Command: "mcp-server-filesystem"}, mcp.Options{IsProviderKey: config.ProviderKey}); err != nil {
 		t.Skipf("custom entry not accepted here: %v", err)
 	}
-	list, err := LoadMCP(path)
+	list, err := mcp.LoadMCP(path, mcp.Options{IsProviderKey: config.ProviderKey})
 	if err != nil || len(list) != 1 || list[0].Name != "filesystem" {
 		t.Fatalf("hand-written entry lost: %v %v", list, err)
 	}
@@ -80,7 +82,7 @@ func TestFilesystemConnectorIsGone(t *testing.T) {
 // only for the names the server declares.
 func TestEnableConnectorUpgradesAndKeyReachesSpawn(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mcp.json")
-	if err := AddMCP(path, MCPServer{Name: "context7", Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}}); err != nil {
+	if err := mcp.AddMCP(path, mcp.Spec{Name: "context7", Command: "npx", Args: []string{"-y", "@upstash/context7-mcp"}}, mcp.Options{IsProviderKey: config.ProviderKey}); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 2; i++ {
@@ -88,8 +90,8 @@ func TestEnableConnectorUpgradesAndKeyReachesSpawn(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	list, _ := LoadMCP(path)
-	if len(list) != 1 || !HasSecretEnvs(list[0], []string{"CONTEXT7_API_KEY"}) {
+	list, _ := mcp.LoadMCP(path, mcp.Options{IsProviderKey: config.ProviderKey})
+	if len(list) != 1 || !mcp.HasSecretEnvs(list[0], []string{"CONTEXT7_API_KEY"}) {
 		t.Fatalf("not upgraded %+v", list)
 	}
 	secrets := filepath.Join(t.TempDir(), "secrets.json")
@@ -107,5 +109,17 @@ func TestEnableConnectorUpgradesAndKeyReachesSpawn(t *testing.T) {
 	s.Secret = SecretLookup(filepath.Join(t.TempDir(), "none.json"))
 	if !s.HasSecretValues([]string{"CONTEXT7_API_KEY"}) {
 		t.Fatal("environment fallback not available")
+	}
+}
+
+func TestConnectorCatalogRejectsHeldProviderCredential(t *testing.T) {
+	config.SetHeld("MCP_TOKEN", "fixture-provider-value")
+	defer config.ForgetKeys()
+	path := filepath.Join(t.TempDir(), "mcp.json")
+	if err := EnableConnector(path, "localhttp"); err == nil {
+		t.Fatal("catalogue admitted a credential held as a provider key")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("rejected catalogue entry wrote configuration", err)
 	}
 }

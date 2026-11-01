@@ -9,8 +9,10 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
+	"xbot/internal/config"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
+	"xbot/internal/mcp"
 )
 
 func TestAppsExposeMCPRuntimeWithoutProbing(t *testing.T) {
@@ -22,14 +24,12 @@ func TestAppsExposeMCPRuntimeWithoutProbing(t *testing.T) {
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	spec := link.MCPServer{Name: "playwright", Command: "/missing/mcp-runtime-fixture"}
-	if err := link.AddMCP(bot.GlobalMCPPath(root), spec); err != nil {
+	options := mcp.Options{IsProviderKey: config.ProviderKey}
+	spec := mcp.Spec{Name: "playwright", Command: "/missing/mcp-runtime-fixture"}
+	if err := mcp.AddMCP(bot.GlobalMCPPath(root), spec, options); err != nil {
 		t.Fatal(err)
 	}
-	m := link.NewMCP(spec)
-	defer m.Close()
-	k := &kernel.Kernel{Bot: b, Links: []link.Link{m}}
-	s := &Server{Root: root, Owner: "u1", kernels: map[string]*kernelEntry{"ada": {Kernel: k}}}
+	s := &Server{Root: root, Owner: "u1", kernels: map[string]*kernelEntry{"ada": {}}}
 	token, _, err := s.EnsureToken()
 	if err != nil {
 		t.Fatal(err)
@@ -59,29 +59,43 @@ func TestAppsExposeMCPRuntimeWithoutProbing(t *testing.T) {
 		return appJSON{}
 	}
 	row := read()
-	if row.LoadID != "mcp:playwright" || row.Runtime["ada"].State != "configured" || m.Status().State != "configured" {
-		t.Fatalf("GET probed process or hid configured state: %+v", row)
+	if row.LoadID != "mcp:playwright" || row.Runtime["ada"].State != "configured" {
+		t.Fatalf("GET created a runtime or hid configured state: %+v", row)
 	}
-	if _, err := m.LoadTools(context.Background()); err == nil {
+	owner := mcp.NewManager(context.Background(), options)
+	defer owner.Close()
+	ref, err := owner.Bind(mcp.Binding{Key: "ada", ReadConfig: func() ([]mcp.Spec, error) { return mcp.LoadMCPAll(options, b.GlobalMCPPath(), b.MCPPath()) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.kernels["ada"].Resources = &kernel.BotResources{MCP: ref}
+	if _, err := ref.LoadTools(context.Background(), "playwright"); err == nil {
 		t.Fatal("missing executable succeeded")
 	}
 	row = read()
 	if st := row.Runtime["ada"]; st.State != "error" || !strings.Contains(st.Error, "mcp-runtime-fixture") {
 		t.Fatalf("failure missing from API: %+v", row)
 	}
-	// A changed configuration must not inherit the old instance's failure.
-	if err := link.RemoveMCP(bot.GlobalMCPPath(root), "playwright"); err != nil {
+	// The GET must not return an older effective spec's error as the status of
+	// a newly saved configuration, or reconcile/probe it as a side effect.
+	if err := mcp.RemoveMCP(bot.GlobalMCPPath(root), "playwright", options); err != nil {
 		t.Fatal(err)
 	}
 	spec.Command = "/different/fixture"
-	if err := link.AddMCP(bot.GlobalMCPPath(root), spec); err != nil {
+	if err := mcp.AddMCP(bot.GlobalMCPPath(root), spec, options); err != nil {
 		t.Fatal(err)
 	}
 	if st := read().Runtime["ada"]; st.State != "configured" || st.Error != "" {
 		t.Fatalf("stale status: %+v", st)
 	}
-	// Successful discovery is reported for this Bot only.
+	if st := ref.Status("playwright"); !strings.Contains(st.Error, "mcp-runtime-fixture") {
+		t.Fatal("GET reconciled the runtime", st)
+	}
 	rpc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
 		var msg struct {
 			ID     json.RawMessage `json:"id"`
 			Method string          `json:"method"`
@@ -99,21 +113,20 @@ func TestAppsExposeMCPRuntimeWithoutProbing(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": msg.ID, "result": result})
 	}))
 	defer rpc.Close()
-	if err := link.RemoveMCP(bot.GlobalMCPPath(root), "playwright"); err != nil {
+	if err := mcp.RemoveMCP(bot.GlobalMCPPath(root), "playwright", options); err != nil {
 		t.Fatal(err)
 	}
-	spec = link.MCPServer{Name: "playwright", URL: rpc.URL}
-	if err := link.AddMCP(bot.GlobalMCPPath(root), spec); err != nil {
+	spec = mcp.Spec{Name: "playwright", URL: rpc.URL}
+	if err := mcp.AddMCP(bot.GlobalMCPPath(root), spec, options); err != nil {
 		t.Fatal(err)
 	}
-	ready := link.NewMCP(spec)
-	defer ready.Close()
-	k.Links = []link.Link{ready}
-	if _, err := ready.LoadTools(context.Background()); err != nil {
+	if err := ref.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ref.LoadTools(context.Background(), "playwright"); err != nil {
 		t.Fatal(err)
 	}
 	if st := read().Runtime["ada"]; st.State != "ready" || st.ToolCount != 1 {
 		t.Fatalf("success missing: %+v", st)
 	}
-
 }

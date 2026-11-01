@@ -1,4 +1,4 @@
-package link
+package mcp
 
 import (
 	"context"
@@ -83,7 +83,7 @@ func TestMCPConcurrentHTTPCancelKeepsOtherCall(t *testing.T) {
 	defer srv.Close()
 	// Release A before closing the server even when a regression fails early.
 	defer once.Do(func() { close(releaseA) })
-	m := NewMCP(MCPServer{Name: "concurrent", URL: srv.URL})
+	m := NewSession(Spec{Name: "concurrent", URL: srv.URL}, Options{})
 	defer m.Close()
 	list, err := m.LoadTools(context.Background())
 	if err != nil {
@@ -97,13 +97,13 @@ func TestMCPConcurrentHTTPCancelKeepsOtherCall(t *testing.T) {
 	ctxB, cancelB := context.WithCancel(context.Background())
 	defer cancelB()
 	aDone, bDone := make(chan error, 1), make(chan error, 1)
-	go func() { _, err := list[0].Run(ctxA, json.RawMessage(`{"who":"A"}`)); aDone <- err }()
+	go func() { _, err := m.CallTool(ctxA, list[0].Name, json.RawMessage(`{"who":"A"}`)); aDone <- err }()
 	select {
 	case <-enteredA:
 	case <-time.After(time.Second):
 		t.Fatal("A did not reach server")
 	}
-	go func() { _, err := list[0].Run(ctxB, json.RawMessage(`{"who":"B"}`)); bDone <- err }()
+	go func() { _, err := m.CallTool(ctxB, list[0].Name, json.RawMessage(`{"who":"B"}`)); bDone <- err }()
 	var bID json.RawMessage
 	select {
 	case bID = <-enteredB:

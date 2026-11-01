@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	"xbot/internal/bot"
+	"xbot/internal/config"
 	"xbot/internal/link"
+	"xbot/internal/mcp"
 )
 
 func cmdConnector(root string, args []string) error {
@@ -66,7 +68,7 @@ func cmdConnectorRemove(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := link.RemoveMCP(b.MCPPath(), args[1]); err != nil {
+	if err := mcp.RemoveMCP(b.MCPPath(), args[1], mcp.Options{IsProviderKey: config.ProviderKey}); err != nil {
 		return err
 	}
 	fmt.Printf("removed %s from %s\n", args[1], b.Name())

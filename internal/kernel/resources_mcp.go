@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"xbot/internal/cliops"
 	"xbot/internal/config"
@@ -91,7 +92,7 @@ func (r *BotResources) MCPAdd(ctx context.Context, scope string, spec mcp.Spec) 
 	if err != nil {
 		return cliops.MCPReply{}, r.mcpFailure(err)
 	}
-	return r.mcpSaved(ctx, scope, spec.Name)
+	return r.mcpSaved(ctx, scope, strings.TrimSpace(spec.Name))
 }
 
 func (r *BotResources) MCPRemove(ctx context.Context, scope, name string) (cliops.MCPReply, error) {
@@ -116,7 +117,7 @@ func (r *BotResources) MCPRemove(ctx context.Context, scope, name string) (cliop
 	if err != nil {
 		return cliops.MCPReply{}, r.mcpFailure(err)
 	}
-	return r.mcpSaved(ctx, scope, name)
+	return r.mcpSaved(ctx, scope, strings.TrimSpace(name))
 }
 
 func (r *BotResources) mcpSaved(ctx context.Context, scope, name string) (cliops.MCPReply, error) {
