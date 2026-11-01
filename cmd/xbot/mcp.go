@@ -104,7 +104,7 @@ func runMCP(rawRoot string, args []string, in io.Reader, out io.Writer) error {
 			}
 		}
 		prefix = "/v1/mcp/"
-		client = &http.Client{Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		client = cliops.LocalHTTPClient(0)
 	} else {
 		client, base, err = localOwnerClient(ctx, command.HTTP)
 		if err != nil {

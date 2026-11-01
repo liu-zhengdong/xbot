@@ -19,6 +19,37 @@ func (s *boundReadOnlyInterpreter) Run(context.Context, json.RawMessage) (string
 	return "accepted", nil
 }
 
+func TestResearchSkillDirectCommandsUseBoundSource(t *testing.T) {
+	k, _, _ := freshBot(t)
+	if err := k.StartOperations(); err != nil {
+		t.Fatal(err)
+	}
+	defer k.CloseOperations()
+	interpreter := &boundReadOnlyInterpreter{}
+	shell := readOnlyShell{Tool: interpreter, k: k}
+	for _, command := range []string{`"$XBOT_BIN" skill read ship --self --json`, `"$XBOT_BIN" skill --help`} {
+		raw, _ := json.Marshal(map[string]string{"command": command})
+		if _, err := shell.Run(context.Background(), raw); err != nil {
+			t.Fatalf("read rejected %s: %v", command, err)
+		}
+	}
+	for _, command := range []string{
+		`"$XBOT_BIN" skill write ship --description d --body body --self`,
+		`"$XBOT_BIN" skill show ship`,
+		`"$XBOT_BIN" --root /other skill read ship --self`,
+		`"$XBOT_BIN" skill read ship --self; echo injected`,
+		`xbot skill read ship --self`,
+	} {
+		raw, _ := json.Marshal(map[string]string{"command": command})
+		if _, err := shell.Run(context.Background(), raw); err == nil {
+			t.Fatalf("write/other-target accepted %s", command)
+		}
+	}
+	if interpreter.calls != 2 {
+		t.Fatalf("rejected command reached interpreter before any CLI RPC: calls=%d", interpreter.calls)
+	}
+}
+
 func TestResearchMCPDirectCommandsUseBoundSource(t *testing.T) {
 	k, _, _ := freshBot(t)
 	if err := k.StartOperations(); err != nil {

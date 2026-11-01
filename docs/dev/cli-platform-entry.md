@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**普通资料、avatar_seed、MCP 运行态与 CLI 已合入本地 main、所测真入口通过；完整改名与其余平台批次继续实施**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile 完整族与 MCP 已合本地 main；skills read/write 已实施并通过独立所测入口，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -8,7 +8,7 @@
 - MCP 的管理、发现、查看说明和调用都由 `xbot mcp …` 提供；模型按需读帮助和 schema，不常驻注入整套 MCP 或平台管理工具。
 - **退役 Link 作为统一能力接入抽象**，包括模型侧 `links` 管理入口；不是只把 `links` 工具改名。
 - **保留 Event → Inbox → 唤醒这条线**：外部消息、定时器、Webhook、文件监听、MCP 通知和任务完成仍沿已有路径投递。
-- 本文保留整体迁移路线，已实施范围仅批 0/1 普通资料首刀；不改旧 Accepted ADR 正文或 guard 旅程。后续继续先打通最窄端到端，再按能力切换并删除旧入口。
+- 本文保留整体迁移路线；profile 完整族、MCP CLI 与 skills read/write 已按切片落地，其余平台族继续推进。不改旧 Accepted ADR 正文或 guard 旅程；后续继续先打通最窄端到端，再按能力切换并删除旧入口。
 
 ## 问题与边界
 
@@ -497,13 +497,91 @@ Message冷续两段：owners→Local→storage→WithCurrentIO读currentdir/状�
 - 后续具体设计先定：runner 不可直达原实例时如何沿既有链路回接；严格只读子代理如何按其它业务动作分类 CLI。当前实例 `--self` 跨完整改名的稳定 ref 与显式本机调用沿 [ADR 0049](../adr/0049-complete-runtime-profile-entry.md)，chat/serve 的最小本机 HTTP 与当前调用方环境沿 [ADR 0043](../adr/0043-cli-platform-runtime-entry.md)，不再重新选择传输。
 - 本文不预先锁死包名、socket 路径、所有 JSON 字段与完整基础工具白名单；在第一条真实调用路径上定形，不为将来猜测造框架。
 
+## 批 skills：实例 read/write 与同刀模型门退役（2026-11-01，具体合同）
+
+### Caller 先行与结构选择
+
+```sh
+"$XBOT_BIN" skill read ship --self --json
+"$XBOT_BIN" skill write ship --title 发布 --description '发布检查' --body-file ./body.md --self --json
+"$XBOT_BIN" skill write ship --description '发布检查' --body-file - --scope self --self --json
+"$XBOT_BIN" skill write ship --description '发布检查' --body '' --scope global --self --json
+```
+
+`--self` 只定位原 source endpoint/ref，不隐含 `scope=self`。scope 省略/空白＝本数据根所有本机 Bot；仅 `self` 是 scope 保留字，显式 `global` 仍匹配真名 global 的 Bot。read 的 id 匹配库排序中的 Slug 或 Name，不以 Title 作为 id。`list/show/import/remove/enable/disable` 保持现离线命令；show 仍原 SKILL.md，不冒充 runtime read。runtime 仅 read/write，要求 --self；help 离线成功，未提供 endpoint 不离线回落，也不在本刀增加人用 HTTP 入口。
+
+| 形状 | 实际调用路径与代价 | 决定 |
+| --- | --- | --- |
+| A：CLI import 后逐 Bot enable/disable | CLI 掌握库、Bot 枚举与多次提交，正文写后失效/并发交错使默认开关与正文赢家分离，难以如实回执 | 淘汰，不用 CLI import+循环制造原子性 |
+| B：source 两个具名 typed 领域操作 | CLI 只组 argv/body；cliops 两路由→捕获原 source 的 Kernel handlers→既有库锁与 Bot config 写口，隐藏默认范围提交细节 | 采用；不加 action bus、第二 owner/Job/会话表或族级框架 |
+
+实际装配草图（未实施的函数明确为本刀新增）：
+
+```go
+// cliops: protocol DTO，不导入 Kernel。
+type SkillWrite struct { Slug, Title, Description, Scope string; Body *string }
+type SkillReadReply struct { Slug, Name, Title, Description string; Body *string; Preview, File, Access string; Bytes int64; Error string }
+type SkillWriteReply struct { Slug string; Written bool; Scope, Target string; UpdatedBots []string; Error string }
+type SkillHandlers struct {
+    Read func(context.Context, string) (SkillReadReply, error)
+    Write func(context.Context, SkillWrite) (SkillWriteReply, error)
+}
+// kernel: 两具名领域函数承接业务；resolver与routine共享匹配规则。
+func (k *Kernel) SkillHandlers() *cliops.SkillHandlers
+func readRuntimeSkill(dir, id string, disabled []string) (skill.Info, string, error)
+func writeRuntimeSkill(root, configuredDir, currentName string, in cliops.SkillWrite) (cliops.SkillWriteReply, error)
+// Kernel.StartOperations: 在实际 source 发布前捕获一次。
+handlers.Skills = k.SkillHandlers() // 固定 Root、SkillsDir、动态 Redact 函数、原 Resources ref
+// source HTTP 只绑定当前已有 K；不构造新 K/Provider，不调用 Tool.Run。
+// 新端点 GET /v1/skill/read?id=ship 与 POST /v1/skill/write。
+// cmd/research共用纯 ParseSkillRuntime；cmd先早分流，再执行 body IO/HTTP。
+```
+
+`SkillHandlers` 的 source Root/SkillsDir/Redact 不被其它新 K 覆盖；每次真正 IO 通过原 `Resources.WithCurrentIO` 取当刻当前 Bot。无 Resources 的测试/旧装配保原 K fallback。read/write 的 self 不取 XBOT_BOT；改名后 source endpoint 仍定位同 ref。原路径差异照实保留：read 在 source 配置 SkillsDir，write 虽要求 SkillsDir 配置，实际写 `skill.Dir(root)`。大正文 artifact 只在当刻当前 Bot workspace 的短 IO 内 `work.WriteResult`，不先复制旧路径再锁外写。
+
+### 参数、预算、完整结果
+
+- 纯 argv parser 只做语法分类：read 恰一 id；write 恰一 slug、必需 description、恰一个显式 `--body` 或 `--body-file FILE|-`，空 `--body ''` 合法；title/scope 可选。重复/未知 flag、缺 body/description、read 带写 flag、其它动作均拒绝。help 不读文件、不加载配置；research 不独立仿写 parser。
+- runtime 分流在本地 Migrate/EnsureDefault/HoldKeys 前。read/write 不触碰客户机默认 root；`XBOT_ROOT` 必需且规范化，显式 --root 如有必须相同；loopback/Host/browser guard 复用现 cliops 原 source。默认随 signal context，HTTP no proxy/no redirect；不重试写请求。现 profile.callProfile 与 cmd.runMCP 各有内联 http.Client，并没有已落共享客户端；本刀只在 cliops 抽取二者所需的窄 transport 构造供 source client 复用，profile 原 10s 与 MCP/skills ctx 超时保各自语义，不造 client 框架。
+- write 的完整最终序列化 JSON ≤1 MiB；`body-file`/stdin 读 max+1 后判超限，再将完整 DTO marshal 后再次按最终请求字节判预算。JSON 转义也计入，不能以原 body 大小当 wire 大小；超限非 0 且业务文件/config 零改，不能截断后写成功。服务端 MaxBytesReader 同上限、单对象/无尾随对象、拒未知字段。Body 指针区分缺失与显式空串；解码后一次规范化并校验现 ValidSlug、非空 description 和 scope，内部不再多层重复校验。
+- runtime 完整 read 新增窄 bounded 打开/解析入口，复用现 frontmatter parse 与 metadata/id 规则；选择候选时也不能先用无界 `skill.List` 读整文件，再声称有上限。按库既有排序逐候选 bounded 读取，单 SKILL.md 原始字节最多现 `work.ResultMaxBytes` 20 MiB、max+1 超限明确报错。现 `skill.Read` 的 16 KiB 策略只留给 routine 引用/旧领域读取，不称 runtime 全文。
+- 普通 read 返回完整解析 body 与 metadata 的 JSON；HTTP硬上限仍64KiB，实际完整marshal（含换行）须符合原Shell32KiB输出预算才内联。超预算时返回 metadata、有界 preview、实际 file/access=local/bytes，完整正文落现 results 产物。若 metadata 自身也超预算，回明确 projection error，不能把截过正文标成完整；不无界倾倒 metadata，不重复建 blob 系统。正文和 artifact 按原 source 动态 Redact；普通 body 不静默16KiB截断。CLI --json 只输出 DTO；人读输出正文或 preview+真实产物位置。读写错误都脱敏且非0；存在 Written/UpdatedBots partial 时先保 DTO 再非0。
+
+### resolver、库锁与 partial 的真实提交边界
+
+- 把原 openSkill 的 Slug/Name/Disabled 规则留在领域 resolver，routine 与 CLI 共用规则；runtime 以 bounded 文件打开取完整正文，routine `projectRoutineSkills` 保原引用、缺失/停用提示和16KiB读取，不扩例程正文/触发能力。历史 `redactSkillRead` 继续保护既存旧工具正文，不改旧 transcript。
+- write 先完整解码、规范化、只读范围预检：按 root 内全部本地 Bot 配置枚举，含其它 owner/shared/orphan，EqualFold 匹配目标；未知或歧义在 skill 文件/默认开关提交前拒绝。库锁内再解析实际当刻全部目标，避免排队期间旧目标集合决定新正文；没有按 owner 缩窄的新增过滤。
+- 实际顺序是 source `route.RLock` → root/skills/.write.lock → 本次全部目标解析 → `skill.Write(root,...)` → 逐 Bot `EnableSkill/DisableSkill` 的 config.json.lock（fresh merge）→ 释放库锁 → 释放 route。只序列化本库文件及默认开关的本地 IO；不反取 source operations/host/Jobs/exec locks，不做网络/模型/外部 callbacks，不为本刀另加全局准入或 cross-Bot 事务表。profile 仍按其既定顺序等 source route；没有库锁→反取 route 的路径。
+- 赢家持库锁直至全部 defaults 更新结束，所以并发 scoped writes 的最终正文和默认开关由同一写者决定。库级 ImportData/Remove/Migrate 沿原 .write.lock 串行，不把 CLI import 拼成该操作。之后用户手动 enable/disable 保持权威，read/Prompt 从当前磁盘 disabled 现读，不每次 read 重施 scope。
+- 真实 config IO 失败允许文件已写、前若干开关已改：回 `{written:true,updated_bots:[...],scope,target,error}` 和非0，明确 file written but scope update incomplete；不撤回真实成功项、不称跨 Bot 原子事务、不吞失败。目标集合内其它 Bot 并发移除/变更按实际 config 错误给 partial，不新增其它 Bot identity 注册或假定原 source route 能保护所有 Bot。
+- 写 skill 本身不自动改 persona、role、routine 引用。Remove 的 before=bot.ForgetSkill 保持；scope 字符串只看显式参数，不扫 transcript 猜“只给你”。主线 HarvestRule 仍仅确认提议或主人明确要求后写，只把执行指引换 CLI。
+
+### 只读分类与同刀退役
+
+- 从现 allowReadOnlyMCP 的 `review.DirectXBotArgs` 到纯 argv 分类抽共同直调判定：仅原 canonical 当前 BIN/精确受控 XBOT_BIN 的 POSIX 单直调，保既有拒绝替换/串联/重定向/错误 root 规则。MCP 分支继续用 ParseMCP；skills 用同 ParseSkillRuntime，只放 runtime read --self/help；write、离线 show/import/remove/enable/disable 与任意 xbot 不放进 research。无新权限 UI、白名单缓存或代理角色。
+- 同 cut 删除 skillTool/writeSkillTool、旧 decode/Confirm、registry 两 schema 与 links.toolsForLoaded 的 skills 返回工具分支；主线/legacy/continuable 的实际请求中均无 read_skill/write_skill，dev/general 原白名单/跟版说明切 CLI。保其它非 MCP Tools 门、perLocal/Jobs、历史脱敏和 routine 领域消费者；不删除仍有消费者的 skills 摘要/原生器官装配。
+- 更新 skill.ReadWith、HarvestRule、manual/子前缀，初始只给窄 CLI 指引，不把全文注固定前缀。离线旧命令业务、设置页技能开关与导入/删除均保留，不顺手迁下一平台族。
+
+### 对照回顾、怎样算对与推进缝
+
+| 已有需求/决定/守护 | 本刀对应与最小检查 |
+| --- | --- |
+| 母路线批3/原24 skills库存与1c实际一页 | A/B已对照并采用B；首条真BIN/source Shell write(title+完整body)→read，不调Tool.Run冒充CLI |
+| ADR0021环境/ADR0043实例/0046资源/0047只读/0049改名 | 原ref/currentIO/现DirectXBotArgs；无新消息账；改名后scope=self仍同Bot且原source固定目录 |
+| 生态/现skills355/444/467 | title/空body/默认全部/BoB/真名global/其它owner/shared/orphan；非法歧义零改；原运行另一K手动开关立即影响read；并发正文与默认开关同赢家 |
+| 安全/主线+legacy+continuable工具门 | research read/help允许、write/伪直调拒；真实三个provider请求无两旧schema且其它Tools门仍可用 |
+| 原routine/read历史/skill离线+ForgetSkill | routine缺失/disabled/原16KiB引用及原记录脱敏；旧show/import/remove/enable/disable有效行为保留，退役工具断言改当前入口不长期挂skip |
+| 节点≤1MiB/既有results20MiB | >16KiB尾哨兵完整、HTTP64KiB硬上限及现Shell32KiB整JSON边界、无redirect实际模型收完整artifact引用、产物真实全文/当前目录、stdin/转义后1MiB边界与超限零改、20MiB max+1拒绝 |
+
+本切片已按单一phase合同落地，现状提炼至 [生态](../atlas/ecosystem.md)、[API](../API.md#技能运行时-cli) 与 [ADR0050](../adr/0050-skills-runtime-cli.md)；独立固定五项按首read/write及退门完整候选的精确版本封存，实际级别见 [MILESTONES](../MILESTONES.md)。不重跑已绿profile/MCP或本刀整批；此节保留同母路线已定调用合同，后续仅按新族实际增量推进，不重新开概念审批。
+
 ## 还没做的
 
 - 主人日用验收尚未开始。普通资料首刀的独立审计、真入口验证与合入已完成；后续不重复该刀设计审批，按新切片复核实际增量。
-- 批 0 的后续实际操作及入站依赖清单、research 按业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
+- 批 0 的后续实际操作及入站依赖清单、尚未迁族的 research 业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已提炼 atlas，固定五项独立所测端到端按各自精确版本通过，证据见 MILESTONES；原 chat loop 下一输入/Timer handle 及其 recover、回放、通知实际消费者也已以局部红绿和 reviewer24 至 `63762ae5` 连续增量 PASS 收口，已合入本地 main，尚未日用；合并时与主线持久选择的交叠补单项真实浏览器红绿，不重跑固定五项。已通过的普通字段、avatar_seed、MCP 和本刀五项不重复整批验收，母路线其它族继续在本 dev 中推进。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
-- 技能/例程/Bot/群/连接器等平台能力逐族迁移。
+- skills read/write 已提炼现状，例程/Bot/群/连接器及剩余目录管理等平台能力继续逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。
 - 各批独立冒烟、相关旅程回归、性能与上下文收益测量、主人日用验收。

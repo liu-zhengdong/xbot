@@ -172,11 +172,11 @@ type readOnlyShell struct {
 }
 
 func (s readOnlyShell) Description() string {
-	return s.Tool.Description() + " Plain read commands run here (ls, cat, grep, git status/log/diff/show and the like), plus verified read-only MCP CLI operations on this instance. No redirection or chaining."
+	return s.Tool.Description() + " Plain read commands run here (ls, cat, grep, git status/log/diff/show and the like), plus verified read-only MCP and skill CLI operations on this instance. No redirection or chaining."
 }
 
 func (s readOnlyShell) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	if !review.ShellToolIsReadOnly(s.Name(), args) && !s.k.allowReadOnlyMCP(s.Name(), args) {
+	if !review.ShellToolIsReadOnly(s.Name(), args) && !s.k.allowReadOnlyPlatform(s.Name(), args) {
 		return "", errors.New("shell: 这个子代理只能运行单纯的读取命令，不能重定向、串联命令或写入")
 	}
 	return s.Tool.Run(ctx, args)

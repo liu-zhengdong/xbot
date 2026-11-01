@@ -97,6 +97,10 @@
 
 ## 配置与兼容
 
+- **领域回包预算要服从实际下一消费者，HTTP通过不能证明模型拿到完整数据。** 原因：skills按64KiB JSON投影，实际Shell只保32KiB stdout，40KiB普通正文成功exit0却给模型截断JSON且无完整引用。复用现Shell预算只读alias决定整个JSON含换行是否内联，最终artifactreply/metadata也校较小预算；不提高全Shell或让research重定向。守护：独立 `TestCLISkillRuntimeShellOutputBudget` 在`9100c791`真source无redirect红 .94s，`e21224cf`该项 .13s与受影响预算1.10s绿；精确caller边界单位 .979s。Seen 1×（2026-11-01）。
+
+- **绕开有副作用的Load不等于可以丢掉它原本保护的未迁移字段。** 原因：skills只读scope预检需要避免Load触发style→memory；但非迁移开关入口复用整Config marshal后，Config不认识的style被无声删掉。原config锁内只merge请求开关并保其它raw字段，不另建writer或把记忆迁移塞回route。守护：`TestNonmigratingSkillSwitchPreservesLegacyStyle` 在首`1551c71e`实际红3.168s，`9100c791`同缝绿 .375s；保偏好/未知字段与当前fresh配置，同时回执仍按真实成功项。Seen 1×（2026-11-01）。
+
 - **改名的路径前缀要匹配同一目录的逻辑与物理拼写，不能只比 name 和词法 Rel。** 原因：合法 `/var` 或用户 symlink root 下，原 Shell `pwd -P` 已保存物理目录；mover 用原 root 拼写，未匹配就把 atName 置新，后续原 project 永久留旧前缀并误退工作根。UseBot 的新配置也不能充当原 WorkDir 来源。复用现有路径 resolver 识别同一前缀；保外部/相对 Repo 与权限 roots，不改输入去绕过合法 alias。守护：`TestProfileAliasedRootKeepsPhysicalLiveProject` 先红 .659s、race 绿1.794s，`TestProfileChangeColdCwdUsesPhysicalRootIdentity` 先红 .634s、绿 .488s；独立 ONLYResources 在 `0004ad0f` 命中同 `/var`→`/private/var` 漏迁，不将其它通过组算作该 case 已过。Seen 1×（2026-11-01）。
 
 - **新增 fresh 读取时，消费到的字段要延续已有 Loader 的归一化。** 原因：头像读取直接解磁盘 config，遗漏 Load 对缺 name 使用目录名的既有回退，使受支持旧 Bot 的模板名字、seed 和生成器输入变空。复用归一化规则，不扩大到未使用字段。守护：`TestOldConfigWithoutAvatar` 的缺 name、模板与生成器断言在 `0053145b` 红、`3816c3bb` 定向 race 绿，并保留改名不换脸检查。Seen 1×（2026-11-01）。

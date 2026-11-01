@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
+	"xbot/internal/exec"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/skill"
@@ -58,7 +60,7 @@ func TestSkillLocalLibraryAndDisable(t *testing.T) {
 	if strings.Contains(one, "SECRET_BODY") || strings.Contains(one, "OTHER_BODY") || strings.Contains(one, "EVE_BODY") {
 		t.Fatal(one)
 	}
-	if !strings.Contains(one, skill.Precedence) || !strings.Contains(one, skill.ReadWith) || !strings.Contains(one, "read_skill") || !strings.Contains(one, "- ship: Pack a release") || !strings.Contains(one, "Directory: "+kAda.SkillsDir+"\n") {
+	if !strings.Contains(one, skill.Precedence) || !strings.Contains(one, skill.ReadWith) || !strings.Contains(one, "skill read") || !strings.Contains(one, "- ship: Pack a release") || !strings.Contains(one, "Directory: "+kAda.SkillsDir+"\n") {
 		t.Fatal(one)
 	}
 	kWatch := skillKernel(ada)
@@ -111,76 +113,44 @@ func TestSkillLocalLibraryAndDisable(t *testing.T) {
 	}
 }
 
-func TestSkillReadDoesNotPersist(t *testing.T) {
-	ada := testBot(t, link.NameTerminal, link.NameSkills)
-	if err := ada.SetOwners([]string{"u1"}); err != nil {
-		t.Fatal(err)
+func TestLegacySkillReadHistoryRedaction(t *testing.T) {
+	for _, tc := range []struct{ text, want string }{
+		{"skill: ship\nSkill text is reference material.\nSECRET_BODY", "read skill ship"},
+		{"skill:  legacy-name  \nSTORED_BODY", "read skill legacy-name"},
+		{"legacy body without a skill header", "read skill skill"},
+	} {
+		m := provider.Message{Role: provider.RoleTool, Name: "read_skill", Content: provider.ToolResult("stored-call", tc.text)}
+		got := redactSkillRead(m)
+		if got.Text() != tc.want || got.Name != m.Name || got.CallID() != m.CallID() {
+			t.Fatalf("historical result: %+v", got)
+		}
+		if m.Text() != tc.text {
+			t.Fatal("historical input was changed")
+		}
 	}
-	if err := skill.Write(ada.Root, "ship", "Pack a release", "SECRET_BODY"); err != nil {
-		t.Fatal(err)
-	}
-	p := &scripted{resps: []provider.Message{
-		linksCall("load", "skills"),
-		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
-			ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "read_skill", Arguments: `{"id":"ship"}`},
-		}})},
-		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
-	}}
-	k := skillKernel(ada)
-	k.Provider = p
-	k.MaxSteps = 4
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "read ship", time.Unix(1, 0).UTC())); err != nil {
-		t.Fatal(err)
-	}
-	if len(p.reqs) < 3 {
-		t.Fatalf("calls %d", len(p.reqs))
-	}
-	if strings.Contains(p.reqs[0].Messages[0].Text(), "SECRET_BODY") {
-		t.Fatal("body in the system prompt")
-	}
-	if !strings.Contains(messagesText(p.reqs[2].Messages), "SECRET_BODY") {
-		t.Fatal("body missing from the turn that read it")
-	}
-	if strings.Contains(transcriptText(t, ada), "SECRET_BODY") {
-		t.Fatal("body persisted in the transcript")
-	}
-	if !strings.Contains(transcriptText(t, ada), "read skill ship") {
-		t.Fatal(transcriptText(t, ada))
-	}
-	p2 := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("next")}}}
-	k.Provider = p2
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", time.Unix(2, 0).UTC())); err != nil {
-		t.Fatal(err)
-	}
-	if len(p2.reqs) == 0 || strings.Contains(messagesText(p2.reqs[0].Messages), "SECRET_BODY") {
-		t.Fatal("skill body lasted into the next turn")
+	for _, m := range []provider.Message{
+		{Role: provider.RoleTool, Name: "sh", Content: provider.TextContent("ordinary CLI output")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("skill: ship\nordinary reply")},
+	} {
+		if got := redactSkillRead(m); got.Text() != m.Text() {
+			t.Fatal("changed an unrelated historical value")
+		}
 	}
 }
 
-// write_skill is a normal tool: it writes a user skill, not this bot's own
-// persona or profile, so the one policy table does not ask.
 func TestSkillWriteDoesNotNeedApproval(t *testing.T) {
 	ada := testBot(t, link.NameTerminal, link.NameSkills)
 	if err := ada.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	args := `{"slug":"ship","description":"Pack a release","body":"SECRET_BODY"}`
-	p := &scripted{resps: []provider.Message{
-		linksCall("load", "skills"),
-		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
-			ID: "c2", Type: "function", Function: provider.FunctionCall{Name: "write_skill", Arguments: args},
-		}})},
-		{Role: provider.RoleAssistant, Content: provider.TextContent("wrote")},
-	}}
 	k := skillKernel(ada)
-	k.Provider = p
-	k.MaxSteps = 4
 	k.Approve = func(context.Context, string, string) (bool, error) {
-		t.Fatal("write_skill should not ask")
+		t.Fatal("skill domain write should not ask")
 		return false, nil
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "draft ship", time.Unix(1, 0).UTC())); err != nil {
-		t.Fatal(err)
+	body := "SECRET_BODY"
+	if reply, err := k.SkillHandlers().Write(context.Background(), cliops.SkillWrite{Slug: "ship", Description: "Pack a release", Body: &body}); err != nil || !reply.Written {
+		t.Fatalf("write: %+v %v", reply, err)
 	}
 	raw, err := os.ReadFile(skillPath(ada, "ship"))
 	if err != nil {
@@ -206,80 +176,108 @@ func TestSkillWriteDoesNotNeedApproval(t *testing.T) {
 	}
 }
 
-func TestReadSkillWithoutLoad(t *testing.T) {
+func TestSkillReadWithoutLinkLoad(t *testing.T) {
 	ada := testBot(t, link.NameTerminal, link.NameSkills)
-	if err := ada.SetOwners([]string{"u1"}); err != nil {
-		t.Fatal(err)
-	}
 	if err := skill.Write(ada.Root, "ship", "Pack a release", "SECRET_BODY"); err != nil {
 		t.Fatal(err)
 	}
-	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
-			ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "read_skill", Arguments: `{"id":"ship"}`},
-		}})},
-		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
-	}}
 	k := skillKernel(ada)
-	k.Provider = p
-	k.MaxSteps = 4
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "read ship", time.Unix(1, 0).UTC())); err != nil {
-		t.Fatal(err)
+	reply, err := k.SkillHandlers().Read(context.Background(), "ship")
+	if err != nil || reply.Body == nil || *reply.Body != "SECRET_BODY" || reply.Slug != "ship" {
+		t.Fatalf("read: %+v %v", reply, err)
 	}
-	if len(p.reqs) < 2 {
-		t.Fatalf("calls %d", len(p.reqs))
-	}
-	// Both native skill tools are callable without loading a Link.
-	if !hasToolName(mustMounted(t, k), "read_skill") || !hasToolName(mustMounted(t, k), "write_skill") {
-		t.Fatal("native skill tools must be ready")
-	}
-	text := messagesText(p.reqs[1].Messages)
-	if strings.Contains(text, "unknown tool") || !strings.Contains(text, "SECRET_BODY") {
-		t.Fatal(text)
+	if k.isLoaded(link.NameSkills) {
+		t.Fatal("domain read required a link load")
 	}
 }
 
-func TestDispatchMainLineWritesLoadedSkill(t *testing.T) {
-	ada := testBot(t, link.NameTerminal, link.NameSkills, link.NameAgents)
-	if err := ada.SetOwners([]string{"u1"}); err != nil {
+func TestSkillReadUsesSlugOrNameNotTitle(t *testing.T) {
+	b := testBot(t, link.NameSkills)
+	path := skillPath(b, "ship")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		t.Fatal(err)
 	}
-	p := &scripted{resps: []provider.Message{
-		linksCall("load", "skills"),
-		assistantCall("write", "", "write_skill", `{"slug":"ship","description":"Pack a release","body":"Run the release checks."}`),
-		assistantCall("read", "", "read_skill", `{"id":"ship"}`),
-		{Role: provider.RoleAssistant, Content: provider.TextContent("installed")},
-	}}
-	k := skillKernel(ada)
-	k.Provider = p
-	k.Dispatch = true
-	k.PermissionsOn = func() bool { return true }
-	k.Links = append(k.Links, link.Agents{})
-	k.MaxSteps = 6
-	k.Approve = func(context.Context, string, string) (bool, error) {
-		t.Error("writing a skill must use the existing Normal policy")
-		return false, nil
-	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "install ship", time.Unix(1, 0).UTC())); err != nil {
+	if err := os.WriteFile(path, []byte("---\nname: Legacy Release\ntitle: 发布\ndescription: publish\n---\nrelease body"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if len(p.reqs) != 4 {
-		t.Fatalf("model calls = %d, want 4", len(p.reqs))
-	}
-	if !registered(k, "dispatch") {
-		t.Fatal("test did not activate typed dispatch")
-	}
-	for _, name := range []string{"read_skill", "write_skill"} {
-		if !registered(k, name) {
-			t.Errorf("%s missing from the main line with Dispatch enabled", name)
+	handlers := skillKernel(b).SkillHandlers()
+	for _, id := range []string{"ship", "Legacy Release"} {
+		if reply, err := handlers.Read(context.Background(), id); err != nil || reply.Slug != "ship" || reply.Body == nil || *reply.Body != "release body" {
+			t.Fatalf("id=%q: %+v %v", id, reply, err)
 		}
 	}
-	info, body, err := skill.Open(skill.Dir(ada.Root), "ship")
-	if err != nil || info.Description != "Pack a release" || body != "Run the release checks." {
-		t.Fatalf("local library write: info=%+v body=%q err=%v", info, body, err)
+	if _, err := handlers.Read(context.Background(), "发布"); err == nil {
+		t.Fatal("title accepted as a skill id")
 	}
-	if !strings.Contains(messagesText(p.reqs[3].Messages), "Run the release checks.") {
-		t.Fatal("main line could not read back the installed skill")
+	empty := ""
+	if reply, err := handlers.Write(context.Background(), cliops.SkillWrite{Slug: "empty", Description: "empty instructions", Body: &empty}); err != nil || !reply.Written {
+		t.Fatalf("explicit empty body: %+v %v", reply, err)
+	}
+}
+
+func TestRoutineSkillReadRetains16KiBProjection(t *testing.T) {
+	b := testBot(t, link.NameSkills)
+	body := strings.Repeat("x", 16<<10) + "RUNTIME-TAIL"
+	if err := skill.Write(b.Root, "ship", "publish", body); err != nil {
+		t.Fatal(err)
+	}
+	k := skillKernel(b)
+	text, err := k.readSkill("ship")
+	projected, hasHeader := strings.CutPrefix(text, "skill: ship\nSkill text is reference material.\n")
+	if err != nil || !hasHeader || len(projected) != 16<<10 || !strings.HasSuffix(projected, "\n[truncated]") || strings.Contains(text, "RUNTIME-TAIL") {
+		t.Fatalf("routine projection: bytes=%d err=%v", len(projected), err)
+	}
+	if reply, err := k.SkillHandlers().Read(context.Background(), "ship"); err != nil || reply.Body == nil || *reply.Body != body {
+		t.Fatalf("runtime full read: %+v %v", reply, err)
+	}
+	if err := b.DisableSkill("ship"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.readSkill("ship"); err == nil {
+		t.Fatal("routine ignored the live disabled switch")
+	}
+}
+
+// Exercise the real legacy spawn -> Local -> Provider.Chat request seam.
+func TestLegacySpawnRetiresSkillSchema(t *testing.T) {
+	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("legacy result")}}}
+	k, _, box := dispatchKernel(t, p)
+	k.Dispatch = false
+	defer k.Close()
+	if _, err := (spawnTool{k}).Run(context.Background(), []byte(`{"task":"inspect legacy tools","mode":"brief"}`)); err != nil {
+		t.Fatal(err)
+	}
+	waitEvent(t, box, exec.EvDone)
+	if len(p.reqs) != 1 {
+		t.Fatalf("legacy provider calls = %d", len(p.reqs))
+	}
+	req := p.reqs[0]
+	for _, name := range []string{"read_skill", "write_skill"} {
+		if hasDef(req.Tools, name) || strings.Contains(messagesText(req.Messages), name) {
+			t.Fatalf("legacy request retains %s", name)
+		}
+	}
+	for _, name := range []string{"read_file", "write_file"} {
+		if !hasDef(req.Tools, name) {
+			t.Fatalf("legacy request lost %s", name)
+		}
+	}
+	mainTools, err := k.modelTools()
+	if err != nil || !hasToolName(declared(mainTools), "tools") {
+		t.Fatalf("main tools door was removed with skills: %v", err)
+	}
+	door := toolDoor{k}
+	if out, err := door.Run(context.Background(), json.RawMessage(`{"action":"describe","id":"bot_propose_persona"}`)); err != nil || !strings.Contains(out, "bot_propose_persona") {
+		t.Fatalf("remaining persona schema: %q %v", out, err)
+	}
+	for _, id := range []string{"read_skill", "write_skill", "unknown-skill-action"} {
+		args, err := json.Marshal(map[string]string{"action": "describe", "id": id})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := door.Run(context.Background(), args); err == nil {
+			t.Fatalf("tools door describes retired/unknown id %q", id)
+		}
 	}
 }
 
@@ -300,43 +298,17 @@ func TestSkillHarvestProposalAndConfirmation(t *testing.T) {
 	if _, err := os.Stat(skillPath(ada, "multi-import")); !os.IsNotExist(err) {
 		t.Fatalf("proposal wrote a skill: %v", err)
 	}
-	p = &scripted{resps: []provider.Message{
-		linksCall("load", "skills"),
-		assistantCall("write", "", "write_skill", `{"slug":"multi-import","description":"Import skills from several sources","body":"Import and resolve name conflicts."}`),
-		assistantCall("read", "", "read_skill", `{"id":"multi-import"}`),
-		{Role: provider.RoleAssistant, Content: provider.TextContent("Saved.")},
-	}}
-	k.Provider = p
-	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "Confirm", time.Unix(2, 0))); err != nil {
+	// Confirmation is behavioral guidance; the typed operation performs the save.
+	body := "Import and resolve name conflicts."
+	if _, err := k.SkillHandlers().Write(context.Background(), cliops.SkillWrite{Slug: "multi-import", Description: "Import skills from several sources", Body: &body}); err != nil {
 		t.Fatal(err)
 	}
-	if !registered(k, "write_skill") || !strings.Contains(messagesText(p.reqs[3].Messages), "Import and resolve name conflicts.") {
-		t.Fatal("loaded skill tools did not write and read the skill")
+	reply, err := k.SkillHandlers().Read(context.Background(), "multi-import")
+	if err != nil || reply.Body == nil || *reply.Body != body {
+		t.Fatalf("confirmed write/read: %+v %v", reply, err)
 	}
 	if !strings.Contains(systemOf(t, k), "multi-import: Import skills from several sources") {
 		t.Fatal("new skill missing from the list")
-	}
-	if !strings.Contains((writeSkillTool{k}).Description(), "only after the owner confirms") {
-		t.Fatal("write_skill description lacks confirmation guidance")
-	}
-}
-
-func TestSkillDescriptionsNameLocalLibrary(t *testing.T) {
-	k := &Kernel{SkillsDir: filepath.Join(t.TempDir(), ".xbot-dev", "skills")}
-	for name, text := range map[string]string{
-		"read_skill":  (skillTool{k}).Description(),
-		"write_skill": (writeSkillTool{k}).Description(),
-	} {
-		t.Run(name, func(t *testing.T) {
-			if !strings.Contains(text, k.SkillsDir) || strings.Contains(text, "~/.xbot") {
-				t.Errorf("missing runtime library path: %s", text)
-			}
-			for _, misleading := range []string{"<owner>", "magpie", "approve", "approval"} {
-				if strings.Contains(strings.ToLower(text), misleading) {
-					t.Errorf("description contradicts local library / Normal policy: %s", text)
-				}
-			}
-		})
 	}
 }
 
@@ -354,7 +326,7 @@ func skillPath(b *bot.Bot, slug string) string {
 
 func TestSkillWriteTitleAndScope(t *testing.T) {
 	for _, tc := range []struct{ name, scope, target string }{
-		{"other-owner", "eve", "eve"}, {"no-owner", "orphan", "orphan"}, {"shared", "mix", "mix"}, {"self", "self", "ada"}, {"named", "BoB", "bob"}, {"current-name", "ADA", "ada"}, {"omitted", "", ""}, {"blank", "  ", ""},
+		{"other-owner", "eve", "eve"}, {"no-owner", "orphan", "orphan"}, {"shared", "mix", "mix"}, {"real-global", "global", "global"}, {"self", "self", "ada"}, {"named", "BoB", "bob"}, {"current-name", "ADA", "ada"}, {"omitted", "", ""}, {"blank", "  ", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ada := testBot(t, link.NameTerminal, link.NameSkills)
@@ -362,7 +334,7 @@ func TestSkillWriteTitleAndScope(t *testing.T) {
 				t.Fatal(err)
 			}
 			bots := map[string]*bot.Bot{"ada": ada}
-			for _, name := range []string{"bob", "eve", "mix", "orphan"} {
+			for _, name := range []string{"bob", "eve", "mix", "orphan", "global"} {
 				b, err := bot.Create(ada.Root, name, "persona", []string{link.NameSkills})
 				if err != nil {
 					t.Fatal(err)
@@ -387,17 +359,15 @@ func TestSkillWriteTitleAndScope(t *testing.T) {
 			for name, b := range bots {
 				running[name] = skillKernel(b)
 			}
-			args := map[string]string{"slug": "note-capture", "title": "记一下", "description": "A long description", "body": "Capture the note."}
-			if tc.name != "omitted" {
-				args["scope"] = tc.scope
-			}
-			raw, _ := json.Marshal(args)
-			p := &scripted{resps: []provider.Message{linksCall("load", "skills"), assistantCall("write", "", "write_skill", string(raw)), {Role: provider.RoleAssistant, Content: provider.TextContent("installed")}}}
+			bodyText := "Capture the note."
+			in := cliops.SkillWrite{Slug: "note-capture", Title: "记一下", Description: "A long description", Body: &bodyText, Scope: tc.scope}
 			k := running["ada"]
-			k.Provider = p
-			// Deliberately mentions only-for-you even when scope is omitted: the server must not infer it.
-			if err := k.Handle(context.Background(), link.TerminalEvent("u1", "只给你用", time.Unix(1, 0))); err != nil {
+			// A conversation mentioning only-for-you must not change an omitted scope.
+			if err := ada.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("只给你用")}}); err != nil {
 				t.Fatal(err)
+			}
+			if reply, err := k.SkillHandlers().Write(context.Background(), in); err != nil || !reply.Written {
+				t.Fatalf("write: %+v %v", reply, err)
 			}
 			info, body, err := skill.Open(skill.Dir(ada.Root), "note-capture")
 			if err != nil || info.Title != "记一下" || info.Name != "note-capture" || body != "Capture the note." {
@@ -412,7 +382,7 @@ func TestSkillWriteTitleAndScope(t *testing.T) {
 				if got := !slices.Contains(b.Config().DisabledSkills, "note-capture"); got != want {
 					t.Fatalf("%s enabled=%v want=%v", name, got, want)
 				}
-				_, _, err = running[name].openSkill("note-capture")
+				_, err = running[name].SkillHandlers().Read(context.Background(), "note-capture")
 				if (err == nil) != want {
 					t.Fatalf("running %s: %v; want enabled=%v", name, err, want)
 				}
@@ -432,7 +402,7 @@ func TestSkillWriteTitleAndScope(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				_, _, err = running["bob"].openSkill("note-capture")
+				_, err = running["bob"].SkillHandlers().Read(context.Background(), "note-capture")
 				if (err != nil) != disable {
 					t.Fatalf("manual switch: disabled=%v err=%v", disable, err)
 				}
@@ -442,25 +412,58 @@ func TestSkillWriteTitleAndScope(t *testing.T) {
 }
 
 func TestSkillWriteRejectsInvalidScopeBeforeWrite(t *testing.T) {
-	ada := testBot(t, link.NameSkills)
-	if err := ada.SetOwners([]string{"u1"}); err != nil {
-		t.Fatal(err)
-	}
-	eve, err := bot.Create(ada.Root, "eve", "persona", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := eve.SetOwners([]string{"u2"}); err != nil {
-		t.Fatal(err)
-	}
-	for _, scope := range []string{"missing", "../ada"} {
-		raw, _ := json.Marshal(map[string]string{"slug": "note-capture", "description": "description", "body": "body", "scope": scope})
-		if _, err := (writeSkillTool{k: skillKernel(ada)}).Run(context.Background(), raw); err == nil {
-			t.Fatalf("accepted %q", scope)
-		}
-		if _, err := os.Stat(skillPath(ada, "note-capture")); !os.IsNotExist(err) {
-			t.Fatalf("invalid scope wrote file: %v", err)
-		}
+	for _, scope := range []string{"missing", "../ada", "ambiguous"} {
+		t.Run(scope, func(t *testing.T) {
+			ada := testBot(t, link.NameSkills)
+			if err := ada.SetOwners([]string{"u1"}); err != nil {
+				t.Fatal(err)
+			}
+			eve, err := bot.Create(ada.Root, "eve", "persona", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := eve.SetOwners([]string{"u2"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := skill.Write(ada.Root, "note-capture", "original", "original body"); err != nil {
+				t.Fatal(err)
+			}
+			if err := ada.DisableSkill("note-capture"); err != nil {
+				t.Fatal(err)
+			}
+			if scope == "ambiguous" {
+				// Duplicate configured names exercise ambiguity on case-insensitive filesystems too.
+				cfg := eve.Config()
+				cfg.Name = "ada"
+				raw, err := json.Marshal(cfg)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(bot.Dir(ada.Root, "eve"), "config.json"), raw, 0600); err != nil {
+					t.Fatal(err)
+				}
+				scope = "ADA"
+			}
+			before := map[string]string{}
+			for _, path := range []string{skillPath(ada, "note-capture"), filepath.Join(bot.Dir(ada.Root, "ada"), "config.json"), filepath.Join(bot.Dir(ada.Root, "eve"), "config.json")} {
+				raw, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				before[path] = string(raw)
+			}
+			body := "replacement body"
+			reply, err := skillKernel(ada).SkillHandlers().Write(context.Background(), cliops.SkillWrite{Slug: "note-capture", Description: "replacement", Body: &body, Scope: scope})
+			if err == nil || reply.Written || len(reply.UpdatedBots) != 0 {
+				t.Fatalf("accepted %q: %+v %v", scope, reply, err)
+			}
+			for path, want := range before {
+				raw, err := os.ReadFile(path)
+				if err != nil || string(raw) != want {
+					t.Fatalf("invalid scope changed %s: %v", path, err)
+				}
+			}
+		})
 	}
 }
 
@@ -488,8 +491,7 @@ func TestSkillScopedWritesKeepFileAndSwitchesTogether(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			raw, _ := json.Marshal(map[string]string{"slug": "note-capture", "description": "capture", "body": target, "scope": target})
-			if _, err := (writeSkillTool{k: skillKernel(ada)}).Run(context.Background(), raw); err != nil {
+			if _, err := skillKernel(ada).SkillHandlers().Write(context.Background(), cliops.SkillWrite{Slug: "note-capture", Description: "capture", Body: &target, Scope: target}); err != nil {
 				t.Error(err)
 			}
 		}()

@@ -13,6 +13,10 @@ func cmdSkill(root string, args []string) error {
 	if len(args) == 0 {
 		return errUsage
 	}
+	switch args[0] {
+	case "read", "write", "help", "--help", "-h":
+		return cmdSkillRuntime(root, root != "", args)
+	}
 	if err := skill.Migrate(root); err != nil {
 		fmt.Fprintf(os.Stderr, "skill migration: %v\n", err)
 	}

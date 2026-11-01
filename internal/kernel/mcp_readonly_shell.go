@@ -8,7 +8,7 @@ import (
 	"xbot/internal/review"
 )
 
-func (k *Kernel) allowReadOnlyMCP(interpreter string, args json.RawMessage) bool {
+func (k *Kernel) allowReadOnlyPlatform(interpreter string, args json.RawMessage) bool {
 	if k == nil {
 		return false
 	}
@@ -39,7 +39,14 @@ func (k *Kernel) allowReadOnlyMCP(interpreter string, args json.RawMessage) bool
 		}
 		argv = argv[1:]
 	}
-	if len(argv) == 0 || argv[0] != "mcp" {
+	if len(argv) == 0 {
+		return false
+	}
+	if argv[0] == "skill" {
+		parsed, err := cliops.ParseSkillRuntime(argv[1:])
+		return err == nil && (parsed.Help || parsed.Self && parsed.Action == "read")
+	}
+	if argv[0] != "mcp" {
 		return false
 	}
 	parsed, err := cliops.ParseMCP(argv[1:])
