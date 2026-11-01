@@ -28,6 +28,8 @@ Usage:
   xbot [--root DIR] fork <src> <name> --role TEXT [--group NAME]
   xbot [--root DIR] delete <name>
   xbot [--root DIR] list
+  xbot peer-message --help
+  xbot [--root DIR] peer-message TARGET --self (--text TEXT | --file FILE|-) [--json]
   xbot chat-group --help
   xbot [--root DIR] chat-group list --self [--json]
   xbot [--root DIR] chat-group history GROUP_ID --self [--limit N] [--before-id ID] [--sender NAME] [--keyword TEXT] [--json]
@@ -193,6 +195,9 @@ func run(argv []string) error {
 	}
 	if err != nil {
 		return err
+	}
+	if len(rest) > 0 && rest[0] == "peer-message" {
+		return cmdPeerMessageRuntime(root, len(argv) > len(rest), rest[1:])
 	}
 	if len(rest) > 0 && rest[0] == "chat-group" {
 		return cmdChatGroupRuntime(root, len(argv) > len(rest), rest[1:])

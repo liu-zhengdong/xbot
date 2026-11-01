@@ -64,7 +64,7 @@ func (k *Kernel) StartOperations() error {
 			coding.UseEnvironment(k.CLIEnvironment, k.closeIdleOperations)
 		}
 	}
-	handlers := cliops.Handlers{Profile: k.profileOperation, ProfileAvatar: k.profileAvatarOperation, Skills: k.SkillHandlers(), Routines: k.RoutineHandlers(), Bots: k.BotHandlers(), ChatGroups: k.ChatGroupHandlers()}
+	handlers := cliops.Handlers{Profile: k.profileOperation, ProfileAvatar: k.profileAvatarOperation, Skills: k.SkillHandlers(), Routines: k.RoutineHandlers(), Bots: k.BotHandlers(), ChatGroups: k.ChatGroupHandlers(), PeerMessage: k.peerMessageRuntime}
 	if k.Resources != nil {
 		mcpHandlers := k.Resources.MCPHandlers()
 		handlers.MCP = &mcpHandlers

@@ -147,28 +147,42 @@ func contains(ss []string, s string) bool {
 	return false
 }
 
-// Message posts text into to's inbox as an untrusted bot event.
-// hops is the delivery count for this event, already incremented by the caller.
+// MessageResult reports only the original local Inbox.Post acceptance.
+type MessageResult struct {
+	EventID string
+	Posted  bool
+	Stage   string
+}
+
+// Message retains the original error-only call contract.
 func (b *Bus) Message(from, to, text, chain string, hops int, now time.Time) error {
+	_, err := b.MessageWithResult(from, to, text, chain, hops, now)
+	return err
+}
+
+// MessageWithResult is the sole local message writer. The rate write precedes
+// recipient IO, so a later error does not imply the rate was unchanged.
+func (b *Bus) MessageWithResult(from, to, text, chain string, hops int, now time.Time) (MessageResult, error) {
+	result := MessageResult{Stage: "validation"}
 	if from == "" || to == "" || from == to {
-		return errors.New("peer: bad target")
+		return result, errors.New("peer: bad target")
 	}
 	if hops < 1 || hops > MaxHops {
-		return fmt.Errorf("peer: hop limit %d", MaxHops)
+		return result, fmt.Errorf("peer: hop limit %d", MaxHops)
 	}
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return errors.New("peer: empty message")
+		return result, errors.New("peer: empty message")
 	}
 	if len(text) > MaxText {
-		return errors.New("peer: message too long")
+		return result, errors.New("peer: message too long")
 	}
 	if _, err := bot.Load(b.Root, from); err != nil {
-		return err
+		return result, err
 	}
 	visible, err := VisibleBots(b.Root, from)
 	if err != nil {
-		return err
+		return result, err
 	}
 	var ok bool
 	for _, cfg := range visible {
@@ -178,17 +192,19 @@ func (b *Bus) Message(from, to, text, chain string, hops int, now time.Time) err
 		}
 	}
 	if !ok {
-		return fmt.Errorf("peer: %s is not visible to %s", to, from)
+		return result, fmt.Errorf("peer: %s is not visible to %s", to, from)
 	}
 	if now.IsZero() {
 		now = b.now()
 	}
+	result.Stage = "rate"
 	if err := b.allow(from+"->"+to, now); err != nil {
-		return err
+		return result, err
 	}
+	result.Stage = "recipient_load"
 	target, err := bot.Load(b.Root, to)
 	if err != nil {
-		return err
+		return result, err
 	}
 	if chain == "" {
 		chain = newID("ch_")
@@ -197,11 +213,17 @@ func (b *Bus) Message(from, to, text, chain string, hops int, now time.Time) err
 	ev.SenderKind = link.KindBot
 	ev.Hops = hops
 	ev.Chain = chain
+	result.Stage = "recipient_open"
 	box, err := inbox.Open(target.InboxPath())
 	if err != nil {
-		return err
+		return result, err
 	}
-	return box.Post(ev)
+	result.Stage = "recipient_post"
+	if err := box.Post(ev); err != nil {
+		return result, err
+	}
+	result.EventID, result.Posted, result.Stage = ev.ID, true, "complete"
+	return result, nil
 }
 
 // CreateGroup makes a group. members must be visible to ownerBot. ownerBot is included.

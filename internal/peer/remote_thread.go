@@ -3,6 +3,7 @@ package peer
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"xbot/internal/bot"
@@ -14,15 +15,37 @@ const (
 	// KindBounce marks a row for a remote message that could not be delivered.
 	KindBounce = "bounce"
 
-	statusSent   = "sent"
-	statusQueued = "queued"
-	statusFailed = "failed"
+	statusSent    = "sent"
+	statusQueued  = "queued"
+	statusFailed  = "failed"
+	statusUnknown = "unknown"
 )
+
+// RemoteOutgoingFact is an ordinary internal transcript note for one remote attempt.
+type RemoteOutgoingFact struct {
+	Bot           string `json:"bot"`
+	Text          string `json:"text"`
+	Gateway       string `json:"gateway"`
+	GatewayStatus int    `json:"gateway_status,omitempty"`
+	Queued        bool   `json:"queued"`
+	EnvelopeID    string `json:"envelope_id,omitempty"`
+	Error         string `json:"error,omitempty"`
+	CallID        string `json:"call_id"`
+}
+
+// RemoteOutgoingText serializes the complete fact for the source's existing recorder.
+func RemoteOutgoingText(fact RemoteOutgoingFact) (string, error) {
+	raw, err := json.Marshal(fact)
+	if err != nil {
+		return "", err
+	}
+	return "<peer_message_outgoing>\n" + string(raw) + "\n</peer_message_outgoing>", nil
+}
 
 // RemoteConversation reads the exchange between self and the bot addr on another
 // paired device, for example writer@MacBook. Only this computer's half exists:
 // incoming messages are the wrapped events written by remote.Receive, outgoing
-// rows are self's message_bot calls to addr with the matching tool result.
+// rows are internal remote facts or historical message_bot calls and tool results.
 // Bounces and undelivered notices appear as KindBounce rows.
 func RemoteConversation(a *bot.Bot, addr string) ([]Direct, error) {
 	addr = strings.TrimSpace(addr)
@@ -56,6 +79,28 @@ func RemoteConversation(a *bot.Bot, addr string) ([]Direct, error) {
 // message_bot to the same address several times; each call is its own row.
 func remoteRows(self, addr string, seq int, e bot.Entry, results map[string]string) []Direct {
 	at := e.Time.UTC()
+	if e.Origin == bot.OriginInternal && e.Message.Role == provider.RoleUser && e.EventID == "" {
+		text := e.Message.Text()
+		const prefix, suffix = "<peer_message_outgoing>\n", "\n</peer_message_outgoing>"
+		if !strings.HasPrefix(text, prefix) || !strings.HasSuffix(text, suffix) {
+			return nil
+		}
+		var fact RemoteOutgoingFact
+		raw := strings.TrimSuffix(strings.TrimPrefix(text, prefix), suffix)
+		if !strings.HasPrefix(raw, "{") || json.Unmarshal([]byte(raw), &fact) != nil || fact.Bot != addr {
+			return nil
+		}
+		status := statusFailed
+		switch {
+		case fact.Queued:
+			status = statusQueued
+		case fact.Gateway == "accepted":
+			status = statusSent
+		case fact.Gateway == "unknown":
+			status = statusUnknown
+		}
+		return []Direct{{ID: fmt.Sprintf("peer_message_%d", seq), Seq: seq, From: self, To: addr, Text: fact.Text, Time: at, Status: status}}
+	}
 	if e.Message.Role == provider.RoleUser && e.EventID != "" {
 		source, typ, sender, body, ok := unwrapEvent(e.Message.Text())
 		if !ok {

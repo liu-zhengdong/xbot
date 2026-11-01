@@ -1,14 +1,14 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0056 Bot 单聊沿原本地 Bus 与加密 Remote 发送进入 CLI
 
 ## 问题与调用方
 
-聊天群已TRUE main8caacdca，本刀只迁message_bot{bot,text}的LOCAL与bot@device两分支。0056 glob空后建Proposed；选 `"$XBOT_BIN" peer-message TARGET --self (--text TEXT|--file FILE|-) [--json]` 和离线help，不抢owner message-SSE、externalAgent send或侧栏group命名/步骤。相应用户root设计只读。source真实prepared调用链、目标trim与原Bus/Remote规则必须保持，不能静默只做local或冒ownerKind。具体typed合同与验收在 [母dev](../dev/cli-platform-entry.md#批-peer-message本地与配对设备单聊具体合同待窄核)。
+聊天群已TRUE main8caacdca，本刀只迁message_bot{bot,text}的LOCAL与bot@device两分支。0056 glob空后建Proposed；选 `"$XBOT_BIN" peer-message TARGET --self (--text TEXT|--file FILE|-) [--json]` 和离线help，不抢owner message-SSE、externalAgent send或侧栏group命名/步骤。相应用户root设计只读。source真实prepared调用链、目标trim与原Bus/Remote规则必须保持，不能静默只做local或冒ownerKind。具体typed合同与验收在 [母dev](../dev/cli-platform-entry.md#批-peer-message本地与配对设备单聊具体合同pass实施中)。
 
 ## 两种实际结构与选择
 

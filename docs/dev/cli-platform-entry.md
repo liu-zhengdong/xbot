@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message本地与远端具体合同待单次窄核，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message本地与远端合同5cdc单次SHAPE PASS，正在实施，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -597,9 +597,9 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 
 单聊message_bot（含bot@device/remoteoutbox≤24h）和fork及其它平台继续按新具体切片推进，仍有native消费者；不借群切片删Link.Tools/Emitter/Messenger/SendPolicy/DeliverDraft，Event/入站Link装配待逐族等价后独立切。用户root四dirtydocs/owner-SSE设计只读避冲突，guard步骤/日用边界保。
 
-## 批 peer-message：本地与配对设备单聊（具体合同待窄核）
+## 批 peer-message：本地与配对设备单聊（具体合同PASS，实施中）
 
-L档，基线TRUE main8caacdca0a4e59eff083e0f6136c0c29dfd916f0；只迁message_bot{bot,text}原LOCAL与bot@device两个分支，[ADR0056](../adr/0056-peer-message-runtime-cli.md) glob空后Proposed。当前合同未送单次结构复核，不开产品/测试，不猜caller独立红。原群5/persona4/control4/Bot5/profile5/routine6/skills/MCP证据封存不重；fork与其它native/Link.Tools/Emitter/Messenger/SendPolicy/DeliverDraft后切，Event/入站Link装配不借刀拆。
+L档，基线TRUE main8caacdca0a4e59eff083e0f6136c0c29dfd916f0；只迁message_bot{bot,text}原LOCAL与bot@device两个分支，[ADR0056](../adr/0056-peer-message-runtime-cli.md) glob空后Proposed。5cdc具体合同已reviewer24 SINGLE ACTUAL CONCRETE SHAPE PASS，[0056](../adr/0056-peer-message-runtime-cli.md)已Accepted；先compiled LOCAL交独立一次，再同cut接Remote/普通source fact与退唯一native。原pure46d4786f/5cdc/validation0a4fd926真实NativeShell unknown command peer-message红.96s/package2.220s封不重。原群5/persona4/control4/Bot5/profile5/routine6/skills/MCP证据封存不重；fork与其它native/Link.Tools/Emitter/Messenger/SendPolicy/DeliverDraft后切，Event/入站Link装配不借刀拆。
 
 ### Caller与选定结构
 
