@@ -210,7 +210,7 @@ func TestCLIProfileFullRuntimeResources(t *testing.T) {
 		}
 		before, ok := req.result("full_path_before")
 		if !ok {
-			streamTool(w, "full_path_before", "sh", argsJSON(map[string]string{"description": "Record a workspace side effect before the live rename", "command": `pwd -P; printf 'before\n' >> full-path-proof.txt`}))
+			streamTool(w, "full_path_before", "sh", argsJSON(map[string]string{"description": "Record a workspace side effect before the live rename", "command": `mkdir -p full-project && cd full-project && pwd -P && printf 'before\n' >> full-path-proof.txt`}))
 			return
 		}
 		childMu.Lock()
@@ -302,7 +302,7 @@ func TestCLIProfileFullRuntimeResources(t *testing.T) {
 	mcpRuntimeWait(t, steered, 10*time.Second, "steer did not reach the same held active child")
 	model.base.add("FULL_TIMER_WAKE")
 	srv.Advance(70 * time.Second)
-	cliFullOneInbox(t, srv, "MovedWorker", "timer", "routine", "", "FULL_TIMER_WAKE")
+	cliFullOneInbox(t, srv, "MovedWorker", "timer", "timer", "", "FULL_TIMER_WAKE")
 	release()
 	jobGate.allow()
 	WaitFor(t, 12*time.Second, "original Local first completion in moved directory", func() (bool, string) {
@@ -335,39 +335,47 @@ func TestCLIProfileFullRuntimeResources(t *testing.T) {
 	childMu.Lock()
 	after := childResults["after"]
 	childMu.Unlock()
-	if !strings.HasPrefix(after, "exit 0\n") || !strings.Contains(after, `"name":"MovedWorker"`) || !strings.Contains(after, filepath.Join(srv.Root, "work", "MovedWorker")) {
+	if !strings.HasPrefix(after, "exit 0\n") || !strings.Contains(after, `"name":"MovedWorker"`) || !strings.Contains(after, filepath.Join(srv.Root, "work", "MovedWorker", "full-project")) {
 		t.Fatalf("live Local continued with stale cwd/profile route: %s", after)
 	}
-	proof := filepath.Join(srv.Root, "work", "MovedWorker", "full-path-proof.txt")
+	proof := filepath.Join(srv.Root, "work", "MovedWorker", "full-project", "full-path-proof.txt")
 	if string(cliFullRead(t, proof)) != "before\nafter\n" {
 		t.Fatal("live move replayed a side effect or wrote outside the moved workspace")
 	}
 	rowsBeforeCold := cliFullRead(t, filepath.Join(newChildDir, "transcript.jsonl"))
 	cliFullAbsent(t, srv.Root, "Worker")
-	// A process restart creates an actually empty Local, forcing descriptor
-	// recovery; the explicit selected child model differs from parent smoke.
+	// Restart, then rename before Restore: the empty Local must recover the
+	// original selected model and project subdirectory from moved disk records.
 	srv.Restart()
-	status, raw = cliFullAPI(t, srv, http.MethodPost, "/api/bots/MovedWorker/agents/"+id+"/messages", map[string]string{"text": "FULL_LOCAL_COLD"})
+	model.base.add("FULL_COLD_RENAME", mcpRuntimeShell(`"$XBOT_BIN" profile set --self --name ColdWorker --json`))
+	cliFullSend(t, srv, "MovedWorker", "FULL_COLD_RENAME")
+	if value := cliFullShell(t, model.base.results("FULL_COLD_RENAME")[0]); value.Name != "ColdWorker" || !value.Moved {
+		t.Fatalf("pre-Restore rename did not move current route: %+v", value)
+	}
+	coldChildDir := filepath.Join(srv.Root, "bots", "ColdWorker", "agents", id)
+	movedFirstResult := filepath.Join(coldChildDir, "results", filepath.Base(first.ResultPath))
+	status, raw = cliFullAPI(t, srv, http.MethodPost, "/api/bots/ColdWorker/agents/"+id+"/messages", map[string]string{"text": "FULL_LOCAL_COLD"})
 	if status != 200 || json.Unmarshal(raw, &receipt) != nil || receipt.ID != id {
 		t.Fatalf("cold original child was not accepted by current name: HTTP %d", status)
 	}
 	WaitFor(t, 12*time.Second, "cold original ID second turn", func() (bool, string) {
-		a := cliFullAgent(t, srv, "MovedWorker", id)
+		a := cliFullAgent(t, srv, "ColdWorker", id)
 		return a.Status == "done" && a.TurnSeq > first.TurnSeq, fmt.Sprintf("status=%s turn=%d", a.Status, a.TurnSeq)
 	})
-	second := cliFullAgent(t, srv, "MovedWorker", id)
+	second := cliFullAgent(t, srv, "ColdWorker", id)
 	childMu.Lock()
 	cold := childResults["cold"]
 	childMu.Unlock()
-	if !strings.HasPrefix(cold, "exit 0\n") || !strings.Contains(cold, `"name":"MovedWorker"`) || !strings.Contains(cold, "before\nafter\n") {
+	if !strings.HasPrefix(cold, "exit 0\n") || !strings.Contains(cold, `"name":"ColdWorker"`) || !strings.Contains(cold, filepath.Join(srv.Root, "work", "ColdWorker", "full-project")) || !strings.Contains(cold, "before\nafter\n") {
 		t.Fatalf("cold same-ID continuation lost its current route/history/workspace: %s", cold)
 	}
-	if !strings.Contains(second.ResultPath, newChildDir+string(os.PathSeparator)) || second.ResultPath == first.ResultPath || !bytes.Equal(cliFullRead(t, first.ResultPath), firstResult) {
+	if !strings.Contains(second.ResultPath, coldChildDir+string(os.PathSeparator)) || second.ResultPath == movedFirstResult || !bytes.Equal(cliFullRead(t, movedFirstResult), firstResult) {
 		t.Fatal("cold turn lost new-path result identity or rewrote first immutable result")
 	}
-	if !bytes.HasPrefix(cliFullRead(t, filepath.Join(newChildDir, "transcript.jsonl")), rowsBeforeCold) {
+	if !bytes.HasPrefix(cliFullRead(t, filepath.Join(coldChildDir, "transcript.jsonl")), rowsBeforeCold) {
 		t.Fatal("cold resume rewrote original child rows")
 	}
 	cliFullAbsent(t, srv.Root, "Worker")
+	cliFullAbsent(t, srv.Root, "MovedWorker")
 	model.assertRetired(t)
 }
