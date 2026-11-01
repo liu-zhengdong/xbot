@@ -36,9 +36,9 @@ func TestCLIRoutineRuntimeLargeListCurrentRoute(t *testing.T) {
 	if len(encodedPrompt) <= 32<<10 || len(encodedPrompt) >= 60<<10 {
 		t.Fatal("projection fixture must exceed native Shell output while fitting the HTTP reply budget")
 	}
-	// Tomorrow's local calendar slot keeps this case about CRUD/projection;
+	// A daily slot in the next local hour satisfies the existing MinGap scan;
 	// actual delivery and approval behavior have separate acceptance coverage.
-	cron := time.Now().Add(24 * time.Hour).Format("4 15 2 1 *")
+	cron := time.Now().Add(time.Hour).Format("4 15 * * *")
 	skills := []string{"projection-first", "projection-second"}
 	args, err := json.Marshal(map[string]any{"id": id, "name": name, "prompt": prompt, "cron": cron, "skills": skills})
 	if err != nil {

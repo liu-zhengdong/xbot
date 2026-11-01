@@ -37,9 +37,9 @@ func TestCLIRoutineRuntimeCRUDEntry(t *testing.T) {
 	cliSkillIsolation(t)
 	model := newMCPRuntimeModel(t)
 	const cue, worker, id = "CLI_ROUTINE_RUNTIME_CRUD_ENTRY", "RoutineCRUDWorker", "runtime-crud-entry"
-	// Keep the scheduler out of this CRUD-only chain using tomorrow's local
-	// calendar slot; a separate lifecycle case will exercise real delivery.
-	cron := time.Now().Add(24 * time.Hour).Format("4 15 2 1 *")
+	// A daily slot in the next local hour satisfies the existing MinGap scan
+	// while keeping the scheduler out of this short CRUD-only chain.
+	cron := time.Now().Add(time.Hour).Format("4 15 * * *")
 	createJSON, _ := json.Marshal(map[string]any{"id": id, "name": "Runtime entry", "prompt": "ROUTINE_CRUD_INITIAL", "cron": cron, "skills": []string{"missing-is-allowed", "missing-is-allowed"}})
 	create := string(createJSON)
 	patch := `{"name":"Updated runtime entry","prompt":"ROUTINE_CRUD_UPDATED","enabled":false,"skills":[]}`

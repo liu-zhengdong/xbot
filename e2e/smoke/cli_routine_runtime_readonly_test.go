@@ -51,7 +51,7 @@ func TestCLIRoutineRuntimeReadOnlyAndSchemas(t *testing.T) {
 	srv.CreateBot(worker, "Independent actual routine readonly and retired-door acceptance.")
 	srv.CreateBot("RoutineGatePeer", "Existing non-routine tool door remains useful.")
 	const mainCue, research, dev = "CLI_ROUTINE_GATE_MAIN", "CLI_ROUTINE_GATE_RESEARCH", "CLI_ROUTINE_GATE_DEV"
-	createJSON, _ := json.Marshal(map[string]any{"id": id, "name": "Gate entry", "prompt": "ROUTINE_READONLY_PROMPT", "cron": time.Now().Add(24 * time.Hour).Format("4 15 2 1 *")})
+	createJSON, _ := json.Marshal(map[string]any{"id": id, "name": "Gate entry", "prompt": "ROUTINE_READONLY_PROMPT", "cron": time.Now().Add(time.Hour).Format("4 15 * * *")})
 	list := `"$XBOT_BIN" routine list --self --json`
 	workspace := filepath.Join(srv.Root, "work", worker)
 	if err := os.MkdirAll(workspace, 0700); err != nil {
