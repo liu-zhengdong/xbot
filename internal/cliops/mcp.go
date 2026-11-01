@@ -61,4 +61,5 @@ type Handlers struct {
 	ProfileAvatar func(data []byte, clear bool) (Profile, error)
 	MCP           *MCPHandlers
 	Skills        *SkillHandlers
+	Routines      *RoutineHandlers
 }

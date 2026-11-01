@@ -50,6 +50,7 @@ func (k *Kernel) ensureExec() exec.Executor {
 				}
 				loc.RunTool = func(req exec.StartRequest, ctx context.Context, t tools.Tool, args json.RawMessage, run func(context.Context) tools.CallResult) tools.CallResult {
 					ctx = context.WithValue(ctx, cwdScopeKey{}, req.ID)
+					ctx = context.WithValue(ctx, routineChildPolicyKey{}, true)
 					return k.runToolCall(ctx, t, args, run)
 				}
 				loc.Prov = k.boundProvider()

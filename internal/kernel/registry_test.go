@@ -111,7 +111,7 @@ func TestDeclaredToolsAreTheShortFixedSet(t *testing.T) {
 	if strings.Join(got, ",") != strings.Join(toolNames(toolsNamed(want)), ",") {
 		t.Fatalf("declared %v, want %v", got, want)
 	}
-	for _, name := range []string{"bot_propose_persona", "routine_create", "recall", "browser_open", "desktop_click", "links"} {
+	for _, name := range []string{"bot_propose_persona", "bot_status", "recall", "browser_open", "desktop_click", "links"} {
 		if !hasToolName(list, name) || hasToolName(declared(list), name) {
 			t.Fatalf("%s must be registered and undeclared", name)
 		}
@@ -195,12 +195,12 @@ func TestDoorSearchAndDescribe(t *testing.T) {
 func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 	shell := tools.NewShells()[0].Name()
 	p := &scripted{resps: []provider.Message{
-		toolCall("s1", "tools", `{"action":"search","query":"routine"}`),
-		toolCall("d1", "tools", `{"action":"describe","id":"routine_create"}`),
-		toolCall("d2", "tools", `{"action":"describe","id":"routine"}`),
+		toolCall("s1", "tools", `{"action":"search","query":"persona"}`),
+		toolCall("d1", "tools", `{"action":"describe","id":"bot_propose_persona"}`),
+		toolCall("d2", "tools", `{"action":"describe","id":"bot_profile"}`),
 		toolCall("c1", "tools", `{"action":"call","id":"`+shell+`","args":{"command":"echo door-shell","description":"echo"}}`),
 		toolCall("c2", "tools", `{"action":"call","id":"bot_status","args":"{}"}`),
-		toolCall("c3", "tools", `{"action":"call","id":"routine_list","args":{}}`),
+		toolCall("c3", "tools", `{"action":"call","id":"bot_status","args":{}}`),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	k, b := doorKernel(t, p)
@@ -223,7 +223,7 @@ func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 		}
 	}
 	text := transcriptText(t, b)
-	for _, want := range []string{"routine_create [routine]", `"precheck"`, "bot_status", "door-shell", "no routines"} {
+	for _, want := range []string{"bot_propose_persona [bot_profile]", `"text"`, "bot_status", "door-shell", "\t" + b.Name()} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in transcript:\n%s", want, text)
 		}
@@ -235,17 +235,29 @@ func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 	}
 	// A later turn reaches the native tool again by id alone.
 	p2 := &scripted{resps: []provider.Message{
-		toolCall("c4", "tools", `{"action":"call","id":"routine_list","args":{}}`),
+		toolCall("c4", "tools", `{"action":"call","id":"bot_status","args":{}}`),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("again")},
 	}}
 	k.Provider = p2
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", time.Unix(2, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	if got := messagesText(p2.reqs[1].Messages); !strings.Contains(got, "no routines") {
-		t.Fatalf("second turn call %q", got)
+	var status string
+	for _, msg := range p2.reqs[1].Messages {
+		if msg.Role == provider.RoleTool && msg.CallID() == "c4" {
+			status = msg.Text()
+		}
 	}
-	if !indexHas(testPublished(t, k), "routine_create") {
+	if !strings.Contains(status, "\t"+b.Name()) {
+		t.Fatalf("second turn status reply %q", status)
+	}
+	published := testPublished(t, k)
+	if !indexHas(published, "bot_propose_persona") {
 		t.Fatal("tool_index lacks a listed tool")
+	}
+	for _, name := range []string{"routine_create", "routine_list", "routine_update", "routine_delete"} {
+		if indexHas(published, name) || registered(k, name) {
+			t.Fatalf("retired routine tool %s remains available", name)
+		}
 	}
 }

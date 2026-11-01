@@ -21,7 +21,6 @@ func TestTableHasEveryClass(t *testing.T) {
 		"read_file":           Readonly,
 		"list_secrets":        Readonly,
 		"recall_history":      Readonly,
-		"routine_list":        Readonly,
 		"code_show":           Readonly,
 		"recall":              Readonly,
 		"delete_bot":          Delete,
@@ -34,9 +33,6 @@ func TestTableHasEveryClass(t *testing.T) {
 		"write_file":          SelfEdit,
 		"edit_file":           SelfEdit,
 		"bot_propose_persona": SelfEdit,
-		"routine_create":      Normal,
-		"routine_update":      Normal,
-		"routine_delete":      Normal,
 		"message_bot":         Normal,
 		"post_group":          Normal,
 		"code_start":          Normal,
@@ -177,8 +173,16 @@ func TestExternalSendToolsAsk(t *testing.T) {
 	}
 }
 
-func TestBotToBotAndRoutinesAreNormal(t *testing.T) {
-	for _, name := range []string{"message_bot", "post_group", "routine_create", "routine_update", "routine_delete", "routine_pause"} {
+func TestRetiredRoutineToolsAreUnknown(t *testing.T) {
+	for _, name := range []string{"routine_create", "routine_list", "routine_update", "routine_delete", "routine_pause"} {
+		if Known(name) {
+			t.Errorf("retired policy %s is still known", name)
+		}
+	}
+}
+
+func TestBotToBotAreNormal(t *testing.T) {
+	for _, name := range []string{"message_bot", "post_group"} {
 		if need(t, name, `{"bot":"bob","text":"hi","id":"r1"}`) {
 			t.Fatalf("%s asked", name)
 		}
@@ -212,7 +216,7 @@ func TestSelfEditAndReadOnlyClasses(t *testing.T) {
 	if need(t, "edit_file", `{"path":"plans/2026.md"}`) {
 		t.Fatal("edit_file asked without a path check")
 	}
-	for _, name := range []string{"read_file", "list_secrets", "list_bots", "list_groups", "routine_list", "recall_history", "expand", "read_subagent", "expand_subagent", "browser_snapshot", "code_show", "web_fetch", "web_search", "view_image"} {
+	for _, name := range []string{"read_file", "list_secrets", "list_bots", "list_groups", "recall_history", "expand", "read_subagent", "expand_subagent", "browser_snapshot", "code_show", "web_fetch", "web_search", "view_image"} {
 		if need(t, name, `{}`) {
 			t.Fatalf("%s asked", name)
 		}

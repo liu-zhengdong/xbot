@@ -19,6 +19,40 @@ func (s *boundReadOnlyInterpreter) Run(context.Context, json.RawMessage) (string
 	return "accepted", nil
 }
 
+func TestResearchRoutineDirectCommandsUseBoundSource(t *testing.T) {
+	k, _, _ := freshBot(t)
+	if err := k.StartOperations(); err != nil {
+		t.Fatal(err)
+	}
+	defer k.CloseOperations()
+	interpreter := &boundReadOnlyInterpreter{}
+	shell := readOnlyShell{Tool: interpreter, k: k}
+	for _, command := range []string{`"$XBOT_BIN" routine list --self --json`, `"$XBOT_BIN" routine --help`} {
+		raw, _ := json.Marshal(map[string]string{"command": command})
+		if _, err := shell.Run(context.Background(), raw); err != nil {
+			t.Fatalf("read rejected %s: %v", command, err)
+		}
+	}
+	for _, command := range []string{
+		`"$XBOT_BIN" routine create --self --args '{}'`,
+		`"$XBOT_BIN" routine update r --self --args '{}'`,
+		`"$XBOT_BIN" routine delete r --self`,
+		`"$XBOT_BIN" routine list --bot other`,
+		`"$XBOT_BIN" routine migrate --dry-run`,
+		`"$XBOT_BIN" --root /other routine list --self`,
+		`"$XBOT_BIN" routine list --self; echo injected`,
+		`xbot routine list --self`,
+	} {
+		raw, _ := json.Marshal(map[string]string{"command": command})
+		if _, err := shell.Run(context.Background(), raw); err == nil {
+			t.Fatalf("write/other source accepted %s", command)
+		}
+	}
+	if interpreter.calls != 2 {
+		t.Fatalf("rejected command reached interpreter: %d", interpreter.calls)
+	}
+}
+
 func TestResearchSkillDirectCommandsUseBoundSource(t *testing.T) {
 	k, _, _ := freshBot(t)
 	if err := k.StartOperations(); err != nil {

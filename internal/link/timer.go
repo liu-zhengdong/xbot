@@ -43,6 +43,17 @@ const OneShotWindow = 2 * time.Minute
 
 var ErrRoutineSkills = errors.New("timer: invalid skills")
 
+// RoutineCommitError reports an error after the requested definition change was
+// applied. The zone index is maintained separately from the routine file.
+type RoutineCommitError struct {
+	Applied bool
+	Stage   string
+	Err     error
+}
+
+func (e *RoutineCommitError) Error() string { return e.Err.Error() }
+func (e *RoutineCommitError) Unwrap() error { return e.Err }
+
 var routineID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 
 // Timer emits routine events and stores them under a bot directory.
@@ -493,7 +504,10 @@ func (t *Timer) saveLocked(r Routine) error {
 	if r.Zone == "" {
 		return nil
 	}
-	return t.saveZone(r.ID, zoneEntry{Cron: r.Cron, Zone: r.Zone})
+	if err := t.saveZone(r.ID, zoneEntry{Cron: r.Cron, Zone: r.Zone}); err != nil {
+		return &RoutineCommitError{Applied: true, Stage: "zone_index", Err: err}
+	}
+	return nil
 }
 
 // Delete removes a routine file and its zone index entry. A missing file is not an error.
@@ -509,13 +523,16 @@ func (t *Timer) Delete(id string) error {
 			}
 			zones, err := current.loadZones()
 			if err != nil {
-				return err
+				return &RoutineCommitError{Applied: true, Stage: "zone_index", Err: err}
 			}
 			if _, ok := zones[id]; !ok {
 				return nil
 			}
 			delete(zones, id)
-			return current.writeZones(zones)
+			if err := current.writeZones(zones); err != nil {
+				return &RoutineCommitError{Applied: true, Stage: "zone_index", Err: err}
+			}
+			return nil
 		})
 	})
 }

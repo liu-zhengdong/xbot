@@ -31,7 +31,7 @@ func (c Caller) Env(base []string) []string {
 	for _, item := range base {
 		name, _, _ := strings.Cut(item, "=")
 		switch name {
-		case "XBOT_BIN", "XBOT_ROOT", "XBOT_ENDPOINT", "XBOT_BOT":
+		case "XBOT_BIN", "XBOT_ROOT", "XBOT_ENDPOINT", "XBOT_BOT", "XBOT_CALL_ID":
 			continue
 		}
 		out = append(out, item)
@@ -170,6 +170,9 @@ func Start(root string, handlers Handlers) (*Server, error) {
 	})
 	mux.HandleFunc("/v1/skill/", func(w http.ResponseWriter, r *http.Request) {
 		serveSkill(w, r, handlers.Skills)
+	})
+	mux.HandleFunc("/v1/routine/", func(w http.ResponseWriter, r *http.Request) {
+		serveRoutine(w, r, handlers.Routines)
 	})
 	guarded := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fail := func(code int, message string) {

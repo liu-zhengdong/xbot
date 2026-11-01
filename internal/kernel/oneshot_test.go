@@ -2,12 +2,12 @@ package kernel
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 )
@@ -26,17 +26,13 @@ func TestOneShotAndLocalTime(t *testing.T) {
 		Now: func() time.Time { return now }, MaxSteps: 2,
 	}
 	at := now.Add(2 * time.Minute)
-	raw, err := json.Marshal(map[string]string{
-		"name": "water", "prompt": "drink", "at": at.Format(time.RFC3339),
+	out, err := k.RoutineHandlers().Create(context.Background(), cliops.RoutineCreate{
+		Name: "water", Prompt: "drink", At: at.Format(time.RFC3339),
 	})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || !out.Applied || out.Stage != "complete" || out.ID == "" || out.Error != "" {
+		t.Fatalf("create %+v: %v", out, err)
 	}
-	out, err := (routineCreate{k}).Run(context.Background(), raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	id := strings.TrimPrefix(out, "created routine ")
+	id := out.ID
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", now)); err != nil {
 		t.Fatal(err)
 	}
