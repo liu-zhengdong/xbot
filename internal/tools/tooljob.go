@@ -390,6 +390,9 @@ func (j *Jobs) runProcess(ctx context.Context, lv *live, req RunRequest) (text s
 	if req.OnExit != nil {
 		defer req.OnExit()
 	}
+	if req.CwdCleanup != nil {
+		defer req.CwdCleanup()
+	}
 	script := req.Exec
 	if script == "" {
 		script = req.Command
@@ -399,6 +402,9 @@ func (j *Jobs) runProcess(ctx context.Context, lv *live, req RunRequest) (text s
 		in = interpreter{name: "sh", path: "sh"}
 	}
 	cmd := in.command(ctx, script)
+	if req.CwdHandle != nil {
+		cmd.ExtraFiles = []*os.File{req.CwdHandle}
+	}
 	setGroup(cmd)
 	cmd.Cancel = func() error { return killProcess(cmd) }
 	cmd.Dir = req.Dir
@@ -428,7 +434,9 @@ func (j *Jobs) runProcess(ctx context.Context, lv *live, req RunRequest) (text s
 	code := exitCode(err)
 	lv.mu.Lock()
 	lv.job.ExitCode = code
-	if req.CwdFile != "" {
+	if req.CwdHandle != nil {
+		lv.finalCwd = readCwdHandle(req.CwdHandle)
+	} else if req.CwdFile != "" {
 		lv.finalCwd = readCwdFile(req.CwdFile)
 	}
 	if !lv.detached && req.OnCwd != nil {

@@ -19,6 +19,14 @@ func (r *BotResources) WithCurrentIO(fn func(*bot.Bot, *inbox.Inbox) error) erro
 	return fn(r.current, r.box)
 }
 
+// currentName is for immutable metadata/hints. Actual file IO uses WithCurrentIO.
+func (k *Kernel) currentName() string {
+	if k.Resources != nil {
+		return k.Resources.Name()
+	}
+	return k.Bot.Name()
+}
+
 func (k *Kernel) withCurrentIO(fn func(*bot.Bot, *inbox.Inbox) error) error {
 	if k.Resources != nil {
 		return k.Resources.WithCurrentIO(fn)
@@ -29,6 +37,14 @@ func (k *Kernel) withCurrentIO(fn func(*bot.Bot, *inbox.Inbox) error) error {
 // ProfileSnapshot reports the actual route after a commit, including partial
 // commits. It reads only mutable ordinary profile metadata.
 func (r *BotResources) ProfileSnapshot(result bot.ProfileChangeResult) (value cliops.Profile, err error) {
+	// Commit facts survive optional refresh and even a closed route after an
+	// Inbox reload failure. Never turn an actual move into an error-only reply.
+	r.route.RLock()
+	value = profileSnapshot(r.current, result, r.Redact)
+	r.route.RUnlock()
+	if result.Name != "" {
+		value.Name = result.Name
+	}
 	err = r.WithCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error {
 		if err := b.RefreshProfile(); err != nil {
 			return err
@@ -76,6 +92,9 @@ func (k *Kernel) changeProfileLocked(change bot.ProfileChange) (result bot.Profi
 			return k.MoveResources(change)
 		}
 		return r.ApplyProfileChange(change)
+	}
+	if change.Name != nil && *change.Name != k.Bot.Name() {
+		return k.MoveResources(change)
 	}
 	var current *bot.Bot
 	current, result, err = k.Bot.ApplyProfileChange(change)

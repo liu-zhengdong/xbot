@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"xbot/internal/bot"
 	"xbot/internal/config"
 	"xbot/internal/exec"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/tools"
 	"xbot/internal/vault"
@@ -98,6 +100,15 @@ func (k *Kernel) attachShell() {
 // bindShellRuntime is shared by mounted and scoped (subagent) shells.
 func (k *Kernel) bindShellRuntime(sh *tools.Shell) {
 	sh.BindEnvironment(k.CLIEnvironment)
+	sh.BindMarkerIO(func(fn func(string) error) error {
+		return k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error {
+			dir := filepath.Join(bot.Dir(b.Root, b.Name()), "cwd-markers")
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				return err
+			}
+			return fn(dir)
+		})
+	})
 	if k.Bot == nil || k.Vault == nil {
 		return
 	}

@@ -2,7 +2,6 @@ package kernel
 
 import (
 	"xbot/internal/bot"
-	"xbot/internal/inbox"
 )
 
 // ProfileNotice keeps the original response stream attached while its Bot name
@@ -56,20 +55,19 @@ func (k *Kernel) publishProfileNotice(notice ProfileNotice) {
 
 func publishResourceProfile(r *BotResources, notice ProfileNotice) {
 	var live *liveTurn
-	_ = r.WithCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
-		notice.Name = current.Name()
-		if entry, ok := liveTurns.Load(bot.Dir(current.Root, current.Name())); ok {
-			candidate := entry.(*liveTurn)
-			if candidate.k.Resources == r {
-				live = candidate
-				if err := current.RefreshProfile(); err != nil {
-					return err
-				}
-				live.k.Bot.RefreshProfileFrom(current)
-			}
+	// The route may have closed because reloading the moved Inbox failed.
+	// Its committed identity/profile remain authoritative for this notice.
+	r.route.RLock()
+	current := r.current
+	notice.Name = current.Name()
+	if entry, ok := liveTurns.Load(bot.Dir(current.Root, current.Name())); ok {
+		candidate := entry.(*liveTurn)
+		if candidate.k.Resources == r {
+			live = candidate
+			live.k.Bot.RefreshProfileFrom(current)
 		}
-		return nil
-	})
+	}
+	r.route.RUnlock()
 	if live != nil {
 		if sink := live.t.sinkNow(); sink != nil && sink.OnProfile != nil {
 			sink.OnProfile(notice)
