@@ -32,7 +32,13 @@ func mcpRuntimeTurnDone(t *testing.T, srv *Server, bot, cue string) {
 				return true, ""
 			}
 		}
-		return false, srv.Stderr()
+		diagnostic := "turn has not written its final transcript row"
+		for _, line := range strings.Split(srv.Stderr(), "\n") {
+			if strings.HasPrefix(line, "xbot:") {
+				diagnostic = line
+			}
+		}
+		return false, diagnostic
 	})
 }
 
