@@ -42,7 +42,7 @@ func (s *Server) botStatuses() []kernel.BotStatus {
 	for _, cfg := range cfgs {
 		if k := kernels[cfg.Name]; k != nil {
 			st := k.Status()
-			st.CompletedUnread = s.unreadCompletions(k.Bot, cursor[cfg.Name])
+			st.CompletedUnread = s.unreadCompletions(k.Bot, cursor[cfg.Name], k.Resources)
 			out = append(out, st)
 			continue
 		}
@@ -51,7 +51,7 @@ func (s *Server) botStatuses() []kernel.BotStatus {
 			continue
 		}
 		st := kernel.IdleStatus(b, now)
-		st.CompletedUnread = s.unreadCompletions(b, cursor[cfg.Name])
+		st.CompletedUnread = s.unreadCompletions(b, cursor[cfg.Name], nil)
 		if holds[cfg.Name] {
 			// Another process holds this bot. It may be running elsewhere.
 			st.State = kernel.StateRunning

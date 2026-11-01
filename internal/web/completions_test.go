@@ -20,17 +20,17 @@ func TestCompletedUnreadTracksOwnerCursor(t *testing.T) {
 		}
 	}
 	appendResult("done", bot.OriginOwner)
-	if n := s.unreadCompletions(b, 0); n != 1 {
+	if n := s.unreadCompletions(b, 0, nil); n != 1 {
 		t.Fatalf("visible owner-origin completion count: %d, want 1", n)
 	}
 	appendResult("progress", bot.OriginOwner)
 	appendResult("done", bot.OriginInternal)
-	if n := s.unreadCompletions(b, 0); n != 1 {
+	if n := s.unreadCompletions(b, 0, nil); n != 1 {
 		t.Fatalf("progress or hidden internal result was counted: %d", n)
 	}
 	appendResult("done", "") // Visible history written before origin was recorded.
 	for i := 0; i < 2; i++ {
-		if n := s.unreadCompletions(b, 0); n != 2 {
+		if n := s.unreadCompletions(b, 0, nil); n != 2 {
 			t.Fatalf("poll %d: %d completions", i, n)
 		}
 	}
