@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork合同fecc单次SHAPE PASS，正在实施，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过，父集成待收，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -603,71 +603,11 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 
 本母路线继续保fork/其它尚未迁native与Event/Link入站装配；不因单聊已迁就删其它Emitter/Messenger/SendPolicy/DeliverDraft。下一刀bot-fork以真实main98fba5e8为基线按下节另定具体合同，结构通过前不开实现；owner message-SSE/externalAgent send仍用户独立设计边界。
 
-## 批 bot-fork：具体合同PASS，实施中
+## 批 bot-fork：交接派生已提炼，待父集成
 
-L档，仅迁fork_bot{name,role,group?}持久新Bot交接派生，不是bg_插话分支管理。基线TRUE main98fba5e8，0057先glob空后新建 [Proposed ADR0057](../adr/0057-bot-fork-runtime-cli.md)。fecc具体合同已reviewer24 SINGLE ACTUAL CONCRETE SHAPE PASS，[0057](../adr/0057-bot-fork-runtime-cli.md) Accepted；purebd9587dc/fecc/fullvalidation69968a75真实NativeShell entry unknown command红.93s/package2.134s封。先compiled非空LLMsource链交独立一次，再同cutlatepartial/currentRename/退唯一native，不等首反馈停；旧Message6/Group5/Persona4/control4/Bot5/profile5/routine6/skills/MCP与原三审批证据封存不重，旧fork mixed上刀只迁message不冒本刀已验。
+本刀合同、首模型链与末退门必要静态均通过；七项所测独立端到端按实际source/validation phase通过，未合main/未主人日用。实际协议已提炼 [API](../API.md#bot-交接派生运行时-cli)、[内核](../atlas/kernel.md#bot-交接派生与原-source-模型链)、[多Bot](../atlas/multibot.md#bot-交接派生)、[记忆](../atlas/memory.md)，[ADR0057](../adr/0057-bot-fork-runtime-cli.md) Accepted；参数、partial字段和实际写序不在母路线复抄。逐phase与夹具修正归属见 [MILESTONES](../MILESTONES.md)。
 
-### 实际caller、现接口与两种结构
-
-```sh
-"$XBOT_BIN" bot-fork NAME --self --role TEXT [--group NAME] [--json]
-"$XBOT_BIN" bot-fork NAME --self --role-file FILE [--group NAME] [--json]
-cat FILE | "$XBOT_BIN" bot-fork NAME --self --role-file - [--group NAME] [--json]
-"$XBOT_BIN" bot-fork --help
-```
-
-独立bot-fork noun，保原有效offline `fork SRC NAME --role TEXT [--group NAME]` 的全部arity与literal值，不加fork/make/clone别名或混合dispatcher；不抢OwnerSSE message/externalAgent send。纯ParseBotForkRuntime(args不含noun)→{Name,Role,RoleFile,Group,Self,JSON,Help}，恰一NAME/role与role-file恰一、重复未知flag/坏arity/缺self拒、flag值按arity消费literal--help与--、help离线。main在resolveRoot/default/legacy前分流；runtime source仅原endpoint/规范Root，XBOT_BOT诊断不冒源，失败不Load/newK。raw max+1及escaped typedJSON各≤1MiB，role领域8KiB/trim仍唯一writer校验，完整8KiB职责用file/stdin避原Shell16KiB命令限。
-
-A原offline cmdFork137 TryLockHandle→openKernel→Backgroundctx，忙source拒；Web server611 owned/TryLockHandle/cachedK gate也不是source；两者都不能冒原Memory/Compactor/prepared turnSeq。B既有BotHandlers添加Fork callback，原listener→同source k.botForkRuntime→唯一原domain ForkWithResult，选B。Required原runtimeSourceCall关联同listener真实Local/running/未finished Shell preparedctx，保取消与原turnSeqOf(ctx)，不以curTurn/latest造ctx；真实原seq=0不伪补另一turn。所有Bot SELF可派生、非primary也可，Normal不加approvalIntent/card或强approve函数，原Shell自身gate独立。不新Kernel/Memory服务/Jobctx表/源登记/CAS/后台fork管理器。
-
-READ对照：原fork.go40-116/119-214、Memory.Remember37-58/writeNamed461-493、bot.Create237-272/CreateCommitError31-40/InheritBinding572、offline cmd_bot119-168、Web server611-659/app7528-7544与loadMemory866-881。真实消费为新Bot的persona/rules/三binding/Owners-Links、profile memory compose、两认识事实、可选group meta和Web刷新列表选择child；无remoteRows式依赖旧fork调用文本的专用历史parser。旧native历史字面保，repair的ForkKindStartEnd/bg_不迁。
-
-### 原写序、模型与source生命周期
-
-| 原实际位置 | 本刀保持 |
-|---|---|
-| 原Fork validation | k.Bot/Memory非nil，NAME Trim合法非SELF非existing；role Trim非空≤8KiB，group Trim≤48bytes禁/\\/NL，源Owners非空；不加primary/ownerHTTP资格。role是新persona及handoff focus，非runtime cfg.Role。 |
-| handoff119-183 | State migrate+原UncoveredLines/projected（保summary/原toolpairs，原排除codingApprovalCard/bg marker）+ScopeBot/Profile Recall；原无turns且无botfacts才fallback，不把空源当非空模型已验。非空要求Compactor/源persona；原Focused优先/Compact fallback、原k.compactor(turnSeqOf(prepared)) usage wrapper与compact.LLM无tools Chat保持。摘要Trim/空拒/原8KiBClip，再OneLine/960B分块；原empty fallback未末clip不借机改。 |
-| Create80 | handoff先完成再bot.Create(config→empty State→persona)；原CreateCommitError.Applied/Stage是真实config写事实，不能看到error就child不存在。原Global default配置准备/MemoryRecall迁移/usage可能已写，Created不是全root事务。 |
-| 后写84-114 | SetOwners→InheritBinding仅Provider/Model/ContextLimit→源botRules/MigrateRules（可规范写源rules）→child.WriteRules→逐child handoff事实→child fork-source认识事实→source fork-NAME认识事实→可选source+child CreateGroup meta。不拷transcript/summary blocks/person文件/webhooks/watches/cfg.Role或background预算，不post/wake/start child。新child有效默认chat/45min，非sourceDev2h。 |
-
-handoff在原currentRef短IO冻结源名、State/未覆盖行、projected输入、原ScopeBot Recall与按原非空分支的persona；直接用回调的current b.Name，不用准备旧name在回调外再Recall。可在原k.handoff就近组装局部不可变prior/turns/focus/fallback，不另造snapshot服务；原纯projected不重写。只有有数据才读persona/要求Compactor的原检查顺序保持。Focused/Compact真正LLM在route/host/Jobs锁外，source operations lease可跨模型但不持其mutex。不加历史过滤：直接Recall仅Bot scope/Person store不copy，不代表projected普通话语或env没有person信息传模型。
-
-Owners原preLLM时点取；Links/binding原postLLM时点fresh current cfg取，保原时序而非一张早期cfg盖后写。源rules仍原botRules短currentIO，child固定目标沿原Memory实例写；child认识正文与WrittenBy取后写时当前source。源认识事实直接一次短currentIO内用b.Name作BotName/WrittenBy调用原Memory.Remember，不能先取旧名再模型后迟写/重建旧目录；不要在持route回调里调用会再持route的remember/current helper。group前fresh当前source名/Root，原Bus.CreateGroup在route外，后改名继续原RenameMember。无跨模型rename锁/CAS/回滚；取消沿原prepared上下文传模型/Memory，不承诺撤销已确认阶段或改造原后续步骤为事务。
-
-### 选定typed协议与真实部分完成
-
-```go
-type BotFork struct { Name string `json:"name"`; Role string `json:"role"`; Group string `json:"group,omitempty"` }
-type ForkMemoryAttempt struct { Bot string `json:"bot"`; Key string `json:"key"` }
-type BotForkReply struct {
-    Name string `json:"name,omitempty"`
-    Created bool `json:"created"` // original config acknowledged, not all child setup
-    CreateStage string `json:"create_stage,omitempty"` // only original typed CreateCommitError.Stage
-    Confirmed []string `json:"confirmed,omitempty"` // closed owners/binding/rules/handoff/child_note/source_note/group
-    HandoffParts int `json:"handoff_parts"` // count of original Remember nil acknowledgements
-    HandoffTotal int `json:"handoff_total"` // actual OneLine+split960 result, no invented expected nth
-    UncertainMemory *ForkMemoryAttempt `json:"uncertain_memory,omitempty"` // current failed attempt may already have MD
-    GroupID string `json:"group_id,omitempty"`
-    Stage string `json:"stage"`; Error string `json:"error,omitempty"`
-}
-// ADD field to existing cliops.BotHandlers:
-// Fork func(context.Context,BotFork)(BotForkReply,error) = k.botForkRuntime
-reply, err := cliops.CallBotFork(ctx, endpoint, root, originalCallID, cliops.BotFork{Name:"reviewer",Role:"review changes",Group:"project"})
-```
-
-POST `/v1/bot/fork`单对象{name,role,group?}、未知字段/非对象/尾对象/query拒，原loopback/Host/browser/root guard，request1MiB/HTTP64KiB。one callback挂既有BotHandlers，不另造singlecallback框架。source原k.Fork(error)薄兼容到唯一ForkWithResult原writer，原offline/Web/native错误仍空result兼容；typed消费者拿完整真实domain进度，成功旧Name/GroupID保持。领域结果只加同组字段，不抽通用operation envelope。Stage固定validation/handoff/create/owners/binding/rules_read/rules/handoff_memory/child_note/source_note/group/complete；Create子阶段default_binding/config/state/persona只原typed错误有就给，nil创建Createdtrue。其它confirmed仅各原nil返回后添加，未确认不暗示无字节。HandoffParts每Remember nil才+1，全部成功才confirmed handoff；GroupID/confirmed group仅CreateGroup实际nil返回。
-
-Memory.ProfileBytes=4KiB而handoff8KiB/逐960B，几条后真ErrProfileFull可部分成功。原Remember在原scope锁内saveTier，writeNamed先MDatomic后INDEXatomic、然后noteSync；任意error可能body已成，不能新MemoryWrittenfalse误导零写。最小载体是保Created/confirmed/ack parts，并在当前Remember error时给uncertain_memory{实际targetBot,key}（其含义始终unknown，不猜error字串或stat补证）。这比扩全Memory.WithResult/多文件transaction/提交日志/receipt ledger小；不改Memory writer/4K cap/摘要长度或自动retryRollback。失败name/错误显示要脱敏、可缩展示，不清已确认facts；同准确纯FormatBotFork保证整JSONNL和human各≤32KiB、CLI先印facts再非0，不回角色/摘要全文或造artifact账。
-
-### 怎样算对与本刀剩余
-
-- 单次实际SHAPE后0d固定最窄真实sourceShell caller红；首可编译模型链早交一次，首source必须非primary/self/staleXBOT_BOT、真实raw history+已有summary+botFacts非空，绑定实际生产compact.LLM到scripted provider，明确noTools Chat一次、收到原角色focus/sourcepersona/projected历史+botFacts；不empty fallback假绿。摘要短于真实4K留两note容量，child personaFULL/OwnersLinks三bindingRules/默认chat45min/emptytranscript-blocks、两侧认识事实/可选群meta精确source+child且双方Inbox无Post；child下一真实wake provider compose读到handoff，两Scope person文件共享未copy。原history可带person，不新增绝无person输入断言。
-- 同cut边界/退门：空name/self/existing/无owner/empty8193role/badgroup/模型error-empty/cancel/Memorynil/Compactornil/nonShell/missingfinishedforeign sourceid；raw1M/max+1/escaped1M/8192BUTF8 FILESTDIN/trim合法/literal flags/短JSONhuman/早root-env-file与offline有效arity。实际ctx/noapprover/anotherturn/child归author UNIT不冒独立；原source resolver0改则三旧审批证据复用，不重复整族。
-- 真实late容量一项：scripted LLM确输出8KiB，沿原4KiBMemory cap见childCreated/前OwnersBindingRules已确认、0<handoff_parts<total、当前uncertain key/error/stage真实；不写死第Nth、不抬cap/暗剪summary/清child/retry。另原MD成功/indexFS错以真实冲突位置验证：当前Memory err但MD可能有该正文，confirmed只前nil+uncertain真、不假未写/回滚；source note与可选group晚错分别保先前事实，按必要最小实际安排，不铺矩阵。
-- LLM进行中真实同source改名，模型输入冻结、原ctx/turnSeq保持、后rules/source认识事实/group归新name/currentRef、旧BOTS+WORK均不复活，网络期可进入短route证明无锁覆盖模型；两阶段都按真实写点不从stat猜事务。Web真实child选择/记忆读取与child下一wake为consumer，不造新fork-historyparser/启动childEvent。
-- research只bot-fork help，literal --help当role或target不能冒helper；dev/general真SourceCall能写。只退fork_bot wrapper/registry/Known/schema/index与指导，peers确空才移注册/分组，不能顺手删Event/Link总装配。四独立owned Tools.describe旧fork_bot仅0d窄迁仍live tool，不重旧Group5/Peer6/wholefork-bg/原审批等封存族；有效旧mixed只迁实际退役依赖，保原业务。新指引与当前CLI到下刀不再教旧native。
-- 当前只2docs合同，no产品/编译/测试/audit/main写/外网/真模型/日用pushrelease/guard或Root4USERdocs。待具体合同一次reviewer24 SINGLE ACTUAL SHAPE PASS，再caller红→首compiling模型链→同cut晚partial/currentrename/retire。源证限定和参数完整后不再概念轮/用户确认；已绿旧族封存，不拿本刀成功冒全平台或fork-bg已验。
+本刀仅退fork_bot与确已空的peers工具注册组，保Link/Event其它职责、oldnative历史与bg_插话分支修复；原Memory/Compactor/ctx resolver、oldoffline/WebFork与OwnerSSE边界不扩。source997冻结，父仅收最终docs与纯独立commits集成本地main，不重已绿首链、六后项或旧族。其余native/platform/EventLink沿未完成路线继续，下一族待TRUE Fork main后另定合同，不在此预写0058或开代码。
 
 ## 还没做的
 
@@ -675,7 +615,7 @@ Memory.ProfileBytes=4KiB而handoff8KiB/逐960B，几条后真ErrProfileFull可�
 - 批 0 的后续实际操作及入站依赖清单、尚未迁族的 research 业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已提炼 atlas，固定五项独立所测端到端按各自精确版本通过，证据见 MILESTONES；原 chat loop 下一输入/Timer handle 及其 recover、回放、通知实际消费者也已以局部红绿和 reviewer24 至 `63762ae5` 连续增量 PASS 收口，已合入本地 main，尚未日用；合并时与主线持久选择的交叠补单项真实浏览器红绿，不重跑固定五项。已通过的普通字段、avatar_seed、MCP 和本刀五项不重复整批验收，母路线其它族继续在本 dev 中推进。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
-- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork仅进入上述具体合同，连接器及剩余目录管理等平台能力继续逐族迁移。
+- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork七项所测端到端通过待父集成，连接器及剩余目录管理等平台能力继续逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。
 - 各批独立冒烟、相关旅程回归、性能与上下文收益测量、主人日用验收。

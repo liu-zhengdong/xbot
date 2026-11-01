@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
-verified: 2026-11-02 @ 8472a2a5 (peer-message source identity, Normal routing and retired native policy)
+verified: 2026-11-02 @ 997baf85 (bot-fork Normal source gate, uncertainty and native policy retirement)
 ---
 # 安全：保险箱与权限表
 
@@ -25,6 +25,12 @@ MCP不再有可执行mcp_模型工具；Known不为任意旧前缀兜底，历�
 ## 技能 CLI 与默认开关
 
 两旧技能执行项及review Known条目已移除，历史read_skill正文脱敏仍可投影。research的当前BIN/精确XBOT_BIN单POSIX直调与MCP共享lexer，业务分类复用cmd的纯ParseSkillRuntime，只放self read/help，不放write/离线动作/操作符或伪身份。source继承原root/Host/browser guard，完整wire请求1MiB、整JSON回包64KiB、文件候选20MiB max+1；正文和错误沿原source动态脱敏。全部local scope含其它owner/shared/orphan，只有显式参数决定；只读预检不调用会迁移记忆的Load，config锁内的开关merge保未请求字段。完整行为见 [生态](ecosystem.md) 与 [API](../API.md#技能运行时-cli)。
+
+## Bot 交接派生 CLI
+
+`bot-fork NAME --self (--role TEXT|--role-file FILE|-)` 对所有 source Bot（含非 primary）沿原 Normal 语义，不新设工具类别。原 loopback/Host/browser/规范 root guard 与 source endpoint/ref 定位保持，XBOT_BOT 仅诊断；必须同 listener 实际 Local/running/未 finished Shell prepared context 和冻结 turn，不用 latestTurn，不要求 approver 函数，也不调用 approval intent/增加确认卡。承载 Shell 的原机器 gate 与分类独立；research 仅同窄 lexer/parser 的离线 help，参数中的字面 --help 不放行写。
+
+回执的名字、错误及不确定记忆标识沿原 source 脱敏，raw及最终转义typed请求各1MiB，准确JSONNL/human各32KiB、HTTP64KiB；短回执不回显职责/摘要或另存artifact。created仅原config ACK、confirmed/parts仅原nil返回，当前Memory错误的uncertain_memory{bot,key}明确Markdown可能已写；不把容量/index/sync晚错说成零写，不自动重试或回滚。`fork_bot` wrapper/Known/schema/index及已空peers工具组已退，旧native记录和Link/Event其它作用域保持；旧离线/Web Fork仍错误空结果adapter，不能冒用source调用身份或typed部分回执。模型/记忆及当前路径边界见 [内核](kernel.md#bot-交接派生与原-source-模型链)、完整协议见 [API](../API.md#bot-交接派生运行时-cli)与 [ADR0057](../adr/0057-bot-fork-runtime-cli.md)。
 
 ## 共享慢调用的脱敏
 
@@ -135,7 +141,7 @@ WantedBy=multi-user.target
 | 类别 | 工具 | 确认条件 |
 |---|---|---|
 | `readonly` | `tools`（代理门的 search/describe）、`kernel_manual`、`read_file`、`web_fetch`、`web_search`、`view_image`、`shell_output`、`shell_status`、`list_secrets`、chat-group list/history CLI、`recall`、`recall_history`、`expand`、`read_subagent`、`expand_subagent`、`code_show`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不（`read_file` 或 `view_image` 触及保险箱/密钥路径时确认） |
-| `normal` | `generate_image`（复用全局 OAuth 的生图代理）、`send_message_to_user`、`compact`、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`shell_cancel`、`ask_user`、`todo`、chat-group create/post CLI、`fork_bot`、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
+| `normal` | `generate_image`（复用全局 OAuth 的生图代理）、`send_message_to_user`、`compact`、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`shell_cancel`、`ask_user`、`todo`、chat-group create/post CLI、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
 | `delete` | strict Bot CLI delete、`delete_file`、`remove_file`、`secret_rm`、`delete_link`、`remove_mcp` 等名称明确的删除工具 | 总是 |
 | `external_send` | `telegram_send`、`lark_send`、`send_email`、`send_webhook`、其余 `mcp_*`（按前缀规则，没标 `readOnlyHint` 的），以及 `links` 的 `install`/`remove` | 总是（`links` 只在 install/remove） |
 | `http` | `http_request` | 注入 `{{secret:}}` 或方法非 `GET`/`HEAD` |
