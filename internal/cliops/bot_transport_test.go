@@ -11,6 +11,173 @@ import (
 	"testing"
 )
 
+func TestPersonaRuntimeTransportTypedBodyCallIDAndACK(t *testing.T) {
+	root := t.TempDir()
+	text := " \n完整职责 <&>\" " + strings.Repeat("p", 32<<10) + "\n "
+	calls := 0
+	source, err := Start(root, Handlers{Bots: &BotHandlers{Persona: func(ctx context.Context, input BotPersona) (BotPersonaReply, error) {
+		calls++
+		if input.Text != text || SourceCallID(ctx) != "original-call" {
+			t.Errorf("raw bytes=%d call=%q", len(input.Text), SourceCallID(ctx))
+		}
+		if calls == 1 {
+			return BotPersonaReply{Name: "nonprimary", Written: true, Effective: "next_wake"}, nil
+		}
+		return BotPersonaReply{Name: "nonprimary"}, errors.New("write failed")
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	for _, written := range []bool{true, false} {
+		reply, err := CallBotPersona(context.Background(), source.Endpoint, root, "original-call", BotPersona{Text: text})
+		if reply.Name != "nonprimary" || reply.Written != written || (err == nil) != written || (reply.Effective == "next_wake") != written || (reply.Error == "") != written {
+			t.Fatalf("written=%t reply=%+v error=%v", written, reply, err)
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("calls=%d", calls)
+	}
+	if _, err := CallBotPersona(context.Background(), source.Endpoint, t.TempDir(), "original-call", BotPersona{Text: text}); err == nil || calls != 2 {
+		t.Fatalf("root mismatch calls=%d error=%v", calls, err)
+	}
+	// Also inspect the actual wire contract instead of accepting a compatible
+	// server decoder as evidence of the method, body keys or optional header.
+	wireSource := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		want, _ := json.Marshal(BotPersona{Text: text})
+		if r.Method != http.MethodPut || r.URL.RequestURI() != "/v1/bot/persona" || string(raw) != string(want) || r.Header.Get("X-XBot-Call-ID") != "" {
+			t.Errorf("method=%s path=%s bytes=%d call=%q", r.Method, r.URL.RequestURI(), len(raw), r.Header.Get("X-XBot-Call-ID"))
+		}
+		_, _ = io.WriteString(w, `{"name":"nonprimary","written":true,"effective":"next_wake"}`)
+	}))
+	defer wireSource.Close()
+	if _, err := CallBotPersona(context.Background(), wireSource.URL, root, "", BotPersona{Text: text}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPersonaRuntimeTransportStrictBodyAndRequestBudget(t *testing.T) {
+	calls := 0
+	handlers := &BotHandlers{Persona: func(context.Context, BotPersona) (BotPersonaReply, error) {
+		calls++
+		return BotPersonaReply{Name: "source", Written: true, Effective: "next_wake"}, nil
+	}}
+	for _, raw := range []string{
+		"null", "[]", `"text"`, `{} {}`, `{} true`, `{"unknown":1}`, `{"text":true}`, `{"name":"target","text":"x"}`,
+		"\u00a0{}", "{}\u00a0", strings.Repeat(" ", BotMaxRequest+1),
+		`{"text":"` + strings.Repeat("<", BotMaxRequest/6+1) + `"}`,
+	} {
+		w := httptest.NewRecorder()
+		serveBot(w, httptest.NewRequest(http.MethodPut, "/v1/bot/persona", strings.NewReader(raw)), handlers)
+		if w.Code != http.StatusBadRequest || calls != 0 {
+			t.Fatalf("body bytes=%d status=%d calls=%d", len(raw), w.Code, calls)
+		}
+	}
+	base := `{"text":""}`
+	exact := `{"text":"` + strings.Repeat("x", BotMaxRequest-len(base)) + `"}`
+	for _, raw := range []string{exact, exact + " "} {
+		w := httptest.NewRecorder()
+		serveBot(w, httptest.NewRequest(http.MethodPut, "/v1/bot/persona", strings.NewReader(raw)), handlers)
+		if (w.Code == http.StatusOK) != (len(raw) == BotMaxRequest) || calls != 1 {
+			t.Fatalf("bytes=%d status=%d calls=%d", len(raw), w.Code, calls)
+		}
+	}
+	for _, method := range []string{http.MethodPost, http.MethodGet, http.MethodDelete} {
+		w := httptest.NewRecorder()
+		serveBot(w, httptest.NewRequest(method, "/v1/bot/persona", strings.NewReader(`{"text":"x"}`)), handlers)
+		if w.Code != http.StatusMethodNotAllowed || calls != 1 {
+			t.Fatalf("method=%s status=%d calls=%d", method, w.Code, calls)
+		}
+	}
+	// Empty and oversized domain duties still reach the sole domain validator.
+	for _, text := range []string{"", " \n ", strings.Repeat("x", (32<<10)+1)} {
+		raw, _ := json.Marshal(BotPersona{Text: text})
+		w := httptest.NewRecorder()
+		serveBot(w, httptest.NewRequest(http.MethodPut, "/v1/bot/persona", strings.NewReader(string(raw))), handlers)
+		if w.Code != http.StatusOK {
+			t.Fatalf("domain input bytes=%d status=%d", len(text), w.Code)
+		}
+	}
+	if calls != 4 {
+		t.Fatalf("calls=%d", calls)
+	}
+}
+
+func TestPersonaRuntimeTransportGuards(t *testing.T) {
+	root := t.TempDir()
+	canonical, err := CanonicalRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	source, err := Start(root, Handlers{Bots: &BotHandlers{Persona: func(context.Context, BotPersona) (BotPersonaReply, error) {
+		calls++
+		return BotPersonaReply{}, nil
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	client := LocalHTTPClient(0)
+	defer client.CloseIdleConnections()
+	for _, tc := range []struct{ header, value string }{
+		{"X-XBot-Root", "other-root"}, {"Origin", "http://localhost"}, {"Sec-Fetch-Site", "same-origin"}, {"Host", "localhost:1234"},
+	} {
+		req, _ := http.NewRequest(http.MethodPut, source.Endpoint+"/v1/bot/persona", strings.NewReader(`{"text":"x"}`))
+		req.Header.Set("X-XBot-Root", canonical)
+		if tc.header == "Host" {
+			req.Host = tc.value
+		} else {
+			req.Header.Set(tc.header, tc.value)
+		}
+		response, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode < 400 || calls != 0 {
+			t.Fatalf("guard=%s status=%d calls=%d", tc.header, response.StatusCode, calls)
+		}
+	}
+}
+
+func TestPersonaRuntimeTransportExactReplyBudgetsAndWrittenFacts(t *testing.T) {
+	reply := BotPersonaReply{Written: true, Effective: "next_wake"}
+	base, _ := json.Marshal(reply)
+	reply.Name = strings.Repeat("x", (32<<10)-len(base)-1)
+	handlers := &BotHandlers{Persona: func(context.Context, BotPersona) (BotPersonaReply, error) { return reply, nil }}
+	w := httptest.NewRecorder()
+	serveBot(w, httptest.NewRequest(http.MethodPut, "/v1/bot/persona", strings.NewReader(`{"text":"x"}`)), handlers)
+	if w.Code != http.StatusOK || w.Body.Len() != 32<<10 || !strings.HasSuffix(w.Body.String(), "\n") || len(FormatBotPersona(reply)) > 32<<10 {
+		t.Fatalf("exact status=%d bytes=%d", w.Code, w.Body.Len())
+	}
+	for _, name := range []string{reply.Name + "x", strings.Repeat(`"`, 17000)} {
+		reply.Name = name
+		w = httptest.NewRecorder()
+		serveBot(w, httptest.NewRequest(http.MethodPut, "/v1/bot/persona", strings.NewReader(`{"text":"x"}`)), handlers)
+		var got BotPersonaReply
+		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if w.Code == http.StatusOK || w.Body.Len() > 32<<10 || len(FormatBotPersona(got)) > 32<<10 || !got.Written || got.Effective != "next_wake" || got.Error == "" {
+			t.Fatalf("overflow status=%d bytes=%d written=%t effective=%q error=%q", w.Code, w.Body.Len(), got.Written, got.Effective, got.Error)
+		}
+	}
+	root := t.TempDir()
+	for _, size := range []int{BotMaxReply, BotMaxReply + 1} {
+		base := `{"name":"source","written":true,"effective":"next_wake"}`
+		source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.WriteString(w, base+strings.Repeat(" ", size-len(base)))
+		}))
+		_, err := CallBotPersona(context.Background(), source.URL, root, "", BotPersona{Text: "x"})
+		source.Close()
+		if (err == nil) != (size == BotMaxReply) {
+			t.Fatalf("HTTP bytes=%d error=%v", size, err)
+		}
+	}
+}
+
 func TestBotControlTransportTypedQueriesAndPartial(t *testing.T) {
 	root := t.TempDir()
 	calls := 0

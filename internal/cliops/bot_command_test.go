@@ -2,6 +2,59 @@ package cliops
 
 import "testing"
 
+func TestPersonaRuntimeGrammarArityAndHelp(t *testing.T) {
+	for _, tc := range []struct {
+		args       []string
+		text, file string
+		help       bool
+	}{
+		{[]string{"persona", "set", "--self", "--text", " full 职责 ", "--json"}, " full 职责 ", "", false},
+		{[]string{"persona", "set", "--text=", "--self"}, "", "", false},
+		{[]string{"persona", "set", "--self", "--file", "-"}, "", "-", false},
+		{[]string{"persona", "set", "--self", "--file", "--self"}, "", "--self", false},
+		{[]string{"persona", "set", "--self", "--file", "--help"}, "", "--help", false},
+		{[]string{"persona", "set", "--self", "--text", "--help"}, "--help", "", false},
+		{[]string{"persona", "set", "--text", "--self", "--self"}, "--self", "", false},
+		{[]string{"persona", "--self", "--text=x", "--", "set"}, "x", "", false},
+		{[]string{"persona", "--help"}, "", "", true},
+		{[]string{"persona", "set", "--help"}, "", "", true},
+		{[]string{"persona", "set", "--file", "missing", "--help"}, "", "missing", true},
+	} {
+		c, err := ParseBotRuntime(tc.args)
+		if err != nil || c.Action != "persona" || c.Offline || c.Name != "" || c.Persona != tc.text || c.PersonaFile != tc.file || c.Help != tc.help || (!tc.help && !c.Self) {
+			t.Errorf("%q: command=%+v error=%v", tc.args, c, err)
+		}
+	}
+	for _, args := range [][]string{
+		{"persona"}, {"persona", "set"}, {"persona", "show", "--self"},
+		{"persona", "set", "--self"}, {"persona", "set", "--text=x"},
+		{"persona", "set", "other", "--self", "--text=x"},
+		{"persona", "set", "--self", "--text=x", "--name=other"},
+		{"persona", "set", "--self", "--text=x", "--primary"},
+		{"persona", "set", "--self", "--persona=x"},
+		{"persona", "set", "--self", "--steps=1"},
+		{"persona", "set", "--self", "--text=x", "--file=-"},
+		{"persona", "set", "--self", "--text=x", "--text=y"},
+		{"persona", "set", "--self", "--file=-", "--file=-"},
+		{"persona", "set", "--self", "--file="},
+		{"persona", "set", "--self", "--file"},
+		{"persona", "set", "--self", "--text"},
+		{"persona", "set", "--file", "--self"},
+		{"persona", "set", "--text", "--self"},
+		{"persona", "set", "--", "--self", "--text=x"},
+		{"persona", "set", "--self", "--text=x", "--", "--help"},
+		{"persona", "other", "--help"},
+		{"persona", "set", "--self=true", "--text=x"},
+		{"persona", "set", "--self", "--self", "--text=x"},
+		{"persona", "set", "--self", "--text=x", "--json=false"},
+		{"persona", "set", "--help", "-h"},
+	} {
+		if c, err := ParseBotRuntime(args); err == nil || c.Offline {
+			t.Errorf("invalid %q: command=%+v error=%v", args, c, err)
+		}
+	}
+}
+
 func TestBotControlParserForms(t *testing.T) {
 	for _, tc := range []struct {
 		args          []string

@@ -239,13 +239,6 @@ func TestReviewedToolDoesNotForceBotToBot(t *testing.T) {
 	}
 }
 
-func TestPersonaSelfEditStillAsks(t *testing.T) {
-	persona := reviewedTool{Tool: personaTool{}}
-	if need, _, err := persona.Confirm(json.RawMessage(`{"text":"new persona"}`)); err != nil || !need {
-		t.Fatalf("bot_propose_persona need=%v err=%v", need, err)
-	}
-}
-
 // A direct write_file or edit_file to this bot's own persona or profile file
 // still asks in allow mode, while an ordinary path does not. The tool only
 // reports the path; the kernel review path decides.
@@ -361,12 +354,12 @@ func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
 	}
 	for _, want := range []string{"sh", "read_file", "write_file", "edit_file", "web_fetch", "web_search", "view_image", "http_request", "list_secrets",
 		"links", "telegram_send", "lark_send", "code_start", "desktop_click", "browser_open",
-		"message_bot", "list_groups", "create_group", "post_group", "fork_bot", "bot_propose_persona"} {
+		"message_bot", "list_groups", "create_group", "post_group", "fork_bot", "recall_history"} {
 		if !seen[want] {
 			t.Fatalf("expected tool %q was not registered", want)
 		}
 	}
-	for _, name := range []string{"create_bot", "delete_bot", "list_bots", "bot_status"} {
+	for _, name := range []string{"bot_propose_persona", "create_bot", "delete_bot", "list_bots", "bot_status"} {
 		if seen[name] || review.Known(name) {
 			t.Fatalf("retired tool %s remains registered or classified", name)
 		}

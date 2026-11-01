@@ -121,9 +121,6 @@ var kernelTools = []struct {
 	{"memory", always, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{recallTool{k}, experienceRecordTool{k}, experienceSearchTool{k}}
 	}, nil},
-	{"bot_profile", always, func(k *Kernel) []tools.Tool {
-		return []tools.Tool{personaTool{k}}
-	}, nil},
 	// The owner sees only what the bot sends, so every bot can send.
 	{"chat", always, func(k *Kernel) []tools.Tool { return []tools.Tool{sendMessageTool{k}} }, nil},
 	{"chat", always, func(k *Kernel) []tools.Tool { return []tools.Tool{askTool{k}} }, nil},

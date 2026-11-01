@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -61,7 +62,7 @@ func TestRegistryListsEveryToolOnceWithSource(t *testing.T) {
 	for name, source := range map[string]string{
 		"read_file":            "organ",
 		"send_message_to_user": "kernel",
-		"bot_propose_persona":  "kernel",
+		"recall_history":       "kernel",
 		"desktop_click":        "organ",
 		"browser_open":         "link",
 	} {
@@ -111,7 +112,7 @@ func TestDeclaredToolsAreTheShortFixedSet(t *testing.T) {
 	if strings.Join(got, ",") != strings.Join(toolNames(toolsNamed(want)), ",") {
 		t.Fatalf("declared %v, want %v", got, want)
 	}
-	for _, name := range []string{"bot_propose_persona", "recall_history", "recall", "browser_open", "desktop_click", "links"} {
+	for _, name := range []string{"recall_history", "recall", "browser_open", "desktop_click", "links"} {
 		if !hasToolName(list, name) || hasToolName(declared(list), name) {
 			t.Fatalf("%s must be registered and undeclared", name)
 		}
@@ -126,31 +127,36 @@ func toolsNamed(names []string) []tools.Tool {
 	return out
 }
 
-func TestProfileModelGateRetiredPersonaRemainsUsable(t *testing.T) {
+func TestProfileAndPersonaModelGatesRetiredRuntimePersonaRemainsUsable(t *testing.T) {
 	k, b := doorKernel(t, nil)
-	if registered(k, "bot_update_profile") {
-		t.Fatal("retired profile tool remains callable")
-	}
-	for label, load := range map[string]func() ([]tools.Tool, error){"main": k.modelTools, "child": k.mountedTools} {
-		list, err := load()
-		if err != nil || hasToolName(list, "bot_update_profile") || !hasToolName(list, "bot_propose_persona") {
-			t.Fatalf("%s tools still expose profile or lost persona: %v", label, err)
-		}
-	}
 	door := toolDoor{k}
 	ctx := context.Background()
-	if _, err := door.Run(ctx, json.RawMessage(`{"action":"describe","id":"bot_update_profile"}`)); err == nil {
-		t.Fatal("retired profile schema remains describable")
+	for _, name := range []string{"bot_update_profile", "bot_propose_persona"} {
+		if registered(k, name) {
+			t.Fatalf("retired tool %s remains callable", name)
+		}
+		for label, load := range map[string]func() ([]tools.Tool, error){"main": k.modelTools, "child": k.mountedTools} {
+			list, err := load()
+			if err != nil || hasToolName(list, name) || !hasToolName(list, "recall_history") {
+				t.Fatalf("%s tools still expose %s or lost history: %v", label, name, err)
+			}
+		}
+		if _, err := door.Run(ctx, json.RawMessage(`{"action":"describe","id":"`+name+`"}`)); err == nil {
+			t.Fatalf("retired schema %s remains describable", name)
+		}
+		if tool, _, err := door.Forward(ctx, json.RawMessage(`{"action":"call","id":"`+name+`","args":{}}`)); err == nil || tool != nil {
+			t.Fatalf("retired call %s still forwards", name)
+		}
 	}
-	if tool, _, err := door.Forward(ctx, json.RawMessage(`{"action":"call","id":"bot_update_profile","args":{"description":"obsolete"}}`)); err == nil || tool != nil {
-		t.Fatal("retired profile call still forwards")
+	if _, err := door.Run(ctx, json.RawMessage(`{"action":"describe","id":"bot_profile"}`)); err == nil {
+		t.Fatal("retired empty profile group remains describable")
 	}
-	tool, args, err := door.Forward(ctx, json.RawMessage(`{"action":"call","id":"bot_propose_persona","args":{"text":"Keep the remaining persona action working."}}`))
-	if err != nil || tool == nil {
-		t.Fatalf("persona forwarding: %v", err)
+	if _, ok := k.toolRegistry().index()["bot_profile"]; ok {
+		t.Fatal("retired empty profile group remains indexed")
 	}
-	if _, err := tool.Run(ctx, args); err != nil {
-		t.Fatal(err)
+	k.Permissive = true
+	if reply, err := k.BotHandlers().Persona(ctx, cliops.BotPersona{Text: "Keep the remaining persona action working."}); err != nil || !reply.Written || reply.Name != b.Name() || reply.Effective != "next_wake" {
+		t.Fatalf("runtime persona: %+v %v", reply, err)
 	}
 	if text, err := b.ReadPersona(); err != nil || text != "Keep the remaining persona action working." {
 		t.Fatalf("persona persistence: %q %v", text, err)
@@ -161,24 +167,24 @@ func TestDoorSearchAndDescribe(t *testing.T) {
 	k, _ := doorKernel(t, nil)
 	door := toolDoor{k}
 	ctx := context.Background()
-	out, err := door.Run(ctx, json.RawMessage(`{"action":"search","query":"persona"}`))
-	if err != nil || !strings.Contains(out, "bot_propose_persona [bot_profile]") {
+	out, err := door.Run(ctx, json.RawMessage(`{"action":"search","query":"recall_history"}`))
+	if err != nil || !strings.Contains(out, "recall_history [context]") {
 		t.Fatalf("search %q %v", out, err)
 	}
 	if strings.Contains(out, `"properties"`) {
 		t.Fatal("search dumped a schema")
 	}
-	out, err = door.Run(ctx, json.RawMessage(`{"action":"describe","id":"bot_propose_persona"}`))
+	out, err = door.Run(ctx, json.RawMessage(`{"action":"describe","id":"recall_history"}`))
 	var desc struct {
 		ID, Group, Source string
 		Parameters        map[string]any
 	}
-	if err != nil || json.Unmarshal([]byte(out), &desc) != nil || desc.ID != "bot_propose_persona" || desc.Group != "bot_profile" || desc.Parameters["properties"] == nil {
+	if err != nil || json.Unmarshal([]byte(out), &desc) != nil || desc.ID != "recall_history" || desc.Group != "context" || desc.Parameters["properties"] == nil {
 		t.Fatalf("describe %q %v", out, err)
 	}
 	// Describing a native group lists its tools.
-	out, err = door.Run(ctx, json.RawMessage(`{"action":"describe","id":"bot_profile"}`))
-	if err != nil || !strings.Contains(out, `"bot_propose_persona"`) {
+	out, err = door.Run(ctx, json.RawMessage(`{"action":"describe","id":"context"}`))
+	if err != nil || !strings.Contains(out, `"recall_history"`) {
 		t.Fatalf("describe group %q %v", out, err)
 	}
 	if _, err := door.Run(ctx, json.RawMessage(`{"action":"describe","id":"nope"}`)); err == nil || !strings.Contains(err.Error(), "search") {
@@ -195,9 +201,9 @@ func TestDoorSearchAndDescribe(t *testing.T) {
 func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 	shell := tools.NewShells()[0].Name()
 	p := &scripted{resps: []provider.Message{
-		toolCall("s1", "tools", `{"action":"search","query":"persona"}`),
-		toolCall("d1", "tools", `{"action":"describe","id":"bot_propose_persona"}`),
-		toolCall("d2", "tools", `{"action":"describe","id":"bot_profile"}`),
+		toolCall("s1", "tools", `{"action":"search","query":"recall_history"}`),
+		toolCall("d1", "tools", `{"action":"describe","id":"recall_history"}`),
+		toolCall("d2", "tools", `{"action":"describe","id":"context"}`),
 		toolCall("c1", "tools", `{"action":"call","id":"`+shell+`","args":{"command":"echo door-shell","description":"echo"}}`),
 		toolCall("c2", "tools", `{"action":"call","id":"recall_history","args":"{\"query\":\"DOOR_HISTORY_52\"}"}`),
 		toolCall("c3", "tools", `{"action":"call","id":"recall_history","args":{"query":"DOOR_HISTORY_52"}}`),
@@ -227,7 +233,7 @@ func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 		}
 	}
 	text := transcriptText(t, b)
-	for _, want := range []string{"bot_propose_persona [bot_profile]", `"text"`, "recall_history", "door-shell", "DOOR_HISTORY_52 persisted native history fixture"} {
+	for _, want := range []string{"recall_history [context]", `"query"`, "recall_history", "door-shell", "DOOR_HISTORY_52 persisted native history fixture"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in transcript:\n%s", want, text)
 		}
@@ -274,10 +280,10 @@ func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 		}
 	}
 	published := testPublished(t, k)
-	if !indexHas(published, "bot_propose_persona") {
+	if !indexHas(published, "recall_history") {
 		t.Fatal("tool_index lacks a listed tool")
 	}
-	for _, name := range []string{"create_bot", "delete_bot", "list_bots", "bot_status", "routine_create", "routine_list", "routine_update", "routine_delete"} {
+	for _, name := range []string{"bot_propose_persona", "create_bot", "delete_bot", "list_bots", "bot_status", "routine_create", "routine_list", "routine_update", "routine_delete"} {
 		if indexHas(published, name) || registered(k, name) {
 			t.Fatalf("retired tool %s remains available", name)
 		}

@@ -7,6 +7,22 @@ import (
 	"time"
 )
 
+func TestPersonaRuntimeFormatReceipts(t *testing.T) {
+	for _, tc := range []struct {
+		reply       BotPersonaReply
+		json, human string
+	}{
+		{BotPersonaReply{Name: "ada", Written: true, Effective: "next_wake"}, `{"name":"ada","written":true,"effective":"next_wake"}`, "name: ada\nwritten: true\neffective: next_wake\n"},
+		{BotPersonaReply{Name: "ada", Error: "write failed"}, `{"name":"ada","written":false,"error":"write failed"}`, "name: ada\nwritten: false\nerror: write failed\n"},
+		{BotPersonaReply{Name: "ada", Written: true, Effective: "next_wake", Error: "display failed"}, `{"name":"ada","written":true,"effective":"next_wake","error":"display failed"}`, "name: ada\nwritten: true\neffective: next_wake\nerror: display failed\n"},
+	} {
+		raw, err := json.Marshal(tc.reply)
+		if err != nil || string(raw) != tc.json || FormatBotPersona(tc.reply) != tc.human {
+			t.Fatalf("reply=%+v json=%s human=%q error=%v", tc.reply, raw, FormatBotPersona(tc.reply), err)
+		}
+	}
+}
+
 func TestBotFormatListExact(t *testing.T) {
 	preview := strings.Repeat("p", 80) + "…"
 	local := []BotListLocal{{Name: "ada", PersonaPreview: preview}}

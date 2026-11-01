@@ -2,12 +2,12 @@ package kernel
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
 	"xbot/internal/inbox"
 	"xbot/internal/mcp"
 	"xbot/internal/notify"
@@ -33,9 +33,10 @@ func TestProfileOriginalSourceKeepsPersonaRulesAndNotificationAfterRename(t *tes
 	if k.Bot != original {
 		t.Fatal("test no longer exercises the original source handle")
 	}
-	raw, _ := json.Marshal(map[string]string{"text": "Keep the same original source duties after rename."})
-	if _, err := (personaTool{k: k}).Run(ctx, raw); err != nil {
-		t.Fatal(err)
+	// This fixture exercises path IO through the production permissive callback.
+	k.Permissive = true
+	if reply, err := k.BotHandlers().Persona(ctx, cliops.BotPersona{Text: "Keep the same original source duties after rename."}); err != nil || !reply.Written || reply.Name != next || reply.Effective != "next_wake" {
+		t.Fatalf("persona write after rename: %+v %v", reply, err)
 	}
 	seen := false
 	k.Desktop = func(_ context.Context, name, text string) error {
