@@ -117,8 +117,9 @@ func TestCLIPersonaRuntimeAtomicFailureAndCurrentRoute(t *testing.T) {
 		t.Fatal("same source did not preserve its original endpoint and two complete replies")
 	}
 	var profile struct {
-		Name, PreviousName, Error string
-		Applied, Moved            bool
+		Name, Error    string
+		PreviousName   string `json:"previous_name"`
+		Applied, Moved bool
 	}
 	if err := json.Unmarshal([]byte(objects[0]), &profile); err != nil || profile.Name != current || profile.PreviousName != original || !profile.Applied || !profile.Moved || profile.Error != "" {
 		t.Fatal("actual source resource move did not complete")
