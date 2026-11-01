@@ -51,13 +51,12 @@ func (s *Server) postCLIEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	gate.Lock()
 	defer gate.Unlock()
-	box, err := inbox.Open(b.InboxPath())
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+	var box *inbox.Inbox
 	ev := link.NewEvent("cli", "event", in.Text, strings.TrimSpace(in.Sender), time.Now())
-	if err = box.Post(ev); err != nil {
+	if err = withInboxIO(k.Resources, b, nil, func(_ *bot.Bot, currentBox *inbox.Inbox) error {
+		box = currentBox
+		return currentBox.Post(ev)
+	}); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -85,7 +84,7 @@ func (s *Server) postCLIEvent(w http.ResponseWriter, r *http.Request) {
 		rs.close()
 	}()
 	err = k.Handle(context.WithoutCancel(r.Context()), ev)
-	ackErr := box.Ack(ev.ID)
+	ackErr := withInboxIO(k.Resources, b, box, func(_ *bot.Bot, currentBox *inbox.Inbox) error { return currentBox.Ack(ev.ID) })
 	if err != nil {
 		rs.send("error", map[string]string{"error": err.Error()})
 		return
@@ -118,17 +117,16 @@ func (s *Server) queueCLIEvent(w http.ResponseWriter, b *bot.Bot, sender, text s
 		return
 	}
 	defer s.EndTurn()
-	if _, _, err := s.kernel(b); err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	box, err := inbox.Open(b.InboxPath())
+	k, _, err := s.kernel(b)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	ev := link.NewEvent("cli", "event", text, strings.TrimSpace(sender), time.Now())
-	if err = box.Post(ev); err != nil {
+	if err = withInboxIO(k.Resources, b, nil, func(current *bot.Bot, currentBox *inbox.Inbox) error {
+		b = current
+		return currentBox.Post(ev)
+	}); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
