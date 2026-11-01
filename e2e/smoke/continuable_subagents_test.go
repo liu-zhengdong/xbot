@@ -251,6 +251,14 @@ func TestContinuableSubagentBinary(t *testing.T) {
 }
 
 type continuationRequest struct {
+	Model           string          `json:"model"`
+	Thinking        json.RawMessage `json:"thinking"`
+	ReasoningEffort string          `json:"reasoning_effort"`
+	Tools           []struct {
+		Function struct {
+			Name string `json:"name"`
+		} `json:"function"`
+	} `json:"tools"`
 	Messages []struct {
 		Role       string              `json:"role"`
 		Content    string              `json:"content"`
