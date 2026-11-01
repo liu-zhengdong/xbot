@@ -82,6 +82,7 @@ type Endpoint struct {
 
 // StartRequest begins one subagent.
 type StartRequest struct {
+	Descriptor *Descriptor        `json:"descriptor,omitempty"`
 	JobDir     string             `json:"job_dir,omitempty"`
 	ID         string             `json:"id"`
 	Bot        string             `json:"bot,omitempty"`
@@ -107,6 +108,7 @@ type StartRequest struct {
 
 // Control is a message to a running subagent.
 type Control struct {
+	Sender string `json:"sender,omitempty"`
 	JobDir string `json:"job_dir,omitempty"`
 	ID     string `json:"id"`
 	Kind   string `json:"kind"`
@@ -115,6 +117,7 @@ type Control struct {
 
 // Event is something the subagent reports to the main inbox.
 type Event struct {
+	TurnSeq int       `json:"turn_seq,omitempty"`
 	Images  []string  `json:"images,omitempty"`
 	ID      string    `json:"id"`
 	AgentID string    `json:"agent_id"`
@@ -135,21 +138,29 @@ type Executor interface {
 // Task is a live executor snapshot. Position is 1-based in the waiting queue,
 // and zero for running work. The executor alone owns admission and ordering.
 type Task struct {
-	Blocked  bool   `json:"blocked,omitempty"`
-	ID       string `json:"id"`
-	Task     string `json:"task"`
-	Status   string `json:"status"`
-	Position int    `json:"position,omitempty"`
+	Continuable bool   `json:"continuable,omitempty"`
+	TurnSeq     int    `json:"turn_seq,omitempty"`
+	ResultPath  string `json:"result_path,omitempty"`
+	Blocked     bool   `json:"blocked,omitempty"`
+	ID          string `json:"id"`
+	Task        string `json:"task"`
+	Status      string `json:"status"`
+	Position    int    `json:"position,omitempty"`
 }
 
 // Local runs each subagent as a goroutine.
 type Local struct {
-	RunTool func(StartRequest, context.Context, tools.Tool, json.RawMessage, func(context.Context) tools.CallResult) tools.CallResult
-	JobsFor func(StartRequest) (*tools.Jobs, error)
-	Limits  Limits
-	Prov    provider.Provider
-	Approve agent.Approver
-	ToolSet func(id, dir string) []tools.Tool
+	AgentsDir    string
+	Restore      func(context.Context, Descriptor) (StartRequest, error)
+	ProviderFor  func(StartRequest) (provider.Provider, error)
+	CurrentCWD   func(StartRequest) string
+	ReleaseScope func(StartRequest)
+	RunTool      func(StartRequest, context.Context, tools.Tool, json.RawMessage, func(context.Context) tools.CallResult) tools.CallResult
+	JobsFor      func(StartRequest) (*tools.Jobs, error)
+	Limits       Limits
+	Prov         provider.Provider
+	Approve      agent.Approver
+	ToolSet      func(id, dir string) []tools.Tool
 	// OnIdle runs after the final task really returns and leaves admission.
 	// It is called with no executor lock held.
 	OnIdle func()
@@ -220,6 +231,9 @@ func (l *Local) Start(ctx context.Context, req StartRequest) (Task, error) {
 	if err := validateStart(req); err != nil {
 		return Task{}, err
 	}
+	if req.Descriptor != nil {
+		return l.startContinuable(ctx, req)
+	}
 	p, err := l.providerFor(req)
 	if err != nil {
 		return Task{}, err
@@ -266,7 +280,7 @@ func (l *Local) Start(ctx context.Context, req StartRequest) (Task, error) {
 		return Task{}, fmt.Errorf("exec: %s is already running", req.ID)
 	}
 	if l.busyLocked(j.resource) || len(l.jobs) >= l.limits.MaxConcurrent {
-		if len(l.waiting) >= maxWaiting {
+		if l.waitingCountLocked() >= maxWaiting {
 			return Task{}, fmt.Errorf("exec: %d subagents already queued", maxWaiting)
 		}
 		// The record exists from the start, so read_subagent and the
@@ -316,6 +330,9 @@ func (l *Local) launchLocked(j *job) {
 	l.jobs[j.id] = j
 	go func() {
 		runLoop(j)
+		if j.request.Descriptor != nil {
+			return // finishContinuable owns its atomic admission handoff.
+		}
 		l.mu.Lock()
 		delete(l.jobs, j.id)
 		l.drainLocked()
@@ -333,7 +350,7 @@ func (l *Local) drainLocked() {
 	for len(l.jobs) < l.limits.MaxConcurrent {
 		next := -1
 		for i, w := range l.waiting {
-			if !l.busyLocked(w.resource) {
+			if !w.closing && !l.busyLocked(w.resource) {
 				next = i
 				break
 			}
@@ -354,17 +371,22 @@ func (l *Local) Tasks() ([]Task, error) {
 	defer l.mu.Unlock()
 	out := make([]Task, 0, len(l.jobs)+len(l.waiting))
 	for _, j := range l.jobs {
-		out = append(out, Task{ID: j.id, Task: j.task, Status: statusRunning, Blocked: j.isBlocked()})
+		out = append(out, j.snapshot(statusRunning, 0))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	for i, j := range l.waiting {
-		out = append(out, Task{ID: j.id, Task: j.task, Status: statusQueued, Position: i + 1})
+		out = append(out, j.snapshot(statusQueued, i+1))
 	}
 	return out, nil
 }
 
 // Control delivers steer, queue, interrupt, or cancel.
 func (l *Local) Control(ctx context.Context, id string, c Control) error {
+	if l.AgentsDir != "" && idRe.MatchString(id) {
+		if handled, err := l.controlContinuable(ctx, id, c); handled {
+			return err
+		}
+	}
 	if strings.HasPrefix(id, "sh_") && c.JobDir != "" && l.JobsFor != nil {
 		jobs, err := l.JobsFor(StartRequest{JobDir: c.JobDir})
 		if err != nil {
@@ -408,6 +430,9 @@ func (l *Local) Control(ctx context.Context, id string, c Control) error {
 }
 
 func (l *Local) providerFor(req StartRequest) (provider.Provider, error) {
+	if l.ProviderFor != nil {
+		return l.ProviderFor(req)
+	}
 	if l.Prov != nil {
 		return l.Prov, nil
 	}
@@ -475,7 +500,7 @@ func validateStart(req StartRequest) error {
 	default:
 		return fmt.Errorf("exec: bad mode %q", req.Mode)
 	}
-	if req.Mode == ModeFork && len(req.Fork) == 0 {
+	if req.Mode == ModeFork && len(req.Fork) == 0 && req.Descriptor == nil {
 		return errors.New("exec: fork context is empty")
 	}
 	if req.Dir == "" || !filepath.IsAbs(req.Dir) {

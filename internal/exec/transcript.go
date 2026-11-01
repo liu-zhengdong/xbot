@@ -19,15 +19,18 @@ const expandCap = 8 << 10
 
 // Meta is the subagent's status file.
 type Meta struct {
-	PID       int    `json:"pid,omitempty"`
-	ProcStart int64  `json:"proc_start,omitempty"`
-	Blocked   bool   `json:"blocked,omitempty"`
-	ID        string `json:"id"`
-	Status    string `json:"status"`
-	Summary   string `json:"summary,omitempty"`
-	Steps     int    `json:"steps"`
-	Task      string `json:"task"`
-	Mode      string `json:"mode"`
+	Continuable bool   `json:"continuable,omitempty"`
+	TurnSeq     int    `json:"turn_seq,omitempty"`
+	ResultPath  string `json:"result_path,omitempty"`
+	PID         int    `json:"pid,omitempty"`
+	ProcStart   int64  `json:"proc_start,omitempty"`
+	Blocked     bool   `json:"blocked,omitempty"`
+	ID          string `json:"id"`
+	Status      string `json:"status"`
+	Summary     string `json:"summary,omitempty"`
+	Steps       int    `json:"steps"`
+	Task        string `json:"task"`
+	Mode        string `json:"mode"`
 	// Type is the subagent type it was dispatched as (ADR 0016), empty for a
 	// plain spawn.
 	Type        string         `json:"type,omitempty"`
