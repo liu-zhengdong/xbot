@@ -1,6 +1,6 @@
 ---
 kind: idea
-verified: 2026-11-01 @ 63762ae5
+verified: 2026-11-01 @ e21224cf
 parent: ../README.md
 guard: owner
 status: 候选，机制还没设计
@@ -23,7 +23,7 @@ status: 候选，机制还没设计
 
 **留记录。** 改了什么、为什么、谁批准的，都追加进记录，不改写历史。transcript 只追加；每次确认决定写进 `decisions.jsonl`；仓库里的决策写成 ADR，只追加不删。
 
-现在已有的雏形：Bot 通过当前实例 profile CLI 组合修改名字、简介、时区和头像 seed，上传/清除头像是独立动作；实际保存或移动后以当前活轮次的 profile 提示刷新资料，不再执行旧 profile 模型工具。职责仍由 `bot_propose_persona` 等原独立入口修改；它与直接写 persona/profile 文件沿既有统一权限分类，生产默认放行，严格测试/评测模式保留 SelfEdit 审核。`write_skill` 仍按现有权限表执行；LESSONS.md 里同一条教训出现 3 天就升级成硬约束，这本身就是一条人参与的「从经验改规则」的路径。资料入口与部分失败语义见 [多 Bot](../multibot.md#运行时普通资料)。
+现在已有的雏形：Bot 通过当前实例 profile CLI 组合修改名字、简介、时区和头像 seed，上传/清除头像是独立动作；实际保存或移动后以当前活轮次的 profile 提示刷新资料，不再执行旧 profile 模型工具。职责仍由 `bot_propose_persona` 等原独立入口修改；它与直接写 persona/profile 文件沿既有统一权限分类，生产默认放行，严格测试/评测模式保留 SelfEdit 审核。技能沿当前实例 skill write CLI，省scope对所有本地Bot设置默认开关，不自动改职责；LESSONS.md 里同一条教训出现 3 天就升级成硬约束，这本身就是一条人参与的「从经验改规则」的路径。资料入口与部分失败语义见 [多 Bot](../multibot.md#运行时普通资料)。
 
 ## 它带来什么、代价是什么
 好处是 Bot 能从长期使用里积累改进，而不是每次都靠人发现问题再改。代价和风险都不小：评测覆盖不到的地方可能悄悄变差，自动改动多了以后，人很难看懂系统为什么变成现在这样。所以在设计清楚之前，它只在候选清单里，不开工。
@@ -31,4 +31,4 @@ status: 候选，机制还没设计
 > 待确认：三层划分、「越往下门槛越高」和「已有雏形」这几段是 Bot 复刻整理的。哪一层允许 Bot 不经用户确认自己改、评测门由谁跑，用户还没定。
 
 ## 在仓库里体现在哪
-候选清单（在用户的 Obsidian）的「自进化」一条；[安全](../security.md)权限表里的 `self_edit` 类；[生态](../ecosystem.md)里的 `write_skill`；[LESSONS.md](../../../LESSONS.md) 的升级规则。
+候选清单（在用户的 Obsidian）的「自进化」一条；[安全](../security.md)权限表里的 `self_edit` 类；[生态](../ecosystem.md)里的技能 CLI；[LESSONS.md](../../../LESSONS.md) 的升级规则。

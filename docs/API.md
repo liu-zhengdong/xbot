@@ -448,6 +448,18 @@ M6 的第二片。某个 Bot 的 MCP 服务器记在它目录里的 `mcp.json`�
 
 命令行：`xbot mcp list <bot>`，`xbot mcp add <bot> <name> --command PATH [--arg A]... [--secret-env NAME]...`，`xbot mcp remove <bot> <name>`。`--arg` 和 `--secret-env` 可以重复。打印和接口都不显示密钥的值。
 
+## 技能运行时 CLI
+
+Agent 使用 `"$XBOT_BIN" skill read ID --self --json` 与 `skill write SLUG --title TEXT --description TEXT (--body TEXT|--body-file FILE|-) [--scope self|BOTNAME] --self --json`。read 的 id 按库排序匹配 Slug 或 Name，不匹配 Title；`--self` 定位原 source endpoint/ref，不隐含 scope=self，也不以 XBOT_BOT 定位。help 离线成功，read/write 缺原运行端点明确失败，不初始化客户机配置或回落到离线写。显式 root 必须与 source 的规范 XBOT_ROOT 相同。
+
+原 loopback listener 提供 `GET /v1/skill/read?id=...`、`POST /v1/skill/write`，沿既有 Host/browser/root guard；本刀没有新增人用 owner runtime HTTP。POST 是单个 JSON 对象 `{slug,title?,description,body,scope?}`，拒未知字段与尾随对象，body 必需但可为空串，完整序列化请求最多1MiB（含转义及字段开销）。文件/stdin 读 max+1，超限非0且业务零改；不截断后声称写成功。CLI 随调用方 signal context，source client无代理/重定向，不自动重试写。
+
+read 的每份候选 SKILL.md 原始字节最多20MiB，max+1明确拒绝；HTTP回包仍最多64KiB；为让原Shell消费者取得完整JSON，完整解析正文仅在最终JSON含换行≤现Shell32KiB时返回 `{slug,name,title?,description,body,bytes}`。过大回 `{slug,name,title?,description,preview?,file,access:"local",bytes}`，file为当前 Bot 工作区下 results 相对位置，文件含完整脱敏正文；metadata自身无法满足回包预算则明确错误。不会静默16KiB截断；routine 仍保持原16KiB当轮投影。不存在、当前停用或当前config读取失败均非0。
+
+write 的 title 沿原单行化并安全写frontmatter；scope省略/空白为数据根全部本地Bot（含不同owner/shared/orphan），self为原ref当前名字，其它字符串EqualFold匹配真名，包含名为global的Bot。未知/歧义先失败，服务端不扫描历史推断范围。read沿source配置SkillsDir，write保原root/skills写口；配置和动态脱敏函数在source发布时捕获，不被其它K覆盖。source route→库.write.lock→逐config锁串行文件与默认开关，库锁内重新解析目标；手动enable/disable随后仍权威。只合并开关及必要name降级字段，未请求的legacy style/未知字段保留，不触发记忆迁移。
+
+写回 `{slug,written,scope,target?,updated_bots,error?}`；scope是规范化的显式输入，空串表示全本地，target为已解析实际单Bot。文件已写而后续config失败，written仍true、updated_bots保真实成功项，CLI先输出回执再非0，不称跨Bot事务。两旧模型工具及schema已经退役；research共用窄直调lexer与纯argv parser，仅允许self read/help。既有离线list/show/import/remove/enable/disable和设置页接口保留，show是原SKILL.md。决定见 [ADR0050](adr/0050-skills-runtime-cli.md)。
+
 ## 用户技能
 
 元数据可选 `title` 是人读短名，新写技能的 `name` 保持 slug；展示优先 title，再 name/slug，description 只作说明。

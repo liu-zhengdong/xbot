@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**普通资料、avatar_seed、MCP 运行态与 CLI 已合入本地 main、所测真入口通过；完整改名与其余平台批次继续实施**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile 完整族与 MCP 已合本地 main；skills read/write 已实施并通过独立所测入口，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -8,7 +8,7 @@
 - MCP 的管理、发现、查看说明和调用都由 `xbot mcp …` 提供；模型按需读帮助和 schema，不常驻注入整套 MCP 或平台管理工具。
 - **退役 Link 作为统一能力接入抽象**，包括模型侧 `links` 管理入口；不是只把 `links` 工具改名。
 - **保留 Event → Inbox → 唤醒这条线**：外部消息、定时器、Webhook、文件监听、MCP 通知和任务完成仍沿已有路径投递。
-- 本文保留整体迁移路线，已实施范围仅批 0/1 普通资料首刀；不改旧 Accepted ADR 正文或 guard 旅程。后续继续先打通最窄端到端，再按能力切换并删除旧入口。
+- 本文保留整体迁移路线；profile 完整族、MCP CLI 与 skills read/write 已按切片落地，其余平台族继续推进。不改旧 Accepted ADR 正文或 guard 旅程；后续继续先打通最窄端到端，再按能力切换并删除旧入口。
 
 ## 问题与边界
 
@@ -545,7 +545,7 @@ handlers.Skills = k.SkillHandlers() // 固定 Root、SkillsDir、动态 Redact �
 - runtime 分流在本地 Migrate/EnsureDefault/HoldKeys 前。read/write 不触碰客户机默认 root；`XBOT_ROOT` 必需且规范化，显式 --root 如有必须相同；loopback/Host/browser guard 复用现 cliops 原 source。默认随 signal context，HTTP no proxy/no redirect；不重试写请求。现 profile.callProfile 与 cmd.runMCP 各有内联 http.Client，并没有已落共享客户端；本刀只在 cliops 抽取二者所需的窄 transport 构造供 source client 复用，profile 原 10s 与 MCP/skills ctx 超时保各自语义，不造 client 框架。
 - write 的完整最终序列化 JSON ≤1 MiB；`body-file`/stdin 读 max+1 后判超限，再将完整 DTO marshal 后再次按最终请求字节判预算。JSON 转义也计入，不能以原 body 大小当 wire 大小；超限非 0 且业务文件/config 零改，不能截断后写成功。服务端 MaxBytesReader 同上限、单对象/无尾随对象、拒未知字段。Body 指针区分缺失与显式空串；解码后一次规范化并校验现 ValidSlug、非空 description 和 scope，内部不再多层重复校验。
 - runtime 完整 read 新增窄 bounded 打开/解析入口，复用现 frontmatter parse 与 metadata/id 规则；选择候选时也不能先用无界 `skill.List` 读整文件，再声称有上限。按库既有排序逐候选 bounded 读取，单 SKILL.md 原始字节最多现 `work.ResultMaxBytes` 20 MiB、max+1 超限明确报错。现 `skill.Read` 的 16 KiB 策略只留给 routine 引用/旧领域读取，不称 runtime 全文。
-- 普通 read 返回完整解析 body 与 metadata 的 JSON；完整 marshal（含换行）≤64 KiB 才内联。超预算时返回 metadata、有界 preview、实际 file/access=local/bytes，完整正文落现 results 产物。若 metadata 自身也超预算，回明确 projection error，不能把截过正文标成完整；不无界倾倒 metadata，不重复建 blob 系统。正文和 artifact 按原 source 动态 Redact；普通 body 不静默16KiB截断。CLI --json 只输出 DTO；人读输出正文或 preview+真实产物位置。读写错误都脱敏且非0；存在 Written/UpdatedBots partial 时先保 DTO 再非0。
+- 普通 read 返回完整解析 body 与 metadata 的 JSON；HTTP硬上限仍64KiB，实际完整marshal（含换行）须符合原Shell32KiB输出预算才内联。超预算时返回 metadata、有界 preview、实际 file/access=local/bytes，完整正文落现 results 产物。若 metadata 自身也超预算，回明确 projection error，不能把截过正文标成完整；不无界倾倒 metadata，不重复建 blob 系统。正文和 artifact 按原 source 动态 Redact；普通 body 不静默16KiB截断。CLI --json 只输出 DTO；人读输出正文或 preview+真实产物位置。读写错误都脱敏且非0；存在 Written/UpdatedBots partial 时先保 DTO 再非0。
 
 ### resolver、库锁与 partial 的真实提交边界
 
@@ -571,17 +571,17 @@ handlers.Skills = k.SkillHandlers() // 固定 Root、SkillsDir、动态 Redact �
 | 生态/现skills355/444/467 | title/空body/默认全部/BoB/真名global/其它owner/shared/orphan；非法歧义零改；原运行另一K手动开关立即影响read；并发正文与默认开关同赢家 |
 | 安全/主线+legacy+continuable工具门 | research read/help允许、write/伪直调拒；真实三个provider请求无两旧schema且其它Tools门仍可用 |
 | 原routine/read历史/skill离线+ForgetSkill | routine缺失/disabled/原16KiB引用及原记录脱敏；旧show/import/remove/enable/disable有效行为保留，退役工具断言改当前入口不长期挂skip |
-| 节点≤1MiB/既有results20MiB | >16KiB尾哨兵完整、≤64KiB整JSON边界、artifact真实全文/当前目录、stdin/转义后1MiB边界与超限零改、20MiB max+1拒绝 |
+| 节点≤1MiB/既有results20MiB | >16KiB尾哨兵完整、HTTP64KiB硬上限及现Shell32KiB整JSON边界、无redirect实际模型收完整artifact引用、产物真实全文/当前目录、stdin/转义后1MiB边界与超限零改、20MiB max+1拒绝 |
 
-推进：先提交这份合同与 ADR0050 草案给24窄结构核、0d独立最窄红；phase contract PASS 后直接分面实现。第一可编译产品即具备 source runtime read/write --self 与完整结果，交独立首链再续业务边界；不等概念轮、不重新审批 profile/MCP/其它五组。最终只按实际新增/受影响的上述路径一次验证，通过即停；不跑旧profile五组、旧MCP、全仓、真模型或完整矩阵。母 dev 其余平台族继续保留。
+本切片已按单一phase合同落地，现状提炼至 [生态](../atlas/ecosystem.md)、[API](../API.md#技能运行时-cli) 与 [ADR0050](../adr/0050-skills-runtime-cli.md)；独立固定五项按首read/write及退门完整候选的精确版本封存，实际级别见 [MILESTONES](../MILESTONES.md)。不重跑已绿profile/MCP或本刀整批；此节保留同母路线已定调用合同，后续仅按新族实际增量推进，不重新开概念审批。
 
 ## 还没做的
 
 - 主人日用验收尚未开始。普通资料首刀的独立审计、真入口验证与合入已完成；后续不重复该刀设计审批，按新切片复核实际增量。
-- 批 0 的后续实际操作及入站依赖清单、research 按业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
+- 批 0 的后续实际操作及入站依赖清单、尚未迁族的 research 业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已提炼 atlas，固定五项独立所测端到端按各自精确版本通过，证据见 MILESTONES；原 chat loop 下一输入/Timer handle 及其 recover、回放、通知实际消费者也已以局部红绿和 reviewer24 至 `63762ae5` 连续增量 PASS 收口，已合入本地 main，尚未日用；合并时与主线持久选择的交叠补单项真实浏览器红绿，不重跑固定五项。已通过的普通字段、avatar_seed、MCP 和本刀五项不重复整批验收，母路线其它族继续在本 dev 中推进。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
-- 技能/例程/Bot/群/连接器等平台能力逐族迁移。
+- skills read/write 已提炼现状，例程/Bot/群/连接器及剩余目录管理等平台能力继续逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。
 - 各批独立冒烟、相关旅程回归、性能与上下文收益测量、主人日用验收。
