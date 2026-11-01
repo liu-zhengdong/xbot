@@ -7812,6 +7812,7 @@
       if (draft !== null) { sessionStorage.setItem("xbot-draft:" + name, draft); sessionStorage.removeItem(oldKey); }
       sessionStorage.setItem("xbot-selected-bot", name);
     } catch (e) {}
+    try { if (localStorage.getItem("xbot-selected-bot") === previous) localStorage.setItem("xbot-selected-bot", name); } catch (e) {}
     const url = new URL(location.href);
     if (url.searchParams.get("bot") === previous) { url.searchParams.set("bot", name); history.replaceState(history.state, "", url); }
     subagentsView?.rename(previous, name);

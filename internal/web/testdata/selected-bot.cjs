@@ -38,6 +38,12 @@ async function launch() {
     else if (pathname === '/api/groups') body = {groups: [], folders: []};
     else if (pathname === '/api/bots/status') body = {bots: []};
     else if (pathname === '/api/notes') body = {notes: []};
+    else if (scenario === 'rename-reopen' && pathname === '/api/bots/' + chosen && route.request().method() === 'PATCH') {
+      const update = route.request().postDataJSON();
+      assert.equal(update.name, 'RenamedFocus', 'real profile form did not submit the requested name');
+      bots = bots.map(bot => bot.name === chosen ? {...bot, name: update.name, description: update.description} : bot);
+      body = {name: update.name, previous_name: chosen, moved: true, applied: true, applied_fields: ['name']};
+    }
     else {
       const match = pathname.match(/^\/api\/bots\/([^/]+)(\/chat|\/transcript)?$/);
       if (match) {
@@ -51,7 +57,7 @@ async function launch() {
           time: '2026-11-01T00:00:00Z', text: 'conversation:' + name,
         }], has_more: false};
         else if (match[2] === '/transcript') body = {messages: []};
-        else body = {name, agents: [], links: []};
+        else body = {name, agents: [], links: [], ...(scenario === 'rename-reopen' ? {persona: 'Scripted selected Bot duties.'} : {})};
       }
     }
     await route.fulfill({json: body});
@@ -105,7 +111,21 @@ async function freshWindowStorage(page, remembered) {
   await choose(page, chosen);
   await page.evaluate(() => sessionStorage.setItem('selected-bot-test-window', 'old-window'));
 
-  if (scenario === 'window-preference') {
+  if (scenario === 'rename-reopen') {
+    await page.getByRole('button', {name: '编辑资料', exact: true}).click();
+    await page.locator('[data-profile-focus]').fill('RenamedFocus');
+    const saved = page.waitForResponse(response => new URL(response.url()).pathname === '/api/bots/' + chosen && response.request().method() === 'PATCH');
+    await page.getByRole('button', {name: '保存', exact: true}).click();
+    assert.equal((await saved).status(), 200, 'scripted profile save failed');
+    await page.locator('#modal').waitFor({state: 'hidden'});
+    await page.waitForFunction(() => document.querySelector('[data-bot].active')?.dataset.bot === 'RenamedFocus' && document.querySelector('#title')?.textContent.includes('RenamedFocus'));
+    await page.close();
+    assert(page.isClosed(), 'renamed page did not close');
+    page = await open();
+    await selected(page, 'RenamedFocus');
+    await freshWindowStorage(page, 'RenamedFocus');
+    assert.equal(await page.locator('[data-bot-menu][data-bot="Focus"]').count(), 0, 'old Bot remained in the sidebar');
+  } else if (scenario === 'window-preference') {
     const other = await open();
     await selected(other, chosen);
     await freshWindowStorage(other, chosen);

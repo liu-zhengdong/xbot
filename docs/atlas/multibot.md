@@ -52,7 +52,7 @@ set 只修改给出的名字、简介、时区、生成头像 seed，可在同�
 
 当前 endpoint 的 JSON profile 请求和回包各最多 64 KiB；头像上传另走原始二进制 body，最多 1 MiB，元数据不携图片或 base64。JSON 回执保留 `name/description/timezone/avatar/avatar_seed/scope:"runtime"/applied`，更新回执按实际结果提供 `previous_name/applied_fields/moved`，失败可带脱敏 `error`。发生后期 IO 错误时，CLI 仍输出实际结果并非 0 退出；名字与已应用字段以回执为准，不把部分保存冒充全失败或全回滚。普通读取不写 profile，改同名且没有其它字段时不作物理移动。
 
-外部入口一次纯规范化校验，再只读预检目标 Bot/work/key；改名在 primary 提交锁内重验冲突，持已打开的 config 锁跨目录移动，把名字、请求字段和必要的 legacy seed pin 合入一次 fresh 配置写入。未请求的模型、运行档位、人设卡和技能开关保留。无改名也在 profile 快照锁、config 文件锁内 fresh merge，成功后才刷新快照。可预测的非法输入或冲突不改业务文件；后期 primary/work/peer/重载 IO 可能部分成功，实际新目录仍存在时后续路由跟随新名。旧 `bot_update_profile` 模型入口及其 schema 已退役，网页更新借同一 typed 领域方法。决定见 [ADR 0048](../adr/0048-complete-runtime-profile-entry.md)。
+外部入口一次纯规范化校验，再只读预检目标 Bot/work/key；改名在 primary 提交锁内重验冲突，持已打开的 config 锁跨目录移动，把名字、请求字段和必要的 legacy seed pin 合入一次 fresh 配置写入。未请求的模型、运行档位、人设卡和技能开关保留。无改名也在 profile 快照锁、config 文件锁内 fresh merge，成功后才刷新快照。可预测的非法输入或冲突不改业务文件；后期 primary/work/peer/重载 IO 可能部分成功，实际新目录仍存在时后续路由跟随新名。旧 `bot_update_profile` 模型入口及其 schema 已退役，网页更新借同一 typed 领域方法。决定见 [ADR 0049](../adr/0049-complete-runtime-profile-entry.md)。
 
 上传、clear 仍复用私有 typed 头像写缝。文件、MIME、config 分别原子写，回执依实际成功点记录 `avatar_file`、`avatar_mime`、`avatar`，不承诺三文件事务；clear 或 seed 的元数据成功后清旧图 best-effort，清理失败不伪报未保存。`AvatarState` 只读受锁头像字段；`AvatarBytes/ExportTemplate` 在锁内 fresh metadata 判 custom，再读同一状态的 bytes/MIME，旧 custom 句柄不能服务已 generated 的遗留文件。缺 name 的受支持旧配置补目录名，再计算 seed fallback/导出名字；generator 在锁外调用。persona 与 group 的输入先校验，仍是独立写入，不构成跨文件资料事务。
 

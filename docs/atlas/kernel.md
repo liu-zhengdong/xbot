@@ -16,7 +16,7 @@ verified: 2026-11-01 @ 63762ae5
 
 `openKernel` 为已有 Kernel 绑定 `127.0.0.1` 随机端口的窄 HTTP 操作入口（`internal/cliops`），serve、桌面和独立 chat 同协议。资料 set 支持名字、简介、时区、生成头像 seed 的组合，头像 upload/clear 是独立动作；MCP 借同 Resources，不另起 Kernel。JSON profile 请求与回包各最多 64 KiB，独立头像原始二进制 body 最多 1 MiB；同用本机非浏览器、Host 与规范 root 校验。命令、字段及部分失败回执见 [多 Bot](multibot.md#运行时普通资料)。
 
-操作入口由实际持有者释放：chat 退出、web 淘汰/换绑或服务 context 取消强制关闭；serve.Pass 的 Kernel.Close 请求退役，有本机子代理或编码任务时复用原执行集合保持入口，实际任务移除并排空原队列后的无锁 OnIdle 回调关闭空闲入口。没有第二张任务表或定期寿命轮询；已关闭入口会撤销宿主 context 回调。主线和可写本机子代理沿短 CLI 指引使用当前实例资料入口，改名后原 endpoint 仍识别同一 Bot；profile 不再登记模型工具或 schema，persona 保留原独立工具。入口所有权见 [ADR 0043](../adr/0043-cli-platform-runtime-entry.md)，完整资料语义见 [ADR 0048](../adr/0048-complete-runtime-profile-entry.md)。
+操作入口由实际持有者释放：chat 退出、web 淘汰/换绑或服务 context 取消强制关闭；serve.Pass 的 Kernel.Close 请求退役，有本机子代理或编码任务时复用原执行集合保持入口，实际任务移除并排空原队列后的无锁 OnIdle 回调关闭空闲入口。没有第二张任务表或定期寿命轮询；已关闭入口会撤销宿主 context 回调。主线和可写本机子代理沿短 CLI 指引使用当前实例资料入口，改名后原 endpoint 仍识别同一 Bot；profile 不再登记模型工具或 schema，persona 保留原独立工具。入口所有权见 [ADR 0043](../adr/0043-cli-platform-runtime-entry.md)，完整资料语义见 [ADR 0049](../adr/0049-complete-runtime-profile-entry.md)。
 
 ## MCP 与每 Bot 进程资源
 
