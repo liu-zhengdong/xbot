@@ -75,9 +75,6 @@ var Table = map[string]Class{
 	// Built-in mechanism manual.
 	"kernel_manual": Readonly,
 
-	// Context.
-	"compact": Normal,
-
 	// Subagents.
 	"spawn":                  Normal,
 	"dispatch":               Normal,

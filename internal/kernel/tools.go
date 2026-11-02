@@ -240,32 +240,6 @@ func finalAssistantText(msgs []provider.Message) string {
 	return ""
 }
 
-type compactTool struct{ k *Kernel }
-
-func (compactTool) Name() string { return "compact" }
-func (compactTool) Description() string {
-	return "Summarize a finished transcript range. from and to are inclusive sequence numbers. The last turns stay raw, and a tool-call pair cannot be split."
-}
-func (compactTool) Parameters() any {
-	return schema(map[string]any{
-		"from":  intProp("first sequence number"),
-		"to":    intProp("last sequence number"),
-		"focus": stringProp("what the summary must preserve"),
-	}, []string{"from", "to"})
-}
-func (compactTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
-func (t compactTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		From  int    `json:"from"`
-		To    int    `json:"to"`
-		Focus string `json:"focus"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	return t.k.CompactRange(ctx, in.From, in.To, in.Focus)
-}
-
 // webSearchOn says the local web_search tool is offered: search is on and the
 // bound provider has no hosted search of its own.
 func (k *Kernel) webSearchOn() bool {
