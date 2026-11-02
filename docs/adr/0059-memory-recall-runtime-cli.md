@@ -8,7 +8,7 @@ date: 2026-11-02
 
 ## 边界与实际caller
 
-TRUE Experience maind632e7a3后仅迁recall一个能力；0059先glob空后建Proposed，afd6单次实际SHAPE通过后Accepted，沿该具体形状实施。具体形状见 [母路线](../dev/cli-platform-entry.md#批-memory-recall具体合同pass实施中)。命令选独立 `"$XBOT_BIN" memory-recall --self [--query TEXT|--query-file FILE|-] [--scope bot|person] [--since YYYY-MM-DD] [--json]` 和离线help；cmd实际grep无旧recall入口，eval memory-recall只是场景名。查询可缺或空，原Run虽schema必填query却允许无token返回no matches，不增加非空领域前提。scope/since按原字串传递，不Trim/casefold；raw与escaped JSON各≤1MiB。
+TRUE Experience maind632e7a3后仅迁recall一个能力；0059先glob空后建Proposed，afd6单次实际SHAPE通过后Accepted，沿该具体形状实施。实际协议见 [API](../API.md#可见记忆文件检索运行时-cli)，精确证据见 [MILESTONES](../MILESTONES.md)，未迁族留 [母路线](../dev/cli-platform-entry.md)。命令选独立 `"$XBOT_BIN" memory-recall --self [--query TEXT|--query-file FILE|-] [--scope bot|person] [--since YYYY-MM-DD] [--json]` 和离线help；cmd实际grep无旧recall入口，eval memory-recall只是场景名。查询可缺或空，原Run虽schema必填query却允许无token返回no matches，不增加非空领域前提。scope/since按原字串传递，不Trim/casefold；raw与escaped JSON各≤1MiB。
 
 ## 两种实际结构
 
@@ -36,6 +36,6 @@ MemoryRecall{Query,Scope,Since}→POST/v1/memory/recall严格单对象/unknown/E
 
 ## 交付与验证
 
-具体SINGLE SHAPE后才0d固定最窄source caller红。首可编译真实Source owner人物目录+Bot自由文件/dated条目→Shell原prepared→原scanner→完整path:line正文→原read_file全文的链早交；真实KindBot Inbox no-person与query/date/scope/escaping artifact-currentRename边界同cut继续，不等首反馈停。当前没有已绿或代码实现声明。
+具体SINGLE SHAPE后才0d固定最窄source caller红。首可编译真实Source owner人物目录+Bot自由文件/dated条目→Shell原prepared→原scanner→完整path:line正文→原read_file全文的链早交；真实KindBot Inbox no-person与query/date/scope/escaping artifact-currentRename边界同cut继续，不等首反馈停。具体实现和已运行验证提炼到上述API与MILE，本文保决策边界。
 
-作者UNIT核u1/u2另turn-latest变更、缺/finished/foreign/nonShell/cancel与nonNilfrozen必需、noapprover、真实Localchild按实际prepared Kind/SourceSender而非policyPerson空推人物资格，原SA父Owner分支/KindBotGroup优先，不能冒独立。真实FS锁阻塞→scan持current route→rename按现IO顺序及结果artifact后写当前路径、旧Bot/work不复活，无新生产测试钩子/期限。旧两个Recall FS/date/inode/budget夹具实际必要迁唯一scanner一次，旧current路径/MemoryPrompt/Organs-registry-links/公开mock RECALL_PERSON一个产出与sawRecall识别、manual/blurb/standing指引及looseCall按真实依赖窄迁；不改共享脚本harness或整旧Memory/Context族。Experience3/Fork7/Message6/Group5等与旧三审批证据封存；原source resolver无改则复用，不因依赖整族重跑。Root4USERdocs/ownerSSE/guard/main/push日用不动。
+作者UNIT核u1/u2另turn-latest变更、缺/finished/foreign/nonShell/cancel与nonNilfrozen必需、noapprover、真实Localchild按实际prepared Kind/SourceSender而非policyPerson空推人物资格，原SA父Owner分支/KindBotGroup优先，不能冒独立。真实FS锁阻塞→scan持current route→rename按现IO顺序及结果artifact后写当前路径、旧Bot/work不复活，无新生产测试钩子/期限。旧两个Recall FS/date/inode/budget夹具实际必要迁唯一scanner一次，旧current路径/MemoryPrompt/Organs-registry-links/公开mock RECALL_PERSON一个产出与sawRecall识别、manual/blurb/standing指引及looseCall按真实依赖窄迁；不泛改共享脚本harness或整旧Memory/Context族。Experience3/Fork7/Message6/Group5等与旧三审批证据封存；原source resolver无改则复用，不因依赖整族重跑。Root4USERdocs/ownerSSE/guard/main/push日用不动。

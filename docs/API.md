@@ -244,7 +244,31 @@ source 与 CLI 共用准确 `FormatExperienceRecord` / `FormatExperienceSearch`�
 
 callback 持原 operations lease，不外套 currentIO 调用内部已持 route 的 Record/Search；只有产物实际写入在短 currentIO 里取当前 source name/root 和重基后的原 WorkDir，未配置时取当前 Bot 默认工作区，不拿旧目录迟写。领域错误沿原 `k.redactor()` 脱敏，检索结果继续遮盖 held secrets 与 Resources secret；仅显示 error 可缩短，保留实际 ACK/产物事实。CLI 先输出收到的事实回执再非 0，客户端不展开产物、不代理/重定向或自动重试。
 
-SQLite 七列、原 Web 字段与全库字面分页、提纲阅读投影和原始 segment 展示保持；缺库读取经 exists 不建库，已有库 reader 的原 open 仍可能 CREATE TABLE IF NOT EXISTS/WAL，不能承诺全 root 零写。下一自然环境采样仍报 experience count/latest ID+200 字节摘要，读错保已发布值；不额外 Inbox/waker、MemoryOwnReceipt、假 native ToolCall 配对或普通事实账。`detail` 仍是原 context 工具，按 raw seq 或 experience ID+0 起下标读真正完整 blob（64 KiB），不是新 CLI 子命令。两旧 `experience_record` / `experience_search` wrapper、Known、schema、index 与执行指引已退，历史 native 字面记录保持；memory 组仍有 recall，Context 四工具和原 Link.Tools 空壳保留。存储与消费者见 [记忆](atlas/memory.md#怎么运转)，运行装配见 [内核](atlas/kernel.md#经历记录与检索实例入口)。
+SQLite 七列、原 Web 字段与全库字面分页、提纲阅读投影和原始 segment 展示保持；缺库读取经 exists 不建库，已有库 reader 的原 open 仍可能 CREATE TABLE IF NOT EXISTS/WAL，不能承诺全 root 零写。下一自然环境采样仍报 experience count/latest ID+200 字节摘要，读错保已发布值；不额外 Inbox/waker、MemoryOwnReceipt、假 native ToolCall 配对或普通事实账。`detail` 仍是原 context 工具，按 raw seq 或 experience ID+0 起下标读真正完整 blob（64 KiB），不是新 CLI 子命令。两旧 `experience_record` / `experience_search` wrapper、Known、schema、index 与执行指引已退，历史 native 字面记录保持；可见记忆文件检索沿下文独立 CLI，已空的 memory 工具注册组已退，Context 四工具和原 Link.Tools 空壳保留。存储与消费者见 [记忆](atlas/memory.md#怎么运转)，运行装配见 [内核](atlas/kernel.md#经历记录与检索实例入口)。
+
+## 可见记忆文件检索运行时 CLI
+
+```sh
+"$XBOT_BIN" memory-recall --self [--query TEXT|--query-file FILE|-] [--scope bot|person] [--since YYYY-MM-DD] [--json]
+cat FILE | "$XBOT_BIN" memory-recall --self --query-file - [--scope bot|person] [--since YYYY-MM-DD] [--json]
+"$XBOT_BIN" memory-recall --help
+```
+
+纯 `ParseMemoryRecallRuntime` 只做语法解析：query/query-file 至多一，query 可省略或显式为空；原 native schema 虽要求 query，原 Run 对缺失、空白或无 token 查询仍返回 `no matches`，此语义保持。flag 按 arity 消费值，值中的字面 `--help`、`--` 不作帮助或分隔符；无位置参数、别名或 `-h`，拒未知/重复 flag、双输入与空 query-file 路径。help 离线成功，其余须 self；main 在 resolveRoot/default/legacy 初始化前分流。每份 raw 文本/文件/stdin 以 max+1 有界读取，连同最终转义 typed JSON 请求各限 1 MiB，不先截断再 trim；原 Shell 命令仍限 16 KiB，大查询用文件或 stdin。Scope/Since 保原字串，不 trim 或 casefold。
+
+self 由原 source 的 `XBOT_ENDPOINT`、规范 `XBOT_ROOT` 与 Resources ref 识别，显式 `--root` 必须相同；改名后的旧 `XBOT_BOT` 仅作诊断。缺 endpoint、root 冲突或运行失败明确非 0，不离线回落、Load 其它 Bot 或新建 Kernel。既有 `Handlers` 仅挂一个 `Recall` callback，经 `CallMemoryRecall(ctx,endpoint,root,actualCallID,input)` 到 `POST /v1/memory/recall`。请求 DTO 为 `cliops.MemoryRecall{Query,Scope,Since}`，JSON 为 `{query,scope?,since?}`，query 缺省为空串；不接文件路径、人物名、project、limit 或 caller 自报身份。只收单 JSON 对象，拒 URL query 参数、未知字段、非对象与 EOF 前尾随内容；复用原 loopback/Host/browser/root guard，请求最多 1 MiB，HTTP 回包硬限 64 KiB。
+
+`XBOT_CALL_ID`／`X-XBot-Call-ID` 必须关联同 listener 实际 Local/running/未 finished 的原 Shell prepared context，且 `turnKey` 必须明确为非 nil 冻结 turn；缺失、过期、foreign、nonShell、取消或无冻结 turn 均拒绝。原 `runtimeSourceCall` 保留该 prepared context 与取消链，不能改用 HTTP context、curTurn/latestTurn，或审批专用 `runtimeApprovalSource` 的 owner 重绑（child 会被重绑为 nil）。检索保持原只读、不调用 approval intent、不加确认卡或要求 approver 函数，也不加 primary/主人/person/project 资格；承载 Shell 的原 gate 独立。CallID 关联原调用，不是新的授权身份。
+
+唯一领域扫描器是原 Run 就近提取的私有 `k.recall(ctx,recallInput{Query,Scope,Since})`，不以结构化事实的 `Memory.Store.Recall` 替代。Scope 只接受精确空串、`bot`、`person`；空串按 Bot 后可见 person 合并，共享最多 2000 文件与总 4 MiB 预算，Bot 用尽预算时 person 不再扫描，人物目录不可见不额外报错。人物取 `memoryPersonOf(originalFrozenTurn)`：KindBot/KindGroup 优先无 person；SourceSubagent 或 `sa_` 前缀 sender 用父 Bot 的首个非空 Owner；其余用原 sender。trusted 不决定人物可见性，实际 Local child 的 policy marker 也不改写或证明其 Kind/Source/Sender、person 为空或取首 Owner。
+
+query 仅在正文行上 BM25，路径/scope 字串不参与匹配，汉字按重叠双字分词。Since 非空沿原 `time.ParseInLocation("2006-01-02",value,time.Local)`，使用进程本地时区；不取 profile 时区。常驻 memory.md 的 dated 条目与 log/*.md 按原行日期筛选，自由文件按 mtime。递归只读 `.md`/`.txt`，跳过 `.bak`、符号链接、非 regular 文件、空行/标题和原暂无行；每文件最多 256 KiB，只有全局文件数/字节 cap 触发 incomplete，单文件截断不单独标记。扫描在一次原 currentIO 内直接用 current Bot 的 Root/Name，完成规范 root、memory 祖先 resolved==dir、scope `.lock`、Walk/Open 与 inode 同一性核对；不外取旧名等锁再重建旧 Bot 目录，也不在 route 内嵌套 currentName helper。PersonDir 不随 Bot 改名搬。仅 bounded 本地 FS IO，无模型或网络；原 Walk callback 检查取消，scope 锁等待可能延迟取消，不加即时取消、新 deadline、CAS 或改名事务承诺。
+
+回包为 `cliops.MemoryRecallReply{text?,file?,access?,bytes?,error?}`，没有 rows/count。text 保原最多 20 条排名命中的完整格式：`- scope:相对路径:行号: 正文`，每条正文最多 200 Unicode runes，超出加 `…`；保剩余命中数、`(search incomplete: file/byte limit reached)` 和 `no matches` 词法。原扫描器没有总输出 cap 或自身脱敏，source typed 回包前沿 `k.redactor()`、held secrets 与 Resources secret scrub 遮盖；不套经历检索的 6 KiB 文本 cap。
+
+准确共享 `FormatMemoryRecall` 与整 JSON 含 newline 各须≤原 Shell 32 KiB。任一种超限，沿原 `work.WriteResult` 将完整这份二十命中文本的 JSON 含 newline 写入当前 source 工作区 `results/<32hex>.json`（0600，最多 20 MiB），省 inline text，回 file/access:"local"/实际 bytes。先按 32hex 文件名预检引用的 JSONNL/human 两格式，真正写入才短持 currentIO，沿当前 root/name 与重基后的原 WorkDir，未配置时用当前 Bot 默认工作区。完整产物保存该二十命中投影，不是 4 MiB 原扫描文件导出，也不补回每条超过 200 runes 的正文；需要原文用现有 `read_file`。不截 records、反解析 count、抬容量或新建产物框架；写入/metadata 错误明确非 0，无虚假 file，仅显示 error 可缩短。CLI 先打印收到的事实回执再非 0，不展开产物、代理/重定向或自动重试。
+
+research 只允许当前 canonical BIN 或精确受控 `"$XBOT_BIN"` 的单 POSIX 直调，经原 `DirectXBotArgs` 与本纯 parser 识别 help 或 self；不凭命令含词放行，操作符/替换/错 root 沿原规则拒绝。熔断在旧 looseShell 截首命令前，以同 lexer/本 parser 识别规范 literal BIN 调用的 self/help，仅承接检索循环阈值，不扩所有平台命令的权限或限额。manual、live NameMemory 与 MemoryWriteRule 指引已用当前 CLI；Bot 是写入默认，检索空 scope 仍为合并范围。`recall` 执行 wrapper、Known、schema、index 与确已空的 memory 工具注册组已退；旧 native 历史字面、`link.Memory` 器官、Link/Event 装配、4 KiB 文件写守卫与 context 的 compact/recall_history/expand/detail 均保留。没有新 Web Recall 结果 parser、环境事实、Inbox/waker、MemoryOwnReceipt 或伪 native 工具配对。当前扫描语义见 [记忆](atlas/memory.md#可见记忆文件检索)，实例接线见 [内核](atlas/kernel.md#可见记忆文件检索实例入口)，闭合评测的实际 BIN 桥见 [供应商与评测](atlas/providers.md#可见记忆检索的闭合评测入口)，决定见 [ADR0059](adr/0059-memory-recall-runtime-cli.md)。
 
 ## Bot 列表与创建
 
