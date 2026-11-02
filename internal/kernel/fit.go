@@ -138,11 +138,11 @@ func (f *turnFit) omittedResult(m provider.Message, seq int) provider.Message {
 	n := compact.EstimateMessage(m)
 	_, receipt, _ := bot.SplitEnvironmentReceipt(m.Text())
 	if seq > 0 {
-		m.SetText(fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens, transcript seq %d. Call expand with from=%d to=%d to read it as it was; do not run the call again for that.]", n, seq, seq, seq))
+		m.SetText(fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens, transcript seq %d. In Shell, run \"$XBOT_BIN\" transcript expand --self --from %d --to %d to read it as it was; do not run the call again for that.]", n, seq, seq, seq))
 	} else if f.noSeq != "" {
 		m.SetText(fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens. %s]", n, f.noSeq))
 	} else {
-		m.SetText(fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens. The transcript keeps it: find it with recall_history, then expand.]", n))
+		m.SetText(fmt.Sprintf("[result left out to keep the request inside the context window: about %d tokens. The transcript keeps it: in Shell, find its sequence with \"$XBOT_BIN\" transcript search --self --query TEXT, then read it with \"$XBOT_BIN\" transcript expand --self --from N --to N; do not run the call again for that.]", n))
 	}
 	if receipt != "" {
 		m.SetText(m.Text() + "\n\n" + receipt)
@@ -156,7 +156,7 @@ func turnSummary(text string, from, to int) provider.Message {
 	if from > 0 && to >= from {
 		where = fmt.Sprintf(" from=\"%d\" to=\"%d\"", from, to)
 	}
-	return provider.Message{Role: provider.RoleUser, Internal: true, Content: provider.TextContent("<turn_progress" + where + ">\nThe earlier steps of this turn were summarized to keep the request inside the context window. The transcript keeps them whole: expand the range to read them. The steps after this note are verbatim.\n\n" + text + "\n</turn_progress>")}
+	return provider.Message{Role: provider.RoleUser, Internal: true, Content: provider.TextContent("<turn_progress" + where + ">\nThe earlier steps of this turn were summarized to keep the request inside the context window. The transcript keeps them whole: in Shell, run \"$XBOT_BIN\" transcript expand --self --from N --to N for the range above to read them; do not rerun completed calls. The steps after this note are verbatim.\n\n" + text + "\n</turn_progress>")}
 }
 
 // latestStep is the index of the newest assistant message at or after from:

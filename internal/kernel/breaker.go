@@ -270,6 +270,12 @@ func looseShell(args string) bool {
 			return true
 		}
 	}
+	if argv, ok := review.DirectXBotArgs(cmd, "$XBOT_BIN"); ok && len(argv) > 0 && argv[0] == "transcript" {
+		parsed, err := cliops.ParseTranscriptRuntime(argv[1:])
+		if err == nil && parsed.Action == "search" && (parsed.Help || parsed.Self) {
+			return true
+		}
+	}
 	if i := strings.IndexAny(cmd, "\n;&|"); i >= 0 {
 		cmd = strings.TrimSpace(cmd[:i])
 	}
