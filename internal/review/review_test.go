@@ -22,7 +22,6 @@ func TestTableHasEveryClass(t *testing.T) {
 		"list_secrets":   Readonly,
 		"recall_history": Readonly,
 		"code_show":      Readonly,
-		"recall":         Readonly,
 		"restart_xbot":   Restart,
 		"secret_rm":      Delete,
 		"telegram_send":  ExternalSend,
@@ -168,7 +167,7 @@ func TestExternalSendToolsAsk(t *testing.T) {
 }
 
 func TestRetiredBotToolsAreUnknown(t *testing.T) {
-	for _, name := range []string{"fork_bot", "message_bot", "create_bot", "delete_bot", "list_bots", "bot_status", "experience_record", "experience_search"} {
+	for _, name := range []string{"recall", "fork_bot", "message_bot", "create_bot", "delete_bot", "list_bots", "bot_status", "experience_record", "experience_search"} {
 		if Known(name) {
 			t.Errorf("retired policy %s is still known", name)
 		}

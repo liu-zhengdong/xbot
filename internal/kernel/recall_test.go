@@ -2,7 +2,6 @@ package kernel
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,28 +32,28 @@ func TestRecallFolder(t *testing.T) {
 	if err := os.Symlink(filepath.Join(dir, "projects/x.md"), filepath.Join(dir, "linked.md")); err != nil {
 		t.Fatal(err)
 	}
-	tool := recallTool{&Kernel{Bot: b, Memory: memory.Open(b.Root)}}
-	run := func(args string) string {
+	k := &Kernel{Bot: b, Memory: memory.Open(b.Root)}
+	run := func(in recallInput) string {
 		t.Helper()
-		got, err := tool.Run(context.Background(), json.RawMessage(args))
+		got, err := k.recall(context.Background(), in)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return got
 	}
-	got := run(`{"query":"launch","scope":"bot"}`)
+	got := run(recallInput{Query: "launch", Scope: "bot"})
 	if !strings.Contains(got, "bot:projects/x.md:2:") || strings.Contains(got, "linked") {
 		t.Fatal(got)
 	}
-	got = run(`{"query":"needle"}`)
+	got = run(recallInput{Query: "needle"})
 	if strings.Count(got, "- bot:") != 20 || !strings.Contains(got, "(7 more;") || strings.Contains(got, "ignored") || strings.Contains(got, "binary") {
 		t.Fatal(got)
 	}
-	got = run(`{"query":"oldlog newlog current stale","since":"2026-10-15"}`)
+	got = run(recallInput{Query: "oldlog newlog current stale", Since: "2026-10-15"})
 	if !strings.Contains(got, "newlog") || !strings.Contains(got, "current") || strings.Contains(got, "oldlog") || strings.Contains(got, "stale") {
 		t.Fatal(got)
 	}
-	if got := run(`{"query":"absent"}`); got != "no matches" {
+	if got := run(recallInput{Query: "absent"}); got != "no matches" {
 		t.Fatal(got)
 	}
 }
@@ -103,7 +102,7 @@ func TestRecallIsolationAndBudgets(t *testing.T) {
 			}
 			result := make(chan string, 1)
 			go func() {
-				got, err := (recallTool{&Kernel{Bot: b}}).Run(context.Background(), json.RawMessage(`{"query":"needle","scope":"bot"}`))
+				got, err := (&Kernel{Bot: b}).recall(context.Background(), recallInput{Query: "needle", Scope: "bot"})
 				if err != nil {
 					got = err.Error()
 				}

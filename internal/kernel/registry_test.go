@@ -112,7 +112,10 @@ func TestDeclaredToolsAreTheShortFixedSet(t *testing.T) {
 	if strings.Join(got, ",") != strings.Join(toolNames(toolsNamed(want)), ",") {
 		t.Fatalf("declared %v, want %v", got, want)
 	}
-	for _, name := range []string{"recall_history", "recall", "browser_open", "desktop_click", "links"} {
+	if hasToolName(list, "recall") || hasToolName(mustMounted(t, k), "recall") || registered(k, "recall") {
+		t.Fatal("retired recall remains callable in model tools")
+	}
+	for _, name := range []string{"recall_history", "browser_open", "desktop_click", "links"} {
 		if !hasToolName(list, name) || hasToolName(declared(list), name) {
 			t.Fatalf("%s must be registered and undeclared", name)
 		}
@@ -189,6 +192,17 @@ func TestDoorSearchAndDescribe(t *testing.T) {
 	}
 	if _, err := door.Run(ctx, json.RawMessage(`{"action":"describe","id":"nope"}`)); err == nil || !strings.Contains(err.Error(), "search") {
 		t.Fatalf("unknown id %v", err)
+	}
+	for _, id := range []string{"recall", "memory"} {
+		if _, err := door.Run(ctx, json.RawMessage(`{"action":"describe","id":"`+id+`"}`)); err == nil {
+			t.Fatalf("retired recall schema/group %s remains describable", id)
+		}
+	}
+	if tool, _, err := door.Forward(ctx, json.RawMessage(`{"action":"call","id":"recall","args":{"query":"tea"}}`)); err == nil || tool != nil {
+		t.Fatal("retired recall still forwards")
+	}
+	if _, ok := k.toolRegistry().index()["memory"]; ok {
+		t.Fatal("retired empty memory tool group remains indexed")
 	}
 	if indexHas(environment{}, "x") {
 		t.Fatal("empty index")
@@ -283,7 +297,7 @@ func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 	if !indexHas(published, "recall_history") {
 		t.Fatal("tool_index lacks a listed tool")
 	}
-	for _, name := range []string{"bot_propose_persona", "create_bot", "delete_bot", "list_bots", "bot_status", "routine_create", "routine_list", "routine_update", "routine_delete"} {
+	for _, name := range []string{"recall", "bot_propose_persona", "create_bot", "delete_bot", "list_bots", "bot_status", "routine_create", "routine_list", "routine_update", "routine_delete"} {
 		if indexHas(published, name) || registered(k, name) {
 			t.Fatalf("retired tool %s remains available", name)
 		}
