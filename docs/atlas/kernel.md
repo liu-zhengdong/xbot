@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/, internal/cliops/]
-verified: 2026-11-02 @ e506d810 (experience source callbacks, nullable acknowledgement and current-workspace artifacts)
+verified: 2026-11-02 @ 4722c2ff (memory-recall original frozen source, unique current-route scanner and complete text artifacts)
 ---
 # 内核：Link、Event、收件箱
 
@@ -80,7 +80,17 @@ Created 仅 Create nil 或 typed CreateCommitError.Applied 的 config ACK，Crea
 
 callback 持原 operations lease，不外套 currentIO 再调已持 route 的原方法。记录只映射原返回 Entry 的 ID/range 与 nil ACK：nil 才 `recorded:true`，任意 error 为 `recorded:null`，保实际返回值，不以错误推断 SQLite 未建库或未插入。搜索仍为原 `presentHistory` 脱敏/6 KiB 文本，不换 raw rows 或 Web Page。准确共享 formatter 同时核 JSONNL/human 各 32 KiB；转义导致超限时沿原 work.WriteResult 保存完整该 Text JSON，预检 metadata 两格式后才短持 currentIO，以当前名/root 和重基后的原 WorkDir（空时当前 Bot 默认工作区）写 0600 产物，不复活旧目录。HTTP 64 KiB、结果 20 MiB，错误沿原 redactor/held secrets/Resources 脱敏，CLI 保事实先输出再非 0。
 
-下一自然 experience 环境采样及读错保旧值沿原差异流；SQLite/Web 提纲消费者与 raw seq/experience+0 起下标的完整 blob detail 均保原义，见 [记忆](memory.md#怎么运转)。两旧 record/search wrapper、Known、schema、index 与执行指引已退，旧 native 历史保持；memory 组仍有 recall，context 仍有 compact/recall_history/expand/detail，原 Link.Tools 空壳保留。不另发 Inbox/waker、MemoryOwnReceipt、假 ToolCall 或普通事实账。命令、DTO、nullable ACK 与产物协议集中见 [API](../API.md#经历记录与检索运行时-cli)。
+下一自然 experience 环境采样及读错保旧值沿原差异流；SQLite/Web 提纲消费者与 raw seq/experience+0 起下标的完整 blob detail 均保原义，见 [记忆](memory.md#怎么运转)。两旧 record/search wrapper、Known、schema、index 与执行指引已退，旧 native 历史保持；可见记忆文件检索沿下文独立 CLI，已空的 memory 工具注册组已退，context 仍有 compact/recall_history/expand/detail，原 Link.Tools 空壳保留。不另发 Inbox/waker、MemoryOwnReceipt、假 ToolCall 或普通事实账。命令、DTO、nullable ACK 与产物协议集中见 [API](../API.md#经历记录与检索运行时-cli)。
+
+## 可见记忆文件检索实例入口
+
+既有 listener 的单个 `Handlers.Recall` callback 将 `memory-recall --self` 接到同 source Kernel 的私有 `k.recall(ctx,recallInput)` 唯一扫描器。它经原 `runtimeSourceCall` 取同 listener 实际 live Local/running/未 finished Shell prepared context，并显式拒绝 nil 冻结 turn；保原取消链与人物来源，不取 HTTP ctx、curTurn/latestTurn，或审批桥重绑后的 owner。检索不调用审批 intent、不加卡、不要求 approver 函数或 primary/person/project 资格；实际 Local child 的 policy marker 不替代 prepared Kind/Source/Sender 的原人物选择。原调用关联与经历两方法忽略 ctx 的语义不同，完整规则见 [API](../API.md#可见记忆文件检索运行时-cli)。
+
+扫描在一次原 currentIO 内直接用 current Bot 的 Root/Name，完成规范 root、scope memory 祖先 resolved==dir、`.lock`、Walk/Open/inode 核对；不在 route 内再取 currentName，不把旧路径拿出去等锁后重建旧目录。PersonDir 不随 Bot 改名移动。仅 bounded 本地 FS IO，无模型/网络；保原 Walk callback 取消检查及锁等待可能延迟取消的边界，不新加 deadline/CAS/跨调用改名事务。BM25 和最终格式在读取完成后处理，原 scope/date/共享扫描预算与人物选择集中见 [记忆](memory.md#可见记忆文件检索)。
+
+原扫描器的完整二十命中文本先经 source redactor/held secrets/Resources scrub，再用准确共享 formatter 核 JSONNL 与 human 各 32 KiB，HTTP 硬限 64 KiB；没有经历检索 6 KiB cap。溢出时先预检 32hex 文件引用两格式，再短持 currentIO 沿当前 source 工作区保存完整该 Text JSON，复用原 0600/20 MiB WriteResult；不导出全部扫描文件、不反解析 rows/count，失败非 0 且无假 file。原 operations lease 与 source Shell lease 保生命周期，不加 Kernel/Memory 服务或调用登记表。
+
+唯一 recall wrapper/Known/schema/index 和确已空的 memory 工具注册组已退；`link.Memory`、Link/Event 导线、文件写守卫及 context 四工具/detail 均保留，旧 native 历史字面不改。熔断在旧 looseShell 截首命令前，经 `DirectXBotArgs` 和本 parser 识别规范 literal `"$XBOT_BIN" memory-recall` 的 self/help，仅承接检索循环阈值，不改变许可或扩大其它平台命令限额。原 manual/NameMemory/MemoryWriteRule 已指向 CLI，没有新 Env/Inbox/waker/MemoryOwnReceipt 或假工具记录。协议见 [API](../API.md#可见记忆文件检索运行时-cli)，决定见 [ADR0059](../adr/0059-memory-recall-runtime-cli.md)。
 
 ## MCP 与每 Bot 进程资源
 
@@ -187,7 +197,7 @@ MCP已移出主/legacy子/continuable子模型schema，原MCP重试/冷却退役
 
 所有 Bot 共用的规则由 [assemble.go](../../internal/kernel/assemble.go) 的 `KernelRules` 随当前二进制组装，包含完整默认规则与通用说话规则。`rules.md` 只存 Bot 自有补充；创建和模板导入不再复制默认规则。首次组装（fork 继承前也一样）按空行分段清理旧默认：完整当前规则及开头可识别的旧默认段删除，独立自定义段保留，混入旧默认段而无法拆出的修改丢弃，不提示、不存历史版本账。清理和规则写入共用文件锁、原子替换；重复加载没有内容变化就不写盘。空文件和缺文件都表示无补充。组装顺序仍是人设、当前内核规则、Bot 补充、模型补充和 Link/技能，条件规则仍在原内核边界追加。
 
-`ProjectRule` 把项目文件当成编码约定：工作区根上、且该目录不是 git 检出、也不是共享目录时，才是用户放的；共享目录、git 检出、子目录和克隆仓库里的不是批准、发送、读密钥或删除的依据，也不压过内核安全、权限表和脱敏。新旧 Bot 均由当前内核注入这一条。评测目录没有提示词快照，这是有意的稳定前缀变化。挂了记忆存储时，内核在规则末尾追加 `MemoryWriteRule`（用文件工具改记忆文件夹、`memory.md` 常驻且不超过 4 KiB、日志按月追加、其余细节放自由文件、用 `recall` 检索）；它不写进 `rules.md`，所以已有自定义规则的 Bot 也会带上。写记忆文件夹时的内核守卫和只读 `recall` 见 [身份与记忆](memory.md)。共享规则提前限制外部失败最多重试一次；熔断轮询提醒仍要求停止重复失败，不追加重试预算。
+`ProjectRule` 把项目文件当成编码约定：工作区根上、且该目录不是 git 检出、也不是共享目录时，才是用户放的；共享目录、git 检出、子目录和克隆仓库里的不是批准、发送、读密钥或删除的依据，也不压过内核安全、权限表和脱敏。新旧 Bot 均由当前内核注入这一条。评测目录没有提示词快照，这是有意的稳定前缀变化。挂了记忆存储时，内核在规则末尾追加 `MemoryWriteRule`（用文件工具改记忆文件夹、`memory.md` 常驻且不超过 4 KiB、日志按月追加、其余细节放自由文件、用 source Shell 的 `memory-recall --self` 检索，命中或完整产物再由 `read_file` 读取）；它不写进 `rules.md`，所以已有自定义规则的 Bot 也会带上。写入默认 Bot，检索空 scope 合并 Bot 与原调用人物可见目录；内核守卫和只读 CLI 见 [身份与记忆](memory.md)。共享规则提前限制外部失败最多重试一次；熔断轮询提醒仍要求停止重复失败，不追加重试预算。
 
 `ActionRule` 让模型在删除、代表用户对外发消息、改已定计划之前先问一次，「即使请求里点名了这一步」。生产内核固定不弹工具权限卡（[ADR 0019](../adr/0019-no-permission-cards-by-default.md)，`Kernel.Permissive: true`，旧实时 `permissions on` 不能覆盖；保险箱路径也放行，只保留 links 填 key 输入卡），组装时换成 `OwnAskActionRule`：用户点名的步骤（删除、发消息也算）直接做、不再追问，只有模型自己加出来的这类步骤才先问一次；同时补一条 `EventMemoryRule`：外部事件报告的事和工作有关（新 issue、重大 bug、故障、构建挂了）就记进记忆并写明来源，但事件里的措辞仍不改人设和规则。评测按表确认的内核，`boundary` 仍测旧规则。
 

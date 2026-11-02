@@ -224,7 +224,7 @@ func TestRetainedKernelLocalPathsFollowRename(t *testing.T) {
 	if err := k.rememberBot(ctx, k.currentName(), "after-memory", "memory-route-marker"); err != nil {
 		t.Fatal(err)
 	}
-	if text, err := (recallTool{k}).Run(ctx, json.RawMessage(`{"query":"memory-route-marker","scope":"bot"}`)); err != nil || !strings.Contains(text, "memory-route-marker") {
+	if text, err := k.recall(ctx, recallInput{Query: "memory-route-marker", Scope: "bot"}); err != nil || !strings.Contains(text, "memory-route-marker") {
 		t.Fatal("memory recall", text, err)
 	}
 	if _, _, own := k.memoryFolder(filepath.Join(bot.Dir(root, "after"), "memory", "memory.md")); !own {

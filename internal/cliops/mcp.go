@@ -66,4 +66,5 @@ type Handlers struct {
 	ChatGroups    *ChatGroupHandlers
 	PeerMessage   func(context.Context, PeerMessage) (PeerMessageReply, error)
 	Experiences   *ExperienceHandlers
+	Recall        func(context.Context, MemoryRecall) (MemoryRecallReply, error)
 }
