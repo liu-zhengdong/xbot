@@ -165,7 +165,7 @@ func TestCLIExperienceRuntimeSourceConsumers(t *testing.T) {
 	for _, result := range model.base.results(searchCue) {
 		var found cliExperienceSearchReply
 		cliBotDecode(t, result, &found)
-		if found.Error != "" || found.File != "" || !strings.Contains(found.Text, "#"+strconv.FormatInt(id, 10)+" ") || !strings.Contains(found.Text, summary) || !strings.Contains(found.Text, segment) || strings.Contains(found.Text, "EXPERIENCE_FULL_TOOL") || !strings.Contains(found.Text, "Call detail") {
+		if found.Error != "" || found.File != "" || !strings.Contains(found.Text, "#"+strconv.FormatInt(id, 10)+" ") || !strings.Contains(found.Text, summary) || !strings.Contains(found.Text, segment) || strings.Contains(found.Text, "EXPERIENCE_FULL_TOOL") || !strings.Contains(found.Text, "transcript detail") {
 			t.Fatal("source newest/BM25 search did not preserve original text digest without tool results")
 		}
 	}
@@ -191,14 +191,19 @@ func TestCLIExperienceRuntimeSourceConsumers(t *testing.T) {
 		t.Fatal("next natural provider environment did not publish original experience count/latest ID summary")
 	}
 	const detailCue = "EXP_CHAIN_DETAIL_D44"
-	model.base.add(detailCue, mcpRuntimeTool("detail", map[string]any{"seq": bodySeq}), mcpRuntimeTool("detail", map[string]any{"seq": bodySeq - from, "experience": id}))
+	model.base.add(detailCue,
+		mcpRuntimeTool("sh", map[string]string{"description": "Read the original complete tool result through its raw transcript sequence", "command": `"$XBOT_BIN" transcript detail --self --seq ` + strconv.Itoa(bodySeq) + ` --json`}),
+		mcpRuntimeTool("sh", map[string]string{"description": "Read the same complete tool result through its recorded experience offset", "command": `"$XBOT_BIN" transcript detail --self --seq ` + strconv.Itoa(bodySeq-from) + ` --experience ` + strconv.FormatInt(id, 10) + ` --json`}),
+	)
 	cliSkillSend(t, srv, source, detailCue)
 	details := model.base.results(detailCue)
 	if len(details) != 2 {
 		t.Fatal("preserved detail did not answer raw sequence and experience offset")
 	}
-	for _, text := range details {
-		if !strings.Contains(text, fmt.Sprintf("# seq %d tool", bodySeq)) || !strings.Contains(text, body) {
+	for _, result := range details {
+		var reply cliTranscriptReadReply
+		cliBotDecode(t, result, &reply)
+		if reply.Error != "" || reply.File != "" || !strings.Contains(reply.Text, fmt.Sprintf("# seq %d tool", bodySeq)) || !strings.Contains(reply.Text, body) {
 			t.Fatal("live detail did not recover complete original tool body through both stable transcript anchors")
 		}
 	}

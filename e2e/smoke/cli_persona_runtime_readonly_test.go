@@ -64,13 +64,13 @@ func TestCLIPersonaRuntimeReadOnlyAndSchemas(t *testing.T) {
 	const mainDuty, devDuty = "MAIN_PERSONA_READONLY_DUTY", "DEV_PERSONA_READONLY_DUTY"
 	model.base.add(mainCue,
 		mcpRuntimeTool("sh", map[string]string{"description": "Replace this nonprimary source's duties with a tiny text input", "command": `"$XBOT_BIN" persona set --self --text ` + shellQuote(mainDuty) + ` --json`}),
-		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "recall_history"}),
+		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "read_file"}),
 	)
 	cliSkillSend(t, srv, source, mainCue)
 	mainResults := model.base.results(mainCue)
 	checkWrite(mainResults[0], mainDuty)
-	if strings.HasPrefix(mainResults[1], "error:") || !strings.Contains(mainResults[1], "recall_history") {
-		t.Fatal("the preserved Tools describe lost native history recall")
+	if strings.HasPrefix(mainResults[1], "error:") || !strings.Contains(mainResults[1], "read_file") {
+		t.Fatal("the preserved Tools describe lost native file reading")
 	}
 
 	type fileSnapshot struct {

@@ -133,7 +133,7 @@ func TestCLIBotForkRuntimeReadOnlyAndSchemas(t *testing.T) {
 	const mainRole, devRole = "Review the known project decision.", "Check the project implementation details."
 	model.base.add(mainCue,
 		mcpRuntimeTool("sh", map[string]string{"description": "Fork a real child from the nonprimary source using the original model path", "command": `"$XBOT_BIN" bot-fork ` + mainChild + ` --self --role ` + shellQuote(mainRole) + ` --json`}),
-		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "recall_history"}),
+		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "read_file"}),
 	)
 	cliSkillSend(t, srv, source, mainCue)
 	mainResults := model.base.results(mainCue)
@@ -141,8 +141,8 @@ func TestCLIBotForkRuntimeReadOnlyAndSchemas(t *testing.T) {
 	if archiveCount() != 1 {
 		t.Fatal("first nonempty fork did not make exactly one actual archive LLM call")
 	}
-	if strings.HasPrefix(mainResults[1], "error:") || !strings.Contains(mainResults[1], "recall_history") {
-		t.Fatal("the preserved Tools describe lost native history recall")
+	if strings.HasPrefix(mainResults[1], "error:") || !strings.Contains(mainResults[1], "read_file") {
+		t.Fatal("the preserved Tools describe lost native file reading")
 	}
 
 	type fileSnapshot struct {

@@ -95,7 +95,7 @@ func TestCLIBotControlRuntimeReadOnlyAndSchemas(t *testing.T) {
 	const mainCue, research, dev = "CLI_CONTROL_GATE_MAIN", "CLI_CONTROL_GATE_RESEARCH", "CLI_CONTROL_GATE_DEV"
 	model.add(mainCue,
 		mcpRuntimeTool("sh", map[string]string{"description": "Pin an actual peer using the current Primary source CLI", "command": pin}),
-		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "recall_history"}),
+		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "read_file"}),
 	)
 	cliSkillSend(t, srv, primary.Name, mainCue)
 	mainResults := model.results(mainCue)
@@ -111,8 +111,8 @@ func TestCLIBotControlRuntimeReadOnlyAndSchemas(t *testing.T) {
 		}
 	}
 	checkPin(mainResults[0])
-	if strings.HasPrefix(mainResults[1], "error:") || !strings.Contains(mainResults[1], "recall_history") {
-		t.Fatal("the preserved Tools describe lost the live history action")
+	if strings.HasPrefix(mainResults[1], "error:") || !strings.Contains(mainResults[1], "read_file") {
+		t.Fatal("the preserved Tools describe lost the live file-reading action")
 	}
 
 	// Finish research and inspect disk before dev can repeat a legitimate pin.

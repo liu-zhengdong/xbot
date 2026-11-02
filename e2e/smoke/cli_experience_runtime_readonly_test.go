@@ -112,13 +112,13 @@ func TestCLIExperienceRuntimeReadOnlyAndUnconfirmed(t *testing.T) {
 	const mainSummary, devSummary = "EXPERIENCE_MAIN_ALLOWED", "EXPERIENCE_DEV_ALLOWED"
 	model.base.add(mainCue,
 		mcpRuntimeTool("sh", map[string]string{"description": "Record one short experience through the real nonprimary source", "command": `"$XBOT_BIN" experience record --self --summary ` + mainSummary + ` --json`}),
-		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "detail"}),
+		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "read_file"}),
 	)
 	cliSkillSend(t, srv, source, mainCue)
 	mainResults := model.base.results(mainCue)
 	mainReply := checkRecord(mainResults[0], mainSummary)
-	if strings.HasPrefix(mainResults[1], "error:") || !strings.Contains(mainResults[1], "detail") {
-		t.Fatal("the preserved Context Tools gate lost live detail")
+	if strings.HasPrefix(mainResults[1], "error:") || !strings.Contains(mainResults[1], "read_file") {
+		t.Fatal("the preserved Tools gate lost live file reading")
 	}
 	fileSnapshot := func() map[string][]byte {
 		t.Helper()

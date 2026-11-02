@@ -100,7 +100,7 @@ func TestCLIChatGroupRuntimeReadOnlyAndSchemas(t *testing.T) {
 	model.add(mainCue,
 		mcpRuntimeTool("sh", map[string]string{"description": "List current-member groups from the actual nonprimary source", "command": list}),
 		mcpRuntimeTool("sh", map[string]string{"description": "Read the complete untrusted historical group row", "command": history}),
-		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "recall_history"}),
+		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "read_file"}),
 	)
 	cliSkillSend(t, srv, source, mainCue)
 	checkList := func(result string) {
@@ -122,8 +122,8 @@ func TestCLIChatGroupRuntimeReadOnlyAndSchemas(t *testing.T) {
 	mainResults := model.results(mainCue)
 	checkList(mainResults[0])
 	checkHistory(mainResults[1])
-	if strings.HasPrefix(mainResults[2], "error:") || !strings.Contains(mainResults[2], "recall_history") {
-		t.Fatal("the preserved Tools gate lost native history description")
+	if strings.HasPrefix(mainResults[2], "error:") || !strings.Contains(mainResults[2], "read_file") {
+		t.Fatal("the preserved Tools gate lost native file-reading description")
 	}
 
 	type fileSnapshot struct {

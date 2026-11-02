@@ -93,7 +93,7 @@ func TestCLIMemoryRecallRuntimeInboxAndReadOnly(t *testing.T) {
 	model.base.add(ownerCue,
 		mcpRuntimeTool("sh", map[string]string{"description": "Observe the actual owner's default Bot-and-person union", "command": recall}),
 		mcpRuntimeTool("sh", map[string]string{"description": "Validate the authenticated owner's actual person directory", "command": personRecall}),
-		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "detail"}),
+		mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "read_file"}),
 	)
 	cliSkillSend(t, srv, source, ownerCue)
 	o := model.base.results(ownerCue)
@@ -101,8 +101,8 @@ func TestCLIMemoryRecallRuntimeInboxAndReadOnly(t *testing.T) {
 	if !strings.Contains(union.Text, botMarker) || !strings.Contains(union.Text, personMarker) || strings.Contains(union.Text, otherMarker) || !strings.Contains(person.Text, "person:memory.md:") || !strings.Contains(person.Text, personMarker) || strings.Contains(person.Text, botMarker) || strings.Contains(person.Text, otherMarker) {
 		t.Fatal("actual owner context did not select only its Bot/person memory directories")
 	}
-	if strings.HasPrefix(o[2], "error:") || !strings.Contains(o[2], "detail") {
-		t.Fatal("the preserved Context Tools gate lost live detail")
+	if strings.HasPrefix(o[2], "error:") || !strings.Contains(o[2], "read_file") {
+		t.Fatal("the preserved Tools gate lost live file reading")
 	}
 
 	// This request originates solely from an actual KindBot recipient event.
