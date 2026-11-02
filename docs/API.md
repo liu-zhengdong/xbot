@@ -244,7 +244,7 @@ source 与 CLI 共用准确 `FormatExperienceRecord` / `FormatExperienceSearch`�
 
 callback 持原 operations lease，不外套 currentIO 调用内部已持 route 的 Record/Search；只有产物实际写入在短 currentIO 里取当前 source name/root 和重基后的原 WorkDir，未配置时取当前 Bot 默认工作区，不拿旧目录迟写。领域错误沿原 `k.redactor()` 脱敏，检索结果继续遮盖 held secrets 与 Resources secret；仅显示 error 可缩短，保留实际 ACK/产物事实。CLI 先输出收到的事实回执再非 0，客户端不展开产物、不代理/重定向或自动重试。
 
-SQLite 七列、原 Web 字段与全库字面分页、提纲阅读投影和原始 segment 展示保持；缺库读取经 exists 不建库，已有库 reader 的原 open 仍可能 CREATE TABLE IF NOT EXISTS/WAL，不能承诺全 root 零写。下一自然环境采样仍报 experience count/latest ID+200 字节摘要，读错保已发布值；不额外 Inbox/waker、MemoryOwnReceipt、假 native ToolCall 配对或普通事实账。单条原文由 [transcript detail CLI](#对话原文三读运行时-cli) 读取，保 raw seq 的 1 基与 experience ID+0 基 offset、原 64 KiB 语义上限。两旧 `experience_record` / `experience_search` wrapper、Known、schema、index 与执行指引已退，历史 native 字面记录保持；可见记忆文件检索沿下文独立 CLI，已空的 memory 工具注册组已退，context 工具组保留 compact，三读已迁独立 CLI，原 Link.Tools 空壳保留。存储与消费者见 [记忆](atlas/memory.md#怎么运转)，运行装配见 [内核](atlas/kernel.md#经历记录与检索实例入口)。
+SQLite 七列、原 Web 字段与全库字面分页、提纲阅读投影和原始 segment 展示保持；缺库读取经 exists 不建库，已有库 reader 的原 open 仍可能 CREATE TABLE IF NOT EXISTS/WAL，不能承诺全 root 零写。下一自然环境采样仍报 experience count/latest ID+200 字节摘要，读错保已发布值；不额外 Inbox/waker、MemoryOwnReceipt、假 native ToolCall 配对或普通事实账。单条原文由 [transcript detail CLI](#对话原文三读运行时-cli) 读取，保 raw seq 的 1 基与 experience ID+0 基 offset、原 64 KiB 语义上限。两旧 `experience_record` / `experience_search` wrapper、Known、schema、index 与执行指引已退，历史 native 字面记录保持；可见记忆文件检索沿下文独立 CLI，已空的 memory 工具注册组已退，空 context 工具注册组已退，compact 与三读均沿 source CLI，原 Link.Tools 空壳保留。存储与消费者见 [记忆](atlas/memory.md#怎么运转)，运行装配见 [内核](atlas/kernel.md#经历记录与检索实例入口)。
 
 ## 可见记忆文件检索运行时 CLI
 
@@ -268,7 +268,7 @@ query 仅在正文行上 BM25，路径/scope 字串不参与匹配，汉字按�
 
 准确共享 `FormatMemoryRecall` 与整 JSON 含 newline 各须≤原 Shell 32 KiB。任一种超限，沿原 `work.WriteResult` 将完整这份二十命中文本的 JSON 含 newline 写入当前 source 工作区 `results/<32hex>.json`（0600，最多 20 MiB），省 inline text，回 file/access:"local"/实际 bytes。先按 32hex 文件名预检引用的 JSONNL/human 两格式，真正写入才短持 currentIO，沿当前 root/name 与重基后的原 WorkDir，未配置时用当前 Bot 默认工作区。完整产物保存该二十命中投影，不是 4 MiB 原扫描文件导出，也不补回每条超过 200 runes 的正文；需要原文用现有 `read_file`。不截 records、反解析 count、抬容量或新建产物框架；写入/metadata 错误明确非 0，无虚假 file，仅显示 error 可缩短。CLI 先打印收到的事实回执再非 0，不展开产物、代理/重定向或自动重试。
 
-research 只允许当前 canonical BIN 或精确受控 `"$XBOT_BIN"` 的单 POSIX 直调，经原 `DirectXBotArgs` 与本纯 parser 识别 help 或 self；不凭命令含词放行，操作符/替换/错 root 沿原规则拒绝。熔断在旧 looseShell 截首命令前，以同 lexer/本 parser 识别规范 literal BIN 调用的 self/help，仅承接检索循环阈值，不扩所有平台命令的权限或限额。manual、live NameMemory 与 MemoryWriteRule 指引已用当前 CLI；Bot 是写入默认，检索空 scope 仍为合并范围。`recall` 执行 wrapper、Known、schema、index 与确已空的 memory 工具注册组已退；旧 native 历史字面、`link.Memory` 器官、Link/Event 装配、4 KiB 文件写守卫与 context 的 compact 保留，三读已迁 [transcript CLI](#对话原文三读运行时-cli)。没有新 Web Recall 结果 parser、环境事实、Inbox/waker、MemoryOwnReceipt 或伪 native 工具配对。当前扫描语义见 [记忆](atlas/memory.md#可见记忆文件检索)，实例接线见 [内核](atlas/kernel.md#可见记忆文件检索实例入口)，闭合评测的实际 BIN 桥见 [供应商与评测](atlas/providers.md#可见记忆检索的闭合评测入口)，决定见 [ADR0059](adr/0059-memory-recall-runtime-cli.md)。
+research 只允许当前 canonical BIN 或精确受控 `"$XBOT_BIN"` 的单 POSIX 直调，经原 `DirectXBotArgs` 与本纯 parser 识别 help 或 self；不凭命令含词放行，操作符/替换/错 root 沿原规则拒绝。熔断在旧 looseShell 截首命令前，以同 lexer/本 parser 识别规范 literal BIN 调用的 self/help，仅承接检索循环阈值，不扩所有平台命令的权限或限额。manual、live NameMemory 与 MemoryWriteRule 指引已用当前 CLI；Bot 是写入默认，检索空 scope 仍为合并范围。`recall` 执行 wrapper、Known、schema、index 与确已空的 memory 工具注册组已退；旧 native 历史字面、`link.Memory` 器官、Link/Event 装配、4 KiB 文件写守卫保留，空 context 工具注册组已退，三读已迁 [transcript CLI](#对话原文三读运行时-cli)。没有新 Web Recall 结果 parser、环境事实、Inbox/waker、MemoryOwnReceipt 或伪 native 工具配对。当前扫描语义见 [记忆](atlas/memory.md#可见记忆文件检索)，实例接线见 [内核](atlas/kernel.md#可见记忆文件检索实例入口)，闭合评测的实际 BIN 桥见 [供应商与评测](atlas/providers.md#可见记忆检索的闭合评测入口)，决定见 [ADR0059](adr/0059-memory-recall-runtime-cli.md)。
 
 ## 对话原文三读运行时 CLI
 
@@ -308,7 +308,32 @@ search/expand 的目标名沿 `withHistoryBot` trim，空或等当前 source 名
 
 callback 持原 operations lease，不外套 currentIO：self 的 search/slice、expand count/slice/hydrate 已在原 currentIO，Detail 多次 IO 沿 source ref，不是跨调用一致快照；外层 route 再调 currentName/line-note 会有 writer 等待下递归 RLock 风险。只有产物实际写入才短持 currentIO，取当前 Root/Name 与重基后的原 WorkDir，空时用 work.BotDir。原 segStore.ensure 可建目录/锁、迁 legacy、修复索引；逻辑只读不等物理零写。CLI 先输出收到的事实再非 0，不展开产物、代理/重定向或自动重试。
 
-research 经原 DirectXBotArgs 单 POSIX lexer 和同 parser，只放当前 canonical BIN 或精确受控 `"$XBOT_BIN"` 的合法三 action self/help；操作符、替换和错 root 在解释器前拒绝。熔断仅规范 literal `transcript search` 承接原历史检索宽阈值，expand/detail/noun help 仍用普通阈值，不放宽所有平台命令。fit 的有 seq→expand、无 seq→search→expand、custom noSeq 与 turnSummary 范围保持，并继续提示不要重执行；ReplyRule、ExperienceRule、SearchExperiences detail 提示、manual/context 与 live Link.Context 指引均指向当前 CLI。旧 `recall_history`、`expand`、`detail` 的 wrapper/Known/schema/index 已退，无暗执行 shim；context 工具组仍保 compact 的模型/State 写，Link.Context 器官、Event 和记忆文件 4 KiB 写守卫保留，旧 native 字面与工具配对历史仍可读。当前 mock/eval 未有三读 producer，不扩现有 MemoryRecall 闭合评测桥，也不加 Web 结果 parser、环境账、Inbox/waker、MemoryReceipt 或假工具配对。领域与原消费者见 [上下文](atlas/context.md#对话原文三读)、实例接线见 [内核](atlas/kernel.md#对话原文三读实例入口)，决定见 [ADR0060](adr/0060-transcript-read-runtime-cli.md)。
+research 经原 DirectXBotArgs 单 POSIX lexer 和同 parser，只放当前 canonical BIN 或精确受控 `"$XBOT_BIN"` 的合法三 action self/help；操作符、替换和错 root 在解释器前拒绝。熔断仅规范 literal `transcript search` 承接原历史检索宽阈值，expand/detail/noun help 仍用普通阈值，不放宽所有平台命令。fit 的有 seq→expand、无 seq→search→expand、custom noSeq 与 turnSummary 范围保持，并继续提示不要重执行；ReplyRule、ExperienceRule、SearchExperiences detail 提示、manual/context 与 live Link.Context 指引均指向当前 CLI。旧 `recall_history`、`expand`、`detail` 的 wrapper/Known/schema/index 已退，无暗执行 shim；主动 compact 的模型/State 写沿下文 CLI，空 context 工具注册组已退，Link.Context 器官、Event 和记忆文件 4 KiB 写守卫保留，旧 native 字面与工具配对历史仍可读。当前 mock/eval 未有三读 producer，不扩现有 MemoryRecall 闭合评测桥，也不加 Web 结果 parser、环境账、Inbox/waker、MemoryReceipt 或假工具配对。领域与原消费者见 [上下文](atlas/context.md#对话原文三读)、实例接线见 [内核](atlas/kernel.md#对话原文三读实例入口)，决定见 [ADR0060](adr/0060-transcript-read-runtime-cli.md)。
+
+## 主动范围压缩运行时 CLI
+
+```sh
+"$XBOT_BIN" compact --self --from N --to N [--focus TEXT|--focus-file FILE|-] [--json]
+"$XBOT_BIN" compact --help
+```
+
+纯 `ParseCompactRuntime` 的参数不含 compact noun，按 flag arity 消费字面 `--help`、`--` 值；无位置参数、别名或 `-h`，拒未知/重复 flag，self/json/help 不接受 equals 值。help 离线，合法的 `--self --help` 也只输出帮助；其余必须 self 及显式 from/to。from/to 只解析 Go int 语法与溢出，0/负数交原领域范围检查。focus/focus-file 至多一，文件路径不可空、`-` 读 stdin，正文可空；raw 文本/文件/stdin 以 max+1 有界读取，连同最终转义 typed JSON 各限 1 MiB，不在 wire 预算前 trim 或截断。原 Shell 命令仍限 16 KiB，大 focus 用文件/stdin；focus 不套经历 summary 的 2 KiB cap，也不加新领域长度帽。
+
+main 在 root/default/legacy 初始化前分流。self 取原 source `XBOT_ENDPOINT`、规范 `XBOT_ROOT` 与实际 Resources ref，显式 root 必须相同，旧 XBOT_BOT 只诊断；缺端点、root 不同或调用失败非 0，不离线 Load source 或新建 Kernel。原 Native Shell 的 `XBOT_CALL_ID` 必需，client 以 `X-XBot-Call-ID` header 传原值。既有 `Handlers.Compact` 为单个 `func(context.Context,Compact)(CompactReply,error)`，`CallCompact(ctx,endpoint,root,originalCallID,input)` 到 `POST /v1/compact`，请求仅 `cliops.Compact{from,to,focus?}`，回包仅 `cliops.CompactReply{text?,error?}`。
+
+HTTP 只收单 JSON 对象，拒未知字段、null/非对象、EOF 前尾随内容、URL query（含空 `?`）；from/to 为 typed int，focus 为 string，请求原始及转义 typed JSON 各≤1 MiB，复用原 loopback/Host/browser/规范 root guard。source callback 持原 operations lease，再经**未改的** runtimeSourceCall 取原 prepared ctx，直调同 K 的**未改的** CompactRange(ctx,from,to,focus)。原 helper 只核同 listener 实际 Local/running/未 finished Shell 绑定并合入 HTTP 取消链；缺失/完成/foreign/nonShell 或原调用已取消沿原 helper 拒绝。这里不用 runtimeApprovalSource/owner 重绑、审批 intent、卡或 approver 函数，也不加 primary/person/project 资格或 Recall 专用的非 nil 冻结 turn 门。承载 Shell 的机器 gate/policy 独立。
+
+CompactRange 确实把 ctx 交给模型调用，并用原 turnSeqOf 归属用量，不能套三读忽略 ctx 的路径。turnSeqOf 先取 prepared ctx 的显式 turnSeqKey，再取其 turnKey 的开轮 seq，否则 0；不回退 latest/current turn，也不伪造非零。模型等待可取消，但原后段没有新增 ctx.Err 提交屏障，不承诺取消后绝不提交。
+
+原范围为 inclusive `1≤from≤to≤Count`，KeepTail 默认留最后 8 条 raw entry，不能切工具调用/结果对。已有活跃摘要块可被**严格整块包住并扩大**替换；部分重叠与原范围再压拒绝。旧 Summary→Blocks 仍只在本次内存 migrate。focus 沿原 TrimSpace，空用 `Preserve decisions, names, and unfinished work.`，无领域 cap。currentSlice 取存储预览，不 hydrate blob；summarize 跳审批/代码卡与 fork marker，保范围内整块 prior summary、原 focus+summaryFacts（任务身份/结论/数字/seq/结果路径/未完成/用户决定/已转告事实与最新环境人物）、source 图片/音频路径说明，原文不重写。
+
+原 compact.LLM 发送 system+user 两条消息、无 tools，ctx 直接传 Provider.Chat；只有 LLM 实现 trim、拒空 summary 并限 8 KiB，自定义 Compactor 不新套该帽，不增加模型/token/range/timeout 预算。仅 compact.LLM 包装原 usageProvider：Chat 返回 nil error 就先记 `call:"compact"` 与原 turn 的实际/估算用量，之后空摘要或刷新/保存失败不抹用量；Chat error/cancel 不由此 wrapper 记成功 usage，原 trace 写错被忽略的语义保持。
+
+模型调用在本路径自有短 currentIO/envMu 之外，callback 不外套 route 跨 LLM。返回后沿原 addBlock→refreshMemSnap→saveCurrentState：refresh 在 envMu 内读当前 State/有效环境，personID 为空读取 Bot 记忆，沿原 TryRecall/锁 fallback，忙且已有 MemSnap 时保旧；再按最新已公布 source 重采人物，不让旧 caller 覆盖后来人物。完整环境 snapshot 先 append，覆盖 State 随后保存。Count/Slice/State/trace 经原 current_store 跟 source 当前 ref，模型等待期间改名后 State/trace 取新路径；memory 的 currentName→Recall 分步与 profile 沿 k.Bot 的原接缝保持，不扩成全流程改名原子事务。
+
+全链 nil 才返回原短 ACK `compacted f-t`；准确 FormatCompact 人读加 newline，JSON 为 `{"text":"compacted f-t"}` 含最终 newline，两格式分别须≤原 Shell 32 KiB，HTTP 硬限 64 KiB。错误沿原动态 redactor、held secrets/Resources scrub，仅显示 error 可缩短，成功 Text 不重裁。CLI 先打印收到的事实再非 0，不代理/重定向或自动重试。回执不返回摘要正文/State、artifact/file/bytes/Applied 或新 summary 读取接口；原摘要仍由 State 与后续上下文投影消费。晚错误前可能已有 usage、环境或 State 写入效果，保实际错误，不假报成功 ACK、Applied=false、回滚或零副作用；不新增阶段表/CAS/重试事务、环境账或 Receipt/Inbox/wake。压缩不写 memory.md、log 或 experience 正文，既有读维护不等物理全 root 零写。
+
+compact 最后一个 native wrapper/Normal Known/schema/index 与确已空的 context 工具注册行已退；连同三读，原 context 四工具均无可执行 shim。Link.Context 器官的 Tools()==nil、Event、4 KiB 记忆文件写守卫与旧四 native 字面/工具配对历史读取保留。live Context 指引同时说明主动 compact CLI、自动压缩和三读。autoCompact/foldBlocks、后台 finishJob/applyReady、idle 与 bindingPrecheck 仍直接走原规划/方法/队列，不经 native 门或解析 ACK。research 仅当前 canonical BIN/受控 XBOT_BIN、原 DirectXBotArgs 单 POSIX lexer+同 parser 的合法 help（err=nil 且 Help）；self 压缩是 Normal 写，在解释器前拒绝，focus 的字面 --help 不冒帮助，不增加 loose 熔断宽阈值。现 manual 无主动 compact 脚本，mock/eval 无 compact producer，MemoryRecall 限定桥保持，不臆造迁移或新 Web parser。上下文投影见 [上下文](atlas/context.md#主动范围压缩)、ctx/保存接线见 [内核](atlas/kernel.md#主动范围压缩实例入口)，决定见 [ADR0061](adr/0061-compact-runtime-cli.md)。
 
 ## Bot 列表与创建
 

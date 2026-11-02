@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
-verified: 2026-11-02 @ 71216e72 (transcript source and owner boundaries, parser-based research reads and original redaction)
+verified: 2026-11-02 @ dcbf05fd (compact Normal source-call binding, help-only research classification and late-error semantics)
 ---
 # 安全：保险箱与权限表
 
@@ -36,7 +36,7 @@ MCP不再有可执行mcp_模型工具；Known不为任意旧前缀兜底，历�
 
 `experience record/search --self` 沿原 source endpoint/ref、规范 root 和 loopback/Host/browser guard，旧 XBOT_BOT 仅诊断；所有 Bot 含非 primary 可用，不加主人/person/project scope 资格。两原语忽略 ctx，客户端不发 CallID header，缺失或过期 CallID 不影响领域许可，header 也不是身份或权限。原 Normal record 不调用 approval intent、不加确认卡、不要求 approver；承载 Shell 的原机器 gate 与分类独立，不能把群发送/派生的 prepared context 要求套到这里。
 
-research 仅允许当前 canonical BIN 或精确受控 XBOT_BIN 的窄 POSIX 直调，经同 lexer/纯 parser 放 help 和 `experience search --self`；record 在解释器前拒绝，summary/query 值中的字面 `--help` 不冒帮助。dev/general 仍可沿原 source Shell 记录与检索。两旧 experience_record/experience_search 的 wrapper、Known、schema、index 与执行指引已退，不列入原生模型工具权限表；可见记忆文件检索沿下文独立 CLI，空 memory 工具注册组已退；context 的 compact 仍为 Normal，三读沿下文只读 CLI。
+research 仅允许当前 canonical BIN 或精确受控 XBOT_BIN 的窄 POSIX 直调，经同 lexer/纯 parser 放 help 和 `experience search --self`；record 在解释器前拒绝，summary/query 值中的字面 `--help` 不冒帮助。dev/general 仍可沿原 source Shell 记录与检索。两旧 experience_record/experience_search 的 wrapper、Known、schema、index 与执行指引已退，不列入原生模型工具权限表；可见记忆文件检索沿下文独立 CLI，空 memory 工具注册组已退；compact CLI 保原 Normal 语义，空 context 工具注册组已退，三读沿下文只读 CLI。
 
 raw 输入与最终转义请求各≤1 MiB；准确 JSONNL/human 各≤32 KiB、HTTP≤64 KiB。搜索返回原 presentHistory 已脱敏/6 KiB 文本，转义超预算才存当前 source 工作区完整该 Text JSON 的 0600 产物，先核 metadata 两格式，实际写点才短持 currentIO；错误沿原 k.redactor/held secrets/Resources 遮盖。记录仅原方法 nil ACK 为 true，原方法任意错误为 recorded:null，保返回 ID/range，不保证 SQLite 零副作用；仅显示 error 可缩短。CLI 先输出事实再非 0，不自动重试。字段与产物协议见 [API](../API.md#经历记录与检索运行时-cli)，当前路径和生命周期见 [内核](kernel.md#经历记录与检索实例入口)。
 
@@ -44,7 +44,7 @@ raw 输入与最终转义请求各≤1 MiB；准确 JSONNL/human 各≤32 KiB、
 
 `memory-recall --self` 保原只读语义，沿原 source endpoint/ref、规范 root 与 loopback/Host/browser guard，旧 XBOT_BOT 仅诊断。必须由原 `runtimeSourceCall` 关联同 listener 实际 live Local/running/未 finished Shell prepared context，且冻结 turn 明确非 nil；不能取 HTTP ctx、最新 turn 或审批 owner 重绑后的 turn。此关联保原人物选择与取消链，不新加 owner/person/project/primary 资格、审批 intent、确认卡或 approver 函数要求；承载 Shell gate 仍独立。Local child 的 policy marker 只用于 review，人物可见性按其实际 frozen Kind/Source/Sender 与原 memoryPersonOf，不由 trusted 或 no-person policy 推断。
 
-research 经原 `DirectXBotArgs` 和纯 `ParseMemoryRecallRuntime` 仅接受当前 canonical BIN 或精确受控 `"$XBOT_BIN"` 的单 POSIX 直调 help/self；值中的 literal --help/-- 不冒帮助，操作符、替换与错 root 沿原规则拒绝。这是该 CLI 的只读分类，不把任意 xbot/其它平台命令设为只读；熔断对同规范 literal 调用的识别仅调整原循环阈值。唯一 recall wrapper/Known/schema/index 和空 memory 工具注册组已退，不再列为原生模型工具；旧 native 历史、Memory 器官、4 KiB 文件写守卫、context 的 compact 保留，三读沿下文 CLI。
+research 经原 `DirectXBotArgs` 和纯 `ParseMemoryRecallRuntime` 仅接受当前 canonical BIN 或精确受控 `"$XBOT_BIN"` 的单 POSIX 直调 help/self；值中的 literal --help/-- 不冒帮助，操作符、替换与错 root 沿原规则拒绝。这是该 CLI 的只读分类，不把任意 xbot/其它平台命令设为只读；熔断对同规范 literal 调用的识别仅调整原循环阈值。唯一 recall wrapper/Known/schema/index 和空 memory 工具注册组已退，不再列为原生模型工具；旧 native 历史、Memory 器官、4 KiB 文件写守卫保留，空 context 工具注册组已退，compact 与三读沿下文 CLI。
 
 源扫描先沿规范 root、memory 祖先、scope 文件锁及打开 inode 同一性读取，完整二十命中文本在 typed 回包前经原 k.redactor/held secrets/Resources scrub；没有经历 6 KiB cap。准确 JSONNL/human 超预算时，仅保存完整该 Text JSON 到当前 source 工作区的原 0600 产物，写前核 metadata 两格式，实际 IO 才短持 current route；错误明确非 0、无假 file，CLI 先输出事实再退出，不自动重试。扫描范围与人物规则见 [记忆](memory.md#可见记忆文件检索)，完整字段/容量见 [API](../API.md#可见记忆文件检索运行时-cli)，生命周期见 [内核](kernel.md#可见记忆文件检索实例入口)，决定见 [ADR0059](../adr/0059-memory-recall-runtime-cli.md)。
 
@@ -52,9 +52,17 @@ research 经原 `DirectXBotArgs` 和纯 `ParseMemoryRecallRuntime` 仅接受当�
 
 `transcript search/expand/detail --self` 复用原三个只读领域方法，source 仍取 endpoint/规范 root/ref，旧 XBOT_BOT 仅诊断。三原 Run 忽略 ctx，不要求 CallID/prepared turn，也不借 runtimeSourceCall、审批 owner 重绑、primary/person/project 资格、approver 函数或确认卡；HTTP ctx 仅管传输取消，原 Shell 的机器 gate 与 policy 保持独立。search/expand 的 foreign 目标只核保留的 source `k.Bot.Config().Owners` 与一次 Load 得到的目标 Owners 非空交集，不另强刷 Resources.current 配置；无交集、orphan/missing/load error、仅同群或可消息都统一 not found，授权后磁盘错误保留。Detail 只读 source，目标无稳定 ref/rename 跟随承诺。
 
-research 经原 DirectXBotArgs 单 POSIX lexer 与同 ParseTranscriptRuntime，只放当前 canonical BIN 或精确受控 `"$XBOT_BIN"` 的合法三 action self/help；literal --help/-- 作为值时不冒帮助，操作符、替换和错 root 在解释器前拒绝。熔断只对规范 literal transcript search 承接原历史检索宽阈值，expand/detail/noun help 保普通阈值，不泛化所有平台命令。三 native wrapper/Known/schema/index 已退，无执行 shim；context 组保 compact，Link.Context 器官/Event、Memory 器官与 4 KiB 文件写守卫、旧 native 字面及工具配对历史保留。
+research 经原 DirectXBotArgs 单 POSIX lexer 与同 ParseTranscriptRuntime，只放当前 canonical BIN 或精确受控 `"$XBOT_BIN"` 的合法三 action self/help；literal --help/-- 作为值时不冒帮助，操作符、替换和错 root 在解释器前拒绝。熔断只对规范 literal transcript search 承接原历史检索宽阈值，expand/detail/noun help 保普通阈值，不泛化所有平台命令。三 native wrapper/Known/schema/index 已退，无执行 shim；空 context 工具注册组已退，compact 沿下文 CLI，Link.Context 器官/Event、Memory 器官与 4 KiB 文件写守卫、旧 native 字面及工具配对历史保留。
 
 原 presentHistory 先 redactor 再 cap，foreign 用原 Neutralize/完整 Wrap，缩正文重包及极端 fallback 保持，self 不加 foreign 围栏。runtime 只补 held secrets/Resources scrub，不把整份文本再过一次 k.Redact 或新造 fence/cap 防御。双格式预算溢出时保存当前 source 工作区完整该语义 Text JSON，写前预检引用、实际短 currentIO 写原 0600 产物，错误非 0、无假 file，先输出事实再退出且不自动重试；原语义上限以外 blob 不会补回。原 segStore 读维护仍可能写目录/锁、迁移或修索引，不能宣称物理零写。完整输入、字段与容量见 [API](../API.md#对话原文三读运行时-cli)，路由与生命周期见 [内核](kernel.md#对话原文三读实例入口)，决定见 [ADR0060](../adr/0060-transcript-read-runtime-cli.md)。
+
+## 主动范围压缩 CLI
+
+`compact --self` 保原 Normal 范围压缩，source 取 endpoint/规范 root/ref，旧 XBOT_BOT 仅诊断。原 Shell CallID/header 必须关联同 listener 的实际 live Local/running/未 finished Shell prepared ctx，原 runtimeSourceCall 保模型取消与用量归属；这与三读忽略 ctx、无需 CallID 不同。它不调用 runtimeApprovalSource/owner 重绑或审批 intent，不要求卡、approver 函数、primary/person/project 资格，也不叠 Recall 的非 nil frozen turn/person 门；Shell 机器 gate/policy 独立，header 关联原调用而非新的批准身份。
+
+research 只准当前 canonical BIN/精确受控 XBOT_BIN 经原 DirectXBotArgs 单 POSIX lexer 与同 ParseCompactRuntime 解析成功且 Help=true 的离线帮助，合法 self+help 同样只读帮助；focus 中字面 --help 仍是值。self 压缩为 Normal 写，在解释器前拒绝，操作符/替换/错 root 保原拒绝，不增加 loose 熔断阈值。最后 native compact 的 wrapper/Normal Known/schema/index 与空 context 工具组已退，无执行 shim；Link.Context 器官/Event、4 KiB 记忆写守卫和旧四 native 字面/工具配对历史保留。
+
+成功仅原短 ACK；错误沿动态 source redactor、held/Resources scrub，仅显示 error 可缩短，先输出实际回执再非 0，不自动重试。晚期错误前可能已有模型用量、环境或 State 效果，不伪造 Applied=false、成功回滚、零副作用或取消永不提交承诺。回执不含 summary/产物，不新增摘要读 API、权限表、阶段账或 Receipt/Inbox/wake；压缩不写记忆正文，既有读维护也不等物理零 IO。完整输入、DTO、容量见 [API](../API.md#主动范围压缩运行时-cli)，原 ctx/锁/保存链见 [内核](kernel.md#主动范围压缩实例入口)，决定见 [ADR0061](../adr/0061-compact-runtime-cli.md)。
 
 ## 共享慢调用的脱敏
 
@@ -165,7 +173,7 @@ WantedBy=multi-user.target
 | 类别 | 工具 | 确认条件 |
 |---|---|---|
 | `readonly` | `tools`（代理门的 search/describe）、`kernel_manual`、`read_file`、`web_fetch`、`web_search`、`view_image`、`shell_output`、`shell_status`、`list_secrets`、chat-group list/history CLI、memory-recall self CLI、transcript search/expand/detail self CLI、`read_subagent`、`expand_subagent`、`code_show`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不（`read_file` 或 `view_image` 触及保险箱/密钥路径时确认） |
-| `normal` | `generate_image`（复用全局 OAuth 的生图代理）、`send_message_to_user`、`compact`、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`shell_cancel`、`ask_user`、`todo`、chat-group create/post CLI、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
+| `normal` | `generate_image`（复用全局 OAuth 的生图代理）、`send_message_to_user`、compact self CLI、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`shell_cancel`、`ask_user`、`todo`、chat-group create/post CLI、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
 | `delete` | strict Bot CLI delete、`delete_file`、`remove_file`、`secret_rm`、`delete_link`、`remove_mcp` 等名称明确的删除工具 | 总是 |
 | `external_send` | `telegram_send`、`lark_send`、`send_email`、`send_webhook`、其余 `mcp_*`（按前缀规则，没标 `readOnlyHint` 的），以及 `links` 的 `install`/`remove` | 总是（`links` 只在 install/remove） |
 | `http` | `http_request` | 注入 `{{secret:}}` 或方法非 `GET`/`HEAD` |

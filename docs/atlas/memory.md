@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/memory/, internal/person/, internal/experience/]
-verified: 2026-11-02 @ 71216e72 (transcript detail experience anchors, canonical CLI consumers and retained memory guards)
+verified: 2026-11-02 @ dcbf05fd (compact Bot snapshot-only refresh, latest published person preservation and unchanged memory writes)
 ---
 # 身份与记忆
 
@@ -18,13 +18,19 @@ verified: 2026-11-02 @ 71216e72 (transcript detail experience anchors, canonical
 
 Scope/Since 不 trim/casefold，Since 非空按原 YYYY-MM-DD/`time.ParseInLocation(...,time.Local)`，用进程本地时区而非 Bot profile 时区。memory.md dated 条目与 log/*.md 按原行日期，自由文件按 mtime。递归 `.md`/`.txt`，跳备份名 `.bak`、symlink、非 regular 文件与原空行/标题/暂无行；每文件最多 256 KiB，单文件截断不置 incomplete，只有共享文件数或总字节 cap 置位。读取在一次 currentIO 内直接用 current Bot Root/Name，规范 root、memory 祖先 resolved==dir、scope `.lock`、Walk/Open 与 inode 核对同在 route；避免旧名等待锁的 MkdirAll 在改名后复活旧 Bot 目录，PersonDir 本身不搬。扫描无模型/网络，原 Walk callback 检查取消，锁等待可能延迟取消，不承诺新增即时取消或 deadline。
 
-结果保原排名前 20 条，每条 `scope:相对路径:行号` 加正文；正文最多 200 Unicode runes，超出加 `…`，保剩余条数/incomplete/no matches 原词法。扫描器自身无总输出 cap 或 redactor；source 回包前沿原 secret 遮盖，再按准确 JSONNL/human 双预算内联或将完整这份 Text JSON 写当前工作区产物，没有经历检索 6 KiB cap。产物保二十命中投影，原文件全文仍用 `read_file`，不冒全库导出。字段、1 MiB/32 KiB/64 KiB/20 MiB 边界仅在 [API](../API.md#可见记忆文件检索运行时-cli) 维护。唯一 recall wrapper/Known/schema/index 与空 memory 工具注册组已退，历史 native 字面、Memory 器官/Link/Event、文件写入 4 KiB 守卫及 context 的 compact 保留，三读沿下文 CLI；检索不新增环境事实或记忆回执，决定见 [ADR0059](../adr/0059-memory-recall-runtime-cli.md)。
+结果保原排名前 20 条，每条 `scope:相对路径:行号` 加正文；正文最多 200 Unicode runes，超出加 `…`，保剩余条数/incomplete/no matches 原词法。扫描器自身无总输出 cap 或 redactor；source 回包前沿原 secret 遮盖，再按准确 JSONNL/human 双预算内联或将完整这份 Text JSON 写当前工作区产物，没有经历检索 6 KiB cap。产物保二十命中投影，原文件全文仍用 `read_file`，不冒全库导出。字段、1 MiB/32 KiB/64 KiB/20 MiB 边界仅在 [API](../API.md#可见记忆文件检索运行时-cli) 维护。唯一 recall wrapper/Known/schema/index 与空 memory 工具注册组已退，历史 native 字面、Memory 器官/Link/Event、文件写入 4 KiB 守卫保留，空 context 工具注册组已退，compact 与三读沿 source CLI；检索不新增环境事实或记忆回执，决定见 [ADR0059](../adr/0059-memory-recall-runtime-cli.md)。
 
 ## 经历锚点与对话原文
 
 经历搜索仍只返回摘要/原文段提纲，完整消息由 source Shell 的 `"$XBOT_BIN" transcript detail --self --seq N` 读取：普通 seq 是 transcript 的 1 基序号，加正 `--experience ID` 后 N 为该经历 From 起的 0 基 offset；experience≤0 保普通 seq。仅 source 可读 Detail，不接 bot/人物/project 字段，保原经历范围与错误、source 本地格式时间、附件路径和 toolBlob，以及原语义上限，不承诺无限 blob 或附件字节。原导出 Detail 方法未改，命令、字段和容量见 [API](../API.md#对话原文三读运行时-cli)。
 
-ExperienceRule、SearchExperiences 末尾 detail 提示、机制手册与 live Link.Context 已指向同一 source CLI，序号仍是只追加 transcript 的稳定锚点。记录/检索的 SQLite 七列、Web 全库字面分页与提纲/raw segment 消费者、下一自然 experience 环境采样保持；不新加经历存储、环境账、Inbox/waker、MemoryReceipt 或假工具配对。三读不需要 memory-recall 的 prepared-person/CallID 门，也不扩它的限定闭合评测桥。三读 wrapper/Known/schema/index 已退，context 组只保 compact，Link.Context 器官/Tools 空壳与 Event、两层记忆和文件写守卫保持，旧 native 字面/工具配对记录继续可读。决定见 [ADR0060](../adr/0060-transcript-read-runtime-cli.md)，实例接线见 [内核](kernel.md#对话原文三读实例入口)。
+ExperienceRule、SearchExperiences 末尾 detail 提示、机制手册与 live Link.Context 已指向同一 source CLI，序号仍是只追加 transcript 的稳定锚点。记录/检索的 SQLite 七列、Web 全库字面分页与提纲/raw segment 消费者、下一自然 experience 环境采样保持；不新加经历存储、环境账、Inbox/waker、MemoryReceipt 或假工具配对。三读不需要 memory-recall 的 prepared-person/CallID 门，也不扩它的限定闭合评测桥。三读 wrapper/Known/schema/index 已退，空 context 工具注册组已退，compact 沿下文 CLI，Link.Context 器官/Tools 空壳与 Event、两层记忆和文件写守卫保持，旧 native 字面/工具配对记录继续可读。决定见 [ADR0060](../adr/0060-transcript-read-runtime-cli.md)，实例接线见 [内核](kernel.md#对话原文三读实例入口)。
+
+## 压缩时刷新记忆快照
+
+主动 `compact --self` 沿原 CompactRange 更新摘要块与 State.MemSnap 投影，不写 memory.md、log 或 experience 正文。refreshMemSnap 在 envMu 内先读当前 State/有效环境，personID 为空读取 Bot 记忆，沿原 TryRecall/锁 fallback；忙且已有 MemSnap 时保旧快照。随后完整环境按最新已公布 source 重采当前人物，不用旧 caller 的人物覆盖之后的新输入；环境 snapshot 先 append，再保存覆盖 State。两层记忆、人物可见性及原文件写守卫保持，决定见 [ADR0061](../adr/0061-compact-runtime-cli.md)。
+
+原 prepared Shell ctx 只保模型取消与 turn 用量，compact 不加 Recall 专用人物门；Memory 的 currentName→Recall 分步、profile 读 k.Bot 等旧接缝保持，不声称全流程改名原子性或底层零写。后期失败可能已有用量/环境效果，不增记忆回执、环境账、Inbox/waker 或回滚；回包只为原短 ACK/实际错误，没有摘要正文或产物。context 四工具均已迁 source CLI，空工具注册组退役，Link.Context/Memory 器官和旧 native 历史仍在。命令/容量见 [API](../API.md#主动范围压缩运行时-cli)，调用与保存边界见 [内核](kernel.md#主动范围压缩实例入口)。
 
 ## 边界
 负责：人的身份映射、两层记忆、冲突规则，以及启动时把旧的 Bot 与人目录并进 Bot 记忆。不负责：多台电脑之间的配对与消息（见 [网关](gateway.md)）；记忆不在机器之间同步（[ADR 0012](../adr/0012-retire-node.md)）。
