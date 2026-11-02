@@ -32,6 +32,8 @@ Usage:
   xbot [--root DIR] list
   xbot memory-recall --help
   xbot [--root DIR] memory-recall --self [--query TEXT | --query-file FILE|-] [--scope bot|person] [--since YYYY-MM-DD] [--json]
+  xbot compact --help
+  xbot [--root DIR] compact --self --from N --to N [--focus TEXT | --focus-file FILE|-] [--json]
   xbot transcript --help
   xbot [--root DIR] transcript search --self [--query TEXT | --query-file FILE|-] [--bot NAME] [--json]
   xbot [--root DIR] transcript expand --self --from N --to N [--bot NAME] [--json]
@@ -212,6 +214,9 @@ func run(argv []string) error {
 	}
 	if len(rest) > 0 && rest[0] == "transcript" {
 		return cmdTranscriptRuntime(root, len(argv) > len(rest), rest[1:])
+	}
+	if len(rest) > 0 && rest[0] == "compact" {
+		return cmdCompactRuntime(root, len(argv) > len(rest), rest[1:])
 	}
 	if len(rest) > 0 && rest[0] == "experience" {
 		return cmdExperienceRuntime(root, len(argv) > len(rest), rest[1:])

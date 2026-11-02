@@ -68,4 +68,5 @@ type Handlers struct {
 	Experiences   *ExperienceHandlers
 	Recall        func(context.Context, MemoryRecall) (MemoryRecallReply, error)
 	Transcript    *TranscriptHandlers
+	Compact       func(context.Context, Compact) (CompactReply, error)
 }

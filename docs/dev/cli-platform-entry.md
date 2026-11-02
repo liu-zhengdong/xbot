@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall三项所测独立端到端按精确phase通过并已合main1053d0a9；transcript三读三项所测独立端到端按精确phase通过并已合mainc4b368bf；下一仅compact Proposed具体合同，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall三项所测独立端到端按精确phase通过并已合main1053d0a9；transcript三读三项所测独立端到端按精确phase通过并已合mainc4b368bf；compact具体合同已SINGLE PASS按Accepted实施，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -625,11 +625,11 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 
 仅recall_history/expand/detail三读；三项所测独立端到端按精确source/validation phase、具体SHAPE及首末十production静态和作者三十七项有效检查通过，已合本地mainc4b368bfe924fcd5b7f14a0288de5a866610deef、未日用。实际协议提炼 [API](../API.md#对话原文三读运行时-cli)、[上下文](../atlas/context.md)、[内核](../atlas/kernel.md)、[权限](../atlas/security.md)、[生态](../atlas/ecosystem.md)、[经历关联](../atlas/memory.md)；[ADR0060](../adr/0060-transcript-read-runtime-cli.md) Accepted，精确phase/完整SHA/夹具因果留 [MILESTONES](../MILESTONES.md)，母路线不复抄参数、原cap和owner选择表。
 
-直接复用原三个导出方法与现source；原IGNOREctx、不强CallID/人物回合，owner快照交集与foreign遮蔽、currentIO/附件/fence/原语义上限保持。只退三wrapper/Known/index；ContextTOOLgroup保compact、LinkContext器官/Event与记忆写守卫。fit与经历/引用/手册/liveContext读回指引沿当前CLI，旧native历史配对仍可读，不重执行原工具。source712后仅test/docs，独立首两项25a与末项712证据各自封存，不到末SHA重三业务或旧审批/旧族。下一compact模型/State写仅下方Proposed具体合同，Link/Event及基础Shell/Files/代理门去留仍后刀，不提前开第二实现面。
+直接复用原三个导出方法与现source；原IGNOREctx、不强CallID/人物回合，owner快照交集与foreign遮蔽、currentIO/附件/fence/原语义上限保持。只退三wrapper/Known/index；ContextTOOLgroup保compact、LinkContext器官/Event与记忆写守卫。fit与经历/引用/手册/liveContext读回指引沿当前CLI，旧native历史配对仍可读，不重执行原工具。source712后仅test/docs，独立首两项25a与末项712证据各自封存，不到末SHA重三业务或旧审批/旧族。下一compact模型/State写按下方Accepted具体合同实施，Link/Event及基础Shell/Files/代理门去留仍后刀，不提前开第二实现面。
 
-## 批 compact：主动范围压缩具体合同待SINGLE SHAPE
+## 批 compact：主动范围压缩具体合同PASS实施中
 
-基线TRUE transcript mainc4b368bfe924fcd5b7f14a0288de5a866610deef（已FF clean，前序三读三业务分期/37项有效checks/两段静态封存，不到末SHA再跑）。本刀只主动compact入口，继续ADR0021决定6的Bot主动压缩能力，不是去掉该功能；自动规划/压缩与无网页手动按钮保持。full有限清单已读，实际compactTool.Run→已导出CompactRange(ctx,from,to,focus)、LLM/usage/refreshMemSnap/current保存和真正consumer已核。[ADR0061](../adr/0061-compact-runtime-cli.md) Proposed；现在只这两doc，等24 SINGLE ACTUAL CONCRETE SHAPE，不写产品/test或猜红。
+基线TRUE transcript mainc4b368bfe924fcd5b7f14a0288de5a866610deef（已FF clean，前序三读三业务分期/37项有效checks/两段静态封存，不到末SHA再跑）。本刀只主动compact入口，继续ADR0021决定6的Bot主动压缩能力，不是去掉该功能；自动规划/压缩与无网页手动按钮保持。full有限清单已读，实际compactTool.Run→已导出CompactRange(ctx,from,to,focus)、LLM/usage/refreshMemSnap/current保存和真正consumer已核。[Accepted ADR0061](../adr/0061-compact-runtime-cli.md)；67f64c6a两doc已获24 SINGLE ACTUAL CONCRETE SHAPE PASS，现沿原导出方法实施；首compiled早交，不等alltests/退门/首反馈。
 
 ### 实际caller与两结构
 
@@ -664,7 +664,7 @@ autoCompact/foldBlocks/bgcompact.finishJob/applyReady/idle及bindingPrecheck原�
 - 批 0 的后续实际操作及入站依赖清单、尚未迁族的 research 业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已提炼 atlas，固定五项独立所测端到端按各自精确版本通过，证据见 MILESTONES；原 chat loop 下一输入/Timer handle 及其 recover、回放、通知实际消费者也已以局部红绿和 reviewer24 至 `63762ae5` 连续增量 PASS 收口，已合入本地 main，尚未日用；合并时与主线持久选择的交叠补单项真实浏览器红绿，不重跑固定五项。已通过的普通字段、avatar_seed、MCP 和本刀五项不重复整批验收，母路线其它族继续在本 dev 中推进。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
-- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search已合maind632e7a3；memory-recall已合main1053d0a9，transcript三读已合mainc4b368bf，compact模型与State写仅下方Proposed合同；连接器及剩余目录管理等平台能力继续逐族迁移。
+- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search已合maind632e7a3；memory-recall已合main1053d0a9，transcript三读已合mainc4b368bf，compact模型与State写按下方Accepted合同实施；连接器及剩余目录管理等平台能力继续逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。
 - 各批独立冒烟、相关旅程回归、性能与上下文收益测量、主人日用验收。

@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0061 主动范围压缩沿原 source CLI
@@ -73,4 +73,4 @@ autoCompact/foldBlocks/bgcompact.finishJob/applyReady/idle/bindingPrecheck直接
 
 最窄未来证据：真实source Shell+scripted compact.LLM（不能只用无usage裸fake Compactor），验原source turn的usage/Block、环境先于覆盖、memory.md/log正文未改与原文仍可读（不把锁/派生文件维护冒物理零IO）；首compiled早交，不等全部边界。复用未改range/pair/tail/overlap原有效证据，再必要窄核model错/cancel及Chat成功后State失败实错/已发布env；模型等待期间实际rename后State/trace跟新ref、旧目录不复活。无新源resolver逻辑则原三群审批/前序green有效复用，不整longrun/缓存/FTS-Memory-Context-Store/旧已绿族、真模型或性能矩阵。
 
-选择B，接受原晚错副作用与微竞态界限，换取原状态真源。完整caller合同见 [母路线](../dev/cli-platform-entry.md#批-compact主动范围压缩具体合同待single-shape)。本ADR Proposed，只母+本页两docs，等24 SINGLE ACTUAL CONCRETE SHAPE后再Accepted/实现，不写产品/tests或猜入口红。Root4USERdocs/OwnerSSE/guard/main/push日用不动。
+选择B，接受原晚错副作用与微竞态界限，换取原状态真源。完整caller合同见 [母路线](../dev/cli-platform-entry.md#批-compact主动范围压缩具体合同pass实施中)。67f64c6a两docs经24 SINGLE ACTUAL CONCRETE SHAPE PASS，本ADR Accepted，按上述原结构实施；实际入口红与业务证据分别收，不以未知命令冒领域红。Root4USERdocs/OwnerSSE/guard/main/push日用不动。
