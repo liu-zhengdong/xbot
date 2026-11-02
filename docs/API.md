@@ -244,7 +244,7 @@ source 与 CLI 共用准确 `FormatExperienceRecord` / `FormatExperienceSearch`�
 
 callback 持原 operations lease，不外套 currentIO 调用内部已持 route 的 Record/Search；只有产物实际写入在短 currentIO 里取当前 source name/root 和重基后的原 WorkDir，未配置时取当前 Bot 默认工作区，不拿旧目录迟写。领域错误沿原 `k.redactor()` 脱敏，检索结果继续遮盖 held secrets 与 Resources secret；仅显示 error 可缩短，保留实际 ACK/产物事实。CLI 先输出收到的事实回执再非 0，客户端不展开产物、不代理/重定向或自动重试。
 
-SQLite 七列、原 Web 字段与全库字面分页、提纲阅读投影和原始 segment 展示保持；缺库读取经 exists 不建库，已有库 reader 的原 open 仍可能 CREATE TABLE IF NOT EXISTS/WAL，不能承诺全 root 零写。下一自然环境采样仍报 experience count/latest ID+200 字节摘要，读错保已发布值；不额外 Inbox/waker、MemoryOwnReceipt、假 native ToolCall 配对或普通事实账。`detail` 仍是原 context 工具，按 raw seq 或 experience ID+0 起下标读真正完整 blob（64 KiB），不是新 CLI 子命令。两旧 `experience_record` / `experience_search` wrapper、Known、schema、index 与执行指引已退，历史 native 字面记录保持；可见记忆文件检索沿下文独立 CLI，已空的 memory 工具注册组已退，Context 四工具和原 Link.Tools 空壳保留。存储与消费者见 [记忆](atlas/memory.md#怎么运转)，运行装配见 [内核](atlas/kernel.md#经历记录与检索实例入口)。
+SQLite 七列、原 Web 字段与全库字面分页、提纲阅读投影和原始 segment 展示保持；缺库读取经 exists 不建库，已有库 reader 的原 open 仍可能 CREATE TABLE IF NOT EXISTS/WAL，不能承诺全 root 零写。下一自然环境采样仍报 experience count/latest ID+200 字节摘要，读错保已发布值；不额外 Inbox/waker、MemoryOwnReceipt、假 native ToolCall 配对或普通事实账。单条原文由 [transcript detail CLI](#对话原文三读运行时-cli) 读取，保 raw seq 的 1 基与 experience ID+0 基 offset、原 64 KiB 语义上限。两旧 `experience_record` / `experience_search` wrapper、Known、schema、index 与执行指引已退，历史 native 字面记录保持；可见记忆文件检索沿下文独立 CLI，已空的 memory 工具注册组已退，context 工具组保留 compact，三读已迁独立 CLI，原 Link.Tools 空壳保留。存储与消费者见 [记忆](atlas/memory.md#怎么运转)，运行装配见 [内核](atlas/kernel.md#经历记录与检索实例入口)。
 
 ## 可见记忆文件检索运行时 CLI
 
@@ -268,7 +268,47 @@ query 仅在正文行上 BM25，路径/scope 字串不参与匹配，汉字按�
 
 准确共享 `FormatMemoryRecall` 与整 JSON 含 newline 各须≤原 Shell 32 KiB。任一种超限，沿原 `work.WriteResult` 将完整这份二十命中文本的 JSON 含 newline 写入当前 source 工作区 `results/<32hex>.json`（0600，最多 20 MiB），省 inline text，回 file/access:"local"/实际 bytes。先按 32hex 文件名预检引用的 JSONNL/human 两格式，真正写入才短持 currentIO，沿当前 root/name 与重基后的原 WorkDir，未配置时用当前 Bot 默认工作区。完整产物保存该二十命中投影，不是 4 MiB 原扫描文件导出，也不补回每条超过 200 runes 的正文；需要原文用现有 `read_file`。不截 records、反解析 count、抬容量或新建产物框架；写入/metadata 错误明确非 0，无虚假 file，仅显示 error 可缩短。CLI 先打印收到的事实回执再非 0，不展开产物、代理/重定向或自动重试。
 
-research 只允许当前 canonical BIN 或精确受控 `"$XBOT_BIN"` 的单 POSIX 直调，经原 `DirectXBotArgs` 与本纯 parser 识别 help 或 self；不凭命令含词放行，操作符/替换/错 root 沿原规则拒绝。熔断在旧 looseShell 截首命令前，以同 lexer/本 parser 识别规范 literal BIN 调用的 self/help，仅承接检索循环阈值，不扩所有平台命令的权限或限额。manual、live NameMemory 与 MemoryWriteRule 指引已用当前 CLI；Bot 是写入默认，检索空 scope 仍为合并范围。`recall` 执行 wrapper、Known、schema、index 与确已空的 memory 工具注册组已退；旧 native 历史字面、`link.Memory` 器官、Link/Event 装配、4 KiB 文件写守卫与 context 的 compact/recall_history/expand/detail 均保留。没有新 Web Recall 结果 parser、环境事实、Inbox/waker、MemoryOwnReceipt 或伪 native 工具配对。当前扫描语义见 [记忆](atlas/memory.md#可见记忆文件检索)，实例接线见 [内核](atlas/kernel.md#可见记忆文件检索实例入口)，闭合评测的实际 BIN 桥见 [供应商与评测](atlas/providers.md#可见记忆检索的闭合评测入口)，决定见 [ADR0059](adr/0059-memory-recall-runtime-cli.md)。
+research 只允许当前 canonical BIN 或精确受控 `"$XBOT_BIN"` 的单 POSIX 直调，经原 `DirectXBotArgs` 与本纯 parser 识别 help 或 self；不凭命令含词放行，操作符/替换/错 root 沿原规则拒绝。熔断在旧 looseShell 截首命令前，以同 lexer/本 parser 识别规范 literal BIN 调用的 self/help，仅承接检索循环阈值，不扩所有平台命令的权限或限额。manual、live NameMemory 与 MemoryWriteRule 指引已用当前 CLI；Bot 是写入默认，检索空 scope 仍为合并范围。`recall` 执行 wrapper、Known、schema、index 与确已空的 memory 工具注册组已退；旧 native 历史字面、`link.Memory` 器官、Link/Event 装配、4 KiB 文件写守卫与 context 的 compact 保留，三读已迁 [transcript CLI](#对话原文三读运行时-cli)。没有新 Web Recall 结果 parser、环境事实、Inbox/waker、MemoryOwnReceipt 或伪 native 工具配对。当前扫描语义见 [记忆](atlas/memory.md#可见记忆文件检索)，实例接线见 [内核](atlas/kernel.md#可见记忆文件检索实例入口)，闭合评测的实际 BIN 桥见 [供应商与评测](atlas/providers.md#可见记忆检索的闭合评测入口)，决定见 [ADR0059](adr/0059-memory-recall-runtime-cli.md)。
+
+## 对话原文三读运行时 CLI
+
+```sh
+"$XBOT_BIN" transcript search --self [--query TEXT|--query-file FILE|-] [--bot NAME] [--json]
+"$XBOT_BIN" transcript expand --self --from N --to N [--bot NAME] [--json]
+"$XBOT_BIN" transcript detail --self --seq N [--experience ID] [--json]
+"$XBOT_BIN" transcript --help
+"$XBOT_BIN" transcript search --help
+"$XBOT_BIN" transcript expand --help
+"$XBOT_BIN" transcript detail --help
+```
+
+纯 `ParseTranscriptRuntime` 按 flag arity 消费值，值中的字面 `--help`、`--` 不作帮助或分隔符；无位置参数、别名或 `-h`，拒未知/重复 flag。noun/action help 离线；其余必须 self，expand 必须显式 from/to，detail 必须显式 seq。search 的 query/query-file 至多一，可省略或显式空 query，query-file 路径不可空，`-` 读 stdin。raw 文本/文件/stdin 以 max+1 有界读取，连同最终转义 typed JSON 请求各限 1 MiB，不先截断再 trim；原 Shell 命令仍限 16 KiB，大查询用文件或 stdin。from/to/seq 解析 Go int、experience 解析 int64，拒语法错误和溢出，0/负数交原领域方法处理。experience≤0 仍按普通 1 基 seq；experience>0 时 seq 为该经历 From 起的 0 基 offset。
+
+main 在 resolveRoot/default/legacy 初始化前分流。self 只由原 source 的 `XBOT_ENDPOINT`、规范 `XBOT_ROOT` 与 Resources ref 识别，显式 root 必须相同；改名后的旧 `XBOT_BOT` 仅诊断。缺 endpoint、root 冲突或运行失败明确非 0，不离线 Load source 或新建 Kernel。三原 Run 忽略 ctx，领域 API 无 ctx 参数；不要求 `XBOT_CALL_ID`，三个 client 均无 CallID 参数、也不发关联 header。缺失、过期、finished 或 foreign CallID 不改变领域资格；不用 runtimeSourceCall、prepared-person、审批 owner 重绑、primary/person/project 资格、approver 函数或确认卡。承载 Shell 的原机器 gate 与 policy 仍独立。ctx 只取消 HTTP 传输，原方法不新增即时取消承诺。
+
+既有 `Handlers.Transcript` 挂 Search/Expand/Detail 三个 typed callback，分别直调同 Kernel 的原导出 `RecallHistoryBot(query,name)`、`ExpandBot(name,from,to)`、`Detail(seq,experienceID)`；不另抽领域扫描器、Store 服务或通用 action envelope。`CallTranscriptSearch/Expand/Detail(ctx,endpoint,root,input)` 分别到原 loopback listener 的三个 POST：
+
+| 路由 | JSON DTO |
+|---|---|
+| `/v1/transcript/search` | `cliops.TranscriptSearch{query,bot?}` |
+| `/v1/transcript/expand` | `cliops.TranscriptExpand{bot?,from,to}` |
+| `/v1/transcript/detail` | `cliops.TranscriptDetail{seq,experience?}`，没有 Bot 字段 |
+
+只收一个 JSON 对象，拒 URL query（含空 `?`）、未知字段、非对象/null 和 EOF 前尾随内容；string/int/int64 字段按 typed 解码，不把字符串数字当整数。复用原 loopback/Host/browser/root guard，请求与转义后的 typed 请求各≤1 MiB，HTTP 回包硬限 64 KiB。
+
+search/expand 的目标名沿 `withHistoryBot` trim，空或等当前 source 名时沿同 Kernel 的 current ref 读 self；其它名字只 `bot.Load(k.Bot.Root,name)` 一次，以保留的 `k.Bot.Config().Owners` 与目标加载时的 Owners 核非空交集，不另强刷 Resources.current 的 source 配置。同群或可互发消息不扩大可见性；不同 owner、orphan/missing/加载错及无交集统一 `history: bot: not found`，授权后的真实读盘错误保留。foreign 没有稳定 ref，不保证跟随其改名，旧 target 名不作 source 别名，不增加目标 registry/cache/CAS。
+
+- **search**：原 FTS5/BM25 最多 8 个 hit，返回稳定 seq、role 与存储预览，不 hydrate blob；跳 fork marker，正文为空才用 toolBlob。`snippetRunes` 实际截 240 **字节**，整体经原 presentHistory 限 4 KiB；无命中保 `no matching transcript lines`。空白或清理后无词的查询在 Bot.Search 进入 store IO 前返回；不据此承诺其它目标加载或全 root 零写。
+- **expand**：原 inclusive `1≤from≤to≤Count`，压缩摘要覆盖的原 seq 仍可读；每条 HydrateLimit 8 KiB 后整体限 8 KiB。保 seq/role、原图片/音频路径说明，跨 Bot 附件取目标工作区；正文为空才追加 toolBlob。
+- **detail**：仅 source，保原经历范围/缺失错误、普通 seq 范围检查与 source 本地格式时间。每条 HydrateLimit 64 KiB、整体也限 64 KiB；正文非空时同样追加 toolBlob，并带原附件路径说明。这是原完整语义上限，不是无限 blob 或附件 base64 导出。
+
+原 presentHistory 先用 `k.Redact`（缺省 bot.RedactText）脱敏，再按上述 cap 裁切；foreign 正文沿原 Neutralize/Wrap 成完整 `<untrusted_event>`，source=`bot:目标`、type=`transcript`、sender=目标，膨胀时缩正文重 Wrap，原极端 fallback 保持。self 不加 foreign 围栏。runtime 仅补 config.RedactHeld 与 Resources secret scrub，不对整份文本再次运行 k.Redact、重造围栏或二次裁正文。
+
+三路共享 `cliops.TranscriptReadReply{text?,file?,access?,bytes?,error?}`，没有 rows/count/actions.Meta。准确 `FormatTranscriptRead` 的实际 human 输出与整 JSON 含 newline 分别须≤原 Shell 32 KiB。任一超限，沿原 work.WriteResult 在当前 **source** 工作区写 `results/<32hex>.json`（0600，最多 20 MiB），保存这份完整语义 Text JSON 含 newline，附件说明/foreign 围栏已包含，原 4/8/64 KiB 已裁内容不会补回。先按 32hex 文件名预检引用的 JSONNL/human 两格式，bytes 为实际文件字节数；失败明确非 0，无虚假 file，不截 rows 或提高原 cap，也不新建产物框架。仅显示 error 可缩短，Text 和实际产物事实保留。`read_file` 可读返回的完整语义产物，实际 blob 读取仍受原三方法上限约束。
+
+callback 持原 operations lease，不外套 currentIO：self 的 search/slice、expand count/slice/hydrate 已在原 currentIO，Detail 多次 IO 沿 source ref，不是跨调用一致快照；外层 route 再调 currentName/line-note 会有 writer 等待下递归 RLock 风险。只有产物实际写入才短持 currentIO，取当前 Root/Name 与重基后的原 WorkDir，空时用 work.BotDir。原 segStore.ensure 可建目录/锁、迁 legacy、修复索引；逻辑只读不等物理零写。CLI 先输出收到的事实再非 0，不展开产物、代理/重定向或自动重试。
+
+research 经原 DirectXBotArgs 单 POSIX lexer 和同 parser，只放当前 canonical BIN 或精确受控 `"$XBOT_BIN"` 的合法三 action self/help；操作符、替换和错 root 在解释器前拒绝。熔断仅规范 literal `transcript search` 承接原历史检索宽阈值，expand/detail/noun help 仍用普通阈值，不放宽所有平台命令。fit 的有 seq→expand、无 seq→search→expand、custom noSeq 与 turnSummary 范围保持，并继续提示不要重执行；ReplyRule、ExperienceRule、SearchExperiences detail 提示、manual/context 与 live Link.Context 指引均指向当前 CLI。旧 `recall_history`、`expand`、`detail` 的 wrapper/Known/schema/index 已退，无暗执行 shim；context 工具组仍保 compact 的模型/State 写，Link.Context 器官、Event 和记忆文件 4 KiB 写守卫保留，旧 native 字面与工具配对历史仍可读。当前 mock/eval 未有三读 producer，不扩现有 MemoryRecall 闭合评测桥，也不加 Web 结果 parser、环境账、Inbox/waker、MemoryReceipt 或假工具配对。领域与原消费者见 [上下文](atlas/context.md#对话原文三读)、实例接线见 [内核](atlas/kernel.md#对话原文三读实例入口)，决定见 [ADR0060](adr/0060-transcript-read-runtime-cli.md)。
 
 ## Bot 列表与创建
 
@@ -418,7 +458,7 @@ research 只允许当前 canonical BIN 或精确受控 `"$XBOT_BIN"` 的单 POSI
 
 默认尾窗和读至尾部的 `after` 请求把已读游标记到当前长度；`before`/`around` 浏览历史不标记未见的新消息。`role` 为 `tool` 的行用 `tool_call_id` 对上助手消息里的 `tool_calls`。以 `<environment_` 或 `<memory>` 开头的 user 行是内核上下文，不是用户说的话。Bot 之间的动作如果出现，也是普通 transcript 行，接口没有单独的“系统行”类型。用户聊天里，来自其他 Bot 的一行仍是淡提示。两边来回的原文见下面的「Bot 私聊」。
 
-跨 Bot 阅读不是 HTTP。模型工具 `recall_history` 和 `expand` 有可选的 `bot`。只能读和调用者至少有一个相同 owner 的 Bot。别的 owner、只是同群或能互发消息的 Bot、以及群 id，都是 `not found`（`history: bot: not found`），不说明原因。搜索和展开用对方 Bot 自己的索引。读到的文本包在 `<untrusted_event source="bot:<name>" ... sender="<name>">` 里，没有指令效力。长度上限和读自己的一样（搜索约 4 KiB，展开约 8 KiB）。
+模型侧跨 Bot 原文读取沿 source 的 [transcript search/expand CLI](#对话原文三读运行时-cli)，用可选 `--bot NAME`；同 owner 交集、统一 not found、目标索引与不可信围栏沿原领域方法。它使用独立 loopback runtime HTTP，不经过本 owner 网页 transcript 路由；detail 仅当前 source。
 
 `GET /api/bots/{name}/export?format=md|jsonl&tools=0|1` 下载这个 Bot 的 transcript。未登录 401。不是这个 owner 的 Bot 是 404。`format` 缺省是 `md`。`tools` 缺省是 `0`；只有 `1` 才包含工具调用和 `role=tool` 的行。可选 `from` 和 `to`，要成对出现，是包含端点的 seq。
 

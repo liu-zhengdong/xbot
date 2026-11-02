@@ -137,7 +137,7 @@ func TestBatchBPastToolResultBeforeSoftTarget(t *testing.T) {
 			newest = m.Text()
 		}
 	}
-	if !strings.Contains(old, "expand with from=3 to=3") || strings.Contains(old, "large result") {
+	if !strings.Contains(old, "transcript expand --self --from 3 --to 3") || strings.Contains(old, "large result") {
 		t.Fatalf("not omitted: %.200s", old)
 	}
 	if !strings.HasPrefix(newest, "new result ") {
@@ -320,7 +320,7 @@ func TestBatchBBlobOmissionKeepsReceiptAndExpand(t *testing.T) {
 	found := false
 	for _, m := range msgs {
 		if m.CallID() == "c" {
-			found = strings.Contains(m.Text(), "expand with from=2 to=2")
+			found = strings.Contains(m.Text(), "transcript expand --self --from 2 --to 2")
 		}
 	}
 	if !found {
@@ -411,7 +411,7 @@ func TestBatchBForkHandoffKeepsPastToolBodies(t *testing.T) {
 	if !strings.Contains(joined, "handoff-source-detail") {
 		t.Fatalf("handoff source lost tool body: %.200s", joined)
 	}
-	if strings.Contains(joined, "result left out") || strings.Contains(joined, "expand with from=") {
+	if strings.Contains(joined, "result left out") || strings.Contains(joined, "transcript expand --self --from ") {
 		t.Fatalf("handoff source still has expand placeholders: %.200s", joined)
 	}
 	msgs, _, err := k.assemble(bot.State{}, "")
@@ -420,7 +420,7 @@ func TestBatchBForkHandoffKeepsPastToolBodies(t *testing.T) {
 	}
 	foundOmit := false
 	for _, m := range msgs {
-		if m.CallID() == "read" && strings.Contains(m.Text(), "expand with from=") {
+		if m.CallID() == "read" && strings.Contains(m.Text(), "transcript expand --self --from ") {
 			foundOmit = true
 			break
 		}

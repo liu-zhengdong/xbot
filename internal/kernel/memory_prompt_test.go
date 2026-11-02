@@ -125,7 +125,7 @@ func TestMemoryModelToolsReadOnly(t *testing.T) {
 			t.Fatalf("retired tool %s is exposed", tool.Name())
 		}
 	}
-	if !hasToolName(list, "recall_history") {
-		t.Fatal("context history recall missing")
+	if !hasToolName(list, "read_file") {
+		t.Fatal("memory file reads missing")
 	}
 }

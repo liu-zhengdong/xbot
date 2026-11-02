@@ -18,24 +18,23 @@ func shellNeed(t *testing.T, command string) bool {
 
 func TestTableHasEveryClass(t *testing.T) {
 	want := map[string]Class{
-		"read_file":      Readonly,
-		"list_secrets":   Readonly,
-		"recall_history": Readonly,
-		"code_show":      Readonly,
-		"restart_xbot":   Restart,
-		"secret_rm":      Delete,
-		"telegram_send":  ExternalSend,
-		"lark_send":      ExternalSend,
-		"http_request":   HTTP,
-		"shell":          Shell,
-		"write_file":     SelfEdit,
-		"edit_file":      SelfEdit,
-		"code_start":     Normal,
-		"browser_stop":   Normal,
-		"todo":           Normal,
-		"shell_output":   Readonly,
-		"shell_status":   Readonly,
-		"shell_cancel":   Normal,
+		"read_file":     Readonly,
+		"list_secrets":  Readonly,
+		"code_show":     Readonly,
+		"restart_xbot":  Restart,
+		"secret_rm":     Delete,
+		"telegram_send": ExternalSend,
+		"lark_send":     ExternalSend,
+		"http_request":  HTTP,
+		"shell":         Shell,
+		"write_file":    SelfEdit,
+		"edit_file":     SelfEdit,
+		"code_start":    Normal,
+		"browser_stop":  Normal,
+		"todo":          Normal,
+		"shell_output":  Readonly,
+		"shell_status":  Readonly,
+		"shell_cancel":  Normal,
 	}
 	for name, class := range want {
 		if !Known(name) {
@@ -205,6 +204,11 @@ func TestLinksInstallAndRemoveAsk(t *testing.T) {
 }
 
 func TestSelfEditAndReadOnlyClasses(t *testing.T) {
+	for _, name := range []string{"recall_history", "expand", "detail"} {
+		if Known(name) || ClassOf(name) != Normal {
+			t.Fatalf("retired transcript tool remains classified: %s", name)
+		}
+	}
 	// write_file/edit_file are path-dependent; the kernel checks the path.
 	if need(t, "write_file", `{"path":"notes.md","content":"x"}`) {
 		t.Fatal("write_file asked without a path check")
@@ -212,7 +216,7 @@ func TestSelfEditAndReadOnlyClasses(t *testing.T) {
 	if need(t, "edit_file", `{"path":"plans/2026.md"}`) {
 		t.Fatal("edit_file asked without a path check")
 	}
-	for _, name := range []string{"read_file", "list_secrets", "recall_history", "expand", "read_subagent", "expand_subagent", "browser_snapshot", "code_show", "web_fetch", "web_search", "view_image"} {
+	for _, name := range []string{"read_file", "list_secrets", "read_subagent", "expand_subagent", "browser_snapshot", "code_show", "web_fetch", "web_search", "view_image"} {
 		if need(t, name, `{}`) {
 			t.Fatalf("%s asked", name)
 		}

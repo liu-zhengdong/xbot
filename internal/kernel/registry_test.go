@@ -3,6 +3,8 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -62,7 +64,7 @@ func TestRegistryListsEveryToolOnceWithSource(t *testing.T) {
 	for name, source := range map[string]string{
 		"read_file":            "organ",
 		"send_message_to_user": "kernel",
-		"recall_history":       "kernel",
+		"compact":              "kernel",
 		"desktop_click":        "organ",
 		"browser_open":         "link",
 	} {
@@ -115,7 +117,7 @@ func TestDeclaredToolsAreTheShortFixedSet(t *testing.T) {
 	if hasToolName(list, "recall") || hasToolName(mustMounted(t, k), "recall") || registered(k, "recall") {
 		t.Fatal("retired recall remains callable in model tools")
 	}
-	for _, name := range []string{"recall_history", "browser_open", "desktop_click", "links"} {
+	for _, name := range []string{"compact", "browser_open", "desktop_click", "links"} {
 		if !hasToolName(list, name) || hasToolName(declared(list), name) {
 			t.Fatalf("%s must be registered and undeclared", name)
 		}
@@ -140,8 +142,8 @@ func TestProfileAndPersonaModelGatesRetiredRuntimePersonaRemainsUsable(t *testin
 		}
 		for label, load := range map[string]func() ([]tools.Tool, error){"main": k.modelTools, "child": k.mountedTools} {
 			list, err := load()
-			if err != nil || hasToolName(list, name) || !hasToolName(list, "recall_history") {
-				t.Fatalf("%s tools still expose %s or lost history: %v", label, name, err)
+			if err != nil || hasToolName(list, name) || !hasToolName(list, "read_file") {
+				t.Fatalf("%s tools still expose %s or lost file reads: %v", label, name, err)
 			}
 		}
 		if _, err := door.Run(ctx, json.RawMessage(`{"action":"describe","id":"`+name+`"}`)); err == nil {
@@ -170,30 +172,30 @@ func TestDoorSearchAndDescribe(t *testing.T) {
 	k, _ := doorKernel(t, nil)
 	door := toolDoor{k}
 	ctx := context.Background()
-	out, err := door.Run(ctx, json.RawMessage(`{"action":"search","query":"recall_history"}`))
-	if err != nil || !strings.Contains(out, "recall_history [context]") {
+	out, err := door.Run(ctx, json.RawMessage(`{"action":"search","query":"compact"}`))
+	if err != nil || !strings.Contains(out, "compact [context]") {
 		t.Fatalf("search %q %v", out, err)
 	}
 	if strings.Contains(out, `"properties"`) {
 		t.Fatal("search dumped a schema")
 	}
-	out, err = door.Run(ctx, json.RawMessage(`{"action":"describe","id":"recall_history"}`))
+	out, err = door.Run(ctx, json.RawMessage(`{"action":"describe","id":"compact"}`))
 	var desc struct {
 		ID, Group, Source string
 		Parameters        map[string]any
 	}
-	if err != nil || json.Unmarshal([]byte(out), &desc) != nil || desc.ID != "recall_history" || desc.Group != "context" || desc.Parameters["properties"] == nil {
+	if err != nil || json.Unmarshal([]byte(out), &desc) != nil || desc.ID != "compact" || desc.Group != "context" || desc.Parameters["properties"] == nil {
 		t.Fatalf("describe %q %v", out, err)
 	}
 	// Describing a native group lists its tools.
 	out, err = door.Run(ctx, json.RawMessage(`{"action":"describe","id":"context"}`))
-	if err != nil || !strings.Contains(out, `"recall_history"`) {
+	if err != nil || !strings.Contains(out, `"compact"`) {
 		t.Fatalf("describe group %q %v", out, err)
 	}
 	if _, err := door.Run(ctx, json.RawMessage(`{"action":"describe","id":"nope"}`)); err == nil || !strings.Contains(err.Error(), "search") {
 		t.Fatalf("unknown id %v", err)
 	}
-	for _, id := range []string{"recall", "memory"} {
+	for _, id := range []string{"recall", "memory", "recall_history", "expand", "detail"} {
 		if _, err := door.Run(ctx, json.RawMessage(`{"action":"describe","id":"`+id+`"}`)); err == nil {
 			t.Fatalf("retired recall schema/group %s remains describable", id)
 		}
@@ -215,16 +217,19 @@ func TestDoorSearchAndDescribe(t *testing.T) {
 func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 	shell := tools.NewShells()[0].Name()
 	p := &scripted{resps: []provider.Message{
-		toolCall("s1", "tools", `{"action":"search","query":"recall_history"}`),
-		toolCall("d1", "tools", `{"action":"describe","id":"recall_history"}`),
+		toolCall("s1", "tools", `{"action":"search","query":"compact"}`),
+		toolCall("d1", "tools", `{"action":"describe","id":"compact"}`),
 		toolCall("d2", "tools", `{"action":"describe","id":"context"}`),
 		toolCall("c1", "tools", `{"action":"call","id":"`+shell+`","args":{"command":"echo door-shell","description":"echo"}}`),
-		toolCall("c2", "tools", `{"action":"call","id":"recall_history","args":"{\"query\":\"DOOR_HISTORY_52\"}"}`),
-		toolCall("c3", "tools", `{"action":"call","id":"recall_history","args":{"query":"DOOR_HISTORY_52"}}`),
-		toolCall("bad", "tools", `{"action":"call","id":"recall_history","args":{"query":3}}`),
+		toolCall("c2", "tools", `{"action":"call","id":"read_file","args":"{\"path\":\"door.txt\",\"force\":true}"}`),
+		toolCall("c3", "tools", `{"action":"call","id":"read_file","args":{"path":"door.txt","force":true}}`),
+		toolCall("bad", "tools", `{"action":"call","id":"read_file","args":{"path":3}}`),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}}
 	k, b := doorKernel(t, p)
+	if err := os.WriteFile(filepath.Join(k.WorkDir, "door.txt"), []byte("DOOR_READ_52 actual file body"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if err := b.Append(bot.Entry{Origin: bot.OriginOwner, Time: time.Unix(0, 0).UTC(), Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("DOOR_HISTORY_52 persisted native history fixture")}}); err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +252,7 @@ func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 		}
 	}
 	text := transcriptText(t, b)
-	for _, want := range []string{"recall_history [context]", `"query"`, "recall_history", "door-shell", "DOOR_HISTORY_52 persisted native history fixture"} {
+	for _, want := range []string{"compact [context]", `"from"`, "read_file", "door-shell", "DOOR_HISTORY_52 persisted native history fixture"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in transcript:\n%s", want, text)
 		}
@@ -259,8 +264,8 @@ func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 		}
 	}
 	for _, id := range []string{"c2", "c3"} {
-		if !strings.Contains(results[id], "DOOR_HISTORY_52 persisted native history fixture") {
-			t.Fatalf("native history forwarding %s: %q", id, results[id])
+		if !strings.Contains(results[id], "DOOR_READ_52 actual file body") {
+			t.Fatalf("file forwarding %s: %q", id, results[id])
 		}
 	}
 	if !strings.Contains(results["bad"], "cannot unmarshal number") {
@@ -271,33 +276,33 @@ func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 			t.Fatal("a card named the door instead of the tool")
 		}
 	}
-	// A later turn reaches the native tool by id alone, then by an ordinary
-	// undeclared call; neither path needs schema promotion or a new load.
+	// A later turn reaches the file tool by id alone, then by an ordinary
+	// direct call; neither path needs schema promotion or a new load.
 	p2 := &scripted{resps: []provider.Message{
-		toolCall("c4", "tools", `{"action":"call","id":"recall_history","args":{"query":"DOOR_HISTORY_52"}}`),
-		toolCall("c5", "recall_history", `{"query":"DOOR_HISTORY_52"}`),
+		toolCall("c4", "tools", `{"action":"call","id":"read_file","args":{"path":"door.txt","force":true}}`),
+		toolCall("c5", "read_file", `{"path":"door.txt","force":true}`),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("again")},
 	}}
 	k.Provider = p2
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", time.Unix(2, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	for id, name := range map[string]string{"c4": "tools", "c5": "recall_history"} {
+	for id, name := range map[string]string{"c4": "tools", "c5": "read_file"} {
 		var history string
 		for _, msg := range p2.reqs[len(p2.reqs)-1].Messages {
 			if msg.Role == provider.RoleTool && msg.CallID() == id && msg.Name == name {
 				history = msg.Text()
 			}
 		}
-		if !strings.Contains(history, "DOOR_HISTORY_52 persisted native history fixture") {
-			t.Fatalf("second turn native history %s: %q", id, history)
+		if !strings.Contains(history, "DOOR_READ_52 actual file body") {
+			t.Fatalf("second turn file read %s: %q", id, history)
 		}
 	}
 	published := testPublished(t, k)
-	if !indexHas(published, "recall_history") {
+	if !indexHas(published, "compact") {
 		t.Fatal("tool_index lacks a listed tool")
 	}
-	for _, name := range []string{"recall", "bot_propose_persona", "create_bot", "delete_bot", "list_bots", "bot_status", "routine_create", "routine_list", "routine_update", "routine_delete"} {
+	for _, name := range []string{"recall_history", "expand", "detail", "recall", "bot_propose_persona", "create_bot", "delete_bot", "list_bots", "bot_status", "routine_create", "routine_list", "routine_update", "routine_delete"} {
 		if indexHas(published, name) || registered(k, name) {
 			t.Fatalf("retired tool %s remains available", name)
 		}

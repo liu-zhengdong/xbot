@@ -199,6 +199,15 @@ func Start(root string, handlers Handlers) (*Server, error) {
 	mux.HandleFunc("/v1/memory/recall", func(w http.ResponseWriter, r *http.Request) {
 		serveMemoryRecall(w, r, handlers.Recall)
 	})
+	mux.HandleFunc("/v1/transcript/search", func(w http.ResponseWriter, r *http.Request) {
+		serveTranscriptSearch(w, r, handlers.Transcript)
+	})
+	mux.HandleFunc("/v1/transcript/expand", func(w http.ResponseWriter, r *http.Request) {
+		serveTranscriptExpand(w, r, handlers.Transcript)
+	})
+	mux.HandleFunc("/v1/transcript/detail", func(w http.ResponseWriter, r *http.Request) {
+		serveTranscriptDetail(w, r, handlers.Transcript)
+	})
 	guarded := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fail := func(code int, message string) {
 			w.Header().Set("Content-Type", "application/json")
