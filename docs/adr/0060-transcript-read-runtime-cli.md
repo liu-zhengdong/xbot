@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0060 原 transcript 三读沿 source CLI
@@ -78,6 +78,6 @@ CLI 导入 cliops，分别 `CallTranscriptSearch(ctx,endpoint,root,input)`、`Ca
 
 ## 下一步与代价
 
-选B，接受原source owner快照、foreign名字不跟rename、原语义cap及原读取维护副作用，换取领域单一真源。具体合同见 [母路线](../dev/cli-platform-entry.md#批-transcript-read三读具体合同待single-shape)；本ADR Proposed，等reviewer24 SINGLE ACTUAL CONCRETE SHAPE一次结论才Accepted/首实现，当前只这两docs，不跑产品测试/猜入口红。
+选B，接受原source owner快照、foreign名字不跟rename、原语义cap及原读取维护副作用，换取领域单一真源。具体合同见 [母路线](../dev/cli-platform-entry.md#批-transcript-read三读具体合同pass实施中)；c51fb3d7两docs经reviewer24 SINGLE ACTUAL CONCRETE SHAPE PASS，本ADR Accepted，按原结构实施。真实namespace入口红已封，不以unknown command冒FTS/owner/Detail领域失败。
 
 首candidate沿真实source NativeSH search(query-file预置私有needle，避免命令自身FTS污染)→定位返回RoleTool真实seq→expand同条paired结果/full hydrated原文本；唯一原工具payload与计数器证实未重执行，不能只任意命中/seq存在。首compiled链早交独立后继续同cut sharedOwner与foreign/orphan/group mask、foreign完整fence/目标附件、source Detail两经历锚FULL10K与64KiB语义artifact、source rename/current结果/旧BOTS-WORK不复活。0d独占经验chain194–203两Detail司机及八处无关readonly describe control只由0d窄迁，保全部旅程断言；作者RuntimeTest170两锚保，必要影响项最小once，不整Experience/FTS/Memory/Context族或旧Fork7/Msg6/Group5/群三审批，源resolver不改复用。Root4USERdocs/OwnerSSE/guard/main/push日用不动。

@@ -621,9 +621,9 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 
 原source prepared非nil人物ctx与唯一FS scanner、精确scope/date/2000files4M/20hit200runes保持；一次currentIO directcurrentb.Name保护原文件访问，无新scope许可或Memory服务。只退recall wrapper/Known/index及确空memory TOOLgroup，保原Link-Event/Memory器官/文件写守卫/context四工具/detail。闭合eval仅限定可信BIN argv恢复原只读host记忆能力，其余Shell隔离不变；source4722后只test/doc，不为最后SHA重三有效业务场景或旧审批族。原三业务phase与eval按各实际版本封存，TRUE main仅compile/diff确认不重跑；下一Context三读仅下方Proposed合同，具体SINGLE SHAPE通过前不开实现，不并compact或第二代码面。
 
-## 批 transcript-read：三读具体合同待SINGLE SHAPE
+## 批 transcript-read：三读具体合同PASS，实施中
 
-基线 TRUE Recall main1053d0a9bb735e5de90ba75fcd3681c5742b3bf0（已FF，产品与独立验证差异0封存，不重原三phase/作者二十二项）。本刀仅原transcript READ3：recall_history/expand/detail；compact模型与State写、Link/Event去留另刀。现有方法/附件/权限证据已对照context/kernel/security、ADR0021与1c冻结全清单，不增环境账/ctxMetaFrame。具体结构决策 [Proposed ADR0060](../adr/0060-transcript-read-runtime-cli.md)，此时仅母与ADR两docs，等24 SINGLE ACTUAL CONCRETE SHAPE一次结论，不写产品/测试或猜入口红。
+基线 TRUE Recall main1053d0a9bb735e5de90ba75fcd3681c5742b3bf0（已FF，产品与独立验证差异0封存，不重原三phase/作者二十二项）。本刀仅原transcript READ3：recall_history/expand/detail；compact模型与State写、Link/Event去留另刀。现有方法/附件/权限证据已对照context/kernel/security、ADR0021与1c冻结全清单，不增环境账/ctxMetaFrame。具体结构决策 [Accepted ADR0060](../adr/0060-transcript-read-runtime-cli.md)，c51fb3d7两docs已获24 SINGLE ACTUAL CONCRETE SHAPE PASS，现按原导出方法实施。独立入口红purea670f223/sourcec51-validation79cb6b40 ONLYEntry FAIL1.06/package20.815s（含build启动非p95）为actual非primarySource NativeSH规范BIN未知transcript noun、无FTS/owner/Detail领域假红；首compiled即早交，不等全部单位/退门/首反馈。
 
 ### 实际caller与请求
 
