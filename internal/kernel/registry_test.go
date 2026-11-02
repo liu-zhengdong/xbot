@@ -64,7 +64,7 @@ func TestRegistryListsEveryToolOnceWithSource(t *testing.T) {
 	for name, source := range map[string]string{
 		"read_file":            "organ",
 		"send_message_to_user": "kernel",
-		"compact":              "kernel",
+		"listen":               "kernel",
 		"desktop_click":        "organ",
 		"browser_open":         "link",
 	} {
@@ -114,10 +114,12 @@ func TestDeclaredToolsAreTheShortFixedSet(t *testing.T) {
 	if strings.Join(got, ",") != strings.Join(toolNames(toolsNamed(want)), ",") {
 		t.Fatalf("declared %v, want %v", got, want)
 	}
-	if hasToolName(list, "recall") || hasToolName(mustMounted(t, k), "recall") || registered(k, "recall") {
-		t.Fatal("retired recall remains callable in model tools")
+	for _, name := range []string{"recall", "compact"} {
+		if hasToolName(list, name) || hasToolName(mustMounted(t, k), name) || registered(k, name) {
+			t.Fatalf("retired tool %s remains callable in model tools", name)
+		}
 	}
-	for _, name := range []string{"compact", "browser_open", "desktop_click", "links"} {
+	for _, name := range []string{"listen", "browser_open", "desktop_click", "links"} {
 		if !hasToolName(list, name) || hasToolName(declared(list), name) {
 			t.Fatalf("%s must be registered and undeclared", name)
 		}
@@ -172,39 +174,44 @@ func TestDoorSearchAndDescribe(t *testing.T) {
 	k, _ := doorKernel(t, nil)
 	door := toolDoor{k}
 	ctx := context.Background()
-	out, err := door.Run(ctx, json.RawMessage(`{"action":"search","query":"compact"}`))
-	if err != nil || !strings.Contains(out, "compact [context]") {
+	out, err := door.Run(ctx, json.RawMessage(`{"action":"search","query":"listen"}`))
+	if err != nil || !strings.Contains(out, "listen [audio]") {
 		t.Fatalf("search %q %v", out, err)
 	}
 	if strings.Contains(out, `"properties"`) {
 		t.Fatal("search dumped a schema")
 	}
-	out, err = door.Run(ctx, json.RawMessage(`{"action":"describe","id":"compact"}`))
+	out, err = door.Run(ctx, json.RawMessage(`{"action":"describe","id":"listen"}`))
 	var desc struct {
 		ID, Group, Source string
 		Parameters        map[string]any
 	}
-	if err != nil || json.Unmarshal([]byte(out), &desc) != nil || desc.ID != "compact" || desc.Group != "context" || desc.Parameters["properties"] == nil {
+	if err != nil || json.Unmarshal([]byte(out), &desc) != nil || desc.ID != "listen" || desc.Group != "audio" || desc.Parameters["properties"] == nil {
 		t.Fatalf("describe %q %v", out, err)
 	}
 	// Describing a native group lists its tools.
-	out, err = door.Run(ctx, json.RawMessage(`{"action":"describe","id":"context"}`))
-	if err != nil || !strings.Contains(out, `"compact"`) {
+	out, err = door.Run(ctx, json.RawMessage(`{"action":"describe","id":"audio"}`))
+	if err != nil || !strings.Contains(out, `"listen"`) {
 		t.Fatalf("describe group %q %v", out, err)
 	}
 	if _, err := door.Run(ctx, json.RawMessage(`{"action":"describe","id":"nope"}`)); err == nil || !strings.Contains(err.Error(), "search") {
 		t.Fatalf("unknown id %v", err)
 	}
-	for _, id := range []string{"recall", "memory", "recall_history", "expand", "detail"} {
+	for _, id := range []string{"compact", "context", "recall", "memory", "recall_history", "expand", "detail"} {
 		if _, err := door.Run(ctx, json.RawMessage(`{"action":"describe","id":"`+id+`"}`)); err == nil {
-			t.Fatalf("retired recall schema/group %s remains describable", id)
+			t.Fatalf("retired schema/group %s remains describable", id)
 		}
+	}
+	if tool, _, err := door.Forward(ctx, json.RawMessage(`{"action":"call","id":"compact","args":{"from":1,"to":1}}`)); err == nil || tool != nil {
+		t.Fatal("retired compact still forwards")
 	}
 	if tool, _, err := door.Forward(ctx, json.RawMessage(`{"action":"call","id":"recall","args":{"query":"tea"}}`)); err == nil || tool != nil {
 		t.Fatal("retired recall still forwards")
 	}
-	if _, ok := k.toolRegistry().index()["memory"]; ok {
-		t.Fatal("retired empty memory tool group remains indexed")
+	for _, group := range []string{"context", "memory"} {
+		if _, ok := k.toolRegistry().index()[group]; ok {
+			t.Fatalf("retired empty tool group %s remains indexed", group)
+		}
 	}
 	if indexHas(environment{}, "x") {
 		t.Fatal("empty index")
@@ -217,9 +224,9 @@ func TestDoorSearchAndDescribe(t *testing.T) {
 func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 	shell := tools.NewShells()[0].Name()
 	p := &scripted{resps: []provider.Message{
-		toolCall("s1", "tools", `{"action":"search","query":"compact"}`),
-		toolCall("d1", "tools", `{"action":"describe","id":"compact"}`),
-		toolCall("d2", "tools", `{"action":"describe","id":"context"}`),
+		toolCall("s1", "tools", `{"action":"search","query":"listen"}`),
+		toolCall("d1", "tools", `{"action":"describe","id":"listen"}`),
+		toolCall("d2", "tools", `{"action":"describe","id":"audio"}`),
 		toolCall("c1", "tools", `{"action":"call","id":"`+shell+`","args":{"command":"echo door-shell","description":"echo"}}`),
 		toolCall("c2", "tools", `{"action":"call","id":"read_file","args":"{\"path\":\"door.txt\",\"force\":true}"}`),
 		toolCall("c3", "tools", `{"action":"call","id":"read_file","args":{"path":"door.txt","force":true}}`),
@@ -252,7 +259,7 @@ func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 		}
 	}
 	text := transcriptText(t, b)
-	for _, want := range []string{"compact [context]", `"from"`, "read_file", "door-shell", "DOOR_HISTORY_52 persisted native history fixture"} {
+	for _, want := range []string{"listen [audio]", `"path"`, "read_file", "door-shell", "DOOR_HISTORY_52 persisted native history fixture"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in transcript:\n%s", want, text)
 		}
@@ -299,10 +306,10 @@ func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 		}
 	}
 	published := testPublished(t, k)
-	if !indexHas(published, "compact") {
+	if !indexHas(published, "listen") {
 		t.Fatal("tool_index lacks a listed tool")
 	}
-	for _, name := range []string{"recall_history", "expand", "detail", "recall", "bot_propose_persona", "create_bot", "delete_bot", "list_bots", "bot_status", "routine_create", "routine_list", "routine_update", "routine_delete"} {
+	for _, name := range []string{"compact", "recall_history", "expand", "detail", "recall", "bot_propose_persona", "create_bot", "delete_bot", "list_bots", "bot_status", "routine_create", "routine_list", "routine_update", "routine_delete"} {
 		if indexHas(published, name) || registered(k, name) {
 			t.Fatalf("retired tool %s remains available", name)
 		}

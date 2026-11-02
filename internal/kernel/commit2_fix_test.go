@@ -2,7 +2,6 @@ package kernel
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,7 +16,6 @@ import (
 	"xbot/internal/memory"
 	"xbot/internal/notable"
 	"xbot/internal/provider"
-	"xbot/internal/tools"
 )
 
 func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
@@ -238,20 +236,7 @@ func TestRecoveryUnreadableMetaDoesNotBlockBot(t *testing.T) {
 	}
 }
 
-func TestBotCompactToolMountedAndGuarded(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "atlas", "security.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	documented := false
-	for _, line := range strings.Split(string(raw), "\n") {
-		if strings.HasPrefix(line, "| `normal` |") && strings.Contains(line, "`compact`") {
-			documented = true
-		}
-	}
-	if !documented {
-		t.Fatal("compact missing from the normal tool row")
-	}
+func TestBotCompactRangeGuarded(t *testing.T) {
 	b := testBot(t, link.NameContext)
 	msgs := []bot.Entry{
 		{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("the secret code is purple finch")}},
@@ -272,26 +257,13 @@ func TestBotCompactToolMountedAndGuarded(t *testing.T) {
 		Bot: b, Links: []link.Link{link.Context{}}, Compactor: &recCompactor{}, Budget: compact.Budget{KeepTail: 1, Ceiling: 10},
 		Memory: mem,
 	}
-	list, err := k.modelTools()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var tool tools.Tool
-	for _, x := range list {
-		if x.Name() == "compact" {
-			tool = x
-		}
-	}
-	if tool == nil {
-		t.Fatal("compact not offered with the Context grant")
-	}
-	if _, err := tool.Run(context.Background(), json.RawMessage(`{"from":2,"to":2}`)); err == nil {
+	if _, err := k.CompactRange(context.Background(), 2, 2, ""); err == nil {
 		t.Fatal("compact split a tool-call pair")
 	}
-	if _, err := tool.Run(context.Background(), json.RawMessage(`{"from":5,"to":5}`)); err == nil {
+	if _, err := k.CompactRange(context.Background(), 5, 5, ""); err == nil {
 		t.Fatal("compact took the raw tail")
 	}
-	if _, err := tool.Run(context.Background(), json.RawMessage(`{"from":1,"to":4,"focus":"keep the bird"}`)); err != nil {
+	if _, err := k.CompactRange(context.Background(), 1, 4, "keep the bird"); err != nil {
 		t.Fatal(err)
 	}
 	st, err := b.LoadState()

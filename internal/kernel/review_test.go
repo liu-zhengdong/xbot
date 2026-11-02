@@ -356,13 +356,12 @@ func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"sh", "read_file", "write_file", "edit_file", "web_fetch", "web_search", "view_image", "http_request", "list_secrets",
-		"links", "telegram_send", "lark_send", "code_start", "desktop_click", "browser_open",
-		"compact"} {
+		"links", "telegram_send", "lark_send", "code_start", "desktop_click", "browser_open"} {
 		if !seen[want] {
 			t.Fatalf("expected tool %q was not registered", want)
 		}
 	}
-	for _, name := range []string{"recall_history", "expand", "detail", "fork_bot", "message_bot", "list_groups", "get_group_message_history", "create_group", "post_group", "bot_propose_persona", "create_bot", "delete_bot", "list_bots", "bot_status"} {
+	for _, name := range []string{"compact", "recall_history", "expand", "detail", "fork_bot", "message_bot", "list_groups", "get_group_message_history", "create_group", "post_group", "bot_propose_persona", "create_bot", "delete_bot", "list_bots", "bot_status"} {
 		if seen[name] || review.Known(name) {
 			t.Fatalf("retired tool %s remains registered or classified", name)
 		}
