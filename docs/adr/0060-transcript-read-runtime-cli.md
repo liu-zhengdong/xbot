@@ -76,8 +76,8 @@ CLI 导入 cliops，分别 `CallTranscriptSearch(ctx,endpoint,root,input)`、`Ca
 
 实际consumer须同cut迁：fit.omittedResult 的seq→expand及无seq→search→expand指引保“不要重执行”、自定义noSeq保；SearchExperiences末detail提示、manual/context、live Link.Context、readonly分类/原History loose循环阈值、registry/Known/schema/describe。research仅当前canonicalBIN/精确$XBOT_BIN单POSIX直调、本parser合法self/help；不Contains放宽。loose只承接原recall_history对应search，expand/detail不借此新增宽阈值。只退三wrapper/Known/index，context TOOLgroup保compact，LinkContext器官/Event与4KiB memory写守卫不动；旧native literal/工具配对历史仍读，无可执行暗shim/伪native配对/新ENV/Inbox/waker。当前mock/eval精确grep未发现三读producer，不机械扩memoryRecall闭合eval桥。
 
-## 下一步与代价
+## 接受的代价与验证
 
-选B，接受原source owner快照、foreign名字不跟rename、原语义cap及原读取维护副作用，换取领域单一真源。具体合同见 [母路线](../dev/cli-platform-entry.md#批-transcript-read三读具体合同pass实施中)；c51fb3d7两docs经reviewer24 SINGLE ACTUAL CONCRETE SHAPE PASS，本ADR Accepted，按原结构实施。真实namespace入口红已封，不以unknown command冒FTS/owner/Detail领域失败。
+选B，接受原source owner快照、foreign名字不跟rename、原语义cap及原读取维护副作用，换取领域单一真源。c51fb3d7两docs经reviewer24 SINGLE ACTUAL CONCRETE SHAPE PASS，本ADR Accepted；当前协议见 [API](../API.md#对话原文三读运行时-cli)，精确source/validation phase、入口红和夹具修正留 [MILESTONES](../MILESTONES.md)，未迁族留 [母路线](../dev/cli-platform-entry.md)。本文保决策边界，不把未知命令冒领域红、编译冒业务绿或原64KiB语义冒无限Blob。
 
-首candidate沿真实source NativeSH search(query-file预置私有needle，避免命令自身FTS污染)→定位返回RoleTool真实seq→expand同条paired结果/full hydrated原文本；唯一原工具payload与计数器证实未重执行，不能只任意命中/seq存在。首compiled链早交独立后继续同cut sharedOwner与foreign/orphan/group mask、foreign完整fence/目标附件、source Detail两经历锚FULL10K与64KiB语义artifact、source rename/current结果/旧BOTS-WORK不复活。0d独占经验chain194–203两Detail司机及八处无关readonly describe control只由0d窄迁，保全部旅程断言；作者RuntimeTest170两锚保，必要影响项最小once，不整Experience/FTS/Memory/Context族或旧Fork7/Msg6/Group5/群三审批，源resolver不改复用。Root4USERdocs/OwnerSSE/guard/main/push日用不动。
+最窄消费要求仍是返回的真实RoleTool seq→原paired结果语义全文、计数器确认不重执行；query-file可避免命令中needle污染自身FTS。sharedOwner/foreign遮蔽/完整fence与目标附件、Detail两锚及当前source产物是同刀边界。既有经历两Detail全文锚和无关readonly控制只窄迁司机，不改旅程要求。原方法直接调用方与旧历史仍在，compact及源resolver/审批无改则复用原证据，不因入口迁移整族重跑。

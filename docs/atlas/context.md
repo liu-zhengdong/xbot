@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/transcript.go, internal/compact/, internal/bm25/]
-verified: 2026-11-01 @ c599679f (sender display name with stable person ID); 2026-10-31 @ feature/aside-thoughts (aside snapshot/filter/HTTP); 2026-10-31 @ feature/chat-timeline (Chat delivery snapshots, HTTP/Chrome); 2026-10-31 @ feature/env-prompt-frame (Register + scripted HTTP/binary tests); 2026-10-31 @ feature/older-keep-tail (300-raw HTTP/Chrome regression); 2026-10-31 @ 1c653dde + feature/visible-tail-window (visible delivery tail/before windows); 2026-10-31 @ feature-transcript-window (indexed windows + HTTP cap/search tests); 2026-10-27 @ 5450bc6 + Bot compact 恢复、压缩不写记忆 + 资料批 D; 2026-10-31 @ feature/voice-chat (HTTP/scripted + Chrome); 2026-11-01 @ a407f83b (child continuation/route/review targeted and independent scripted binary checks)
+verified: 2026-11-02 @ 71216e72 (original transcript search/expand/detail semantics, current-source IO and CLI fit consumers)
 ---
 # 上下文与 transcript
 
@@ -23,6 +23,16 @@ Web 主列只读 `Chat.Window` / `Chat.Search`：原 index.sqlite 内的 chat �
 
 HTTP 公开投影按700 KiB预算收窗，超大单行返回带标记的预览，游标仍连续可推进；全本仍走流式export。窗口元数据、鉴权和搜索出口见 [API](../API.md#对话)；决定见 [ADR 0039](../adr/0039-chat-delivery-timeline.md)，非主列窗口见 [ADR 0038](../adr/0038-transcript-window.md)。
 
+## 对话原文三读
+
+Agent 在原 source Shell 用 `"$XBOT_BIN" transcript search --self --query TEXT` 查原文，按返回的真实 tool-result seq 用 `transcript expand --self --from N --to N` 取同条记录，不重执行工具；单条用 `transcript detail --self --seq N`。Detail 普通 seq 为 1 基，加正 `--experience ID` 后为该经历 From 起的 0 基 offset，仅当前 source；search/expand 可选同 owner 的 `--bot NAME`。三 callback 直调原 `RecallHistoryBot`、`ExpandBot`、`Detail`，没有新的领域读取逻辑。完整命令、DTO、语义 cap 和输出协议集中见 [API](../API.md#对话原文三读运行时-cli)，决定见 [ADR0060](../adr/0060-transcript-read-runtime-cli.md)。
+
+搜索沿原 FTS5/BM25，只读 stored preview、不 hydrate，保稳定 seq/role；展开沿原 inclusive 范围，摘要覆盖过的原 seq 仍有效，图片/音频说明取实际目标工作区。Detail 带原 source 本地格式时间、附件路径与 toolBlob，保原普通 seq/经历锚点和错误。原 presentHistory 先脱敏再裁到各自语义上限；foreign Neutralize 后完整 Wrap，膨胀时缩正文重包的原路径保持，self 不新增 foreign 围栏。完整语义产物保这份已受原上限约束的 Text JSON，不能补回无限 blob 或附件字节。
+
+self 已在原 currentIO 读 Search/Slice、Count/Slice/Hydrate；Detail 多次短 IO 沿 source ref，不扩成一致快照。foreign 一次 Load 后核保留的 source `k.Bot.Config().Owners` 与加载目标 Owners 非空交集，不显式刷新 Resources.current 的 source 配置；missing/load error、不同 owner/orphan 或仅同群/可消息统一 not found，授权后真实读盘错误保留。目标无稳定 ref，不保证跟随其改名。runtime 不外套 route 再调 currentName/line-note，以免 writer 等待时递归 RLock；产物实际写入才短持 currentIO 取当前 source 工作区。segStore.ensure 仍可能建目录/锁、迁移和修索引，逻辑只读不承诺物理零写。
+
+fit 的真实 seq 占位与 turnSummary 范围指向 CLI expand，无 seq 默认先 search 再 expand，自定义 noSeq 提示保持，继续要求不要重跑。ReplyRule、ExperienceRule、SearchExperiences 末尾 detail 提示、机制手册与 live Link.Context 均使用 CLI。旧 `recall_history`、`expand`、`detail` 的 wrapper/Known/schema/index 已退，旧 native 字面/工具配对历史保持可读；context 工具组仍有 compact 的模型/State 写，Link.Context 器官与 Event、记忆文件写守卫保留。运行装配见 [内核](kernel.md#对话原文三读实例入口)。
+
 ## 边界
 负责：组装上下文、transcript 分段存储和索引、压缩、找回、导出、引用回复。不负责：分叉的分支规则（见 [插话时分叉](fork.md)）。
 
@@ -41,10 +51,10 @@ HTTP 公开投影按700 KiB预算收窗，超大单行返回带标记的预览�
 - **请求组装共用工具配对规则**：用户的话收到即落盘；物理 transcript 可以是调用、插话、结果。模型请求把同一批工具结果紧贴调用，再放中途入串的话；同轮与下一轮重组使用同一规则，原始记录不重排。
 - **原始记录只追加**，每条消息有编号。压缩生成"摘要块"，记录覆盖的编号范围，可以层层合并。
 - **分段存放**：一个 Bot 的原文按大约 8MB，或按 UTC 日期，滚成一段。文件名带这一段的序号范围。只有尾段可写，封存的段只读。旧的单文件 `transcript.jsonl` 在第一次打开时迁进分段；写好 `READY` 之后，原文件改名为 `transcript.jsonl.migrated`，不先删原文。
-- **索引可以重建**：SQLite（纯 Go 驱动 `modernc.org/sqlite`，不用 cgo）记下 `seq → (段, 偏移)`，并用 FTS5 做全文。全文表不另存正文，正文只在段文件里。`recall_history` 走 FTS 的 BM25。`expand` 按 seq 定位。段文件是源头。索引缺了、打不开，或和文件对不上，就自动重建；`xbot reindex <bot>` 可以强制重建。追加时增量更新索引。
-- **跨轮提前占位**（`fit.go` / `blocks.go`）：新真实输入之前的旧工具结果达到 512 估算 token，或已存成 blob，就在请求投影中改成 `expand from/to` 序号占位，不等 T/H、不调模型；最新输入之后的结果保持原样。工具配对和文件写入的环境回执保留，原文与 blob 不改。
-- **大工具输出另存**：超过阈值的工具结果写成 blob。transcript 里只留截断预览和引用。组装上下文用预览。`expand` 和导出可以读回全文。
-- **子任务结论**：可继续本机孩子的结论全文写入该孩子 `results/<turn_seq>.txt`，每轮不可覆盖；只追加输入/轮边界与冷恢复投影见[子代理](subagents.md)。旧一次性孩子与分叉后台末条回复仍沿已有任务目录 `result.txt`。普通完成事件带任务或分支 id、状态、步数和文件指针，不复制全文。完成回报只附最多 256 字节的结果记录开头，不复制全文；整条结果记录不超过 256 字节时只给指针。副作用摘要仍保留，停止原因和未读控制只给短片段，完整详情同存结果文件；分叉完成事件合计不超过 4096 字节。前台用已有 `read_file` 分段读。写文件失败报失败，不伪装成功。文件全文不另入 FTS；`expand` 读到的是回报预览与文件出处。
+- **索引可以重建**：SQLite（纯 Go 驱动 `modernc.org/sqlite`，不用 cgo）记下 `seq → (段, 偏移)`，并用 FTS5 做全文。全文表不另存正文，正文只在段文件里。`transcript search --self` 走 FTS 的 BM25，`transcript expand --self` 按 seq 定位。段文件是源头。索引缺了、打不开，或和文件对不上，就自动重建；`xbot reindex <bot>` 可以强制重建。追加时增量更新索引。
+- **跨轮提前占位**（`fit.go` / `blocks.go`）：新真实输入之前的旧工具结果达到 512 估算 token，或已存成 blob，就在请求投影中改成 `transcript expand --self --from N --to N` 序号占位，不等 T/H、不调模型；最新输入之后的结果保持原样。工具配对和文件写入的环境回执保留，原文与 blob 不改。
+- **大工具输出另存**：超过阈值的工具结果写成 blob。transcript 里只留截断预览和引用。组装上下文用预览。`transcript expand` 按原语义上限 hydrate，流式导出另沿原导出路径读 blob。
+- **子任务结论**：可继续本机孩子的结论全文写入该孩子 `results/<turn_seq>.txt`，每轮不可覆盖；只追加输入/轮边界与冷恢复投影见[子代理](subagents.md)。旧一次性孩子与分叉后台末条回复仍沿已有任务目录 `result.txt`。普通完成事件带任务或分支 id、状态、步数和文件指针，不复制全文。完成回报只附最多 256 字节的结果记录开头，不复制全文；整条结果记录不超过 256 字节时只给指针。副作用摘要仍保留，停止原因和未读控制只给短片段，完整详情同存结果文件；分叉完成事件合计不超过 4096 字节。前台用已有 `read_file` 分段读。写文件失败报失败，不伪装成功。文件全文不另入 FTS；`transcript expand` 读到的是回报预览与文件出处。
 - **用户贴的图片也不进 transcript**：图片存在 Bot 工作区的 `paste/`（读写经 `os.Root` 钉在工作区内），transcript 那一行只记文件名。回答这条消息的那一轮请求直接带上图片字节（最多 4 张、合计 10 MiB，按整轮算；模型看不了图时一张都不带，正在跑的一轮中途收进来的消息也一样）。一条消息的图片在接收时就把这两项算过；真被同一轮里的工具图片占满时，那一张不进请求，但那一行仍写明路径。这这行说明在四个地方用同一份文字：组装上下文、压缩时送进摘要的原文、`expand` 读回的原文，以及中途插进来的消息；存进 transcript 时会把它剥掉，所以存下来的始终是用户自己的话，下一轮再拼一次也只有一份。之后每一轮只留这一行，模型要用 `view_image` 自己去开；这一行写的是绝对路径，Bot 之后 `cd` 到别处也照样打得开。这样历史请求不会因为早先贴过图而一直变大，字节也不落进 transcript 和导出。Bot 给用户看的图（`send_message_to_user` 的 `images`）走同一个 `paste/`：工作区路径经 `os.Root` 读入，类型、单张/合计大小、长边和每条回复 4 张都沿用用户贴图的上限，按内容哈希命名（同一张重复挂只存一份），重复引用在读前去重；工作区文件放不进剩余额度时，先以单文件 10 MiB 上限流式计算内容 id，只有已排队或本批已验证的同 id 才免新增额度并继续校验，新图在整图分配前拒绝；已排队 paste id 也仍校验内容、像素及扩展名。名字先挂在调用所属的原轮上，等最终回复那一行写入时放进它的 `images`；调用发起时捕获原轮已提交最终回复的次数，挂图前和落盘前都持锁核对，次数变化或原轮结束就拒绝且不通知。同 turn 答复后插话续聊新发起的调用捕获新的次数，可挂到下一条回复；未携带次数快照的调用仍按 `answered` 保守拒绝。之后各轮这一行说明写成「`[发给用户的图] <绝对路径>`」，不当成用户的图。
 - **组装和压缩不读整份历史**：每轮只读摘要块和还没被盖住的尾巴。压缩只读正在摘要的那一段，不读这段以外已经封存的历史。
 - **崩溃**：先把完整的一行 fsync 进尾段，再写索引。半行在下次打开时截掉。索引落后于文件就补上这一段。文件比索引短，或库打不开，就按段文件整库重建。
@@ -52,25 +62,25 @@ HTTP 公开投影按700 KiB预算收窗，超大单行返回带标记的预览�
 - **压缩是按段往后推，不是整份重来**：摘要块首尾相接，每次只从「已经被覆盖到哪儿」再往后压到尾巴之前，往后只会追加新块，不回写旧块。这样一次压缩的成本只跟新增内容有关，不随 transcript 变长而变贵。旧块不动，模型已经看过的字节就不变，压缩点之前的缓存仍然命中。被新块整个盖住的旧块直接从 `state.json` 里去掉，不留在存储里越攒越多。
 - **摘要块和原文按序号归并后发给模型**：组装时摘要块和未覆盖的原文按起始序号排成一条时间线，摘要块占住它覆盖的那段位置。旧摘要块可能在中间留下空隙，所以组装仍支持非前缀覆盖；先发全部摘要再发全部原文会让空隙里的原文排到后面那个摘要之后，模型读到的时间顺序就错了。空隙在自动压缩下不会产生——它停在空隙之前，下一轮从空隙接着压。
 - **合并只在块攒多了的时候做**：首尾相接的活跃块到 3 个以上、总估算超过软目标的三分之一，才把除最新一块以外的旧块合并成一块（`focus: folded`）。合并会重写这些块，缓存从第一块起失效，所以留着最新那块不动，最近的细节还是详细的。块之间有空隙时不跨过去合并——空隙里是还没被摘要的原文，跨过去合并会把它们标成已摘要，从此不再进上下文。
-- **压缩**：内核按 T/H 自动触发；Bot 也可以调 `compact(from,to,focus)` 自己压一段已结束的范围（`Kernel.CompactRange`，拒绝切开工具对、碰到尾巴原文、与已有块部分重叠），网页不提供手动按钮（[ADR 0021](../adr/0021-env-stream.md) 决定 6，2026-10-27 修订）；压缩只读范围、写摘要块并按需刷新记忆快照投影，不写记忆文件；`recall_history` 与 `expand` 继续可用。跨轮摘要和轮内 `turn_progress` 都保留每项任务的身份、结论、关键数字、原文序号或结果文件路径、未完成事项、用户决定及已经转告的事实。轮内摘要读取原始结果，不把先前的省略占位当事实。估算约 4 字节一个 token，图片也计入；历史包在数据标记里，不能当新指令。
+- **压缩**：内核按 T/H 自动触发；Bot 也可以调 `compact(from,to,focus)` 自己压一段已结束的范围（`Kernel.CompactRange`，拒绝切开工具对、碰到尾巴原文、与已有块部分重叠），网页不提供手动按钮（[ADR 0021](../adr/0021-env-stream.md) 决定 6，2026-10-27 修订）；压缩只读范围、写摘要块并按需刷新记忆快照投影，不写记忆文件；原文仍由 `transcript search/expand --self` 读取。跨轮摘要和轮内 `turn_progress` 都保留每项任务的身份、结论、关键数字、原文序号或结果文件路径、未完成事项、用户决定及已经转告的事实。轮内摘要读取原始结果，不把先前的省略占位当事实。估算约 4 字节一个 token，图片也计入；历史包在数据标记里，不能当新指令。
 - **后台异步压缩**：消息总量到软目标 T 就在后台压缩，压完后在两轮对话之间换上新摘要，这一轮照常发出；只有逼近硬上限 H，才在轮内同步压缩。自动路径按估算大小从最近几轮往前退，最多到 T 的八分之一。长程 e2e（假模型、按 128K 推出 T 64320、H 107200）跑 459 轮压 3 次全在后台，峰值 64655；当时摘要加事实抽取花掉总消耗的 1.766%（只算摘要是 0.89%）；2026-10-27 起压缩不再抽事实，只剩摘要这一份。
 - **空闲压缩**（`idlecompact.go` / `serve.Pass`）：沿既有巡检，Bot 工作锁空闲且无执行器/工具任务时，最后一条 transcript 已闲置达标、估算达到门槛就入原后台队列；默认 16000 token、50m，`XBOT_IDLE_COMPACT_MIN_TOKENS` / `XBOT_IDLE_COMPACT_AFTER` 可配置，false/off/0/关可关闭，非法值回默认。闲置范围的尾部预算取 T/8 与门槛/8 的较小值，仍保留既有最小尾巴和工具配对。running/ready 文件跨进程去重，失败按原队列重试；摘要不持工作锁，ready 仍等下一轮边界应用。50m 是一小时部署预算下预留十分钟的策略，不检测或保证供应商缓存 TTL；短 TTL 需调小，单独长期占工作锁的 CLI 聊天不由 serve 空闲巡检接管。
 - **换小窗口预检**（`binding.go`）：网页换绑在工作锁内按新窗口 T/H 检查，计入工具定义、新 overlay 及全量环境快照，超过新 T 时用已有范围规划与 CompactRange 摘要，再复测。没有可压范围但总量低于新 H 可以切换；摘要后仍高于 H、缺压缩器或摘要失败，明确拒绝并保留旧绑定。成功后才写绑定、清内核缓存；预检不修改共享 Budget，已提交摘要在换绑失败时仍有效。无缓存内核也做预检。
-- **一轮之内也守着两条线**（`fit.go`）：轮间压缩碰不到正在跑的这一轮，所以每次请求发出前在 `replyProvider` 里再量一次，只改发出去的那份，agent 的对话和 transcript 都不动。默认关闭的 `XBOT_FIT_SUMMARY_BEFORE_OMIT=true` 可在过 T 且即将省大结果时先摘要原始步骤；失败回落省略，同次请求不重复摘要。默认路径过了 T：把这一轮里较早步骤的大工具结果（≥512 估算 token）换成一句占位，写明它在 transcript 里的序号、让模型用 `expand` 读回原样（不要重跑：重跑可能很慢，文件也可能已经变了；序号会先和存下的那一行核对角色和调用 id，对不上就只说「用 recall_history 找」），从旧到新，压到 T 的四分之三；还超 T 且这一轮较早的步骤占到 T 的四分之一，或超过 H：把这些步骤摘要成一条 `<turn_progress from=… to=…>`，带上它盖住的序号范围，和跨轮摘要块一样能 `expand`；还超 H：连更早轮次的大结果也省略。每个决定都记住，下一次请求按同样的方式切，前缀不变。一轮里只要省略或摘要过，同一轮的短回执就不再发（被指的那一步可能已经不在请求里）。供应商因超长拒绝（400 带 `maximum context length` 等字样，或 413）时，三步全做、估算比例上调四分之一，再发一次。每次动作写一条 `fit` trace。
+- **一轮之内也守着两条线**（`fit.go`）：轮间压缩碰不到正在跑的这一轮，所以每次请求发出前在 `replyProvider` 里再量一次，只改发出去的那份，agent 的对话和 transcript 都不动。默认关闭的 `XBOT_FIT_SUMMARY_BEFORE_OMIT=true` 可在过 T 且即将省大结果时先摘要原始步骤；失败回落省略，同次请求不重复摘要。默认路径过了 T：把这一轮里较早步骤的大工具结果（≥512 估算 token）换成一句占位，写明它在 transcript 里的序号、让模型用 `transcript expand --self --from N --to N` 读回原记录（不要重跑：重跑可能很慢，文件也可能已经变了；序号会先和存下的那一行核对角色和调用 id，对不上就提示用 `transcript search --self --query TEXT` 找 seq 后 expand），从旧到新，压到 T 的四分之三；还超 T 且这一轮较早的步骤占到 T 的四分之一，或超过 H：把这些步骤摘要成一条 `<turn_progress from=… to=…>`，带上它盖住的序号范围，和跨轮摘要块一样能由 CLI expand 读取；还超 H：连更早轮次的大结果也省略。每个决定都记住，下一次请求按同样的方式切，前缀不变。一轮里只要省略或摘要过，同一轮的短回执就不再发（被指的那一步可能已经不在请求里）。供应商因超长拒绝（400 带 `maximum context length` 等字样，或 413）时，三步全做、估算比例上调四分之一，再发一次。每次动作写一条 `fit` trace。
 - **每次调用的用量记在 `trace.jsonl`**（kind `usage`）：prompt、completion、cached，以及 `completed/cancelled/failed` 结束状态；没有供应商用量的取消或失败也记估算，并标 `estimated`，不能当真实账单；`turn` 是开这一轮的那条消息的 seq；`cache_reported` 说明响应里有没有缓存字段（没有字段和报了 0 都让 cached 为 0，靠它分开）；摘要调用经 `Kernel.compactor(turn)` 也记一条，`call: "compact"`；事实抽取经 `Kernel.extractor(turn)` 记 `call: "extract"`，但压缩不再调抽取（压缩不写记忆），所以压缩成本只有 compact 这一条。`turn` 取调用上下文的开轮 seq：轮内同步压缩是这一轮（开轮那条消息落盘后、装上 turn 值之前，Handle 先把 seq 写进 ctx，见 `withTurnSeq`），后台任务自己跑时是 0（`turnSeqOf` 只看 ctx，不回退到活轮）。
 - **缓存怎么验收**（`e2e/longrun_test.go` 的 `TestLongRunJourney`，旅程见 [guard/长程运行](../guard/长程运行.md)）：压缩那一轮命中率必然塌（大段已缓存的原文换成了新块），所以不量「降了多少」，量两件事。
   - **恢复**：一轮是用户一条消息开的主线一轮，后台分支和子代理的调用不算；轮命中率是这一轮前台调用的 cached 之和 ÷ prompt 之和。第一次带上新块的那一轮叫 P（合并也算一次 P），P 本身不设下限；从 P+1 到下一个 P 之前，每轮命中率 ≥ 压缩前 5 轮中位数的 90%（`journeyRecovery`、`journeyRecoveryWindow`）。压缩前中位数为 0 或比值不是有限数时直接报错，不让 0/0 静默过关（`recoveryRatio`）。
   - **成本**：加权成本 = 未命中 + 0.1 × 命中，对整段运行的全部调用求和，摘要调用也算在内。基线是同一份脚本、同样轮数、关掉压缩、窗口给足；基线的每轮 prompt 必须单调不减，否则判基线无效。被测 ÷ 基线 ≤ K，K = 1.0（`journeyCostK`）。纯未命中比只打日志。模型从没上报缓存字段时两条都记「不适用」。
   - **替身**：一个规则写死的前缀缓存模拟器：请求按「工具定义、再按顺序的消息」拼成字节串，和之前所有请求求最长公共前缀，换成 token 后向下取整到 64，作为 cached 上报；数据经内核真实的用量记录进 trace，测试从 trace 读。另查「新块之前的消息逐字节不变」，恢复失败时靠它定位。
   - **实测**（459 轮、3 次压缩，128K 窗口推出的两条线）：恢复最差是压缩前中位数的 97.2%（P+1 约 0.97，压缩前约 0.994）；整段 K = 0.512（d410f9b）；纯未命中比约 1.7～2.0。
-- **已知代价**：摘要必然丢细节，压过的原文只能靠 `expand` 取回，不会自动回到上下文；合并会掉一次缓存，这是有意的取舍，宁可偶尔掉一次也不让摘要块无限长；后台没跟上、逼近 H 时同步压缩会让这一轮等一次。
+- **已知代价**：摘要必然丢细节，压过的原文只能靠 `transcript expand` 按原上限取回，不会自动回到上下文；合并会掉一次缓存，这是有意的取舍，宁可偶尔掉一次也不让摘要块无限长；后台没跟上、逼近 H 时同步压缩会让这一轮等一次。
 - **估算按真实用量校准**：每次供应商上报 prompt 用量，就记下「真实 / 估算」的比例，限在 1 到 2 之间（只往上校，不信更小的读数）；T、H 的判断和轮内的量法都乘这个比例。纯中文大约 1.3。
 - **请求快照留在内存里，不落盘**：内核在每次请求发出前，把这一次的完整输入（系统提示词、记忆、摘要块、环境更新、历史消息、工具定义）切成几段、算好估算，留在内存的环形缓冲里，最多 10 次请求，记录运行及结束状态（包括取消）；只有最新一次另外留逐行明细（本轮每一步、早先每一轮、摘要块、每个工具的定义用量），较早的只留分段合计和本轮走到第几步。它是网页「上下文」标签的数据来源，进程重启就没了。不落盘是刻意的：快照包含记忆和工具输出，transcript 已经有每行的持久副本，再存一份只会让两份数据有机会不一致，还要各自脱敏。文本照样过 `RedactText`，因为这是工具结果第一次出现在 transcript 之外。后台分支的请求不进这个缓冲，只有前台主循环的请求进来。
-- **找回很久以前的内容**：重要结论在压缩时提炼进记忆；原文永远保留。`recall_history` 用该 Bot 的 FTS 索引搜索，`expand` 按序号把原文读回来；`detail` 读单条消息全文，`experience_search` 先给经历摘要和原文段提纲（见 [身份与记忆](memory.md)）。跨 Bot 时用对方 Bot 自己的索引，不把对方的历史读进内存。
+- **找回很久以前的内容**：压缩不写记忆，原文永远保留。`transcript search --self` 用该 Bot 的 FTS 索引搜索，`transcript expand --self` 按 seq 读回原记录，`transcript detail --self` 读单条 source 消息；`experience search --self` 先给经历摘要与原文段提纲（见 [身份与记忆](memory.md)）。跨 Bot 时用目标自己的索引，不加载整份历史。
 - **BM25 分词**：`internal/bm25` 按字母数字切词，连续汉字切成重叠的双字（单个汉字保留为一字），所以中文关键词能命中长句里的片段；记忆的 `recall` 和存储内部检索都用它。
-- **跨 Bot 读原文**：`recall_history` 和 `expand` 可以带可选的 `bot`。只能读和自己至少有一个相同 owner 的其他 Bot。别的 owner 的 Bot、只是同群或能互发消息的 Bot、以及群 id，一律 `not found`，错误里不说明是哪一种。读到的文本标明来自那个 Bot，包在 `<untrusted_event>` 里，当成数据，没有指令效力。输出长度上限和读自己的一样。
+- **跨 Bot 读原文**：`transcript search/expand --self` 可带 `--bot NAME`，沿原非空 owner 交集与统一 not found；foreign 输出保目标来源及原不可信围栏，语义上限与 self 相同。Detail 仅 source，具体快照与目标加载边界见 [对话原文三读](#对话原文三读)。
 - **导出 transcript**：`xbot export <bot> [--format md|jsonl] [--tools] [--from SEQ --to SEQ] --out FILE`，网页是 `GET /api/bots/{name}/export`（要登录，且这个人是该 Bot 的 owner）。按段流式写出，不把整份历史装进内存；blob 在写出那一行时读回。`md` 给人看，时间用跑进程的那台机器的本地时区，摘要块单独标成 Summary，不混进对话行。两种格式共用公开投影：去掉 reasoning 块，清空其余块的 `vendor_raw`，与网页 transcript 的公开边界一致；内部段文件与协议回放保留完整原始块。`jsonl` 是可再导入的公开消息：普通行能解成 transcript 记录，多一个 `seq`（导入时忽略，序号仍是原来的行号）；`kind` 为 `summary` 的行是摘要块。默认不带工具调用和工具结果，`--tools` 或 `tools=1` 才带上。每一段写出前过 `RedactText`。保险箱还没接上时，这个函数原样返回。带引用的行在 Markdown 标题下多一行 `reply_to: <seq>`，JSONL 在记录上多一个 `reply_to`。
-- **引用回复**：只用于这个 Bot 自己的网页对话，群聊不带这个字段。用户发送时可以带可选的 `reply_to`，值是本 transcript 里已有的序号；没有这一行就是 400。序号记在这条用户消息上，不放进发给模型供应商的消息体。组装这一轮时，在该用户正文前加一行 `user is replying to your earlier message (seq <n>): <原文>`。原文按 Unicode 字符截到 300，超出末尾加 `…`。存档里的用户正文仍是用户这次写的字。全文用 `expand` 按这个序号读回。Bot 的回复也可以带可选的 `reply_to`，指向一条用户消息。只在一条回复同时回应几个点，或回到更早的话题时使用。模型在回复第一行单独写 `reply_to: <seq>`，内核取下这一行，不留在正文里；序号不是用户消息就丢掉。SSE 的 `done` 和 transcript 接口都带上这个字段，没有引用时省略。
+- **引用回复**：只用于这个 Bot 自己的网页对话，群聊不带这个字段。用户发送时可以带可选的 `reply_to`，值是本 transcript 里已有的序号；没有这一行就是 400。序号记在这条用户消息上，不放进发给模型供应商的消息体。组装这一轮时，在该用户正文前加一行 `user is replying to your earlier message (seq <n>): <原文>`。原文按 Unicode 字符截到 300，超出末尾加 `…`。存档里的用户正文仍是用户这次写的字。原文用 `transcript expand --self --from N --to N` 按这个序号读回。Bot 的回复也可以带可选的 `reply_to`，指向一条用户消息。只在一条回复同时回应几个点，或回到更早的话题时使用。模型在回复第一行单独写 `reply_to: <seq>`，内核取下这一行，不留在正文里；序号不是用户消息就丢掉。SSE 的 `done` 和 transcript 接口都带上这个字段，没有引用时省略。
 - **transcript 接口标明来源**：`GET /api/bots/{name}/transcript` 在用户行上多加 `from_device`（`{"id","label"}`，事件 id 形如 `rchat_<设备 id>_<行 id>`，即别的配对设备上打的用户原话；本机打的不带）和 `relay`（`{"bot","device"}`，来自 Bot 的包装事件，`bot:<bot>@<设备名>` 带上该配对设备的 label，本机的省略 `device`）。一次请求只读一次 `remote.Load`，读不到时 label 和设备名留空值，不影响接口。
 
 分段槽格式的设计依据：[StablePrefix 分段系统提示](../dev/stable-prefix-sections.md)。
