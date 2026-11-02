@@ -119,16 +119,13 @@ func TestMemoryModelToolsReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := false
 	for _, tool := range list {
 		switch tool.Name() {
-		case "remember", "forget":
+		case "remember", "forget", "recall":
 			t.Fatalf("retired tool %s is exposed", tool.Name())
-		case "recall":
-			found = true
 		}
 	}
-	if !found {
-		t.Fatal("recall missing")
+	if !hasToolName(list, "recall_history") {
+		t.Fatal("context history recall missing")
 	}
 }

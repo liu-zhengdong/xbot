@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过，父集成待收，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall三项所测独立端到端按精确phase通过，父集成待收，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -609,11 +609,17 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 
 本刀仅退fork_bot与确已空的peers工具注册组，保Link/Event其它职责、oldnative历史与bg_插话分支修复；原Memory/Compactor/ctx resolver、oldoffline/WebFork与OwnerSSE边界不扩。source997冻结，父已收最终docs与纯独立commits集成本地main，复用原七有效phase未重已绿首链、六后项或旧族。其余native/platform/EventLink沿未完成路线继续，下一族仅以下经历record/search具体合同，未开代码。
 
-## 批 experience：经历两操作已提炼，待父集成
+## 批 experience：经历两操作已提炼并合maind632e7a3
 
-仅经历record/search两门；三项所测独立端到端及全部必要SHAPE/增量静态通过，父集成待收、未main/未主人日用。协议已提炼 [API](../API.md#经历记录与检索运行时-cli)、[内核](../atlas/kernel.md#经历记录与检索实例入口)、[记忆](../atlas/memory.md)，[ADR0058](../adr/0058-experience-runtime-cli.md) Accepted；精确source/validation phase、私夹具失败因果与作者证据留 [MILESTONES](../MILESTONES.md)，不在母路线复抄参数/原cap/partial字段。
+仅经历record/search两门；三项所测独立端到端及全部必要SHAPE/增量静态通过，已合maind632e7a372b0418de592e89c4b51dd5045596782、未主人日用。协议已提炼 [API](../API.md#经历记录与检索运行时-cli)、[内核](../atlas/kernel.md#经历记录与检索实例入口)、[记忆](../atlas/memory.md)，[ADR0058](../adr/0058-experience-runtime-cli.md) Accepted；精确source/validation phase、私夹具失败因果与作者证据留 [MILESTONES](../MILESTONES.md)，不在母路线复抄参数/原cap/partial字段。
 
-原Record/Search/SQLite、操作时range/Env/Web/detail与忽略ctx语义保持，不强CallID/owner-personproject资格、不新MemorySession/SQL进度事务框架。仅两wrapper/Known/index/guide退，memory组recall、context四工具及Link/Event装配仍后刀；source815冻，e506仅必要liveblurb一行，父收doc与pure独立commits后整合，不重三已绿或旧族。下一Recall必须等TRUE Experience main后才另定具体合同，不在此预写0059/开第二代码面。
+原Record/Search/SQLite、操作时range/Env/Web/detail与忽略ctx语义保持，不强CallID/owner-personproject资格、不新MemorySession/SQL进度事务框架。仅两wrapper/Known/index/guide退，memory组recall、context四工具及Link/Event装配仍后刀；source815冻，e506仅必要liveblurb一行，父已收doc与pure独立commits整合，复用原三有效phase未重三已绿或旧族。下一Recall仅下方具体合同，未开代码。
+
+## 批 memory-recall：单一文件检索已提炼，待父集成
+
+仅recall一个能力；三项所测独立端到端与作者最小有效检查、必要SHAPE及首十一/退门十一/eval二source三轮实际静态全部通过；父集成待收、未main/日用。实际协议提炼 [API](../API.md#可见记忆文件检索运行时-cli)、[记忆](../atlas/memory.md)、[内核](../atlas/kernel.md)、[权限](../atlas/security.md)，闭合评测接缝见 [模型与评测](../atlas/providers.md)；[ADR0059](../adr/0059-memory-recall-runtime-cli.md) Accepted，源/validation/实际phase与夹具错误因果留 [MILESTONES](../MILESTONES.md)，不在母路线复抄参数/cap/人物选择表。
+
+原source prepared非nil人物ctx与唯一FS scanner、精确scope/date/2000files4M/20hit200runes保持；一次currentIO directcurrentb.Name保护原文件访问，无新scope许可或Memory服务。只退recall wrapper/Known/index及确空memory TOOLgroup，保原Link-Event/Memory器官/文件写守卫/context四工具/detail。闭合eval仅限定可信BIN argv恢复原只读host记忆能力，其余Shell隔离不变；source4722后只test/doc，不为最后SHA重三有效业务场景或旧审批族。后续Context三门目前仅有限RO，待TRUE Recall main后另定具体caller合同，不预写下一ADR或开第二代码面。
 
 ## 还没做的
 
@@ -621,7 +627,7 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 - 批 0 的后续实际操作及入站依赖清单、尚未迁族的 research 业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已提炼 atlas，固定五项独立所测端到端按各自精确版本通过，证据见 MILESTONES；原 chat loop 下一输入/Timer handle 及其 recover、回放、通知实际消费者也已以局部红绿和 reviewer24 至 `63762ae5` 连续增量 PASS 收口，已合入本地 main，尚未日用；合并时与主线持久选择的交叠补单项真实浏览器红绿，不重跑固定五项。已通过的普通字段、avatar_seed、MCP 和本刀五项不重复整批验收，母路线其它族继续在本 dev 中推进。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
-- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search三项所测端到端通过待父集成，连接器及剩余目录管理等平台能力继续逐族迁移。
+- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search已合maind632e7a3；memory-recall三项所测端到端通过待父集成，连接器及剩余目录管理等平台能力继续逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。
 - 各批独立冒烟、相关旅程回归、性能与上下文收益测量、主人日用验收。

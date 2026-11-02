@@ -2,13 +2,23 @@
 kind: part
 parent: README.md
 code: [internal/memory/, internal/person/, internal/experience/]
-verified: 2026-11-02 @ e506d810 (experience CLI, unchanged SQLite/search semantics and original consumers)
+verified: 2026-11-02 @ 4722c2ff (memory-recall CLI, original person selection and shared file scanner semantics)
 ---
 # 身份与记忆
 
 > **30 秒版**：人是跨 Bot 的全局身份；记忆分人和 Bot 两层，以 Markdown 加索引存放。
 
 机制说明由 `xbot manual memory` 与模型的 `kernel_manual(memory)` 共用同一 embed 正文，固定称 `memory.md` / `log/YYYY-MM.md`。职责与工作档案的字段边界见 [多 Bot](multibot.md#人设组成与提示词边界)。
+
+## 可见记忆文件检索
+
+`memory-recall` 复用原 Run 就近提取的私有 `k.recall(ctx,recallInput{Query,Scope,Since})` 唯一文件扫描器，不是结构化事实/索引的 `Memory.Store.Recall`。Scope 仅精确空串、bot、person；空串先 Bot 后可见 person，共享 2000 文件、总 4 MiB 读取预算，Bot 用尽则 person 不扫描，不另报人物无目录或无命中错误。query 可省略、空白或无 token，沿原 BM25 返回 no matches；只检索正文行，不把 path/scope 当查询正文。汉字按重叠双字分词。
+
+人物只取原 Shell prepared 冻结 turn 的 `memoryPersonOf`：KindBot/KindGroup 优先无 person；SourceSubagent 或 `sa_` sender 沿父 Bot 首个非空 Owner；其它用原 sender。trusted 不决定人物范围，Local child 的 review policy marker 也不替代其实际 Kind/Source/Sender，不保证人物为空或取首 Owner。领域入口先要求原同 listener 的 live Local/running Shell context 和明确非 nil 冻结 turn，不能用审批重绑、HTTP ctx 或最新 turn 代替；不新建人物选择服务或 person/project 授权表，见 [内核](kernel.md#可见记忆文件检索实例入口)。
+
+Scope/Since 不 trim/casefold，Since 非空按原 YYYY-MM-DD/`time.ParseInLocation(...,time.Local)`，用进程本地时区而非 Bot profile 时区。memory.md dated 条目与 log/*.md 按原行日期，自由文件按 mtime。递归 `.md`/`.txt`，跳备份名 `.bak`、symlink、非 regular 文件与原空行/标题/暂无行；每文件最多 256 KiB，单文件截断不置 incomplete，只有共享文件数或总字节 cap 置位。读取在一次 currentIO 内直接用 current Bot Root/Name，规范 root、memory 祖先 resolved==dir、scope `.lock`、Walk/Open 与 inode 核对同在 route；避免旧名等待锁的 MkdirAll 在改名后复活旧 Bot 目录，PersonDir 本身不搬。扫描无模型/网络，原 Walk callback 检查取消，锁等待可能延迟取消，不承诺新增即时取消或 deadline。
+
+结果保原排名前 20 条，每条 `scope:相对路径:行号` 加正文；正文最多 200 Unicode runes，超出加 `…`，保剩余条数/incomplete/no matches 原词法。扫描器自身无总输出 cap 或 redactor；source 回包前沿原 secret 遮盖，再按准确 JSONNL/human 双预算内联或将完整这份 Text JSON 写当前工作区产物，没有经历检索 6 KiB cap。产物保二十命中投影，原文件全文仍用 `read_file`，不冒全库导出。字段、1 MiB/32 KiB/64 KiB/20 MiB 边界仅在 [API](../API.md#可见记忆文件检索运行时-cli) 维护。唯一 recall wrapper/Known/schema/index 与空 memory 工具注册组已退，历史 native 字面、Memory 器官/Link/Event、文件写入 4 KiB 守卫及 context 的 compact/recall_history/expand/detail 保留；检索不新增环境事实或记忆回执，决定见 [ADR0059](../adr/0059-memory-recall-runtime-cli.md)。
 
 ## 边界
 负责：人的身份映射、两层记忆、冲突规则，以及启动时把旧的 Bot 与人目录并进 Bot 记忆。不负责：多台电脑之间的配对与消息（见 [网关](gateway.md)）；记忆不在机器之间同步（[ADR 0012](../adr/0012-retire-node.md)）。
@@ -35,11 +45,11 @@ verified: 2026-11-02 @ e506d810 (experience CLI, unchanged SQLite/search semanti
   - Bot 自己的成功文件改动在原工具结果里附可回放的记忆增删或人物资料回执。回放原调用及其回执后，不再把自写当外部提醒；失败或回滚不发回执。别人后来的修改、撤销自写仍按实际差异报告。没有内存自写队列或 state 中的第二份账；最近日志离开窗口不算外部删除。
   - 不再保留按人停放的快照。定时器、子任务和其他来源沿用同一份 Bot 前缀；来源与人物变化各自追加进共享对话，自动压缩后沿原快照路径让被压缩的人物版本失效，当前人立即恢复、其他人下次出现恢复。不同人的资料标明身份，但共享 transcript 不承诺人物隔离。
 - **旧数据**：每次进程启动都重新走一遍 `bots/*/people/*/memory`，每个数据根每进程一次。没有持久化的迁移标记；迁过的目录已改名为 `memory.bak`，所以重复走是幂等的。`config.json` 缺失、读不了或不是合法 JSON 时，这个 Bot 的旧目录留在原地。`owners` 为空才算没有用户，旧事实只留在 `memory.bak`。只合并 owners 里的人，其他人的目录改名为 `memory.bak` 并记日志，读不读得动都挪走。用户的目录读失败才留在原地。不让 Remember、Recall、Forget 或启动失败。合并去重，保留时间戳、来源和原来的 kind。profile 放不下的改记日志并写一条说明；说明同样按日志身份匹配，防止中断重试重复写入。person 日志的 Forget 先折叠同步记录，只删除当前仍匹配的键，不影响同键后来更新的值。迁进日志时按月落盘，不受大小守卫限制。普通写入只在当月超过 64 KiB 且继续增长时拒绝，提示压成几条整理记录；同步折叠绕过守卫。无文本查询从最新月份读够 200 条即停，文本查询读全部月份；快照总条数单独按行计数。人的同步日志仍是 person 通道。
-- **只读检索**：`recall` 用 BM25 按行检索可见的 bot/person 目录中的 `.md`、`.txt`（递归，跳过备份和符号链接，每文件最多 256 KiB，每次最多 2000 文件、合计 4 MiB，触顶标明搜索不完整），读取各范围时持 `.lock`，拒绝偏离数据根规范路径的符号链接祖先，打开后核对文件 inode；汉字按重叠双字分词。返回最多 20 条 `scope:路径:行号`，正文截到约 200 字，超出提示剩余数量；`scope` 缩小范围，`since=YYYY-MM-DD` 按条目日期筛选常驻与日志、按 mtime 筛选自由文件。
-- **演进中**：[ADR 0008](../adr/0008-memory-v2-dated-log-first.md) 和 [ADR 0009](../adr/0009-memory-as-folder.md) 已定：每个范围是一个文件夹（常驻 `memory.md` 带索引，`log/YYYY-MM.md`，其余自由文件），用普通文件工具编辑，只留只读的 `recall`；快照加差异已在批 1 落地（见上）；每晚整理时核对索引。分批落地，见 [记忆 v2 规格](../MEMORY-V2.md)；上面描述的是还没落地的现状，每落地一批就改一处。
+- **只读检索**：Agent 在原 source Shell 使用 `"$XBOT_BIN" memory-recall --self [--query TEXT|--query-file FILE|-] [--scope bot|person] [--since YYYY-MM-DD] [--json]`，命中后用 `read_file` 读全文，大结果读完整 file。空 scope 合并 Bot 与原调用人物可见目录；Bot 是写入默认，不能据此把检索默认收缩为 bot。命令与回包集中见 [API](../API.md#可见记忆文件检索运行时-cli)，扫描与人物语义见 [可见记忆文件检索](#可见记忆文件检索)。
+- **文件夹记忆**：[ADR 0008](../adr/0008-memory-v2-dated-log-first.md) 和 [ADR 0009](../adr/0009-memory-as-folder.md) 的两层布局由普通文件工具维护，快照加差异沿上述路径；可见文件检索现沿独立 source CLI，[ADR0059](../adr/0059-memory-recall-runtime-cli.md) 替代其原 native 执行入口。记忆 v2 的原始规格见 [记忆 v2 规格](../MEMORY-V2.md)。
 - **面板读取**：装配仍直接读 person / bot 的 `memory.md` 原文，不经 `Recall(TierProfile)` 拆条；页面只展示 Bot 常驻。经历的 `Store.Page(limit,before,query)` 在完整库对摘要、关注点、提纲做字面包含过滤（英文忽略大小写），然后按记录时间和 id 分页，不新增索引或影响模型侧的 BM25 搜索；空查询沿普通分页。Web 装配与行为见 [界面](ui.md)，不改变快照、人物资料注入或落盘模型。
 - **经历存储**（[ADR 0030](../adr/0030-experience-and-reference.md)）：每个 Bot 一个 `bots/<bot>/experience.sqlite`，七列 `experiences(id, created_at, summary, focus, from_seq, to_seq, segment)`；它是本 Bot 的经历库，与 person/Bot Markdown 记忆、共享资料工作区和全局 DuckDB 教训库分开，不增加 person/project scope。首次记录才建库；缺库的 Recent/Latest/Get/Page 经 exists 直接返回，已有库读取仍沿原 open，可建表/WAL，不承诺全 root 零写。
 - **记录与锚点**：Agent 用 `"$XBOT_BIN" experience record --self --summary TEXT`，完整 file/stdin 与可选 focus/from/to 见 [API](../API.md#经历记录与检索运行时-cli)。原 summary trim 后非空≤2 KiB，focus 仅 trim、不加独立 cap。0 默认取操作时 currentCount 与截至 to 的最近 200 行里最新非 Internal/ForkMark 的 RoleUser，找不到取尾，空 transcript 可 0/0；不限定新 owner 身份，不借 prepared turn 替换，也保原负 to/nullSeq 宽容。segment 从范围前 200 行取提纲，每行 160 字节、合计约 600 字节，跳内部/分叉标记/工具结果，保 `user:` / `assistant:` / `[tools: names]` 词法，不调模型。原 Store.Add 一次 INSERT 后取 LastInsertId，nil 才回 `recorded:true`；任意 error 为 null，保原 Entry 的实际 ID/range，不能推断库或行没写，不回滚、去重或自动重试。
 - **检索与全文**：`"$XBOT_BIN" experience search --self [--query TEXT]` 空白 query 列最新，非空原文在最近 2000 条 summary/focus/segment 上 BM25；limit≤0 或>8 回默认 8。原 presentHistory 先脱敏再 clip 至 6 KiB，返回原时间/seq/detail 提示文本，不反解析 rows/count，也不套 Web 的 512 字节 q。准确 JSONNL 或 human 任一超 Shell 32 KiB 时，当前工作区存完整该语义 Text JSON 的 0600 产物；不补回原 6 KiB 已裁记录。`detail` 仍在 context 组，按 raw seq 或经历 ID+0 起下标读实际消息与完整 blob，上限 64 KiB，经脱敏，不是新 CLI 子命令。命令、nullable ACK 与产物字段仅在 [API](../API.md#经历记录与检索运行时-cli) 维护。
-- **经历消费者与环境**：Web Page 仍对全库 summary/focus/segment 做 ASCII 大小写不敏感的字面子串过滤，按 created_at+id 分页；页面按原提纲词法作阅读投影，并可看原始 segment。环境的 experience 仍为 count 与最新 `#id 摘要`（摘要截 200 字节），新记录在下一自然采样沿原差异流追加，读错保已公布旧值；不额外 Inbox/waker、MemoryOwnReceipt、假 native 调用配对或普通事实账。ExperienceRule 是常驻轻推，当前指引使用 record/search self；压缩不写经历。两旧经历执行 wrapper/Known/schema/index 已退，历史 native 字面保留，memory 组仍有 recall，`link.Memory` 器官及原 Tools 空壳保留。入口决策见 [ADR0058](../adr/0058-experience-runtime-cli.md)。
+- **经历消费者与环境**：Web Page 仍对全库 summary/focus/segment 做 ASCII 大小写不敏感的字面子串过滤，按 created_at+id 分页；页面按原提纲词法作阅读投影，并可看原始 segment。环境的 experience 仍为 count 与最新 `#id 摘要`（摘要截 200 字节），新记录在下一自然采样沿原差异流追加，读错保已公布旧值；不额外 Inbox/waker、MemoryOwnReceipt、假 native 调用配对或普通事实账。ExperienceRule 是常驻轻推，当前指引使用 record/search self；压缩不写经历。两旧经历执行 wrapper/Known/schema/index 已退，历史 native 字面保留；可见文件检索已迁独立 CLI，已空的 memory 工具注册组已退，`link.Memory` 器官及原 Tools 空壳保留。入口决策见 [ADR0058](../adr/0058-experience-runtime-cli.md)。
 - **资料库**（[ADR 0033](../adr/0033-bot-and-shared-reference-workspace.md)）：默认 `bots/<bot>/memory/`，整机共享工作空间 `<root>/memory/` 存跨 Bot 事实；采样时创建两目录，空库也注入契约。环境流 `reference` 先注入 Bot 契约及根层索引，再注入共享契约及索引。根层 Markdown 列文件名和 `description`，`defaultopen: true` 才带全文，子目录只列入口；Bot 库的 `memory.md`、`log/`、索引、旧系统文件及备份跳过。各来源根层文件或索引超过 256 KiB 时只排除该来源索引并说明，不截断；变化才发布，压缩后环境快照重新公布。内核只建这两个目录和读取，文件工具写资料；旧 Bot/person 记忆仍沿原路径注入。每轮一次 sidecar 轻推给出两条绝对路径，默认写 Bot 资料、跨 Bot 才写共享；两源 `keywords` 按英文大小写不敏感、中文原样的字面子串匹配用户或模型文本，只提醒路径，单轮路径去重，已进入该源根层索引的不重复提醒。关键词扫描最多读 4 MiB，每文件最多读 64 KiB，单步路径最多 1 KiB；压缩不写记忆或经历。

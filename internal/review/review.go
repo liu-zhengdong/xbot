@@ -60,9 +60,6 @@ var Table = map[string]Class{
 	"http_request": HTTP,
 	"list_secrets": Readonly,
 
-	// Memory.
-	"recall": Readonly,
-
 	// The tool door's search and describe only read the registry; a call
 	// through it is reviewed as the tool it names (ADR 0035).
 	"tools":        Readonly,
