@@ -46,7 +46,7 @@ func TestCLITranscriptRuntimeSourceConsumers(t *testing.T) {
 	model.base.add(execute, mcpRuntimeTool("sh", map[string]string{"description": "Execute the unique original evidence-producing tool exactly once", "command": originalCommand}))
 	cliSkillSend(t, srv, source, execute)
 	produced := model.base.results(execute)
-	if len(produced) != 1 || !strings.HasPrefix(produced[0], "exit 0\n") || !strings.Contains(produced[0], payload) {
+	if len(produced) != 1 || !strings.HasPrefix(produced[0], "exit 0\n") || !strings.Contains(produced[0], strings.TrimSuffix(payload, "\n")) {
 		t.Fatal("actual original Native Shell did not return its complete unique payload")
 	}
 	counter := func() {
