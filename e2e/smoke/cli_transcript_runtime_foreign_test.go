@@ -247,11 +247,11 @@ func TestCLITranscriptRuntimeForeignAndReadOnly(t *testing.T) {
 		t.Fatal("temporary named-target disk fault did not restore the original blob bytes/mode")
 	}
 	const controlCue = "TRANSCRIPT_CONTROL_I88"
-	model.base.add(controlCue, mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "compact"}))
+	model.base.add(controlCue, mcpRuntimeTool("tools", map[string]string{"action": "describe", "id": "read_file"}))
 	cliSkillSend(t, srv, source, controlCue)
 	control := model.base.results(controlCue)[0]
-	if strings.HasPrefix(control, "error:") || !strings.Contains(control, "compact") {
-		t.Fatal("Context group no longer preserves its actual native compact control")
+	if strings.HasPrefix(control, "error:") || !strings.Contains(control, "read_file") {
+		t.Fatal("the preserved Tools describe lost its live file-reading control")
 	}
 
 	type logicalState struct {
