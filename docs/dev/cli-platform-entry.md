@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall三项所测独立端到端按精确phase通过，父集成待收，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall三项所测独立端到端按精确phase通过并已合main1053d0a9；下一仅transcript三读Proposed具体合同，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -615,11 +615,47 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 
 原Record/Search/SQLite、操作时range/Env/Web/detail与忽略ctx语义保持，不强CallID/owner-personproject资格、不新MemorySession/SQL进度事务框架。仅两wrapper/Known/index/guide退，memory组recall、context四工具及Link/Event装配仍后刀；source815冻，e506仅必要liveblurb一行，父已收doc与pure独立commits整合，复用原三有效phase未重三已绿或旧族。下一Recall仅下方具体合同，未开代码。
 
-## 批 memory-recall：单一文件检索已提炼，待父集成
+## 批 memory-recall：单一文件检索已提炼并合main1053d0a9
 
-仅recall一个能力；三项所测独立端到端与作者最小有效检查、必要SHAPE及首十一/退门十一/eval二source三轮实际静态全部通过；父集成待收、未main/日用。实际协议提炼 [API](../API.md#可见记忆文件检索运行时-cli)、[记忆](../atlas/memory.md)、[内核](../atlas/kernel.md)、[权限](../atlas/security.md)，闭合评测接缝见 [模型与评测](../atlas/providers.md)；[ADR0059](../adr/0059-memory-recall-runtime-cli.md) Accepted，源/validation/实际phase与夹具错误因果留 [MILESTONES](../MILESTONES.md)，不在母路线复抄参数/cap/人物选择表。
+仅recall一个能力；三项所测独立端到端与作者最小有效检查、必要SHAPE及首十一/退门十一/eval二source三轮实际静态全部通过；已合本地main1053d0a9bb735e5de90ba75fcd3681c5742b3bf0、未主人日用。实际协议提炼 [API](../API.md#可见记忆文件检索运行时-cli)、[记忆](../atlas/memory.md)、[内核](../atlas/kernel.md)、[权限](../atlas/security.md)，闭合评测接缝见 [模型与评测](../atlas/providers.md)；[ADR0059](../adr/0059-memory-recall-runtime-cli.md) Accepted，源/validation/实际phase与夹具错误因果留 [MILESTONES](../MILESTONES.md)，不在母路线复抄参数/cap/人物选择表。
 
-原source prepared非nil人物ctx与唯一FS scanner、精确scope/date/2000files4M/20hit200runes保持；一次currentIO directcurrentb.Name保护原文件访问，无新scope许可或Memory服务。只退recall wrapper/Known/index及确空memory TOOLgroup，保原Link-Event/Memory器官/文件写守卫/context四工具/detail。闭合eval仅限定可信BIN argv恢复原只读host记忆能力，其余Shell隔离不变；source4722后只test/doc，不为最后SHA重三有效业务场景或旧审批族。后续Context三门目前仅有限RO，待TRUE Recall main后另定具体caller合同，不预写下一ADR或开第二代码面。
+原source prepared非nil人物ctx与唯一FS scanner、精确scope/date/2000files4M/20hit200runes保持；一次currentIO directcurrentb.Name保护原文件访问，无新scope许可或Memory服务。只退recall wrapper/Known/index及确空memory TOOLgroup，保原Link-Event/Memory器官/文件写守卫/context四工具/detail。闭合eval仅限定可信BIN argv恢复原只读host记忆能力，其余Shell隔离不变；source4722后只test/doc，不为最后SHA重三有效业务场景或旧审批族。原三业务phase与eval按各实际版本封存，TRUE main仅compile/diff确认不重跑；下一Context三读仅下方Proposed合同，具体SINGLE SHAPE通过前不开实现，不并compact或第二代码面。
+
+## 批 transcript-read：三读具体合同待SINGLE SHAPE
+
+基线 TRUE Recall main1053d0a9bb735e5de90ba75fcd3681c5742b3bf0（已FF，产品与独立验证差异0封存，不重原三phase/作者二十二项）。本刀仅原transcript READ3：recall_history/expand/detail；compact模型与State写、Link/Event去留另刀。现有方法/附件/权限证据已对照context/kernel/security、ADR0021与1c冻结全清单，不增环境账/ctxMetaFrame。具体结构决策 [Proposed ADR0060](../adr/0060-transcript-read-runtime-cli.md)，此时仅母与ADR两docs，等24 SINGLE ACTUAL CONCRETE SHAPE一次结论，不写产品/测试或猜入口红。
+
+### 实际caller与请求
+
+```sh
+"$XBOT_BIN" transcript search --self [--query TEXT|--query-file FILE|-] [--bot NAME] [--json]
+"$XBOT_BIN" transcript expand --self --from N --to N [--bot NAME] [--json]
+"$XBOT_BIN" transcript detail --self --seq N [--experience ID] [--json]
+"$XBOT_BIN" transcript --help
+"$XBOT_BIN" transcript detail --help
+```
+
+原source Shell拿search返回的真实RoleTool seq，再expand同条配对工具结果，不重执行原工具。Detail保普通seq1基与experience>0下seq0基offset两个锚、source-only，无bot/target参数；原experience<=0仍普通seq。新纯ParseTranscriptRuntime早于resolveRoot/default/legacy，help离线，其余self；无alias/位置参数，拒未知/重复flag、按arity、字面--help/--作值。search query可缺/空、与query-file互斥且file路径不可空，raw文本/文件/stdin max+1及escaped typedJSON各1MiB；expand必须from/to、detail必须seq，只解析Go整数/溢出，实际正数/range交原方法，不改历史<=0规则。bot原样交原trim。sourceEndpoint/canonicalRoot权威，显式root同一、旧XBOT_BOT仅诊断；不离线Load旧source或新K。
+
+### 两个实际shape与原方法直用
+
+A `cmd→offline TranscriptReader{globalStore,sourceName,owners,workspace}→自查Search/Range/Blob`必须重造owner/currentRef/目标附件/secret/fence和原读取维护副作用，rawBlob也不等原4/8/64KiB语义文本，淘汰。B `cmd→cliops三typedRPC→现K.TranscriptHandlers→原导出API`，原RecallHistoryBot(query,name)/ExpandBot(name,from,to)/Detail(seq,id)直接复用，不再extract domain/通用operationEnvelope/新StoreService或target registry。在既有Handlers挂一个Transcript *TranscriptHandlers，Search/Expand/Detail各具体callback；DTO分别`{query,bot?}`、`{bot?,from,to}`、`{seq,experience?}`，Detail编译类型里无Bot。CallTranscriptSearch/Expand/Detail(ctx,endpoint,root,input)分别POST `/v1/transcript/search|expand|detail`，无CallID参数/要求，普通共享只读回包`{text?|file?,access?,bytes?,error?}`，不rows/count；FormatTranscriptRead生成准确human。三原Run忽略ctx/API无ctx，不runtimeSourceCall/nonnilprepared/审批owner重绑/primary-personproject资格，缺/旧/finished/foreignCallID不新拒；ctx仅传输取消，承载Shell原gate独立，无新卡或approver。
+
+self search/slice、expand count/slice/hydrate已有一次currentIO，Detail几次currentIO跟原sourceRef；不能外套route再递归currentName/lineNote，否则有writer等待下RLock死锁风险。foreign原trim目标名，空或CURRENTsourceName self，别名无自动旧名映射；否则bot.Load(k.Bot.Root,name)一次，原k.Bot.Config().Owners（不改用显式fresh Resources.current）∩目标加载时盘Owners非空。同群/可发消息不越权，missing/loadErr/foreign/orphan统一原history ErrNotFound，授权后读盘ERR保真；foreign无稳定ref，不承诺跨其rename跟随，不加cache/CAS。原readSegStore.with/ensure会mkdir/lock/迁旧串/修SQLite，读非物理零IO；Detail也不扩成跨多次IO一致快照事务。
+
+### 原语义文本、输出与退门
+
+History原FTS/BM25最多8hit storedPreview/nohydrate、snippet实际240BYTES非runes、forkskip/正文空才toolBlob、whole4KiB/noMatch原词法。Expand inclusive1≤from≤to≤COUNT、summary覆盖seq仍可取、每条hydrate8KiB+whole8KiB、seqrole与目标workspace附件line-note、正文空才toolBlob保。Detail sourceExperience正id范围/普通seq、本地格式时间、HydrateLimit64KiB+WHOLE64KiB、正文非空也toolBlob保；不是无限Blob/附件base64导出。原presentHistory先k.Redact/fallbackBot再cap，foreign原Neutralize+完整Wrap(sourcebot:target/typeTranscript/sendertarget)，膨胀缩body重Wrap及原极端fallback不顺修；self不新fence。
+
+新边界持原operations lease，方法调用不外包currentIO；仿experienceSearch仅补held/Resources secret scrub，不重建/二次裁原Text。actualJSONNL与准确human各32KiB/HTTP64KiB，超任一复用work.WriteResult当前SOURCE工作区0600/20MiB FULL这份semanticText JSON含附件/fence/newline，非target写区/无限原Blob。32hex metadata双格式写前预检、Bytes实际，真正写才短currentIO按currentRootName+rebasedWorkDir；error动态脱敏可缩显示、失败非0无假File，CLI先回实际事实再报错不retry。三请求严格object/unknown/null/尾随/URLquery拒，沿原Host/browser/loopback/root guard，不新增通用产物框架或scope服务。
+
+fit.omittedResult原seq→expand、无seq→history→expand替成这份实际CLI，保DO_NOT_RERUN/customnoSeq；ExperienceSearch末detail提示、manual/context、liveLinkContext及readonly/Registry/Known/schema/describe按actualcaller迁。research同DirectXBotArgs当前BIN/精确XBOT_BIN单POSIX直调+本parser只self/help，不Contains/操作符。breaker只迁原recall_history对应search的宽循环阈值，expand/detail不额外放宽。只退三wrapper/Known/index，ContextTOOLgroup保Compact与LinkContext器官/Event及4K记忆写guard；旧native历史literal/toolpair兼容读，无暗可执行shim/伪native配对/ENV/Inbox/waker。实际mock/eval精确grep无三读producer，不机械改MemoryRecall专用evalC桥。
+
+### 最小验收与EARLY交付
+
+SINGLE具体shape通过后才0d固定最窄真实入口红；首可编译candidate即交source Shell search→Expand原paired tool-result/full hydrated语义，无需重执行，不等所有边界与末文档。私有query-file预置needle（不能把needle写进SH命令造成FTS自索引淹掉仅8hits），精确从返回结果定位RoleTool真实seq；原唯一payload与counter证实原工具只执行一次，不任意命中/seq存在冒消费成功。无CallID/旧CallID不新拒在作者typed源单位覆盖，不借Recall冻结ctx门。
+
+同cut继续sharedOwner交集/foreign-orphan-group统一mask、授权后真实diskerr、foreign长文本Neutralize完整fence/目标附件路径，sourceDetail rawseq与experienceoffset两锚原FULL10K、64K semanticText双32K artifact、sourceRename后self/blob/产物当前路径与旧BOTS-WORK缺席。0d owned Experience chain194–203一行两个liveDetail司机只由0d窄迁、全文与两锚断言保；八处readonly describe无关control由0d换实际仍live控制，不改旅程要求/整Experience族重跑。作者ExperienceRuntimeTest170两锚保，原方法仍live则不机械改直调测试。必要new+actualaffected按docs/TESTING最小once，旧FTS/Memory/Context全族/经验三-Fork七-Message六-Group五与原群三审批/未变sourceResolver证据复用，不提前重跑。Root4USERdocs/SSE/guard/main/push日用不动，当前仅这一合同代码面。
 
 ## 还没做的
 
@@ -627,7 +663,7 @@ f609具体合同单次窄核后，原source平面pin/unpin/primary set、primary
 - 批 0 的后续实际操作及入站依赖清单、尚未迁族的 research 业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已提炼 atlas，固定五项独立所测端到端按各自精确版本通过，证据见 MILESTONES；原 chat loop 下一输入/Timer handle 及其 recover、回放、通知实际消费者也已以局部红绿和 reviewer24 至 `63762ae5` 连续增量 PASS 收口，已合入本地 main，尚未日用；合并时与主线持久选择的交叠补单项真实浏览器红绿，不重跑固定五项。已通过的普通字段、avatar_seed、MCP 和本刀五项不重复整批验收，母路线其它族继续在本 dev 中推进。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
-- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search已合maind632e7a3；memory-recall三项所测端到端通过待父集成，连接器及剩余目录管理等平台能力继续逐族迁移。
+- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search已合maind632e7a3；memory-recall已合main1053d0a9，下一仅transcript三读待具体SINGLE SHAPE；连接器及剩余目录管理等平台能力继续逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。
 - 各批独立冒烟、相关旅程回归、性能与上下文收益测量、主人日用验收。
