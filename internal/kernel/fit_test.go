@@ -289,24 +289,21 @@ type countLink struct{ t countTool }
 func (countLink) Name() string          { return "big" }
 func (l countLink) Tools() []tools.Tool { return []tools.Tool{l.t} }
 
-// readerModel calls big for steps calls, then, once the first result has been
-// left out, follows the note to expand and answers.
+// readerModel calls big for steps calls, then follows the actual CLI hint
+// through the original exported primitive. The real Shell/CLI chain has its
+// independent smoke; this unit checks the hint, full readback and no rerun.
 type readerModel struct {
-	steps    int
-	i        int
-	expanded string
-	reqs     []provider.Request
+	steps     int
+	i         int
+	expanded  string
+	readRange func(int, int) (string, error)
+	reqs      []provider.Request
 }
 
-var leftOutSeq = regexp.MustCompile(`transcript seq (\d+)\. Call expand with from=(\d+) to=(\d+)`)
+var leftOutSeq = regexp.MustCompile(`transcript seq (\d+)\. In Shell, run "\$XBOT_BIN" transcript expand --self --from (\d+) --to (\d+)`)
 
 func (m *readerModel) Chat(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
 	m.reqs = append(m.reqs, snapshotReq(req))
-	last := req.Messages[len(req.Messages)-1]
-	if last.Role == provider.RoleTool && last.Name == "expand" {
-		m.expanded = last.Text()
-		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")}, nil
-	}
 	if m.i < m.steps {
 		m.i++
 		return assistantCall(fmt.Sprintf("c%d", m.i), fmt.Sprintf("reading part %d", m.i), "big", fmt.Sprintf(`{"n":"%d"}`, m.i-1)), nil
@@ -319,7 +316,22 @@ func (m *readerModel) Chat(_ context.Context, req provider.Request, _ func(strin
 		if g == nil {
 			return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("the first result is not left out with a seq: " + msg.Text())}, nil
 		}
-		return assistantCall("x1", "", "expand", fmt.Sprintf(`{"from":%s,"to":%s}`, g[2], g[3])), nil
+		if !strings.Contains(msg.Text(), "do not run the call again") || g[1] != g[2] || g[2] != g[3] {
+			return provider.Message{}, errors.New("omission hint lost original sequence or no-rerun instruction")
+		}
+		from, err := strconv.Atoi(g[2])
+		if err != nil {
+			return provider.Message{}, err
+		}
+		to, err := strconv.Atoi(g[3])
+		if err != nil {
+			return provider.Message{}, err
+		}
+		m.expanded, err = m.readRange(from, to)
+		if err != nil {
+			return provider.Message{}, err
+		}
+		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("done")}, nil
 	}
 	return provider.Message{}, errors.New("no c1 in request")
 }
@@ -338,6 +350,7 @@ func TestLeftOutResultIsReadBackWithExpand(t *testing.T) {
 		Budget: compact.Budget{Ceiling: 12_000, KeepTail: 1}, MaxSteps: 20,
 		Links: []link.Link{link.Terminal{}, link.Context{}, countLink{t: ct}},
 	}
+	m.readRange = func(from, to int) (string, error) { return k.ExpandBot("", from, to) }
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}

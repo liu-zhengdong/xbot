@@ -310,7 +310,7 @@ func TestLinksInstallMountsToolsImmediately(t *testing.T) {
 	if registered(k, "recall") {
 		t.Fatal("installing a connector restored retired recall")
 	}
-	for _, name := range []string{"recall_history", "code_start"} {
+	for _, name := range []string{"read_file", "code_start"} {
 		if !registered(k, name) {
 			t.Fatalf("native tool %s missing", name)
 		}

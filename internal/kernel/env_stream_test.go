@@ -172,7 +172,7 @@ func TestEnvStreamContextToolsIncludeCompact(t *testing.T) {
 	for _, tool := range list {
 		names[tool.Name()] = true
 	}
-	if !names["compact"] || !names["recall_history"] || !names["expand"] {
+	if !names["compact"] || names["recall_history"] || names["expand"] || names["detail"] {
 		t.Fatalf("tools=%v", names)
 	}
 }

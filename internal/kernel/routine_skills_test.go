@@ -183,7 +183,11 @@ func TestRoutineSkillsAbsorbedWhileBusy(t *testing.T) {
 	if err := tm.Save(link.Routine{ID: "check", Prompt: "inspect", At: now.Format(time.RFC3339), Skills: []string{"atlas"}, Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	p := &routinePostingProvider{scripted: scripted{resps: []provider.Message{assistantCall("history", "", "recall_history", `{"query":"first work"}`), {Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")}}}, post: func() error { return tm.Fire(now, box.Post) }}
+	k.WorkDir = t.TempDir()
+	if err := os.WriteFile(filepath.Join(k.WorkDir, "busy.txt"), []byte("first work"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	p := &routinePostingProvider{scripted: scripted{resps: []provider.Message{assistantCall("read", "", "read_file", `{"path":"busy.txt"}`), {Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")}}}, post: func() error { return tm.Fire(now, box.Post) }}
 	k.Provider = p
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "first work", now)); err != nil {
 		t.Fatal(err)
@@ -191,14 +195,14 @@ func TestRoutineSkillsAbsorbedWhileBusy(t *testing.T) {
 	if len(p.reqs) != 2 || !strings.Contains(messagesText(p.reqs[1].Messages), "BUSY_SKILL_BODY") {
 		t.Fatal("absorbed routine skill did not reach next model call")
 	}
-	historyRead := false
+	fileRead := false
 	for _, message := range p.reqs[1].Messages {
-		if message.Role == provider.RoleTool && message.CallID() == "history" && message.Name == "recall_history" && strings.Contains(message.Text(), "first work") {
-			historyRead = true
+		if message.Role == provider.RoleTool && message.CallID() == "read" && message.Name == "read_file" && strings.Contains(message.Text(), "first work") {
+			fileRead = true
 		}
 	}
-	if !historyRead {
-		t.Fatal("busy absorption stand-in did not perform the remaining native history read")
+	if !fileRead {
+		t.Fatal("busy absorption stand-in did not perform the actual file read")
 	}
 	if strings.Contains(transcriptText(t, b), "BUSY_SKILL_BODY") {
 		t.Fatal("absorbed skill body persisted")
