@@ -146,7 +146,7 @@ func TestCLICompactRuntimeSourceConsumers(t *testing.T) {
 				Set      map[string]json.RawMessage `json:"set"`
 			}
 			body := strings.TrimSuffix(strings.TrimPrefix(text, bot.EnvironmentOpen), bot.EnvironmentClose)
-			if json.Unmarshal([]byte(body), &env) == nil && env.Snapshot == basis && len(env.Set) > 0 && env.Set["source"] != nil && env.Set["tools"] != nil {
+			if json.Unmarshal([]byte(body), &env) == nil && env.Snapshot == basis && len(env.Set) > 0 && env.Set["source"] != nil && env.Set["tools"] != nil && snapshotSeq == 0 {
 				snapshotSeq = seq
 			}
 		}
@@ -155,7 +155,7 @@ func TestCLICompactRuntimeSourceConsumers(t *testing.T) {
 	// before saveCurrentState (blocks.go263-266). This is the matching persisted
 	// publication before its ACK, not a guessed filesystem timestamp ordering.
 	if ownerSeq <= count || snapshotSeq <= ownerSeq || ackSeq <= snapshotSeq {
-		t.Fatal("new Block environment snapshot was not fully published under the saved State basis before the actual compact tool acknowledgement")
+		t.Fatalf("new Block environment snapshot was not fully published under the saved State basis before the actual compact tool acknowledgement: before=%d owner=%d firstSnapshot=%d ack=%d", count, ownerSeq, snapshotSeq, ackSeq)
 	}
 	traces, err := actual.Traces()
 	if err != nil {
