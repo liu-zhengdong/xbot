@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"xbot/internal/cliops"
 	"xbot/internal/review"
 	"xbot/internal/tools"
 )
@@ -221,6 +222,8 @@ type evalShell struct {
 	root    string
 	network bool
 	inner   *tools.Shell
+	// Only the closed memory-recall case binds its original source runtime.
+	evalEnv func([]string) []string
 }
 
 func newEvalShell(root string, network bool) *evalShell {
@@ -269,10 +272,55 @@ func (e *evalShell) Run(ctx context.Context, args json.RawMessage) (string, erro
 	if timeout > 120*time.Second {
 		timeout = 120 * time.Second
 	}
+	if e.evalEnv != nil {
+		env := e.evalEnv([]string{"PATH=/usr/bin:/bin", "HOME=" + e.root, "TMPDIR=" + e.root + "/tmp", "LANG=C.UTF-8"})
+		if binary, argv, ok := evalMemoryRecallCommand(in.Command, env); ok {
+			tctx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+			cmd := exec.CommandContext(tctx, binary, argv...)
+			cmd.Dir = e.root
+			cmd.Env = append(env, "XBOT_CALL_ID="+tools.CallID(ctx))
+			out, err := evalCommandResult(ctx, tctx, cmd, timeout)
+			return tools.RewriteHost(e.root, "", out), err
+		}
+	}
 	if evalNoJail() {
 		return runUnjailed(ctx, e.root, in.Command, timeout)
 	}
 	return runJailed(ctx, e.root, in.Command, timeout, e.network)
+}
+
+// evalMemoryRecallCommand restores only the old recall tool's source access.
+// Every other command still runs through the case's ordinary jailed shell.
+func evalMemoryRecallCommand(command string, env []string) (string, []string, bool) {
+	var binary, root string
+	for _, item := range env {
+		name, value, _ := strings.Cut(item, "=")
+		switch name {
+		case "XBOT_BIN":
+			binary = value
+		case "XBOT_ROOT":
+			root = value
+		}
+	}
+	argv, ok := review.DirectXBotArgs(command, binary)
+	if !ok {
+		return "", nil, false
+	}
+	parsed := argv
+	if len(parsed) >= 2 && parsed[0] == "--root" && parsed[1] == root {
+		parsed = parsed[2:]
+	} else if len(parsed) > 0 && parsed[0] == "--root="+root {
+		parsed = parsed[1:]
+	}
+	if len(parsed) == 0 || parsed[0] != "memory-recall" {
+		return "", nil, false
+	}
+	input, err := cliops.ParseMemoryRecallRuntime(parsed[1:])
+	if err != nil || !input.Self || input.Help || input.QueryFile != "" {
+		return "", nil, false
+	}
+	return binary, argv, true
 }
 
 type sandboxLink struct {

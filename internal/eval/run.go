@@ -436,6 +436,18 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	before := snapFiles(work)
+	if c.Name == "memory-recall" {
+		for _, tool := range list {
+			if shell, ok := tool.(*evalShell); ok {
+				shell.evalEnv = k.CLIEnvironment
+			}
+		}
+		if err := k.StartOperations(); err != nil {
+			res.Reason = err.Error()
+			return res
+		}
+		defer k.CloseOperations()
+	}
 	runErr := k.Handle(ctx, wakeEvent(c, when))
 	obs, obsErr := observe(b)
 	if obsErr != nil && runErr == nil {

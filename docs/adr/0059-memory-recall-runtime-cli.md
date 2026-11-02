@@ -28,6 +28,12 @@ MemoryRecall{Query,Scope,Since}→POST/v1/memory/recall严格单对象/unknown/E
 
 实际消费为CLI/原memory指引与read_file读命中/完整产物；另public mock RECALL_PERSON有一个native产出及sawRecall进度门，eval scripts的memory-recall场景实际发recall，recall_result_test/grade又要求原工具结果包含路径与真实正文。退门时仅将该实际产出/进度门/场景driver及闭合场景的能力判定迁到规范Shell memory-recall，核原人物scope/query与该真实调用对应结果；不能改anyShell就通过、删case名称或添通用能力事件registry，旧native历史结果读法兼容保。无Web结果parser或新env事实。breaker原looseCall检索阈值应由实际Shell规范memory-recall调用承接：复用现DirectXBotArgs与本纯parser识别单一literal `"$XBOT_BIN" memory-recall ...` 后self/help，先于旧looseShell截首命令处理，不用Contains任意词放宽；它只影响循环阈值，不改变权限/解释器，旧recall历史键可兼容。不顺手扩所有平台CLI阈值。只退recall wrapper/Known/schema/index，memory工具注册组确空才退TOOL组，不删Memory器官/Link-Event/文件写守卫/4KiB cap/context四工具/detail/原memory历史字面。
 
+## Eval闭合caller的实际执行接缝
+
+实际runCase已k.Handle→runToolCall→Jobs.RunCall Prepare，原tools.CallID(ctx)与frozenctx存在；不能由evalShell不走inner.Run推断没有LocalCallContext。真正缺口是该case未StartOperations、inner未装CLI环境，原jailed exec又env-i/独立netns/只挂work，单加BIN/ENV仍无法联系host endpoint。A让BIN在原jail内运行不等价，C只该memory-recall case的固定可信host CLI能力桥获选：同K StartOperations/Close生命周期，private evalShell环境回调取k.CLIEnvironment四变量，再用当次tools.CallID(ctx)追加CallID（不用进程旧ID）。existing DirectXBotArgs只认THIS canonical sourceBIN或literal $XBOT_BIN单命令，本parser要求self/notHelp/无query-file，root缺省或THIS canonical；解析argv交exec.CommandContext固定sourceBIN，无host sh/原串二次插值/任意可执行路径。它沿原nativeRecall/fileAccess已经允许的host可见Bot/person只读范围，仍实际CLI→HTTP→原source gate，不直接k.recall或inprocess假CLI。
+
+其他命令/帮助/不匹配/parse错仍原jail/networkfalse/fileAccess/ApproveDeny；不整caseNoJail/nettrue/跨netns代理、新公开RunToolInvoker或泛能力registry。进程环境只原PATH HOME TMPDIR LANG白名单+THIS五XBOT，既有30默认/120秒帽与evalCommandResult合并32KiB输出/exit-error包装保；源码只继承父limits，无独立setrlimit证据。正式xbot eval的os.Executable正确，goTest的.test不是CLI：最小fake/scripted闭合case需私有temp真实BIN并exec xbot eval验证规范CLI/同真实CallID配对结果与路径正文，不新Kernel.SetBinary/testexe失败fallback。Mac若用现evalNoJail opt须如实标明，不能冒Linux jail实际跑。源扫描/人物/解析权限与ctxresolver0新逻辑，首真实端到端及原CLI单位有效复用，不为此重跑旧族。
+
 ## 交付与验证
 
 具体SINGLE SHAPE后才0d固定最窄source caller红。首可编译真实Source owner人物目录+Bot自由文件/dated条目→Shell原prepared→原scanner→完整path:line正文→原read_file全文的链早交；真实KindBot Inbox no-person与query/date/scope/escaping artifact-currentRename边界同cut继续，不等首反馈停。当前没有已绿或代码实现声明。
