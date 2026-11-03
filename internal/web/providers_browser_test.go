@@ -96,6 +96,7 @@ window.fetch=async(path,opts={})=>{
  if(path==='/api/providers')return json({providers,vendors});
  const keyRoute=/^\/api\/providers\/([a-z-]+)\/key$/.exec(path);
  if(keyRoute){const brand=keyRoute[1];fixture.saves=(fixture.saves||0)+1;if(scene==='keyfail')return json({error:'这不像一个 API key'},400);if(fixture.slowSave)await new Promise(r=>{fixture.releaseSave=r});providers.push({name:brand,brand,protocol:'chat_completions',api_key_env:brand.toUpperCase()+'_API_KEY',key_configured:true,models:[]});return json({status:'ok',provider:brand})}
+ if(/^\/api\/providers\/oauth\/(chatgpt|xai)\/local$/.test(path))return json({available:false});
  if(path==='/api/providers/oauth/chatgpt/start'){fixture.oauthPolls=0;return json({url:'https://auth.example/authorize'})}
  if(path==='/api/providers/oauth/chatgpt/status'){
   if(scene==='loginerror')return json({state:'failed',error:'private-upstream-body'});
@@ -183,7 +184,7 @@ async function xaiLoggedIn(){
     $('.provider-key input').value='scripted-go-key-12345';$('.provider-key').requestSubmit();
     await waitFor(()=>$('.provider-model-row'),'Go live models missing after key save');
     assert(fixture.calls.includes('/api/providers/opencode-go/key')&&fixture.calls.includes('/api/providers/opencode-go/sync'),'Go bypassed vendor routes');
-    assert(!fixture.calls.some(p=>p.includes('/oauth/')),'Go started OAuth');
+    assert(!fixture.calls.some(p=>p.includes('/oauth/')&&!p.endsWith('/local')),'Go started OAuth');
    }
   }
   if(scene==='xaifailure'){fixture.xaiFail=true;subcard('xAI').click();await waitFor(()=>subcard('xAI').textContent.includes('登录未完成'),'xai failure missing');fixture.xaiFail=false;fixture.xaiSucceed=true;subcard('xAI').click();await waitFor(()=>subcard('xAI').querySelector('[aria-label="已登录"]'),'xai retry failed');}

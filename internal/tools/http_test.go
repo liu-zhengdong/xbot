@@ -135,5 +135,3 @@ func TestHTTPRequestConfirmDefersToKernelReview(t *testing.T) {
 		}
 	}
 }
-
-	

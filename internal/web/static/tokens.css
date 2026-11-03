@@ -113,32 +113,37 @@ html[data-theme="dark"]{
   --voice-pulse:1100ms;
 }
 
-/* Approved chat workspace: identity, navigation and one reading surface. */
+/* Approved chat workspace v2: slimmer head/tabs, one reading surface, dark
+   user bubble again (chat-workspace-v2 prototype, user-approved). */
 :root {
-  --workspace-head:88px; --workspace-tabs:60px; --workspace-tab-height:38px;
-  --workspace-thread:800px; --workspace-reading:944px; --workspace-gutter:32px;
-  --workspace-control:34px; --workspace-avatar:36px;
+  --workspace-head:56px; --workspace-tabs:42px; --workspace-tab-height:32px;
+  --workspace-thread:760px; --workspace-reading:920px; --workspace-gutter:28px;
+  --workspace-control:32px; --workspace-avatar:32px;
+  --composer-min-height:44px; --composer-btn-size:32px;
+  --composer-radius:22px; --composer-expanded-radius:18px;
   --memory-search-width:280px; --memory-search-height:40px; --memory-row-padding:20px;
   --sa-detail-width:390px; --sa-detail-medium:350px; --sa-detail-narrow:320px;
   --memory-detail-gap:14px; --memory-enter-offset:4px;
   --memory-reading-width:36em; --memory-dialogue-gap:20px;
-  --workspace-menu:252px; --workspace-menu-height:60dvh; --workspace-space:48px;
+  --workspace-menu:252px; --workspace-menu-height:60dvh; --workspace-space:24px;
   --workspace-focus-width:2px; --workspace-disabled-opacity:.5;
   --workspace-shell-caption:32px; --workspace-mac-caption:28px;
   --workspace-line:1.85; --workspace-input-line:1.6;
   --workspace-user-max:86%; --workspace-user-max-mobile:95%; --x-icon-stroke:1.8; --workspace-weight:550; --workspace-input-height:60px;
   --x-font:"Segoe UI","Noto Sans SC","PingFang SC","XBot SC",sans-serif;
-  --x-user-bubble:var(--x-fill-1); --x-user-bubble-text:var(--x-text);
-  --x-user-code:var(--x-fill-2); --x-user-sel:var(--x-fill-3);
-  --x-user-link:var(--x-text-link); --x-user-link-bg:var(--x-text-link-bg); --x-user-link-hover:var(--x-text-link-hover);
 }
-html[data-theme="dark"] {
-  --x-user-bubble:var(--x-fill-1); --x-user-bubble-text:var(--x-text);
-  --x-user-code:var(--x-fill-2); --x-user-sel:var(--x-fill-3);
-  --x-user-link:var(--x-text-link); --x-user-link-bg:var(--x-text-link-bg); --x-user-link-hover:var(--x-text-link-hover);
+/* v2: the user's own bubble goes back to primary (dark in light theme, bright
+   in dark). Scoped to the workspace's own message flows only — remote chat
+   keeps the neutral gray it already renders. */
+.workspace :is(.chat, .dock) :where(.bubble,.send-state) {
+  --x-user-bubble:var(--x-primary); --x-user-bubble-text:var(--x-on-primary);
+  --x-user-code:rgba(255,255,255,.14); --x-user-sel:rgba(255,255,255,.28);
 }
-@media(min-width:1600px) { :root { --workspace-thread:860px; --workspace-reading:1040px; } }
-@media(max-width:1100px) { :root { --workspace-gutter:24px; } }
+html[data-theme="dark"] .workspace :is(.chat, .dock) :where(.bubble,.send-state) {
+  --x-user-code:rgba(24,24,27,.08); --x-user-sel:rgba(24,24,27,.16);
+}
+@media(min-width:1600px) { :root { --workspace-thread:820px; --workspace-reading:1000px; } }
+@media(max-width:1100px) { :root { --workspace-gutter:20px; } }
 @media(max-width:767px) { :root { --workspace-gutter:16px; } }
 
 /* Approved trace explorer: compact rows, semantic accents, neutral selection. */

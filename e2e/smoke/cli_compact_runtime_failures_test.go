@@ -23,8 +23,8 @@ func TestCLICompactRuntimeFailureSemantics(t *testing.T) {
 	cliSkillIsolation(t)
 	for _, flavor := range []struct {
 		name, mode, wantError string
-		lateState            bool
-		wantUsage            int
+		lateState             bool
+		wantUsage             int
 	}{
 		{name: "provider_error", mode: "error", wantError: "COMPACT_SCRIPTED_PROVIDER_FAILURE"},
 		{name: "empty_summary", mode: "empty", wantError: "compact: empty summary", wantUsage: 1},

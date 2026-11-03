@@ -1,55 +1,9 @@
 package web
 
-import (
-	"os/exec"
-	"strings"
-	"testing"
-)
+import "testing"
 
-func TestContextBarUsesLatestSnapshot(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node unavailable")
-	}
-	raw, err := staticFS.ReadFile("static/app.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	s := string(raw)
-	block := func(a, b string) string {
-		t.Helper()
-		start := strings.Index(s, a)
-		if start < 0 {
-			t.Fatalf("missing %s", a)
-		}
-		end := strings.Index(s[start:], b)
-		if end < 0 {
-			t.Fatalf("missing %s", b)
-		}
-		return s[start : start+end]
-	}
-	script := `const assert=require('node:assert/strict');
- const node=(tag,cls,text)=>({tag,cls,text,children:[],style:{},hidden:false,append(...c){this.children.push(...c)},replaceChildren(){this.children=[]},setAttribute(){},addEventListener(_,f){this.click=f}});
- const host=node('div');const $=()=>host,el=node,icon=()=>node('svg'),setTip=()=>{};
- const document={createTextNode:t=>t};const state={sel:{type:'bot'},tab:'details',ctxSnap:null};let navigated=[];const selectWorkspaceTab=id=>{navigated.push(id);state.tab=id};
- ` + block("  const CTX_BANDS =", "  function ctxReq(") + block("  function paintContextBar(", "  function modelHits(") + `
- assert.equal(ctxK(27000),'27K');assert.equal(ctxK(128000),'128K');assert.equal(ctxK(1250),'1.3K');
- paintContextBar();assert.equal(host.hidden,true);assert.equal(host.children.length,0);
- state.ctxSnap={ceiling:100,target:50,requests:[{prompt:10},{prompt:30,tools:5,layers:[{key:'hist',tokens:20},{key:'turn',tokens:5}]}]};
- paintContextBar();assert.equal(host.hidden,false);const bar=host.children[0];assert.equal(bar.children[1].children[0].text,'30%');assert.equal(bar.children[3].text,'30 / 100');
- const band=bar.children[2];assert.deepEqual(band.children.slice(0,3).map(n=>n.cls),['ctx-c-turn','ctx-c-hist','ctx-c-tools']);assert.equal(band.children[2].style.marginLeft,'auto');assert.equal(band.children[3].style.left,'50%');
- bar.click();assert.equal(state.tab,'context');assert.deepEqual(navigated,['context']);paintContextBar();assert.equal(host.hidden,true);
- state.tab='details';state.sel.type='group';paintContextBar();assert.equal(host.hidden,true);
- state.sel.type='bot';state.ctxSnap.requests=[];paintContextBar();assert.equal(host.hidden,true);
- state.ctxSnap={ceiling:0,requests:[{prompt:30}]};paintContextBar();assert.equal(host.hidden,true);
- `
-	if out, err := exec.Command(node, "-e", script).CombinedOutput(); err != nil {
-		t.Fatalf("%v\n%s", err, out)
-	}
-}
-
-// Both indirect entry points must reveal a hidden target and navigate through
-// the same public workspace view as a direct tab click.
+// Context remains reachable from its workspace tab. The running-task shortcut
+// must still reveal its hidden target through the same public workspace view.
 func TestContextAndTaskIndirectNavigationBrowser(t *testing.T) {
 	runChatStreamBrowser(t, chatStreamFixture+`
 const indirectFetch=window.fetch;
@@ -71,11 +25,13 @@ const hide=name=>{
  document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert(!tab(name),'tab did not hide');
 };
 (async()=>{
- await waitFor(()=>!$('#shell').hidden&&$('#ctxbar button')&&$('#work-status button')&&!$('.thread-loading-cover'),'indirect controls missing');
- hide('上下文');
- $('#ctxbar button').click();
- await waitFor(()=>tab('上下文')?.getAttribute('aria-selected')==='true'&&$('#panel').checkVisibility(),'context navigation failed to reveal its hidden tab');
- assert(!$('#thread').checkVisibility()&&!$('#ctxbar').checkVisibility(),'context left chat or context bar visible');
+ await waitFor(()=>!$('#shell').hidden&&$('#work-status button')&&!$('.thread-loading-cover'),'workspace controls missing');
+ const bottomGap=()=>$('.workspace').getBoundingClientRect().bottom-$('#composer').getBoundingClientRect().bottom;
+ assert(Math.abs(bottomGap()-8)<1,'composer is not at the workspace bottom: '+bottomGap());
+ tab('上下文').click();
+ await waitFor(()=>tab('上下文')?.getAttribute('aria-selected')==='true'&&$('#panel').checkVisibility(),'context tab navigation failed');
+ assert(!$('#thread').checkVisibility(),'context left chat visible');
+ assert($('#panel').innerText.includes('30%'),'context usage missing from its tab');
  tab('聊天').click();hide('子代理');
  $('#work-status button').click();
  await waitFor(()=>tab('子代理')?.getAttribute('aria-selected')==='true'&&document.getElementById(tab('子代理').getAttribute('aria-controls'))?.checkVisibility(),'busy navigation failed to reveal its hidden child tab');

@@ -59,7 +59,7 @@ const waitFor=async(fn,label)=>{for(let i=0;i<1100;i++){if(fn())return;await sle
  form.querySelector('[type=button]').click();
  assert(form.hidden&&routineWrites.length===0&&document.activeElement===trigger,'cancel wrote or lost focus');
  trigger.click();assert(input.value==='doc-atlas, release-check','cancel did not discard draft');
- input.value=' release-check, doc-atlas , , missing-skill ';
+ input.value=' release-check, doc-atlas , missing-skill ';
  failSkills=true;form.requestSubmit();
  await waitFor(()=>!form.querySelector('[type=submit]').disabled,'failed save');
  assert(!form.hidden&&input.value.includes('missing-skill')&&form.querySelector('[role=status]').textContent.includes('本次保存失败'),'failure lost draft or error');

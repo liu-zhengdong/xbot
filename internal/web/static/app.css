@@ -2008,6 +2008,12 @@ html[data-theme="dark"] {
 /* Narrow phones: the version number does not fit beside the title, and the
    arrow alone says what the button does. */
 @media (max-width:480px){.update-btn .update-label{display:none}.update-btn{padding:0 8px}}
+
+/* Dev-only rebuild button sits beside the update pill; it spins while the
+   build and restart are in flight. */
+.dev-reload-btn[hidden]{display:none}
+.dev-reload-btn.busy svg{animation:update-spin 900ms linear infinite}
+@media (prefers-reduced-motion:reduce){.dev-reload-btn.busy svg{animation:none}}
 :root{--bg-pop:#fff;--bg-shadow:0 8px 30px rgba(0,0,0,.12),0 1px 3px rgba(0,0,0,.06)}
 html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 
@@ -2068,9 +2074,11 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .skeleton-bubble:nth-child(2) { align-self: flex-end; width: 36%; background: var(--user-bubble); }
 .skeleton-bubble:nth-child(3) { width: 56%; height: 80px; }
 
-.send-state { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; font-size: 12px; color: var(--faint); }
-.send-failed { color: var(--err); }
-.send-state .secondary { padding: 4px 10px; font-size: 12px; }
+/* Send status is a permanent row under the bubble — not a hover action. */
+.send-state { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding: 0 4px; font-size: var(--x-fs-cap); font-variant-numeric: tabular-nums; color: var(--x-faint); }
+.send-failed { color: var(--x-danger); }
+.send-state .secondary { padding: 2px 8px; font-size: var(--x-fs-cap); border-radius: 999px; }
+.send-state .secondary:hover { color: var(--x-text); }
 .typing-dots { display: inline-flex; flex: none; align-items: center; gap: 5px; min-height: 22px; padding: 0 10px; border-radius: 999px; background: var(--bot-bubble); }
 .typing-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--faint); animation: typing-dot 180ms ease-in-out infinite alternate; }
 .typing-dots i:nth-child(2) { animation-delay: 60ms; }
@@ -2237,9 +2245,12 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
    run with the same peer (device prototype v2 items 20, review 99 and 108). */
 .source-event-row { align-self: center; min-width: 0; }
 .source-event-row > .peer-event { margin-inline: auto; }
+/* v2: source events are one quiet pill (26px) over a soft drawer. */
+.workspace > .chat .peer-event { height: 26px; padding: 0 11px; font-size: var(--x-fs-label); color: var(--x-muted); }
 .peer-event { font-size: 12.5px; gap: 5px; max-width: min(100%, 560px); }
 .peer-event .avatar.xs { width: 16px; height: 16px; flex: none; }
 .peer-event-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace > .chat .source-event-row > .event-raw { margin-top: 6px; padding: 10px 14px; border-radius: 12px; background: var(--x-fill-1); color: var(--x-muted); font-size: var(--x-fs-sm); line-height: 1.6; max-width: 460px; }
 
 /* The exchange view: both bots, the swap icon, one gray note, and 关闭聊天
    in place of the composer. */
@@ -2316,20 +2327,18 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 
 .opt-recommend { font-size: 12px; color: var(--x-muted); }
 
-/* M5: the latest request, not a zero-valued placeholder. */
-.ctxbar { line-height: normal; margin: 12px 16px 0; width: calc(100% - 32px); background: var(--x-fill-1); border: 0; border-radius: 10px; padding: 8px 12px; display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--x-muted); cursor: pointer; }
-.ctxbar:hover { background: var(--x-fill-2); }
-.ctxbar b { color: var(--x-text); font-weight: 650; }
-.ctxbar > .icon { width: 14px; height: 14px; flex: none; }
-.ctxbar > span { white-space: nowrap; }
-.ctxbar .mono { font-family: var(--x-mono); }
-.ubar { flex: 1; min-width: 0; height: 6px; border-radius: 3px; background: var(--x-ctx-free); display: flex; overflow: hidden; position: relative; }
-.ubar i { display: block; height: 100%; min-width: 2px; flex: none; background: var(--c); }
-.ubar .soft { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--x-text); opacity: .75; }
 .doodle { color: var(--x-text-2); opacity: .85; display: block; flex: none; max-width: 100%; }
 .empty { width: 100%; padding: 0 32px; }
 .empty h2 { line-height: normal; margin: 14px 0 0; }
 .empty p { margin-top: 6px; }
+/* v2 empty bot: 64px face, name, one muted line, up to three starters. */
+.workspace > .chat .empty-bot { gap: 10px; }
+.workspace > .chat .empty-bot .avatar.lg { width: 64px; height: 64px; }
+.workspace > .chat .empty-bot h2 { font-size: var(--x-fs-title); font-weight: 620; margin: 4px 0 0; }
+.workspace > .chat .empty-bot p { font-size: var(--x-fs-sm); }
+.workspace > .chat .empty-bot .starters { margin-top: 10px; gap: var(--x-s3); }
+.workspace > .chat .empty-bot .starter { border-radius: var(--x-r-card); padding: 11px 16px; background: var(--x-input); font-size: var(--x-fs-sm); }
+.workspace > .chat .empty-bot .starter:hover { background: var(--x-fill-2); }
 .starter { line-height: normal; }
 .panel-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 28px 8px 36px; }
 .panel-empty h3 { font-size: 15px; line-height: normal; font-weight: 640; margin: 14px 0 0; }
@@ -2820,13 +2829,14 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .workspace .workspace-actions:not([hidden]) + #workspace-theme { margin-left:0; }
 .workspace .chat-search-btn, .workspace #update { position:static; transform:none; flex:none; margin:0; }
 .workspace .icon-btn { width:var(--workspace-control); height:var(--workspace-control); border-radius:var(--x-r-sm); }
-.workspace-navigation { display:flex; align-items:flex-start; height:var(--workspace-tabs); gap:var(--x-s2); min-width:0; }
-#workspace-tabs { display:flex; align-items:center; gap:var(--x-s2); overflow-x:auto; min-width:0; scrollbar-width:none; }
+.workspace-navigation { display:flex; align-items:center; height:var(--workspace-tabs); gap:var(--x-s1); min-width:0; }
+#workspace-tabs { position:relative; display:flex; align-items:center; gap:var(--x-s1); overflow-x:auto; min-width:0; scrollbar-width:none; }
 #workspace-tabs::-webkit-scrollbar { display:none; }
-.workspace-tab { display:inline-flex; align-items:center; justify-content:center; gap:var(--x-s3); height:var(--workspace-tab-height); padding:0 var(--x-s6); border:0; border-radius:var(--x-r-sm); background:transparent; color:var(--x-muted); white-space:nowrap; font-size:var(--x-fs-ui); cursor:pointer; flex:none; }
+.workspace-tab { position:relative; z-index:1; display:inline-flex; align-items:center; justify-content:center; gap:var(--x-s3); height:var(--workspace-tab-height); padding:0 var(--x-s5); border:0; border-radius:var(--x-r-sm); background:transparent; color:var(--x-muted); white-space:nowrap; font-size:var(--x-fs-ui); cursor:pointer; flex:none; transition:color var(--dur-press) ease-out, background var(--dur-press) ease-out, transform var(--dur-press) ease-out; }
 .workspace-tab .icon { width:var(--x-s6); height:var(--x-s6); stroke-width:var(--x-icon-stroke); }
-.workspace-tab:hover, .workspace-tab[aria-expanded=true] { background:var(--x-fill-1); color:var(--x-text); }
-.workspace-tab[aria-selected=true] { background:var(--x-fill-2); color:var(--x-text); font-weight:var(--workspace-weight); }
+.workspace-tab:hover:not([aria-selected=true]), .workspace-tab[aria-expanded=true] { background:var(--x-fill-1); color:var(--x-text); }
+.workspace-tab[aria-selected=true] { color:var(--x-text); font-weight:var(--workspace-weight); }
+.workspace-tab:active { transform:scale(var(--press-scale)); }
 .workspace-tab:disabled { opacity:var(--workspace-disabled-opacity); cursor:default; }
 .workspace-more-wrap { position:relative; flex:none; }
 .workspace-more-menu { left:auto; bottom:auto; min-width:0; overflow:auto; max-height:var(--workspace-menu-height); position:absolute; top:calc(var(--workspace-tab-height) + var(--x-s3)); right:0; width:var(--workspace-menu); max-width:calc(100vw - var(--x-s8)); padding:var(--x-s3); border-radius:var(--x-r-card); background:var(--x-popover); box-shadow:var(--x-shadow-pop); }
@@ -2856,29 +2866,82 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
    restart a translation when display:none pages become visible again. */
 .workspace > .chat .msg { animation:chat-message-in var(--dur-press) ease-out; }
 @keyframes chat-message-in { from { opacity:0; } to { opacity:1; } }
-.workspace > .chat .msg.bot { display:flex; flex-direction:column; gap:var(--x-s4); }
-.workspace > .chat .msg.bot .body { max-width:100%; width:100%; padding-left:var(--x-s9); }
-.workspace > .chat .bot-bubble.prose:not(:has(.voice)) { background:transparent; color:var(--x-text-2); padding:0; border-radius:0; line-height:var(--workspace-line); }
-.workspace > .chat .bot-bubble.message-target { background:var(--x-fill-1); }
-.chat-speaker { display:flex; align-items:center; gap:var(--x-s3); font-size:var(--x-fs-label); font-weight:var(--workspace-weight); }
-.chat-speaker .avatar { width:var(--x-s8); height:var(--x-s8); border-radius:var(--x-r-sm); }
-.workspace > .chat .msg.bot .chat-copy { margin-left:var(--x-s8); width:var(--workspace-control); height:var(--workspace-control); color:var(--x-faint); }
-.workspace .chat-copy .icon { width:var(--x-fs-ui); height:var(--x-fs-ui); }
+/* v2 message flow: single chat keeps a left reading axis — no avatar/name per
+   row; the hover meta-bar carries copy/reply/time. Group chats still show a
+   28px avatar + .who header, with .cont rows indented past it. */
+.workspace > .chat .msg { margin-top:0; }
+.workspace > .chat .thread-inner > .msg:not(.cont) { margin-top:18px; }
+.workspace > .chat .thread-inner > .msg.cont { margin-top:6px; }
+.workspace > .chat .thread-inner > .tdiv + .msg { margin-top:10px; }
+.workspace > .chat .thread-inner > :is(.tdiv,.sysline,.source-event-row,.routine-line,.typing,.typing-dots) { margin-top:14px; }
+.workspace > .chat .msg.bot { display:flex; flex-direction:row; align-items:flex-start; gap:var(--x-s3); }
+.workspace > .chat .msg.bot .body { max-width:100%; width:100%; min-width:0; display:flex; flex-direction:column; align-items:flex-start; }
+.workspace > .chat .thread-inner:not(.grpchat) .msg.bot .body { padding-left:0; }
+.workspace > .chat .bot-bubble.prose:not(:has(.voice)) { background:var(--x-bot-bubble); color:var(--x-text); padding:10px 15px; border-radius:var(--x-r-bubble); line-height:1.65; }
+.workspace > .chat .bot-bubble.message-target { background:var(--x-fill-2); }
 .workspace > .chat .bubble-col { max-width:var(--workspace-user-max); }
-.workspace > .chat .bubble { padding:var(--x-s5) var(--x-s6); line-height:var(--workspace-line); }
-.workspace .dock { padding:var(--x-s5) var(--x-s6) calc(var(--x-s8) + env(safe-area-inset-bottom)); width:100%; max-width:var(--workspace-thread); margin:0 auto; }
-.workspace .composer { width:100%; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"input input" "plus actions"; gap:var(--x-s3); padding:var(--x-s6) var(--x-s5) var(--x-s4); border-radius:var(--x-r-input); }
-.workspace .composer.quoting { grid-template-areas:"quote quote" "input input" "plus actions"; }
-.workspace .composer.has-attach { grid-template-areas:"attach attach" "input input" "plus actions"; }
-.workspace .composer.has-attach.quoting { grid-template-areas:"quote quote" "attach attach" "input input" "plus actions"; }
-.workspace .composer.recording { grid-template-areas:"rec rec"; }
-.workspace .composer-input { min-height:var(--workspace-input-height); padding:0 var(--x-s2); font-size:var(--x-fs-body); line-height:var(--workspace-input-line); }
-.workspace .composer-actions { grid-area:actions; }
-.workspace #ctxbar { margin-top:var(--x-s4); }
-.workspace .ctxbar { width:100%; margin:0; background:transparent; padding:var(--x-s2) 0; }
-.workspace .ctxbar .ubar { max-width:var(--workspace-menu); }
+.workspace > .chat .bubble { padding:10px 15px; line-height:1.65; }
+/* Hover-only action cluster (copy / reply / time) replaces the always-on
+   ghost button; .send-state stays a permanent row of its own. */
+.msg-meta-bar { display:flex; align-items:center; gap:var(--x-s1); padding:0 var(--x-s1); opacity:0; pointer-events:none; transition:opacity 140ms ease-out; }
+.msg:hover .msg-meta-bar, .msg:focus-within .msg-meta-bar { opacity:1; pointer-events:auto; }
+.msg-act { width:24px; height:24px; border:0; border-radius:var(--x-r-xs); padding:0; color:var(--x-faint); background:transparent; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; transition:background var(--dur-press) ease-out, color var(--dur-press) ease-out, transform var(--dur-press) ease-out; }
+.msg-act:hover { background:var(--x-fill-2); color:var(--x-text); }
+.msg-act:active { transform:scale(var(--press-scale)); }
+.msg-act .icon { width:14px; height:14px; }
+.msg-act.copied { color:var(--x-online); }
+.msg-time { font-size:var(--x-fs-cap); color:var(--x-faint); font-variant-numeric:tabular-nums; margin-inline:var(--x-s1); }
+.workspace .dock { padding:var(--x-s3) var(--x-s6) calc(var(--x-s3) + env(safe-area-inset-bottom)); width:100%; max-width:var(--workspace-thread); margin:0 auto; }
+/* v2 compact composer: single-line 44px pill that grows upward. */
+.workspace .composer {
+  width:100%; min-height:var(--composer-min-height);
+  grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"input actions";
+  align-items:end; column-gap:var(--x-s3); row-gap:0;
+  padding:6px 6px 6px var(--x-s6); border-radius:var(--composer-radius);
+  transition:background 160ms ease-out, border-radius 160ms ease-out, box-shadow 160ms ease-out;
+}
+.workspace .composer.quoting,
+.workspace .composer.has-attach,
+.workspace .composer.is-multiline { border-radius:var(--composer-expanded-radius); }
+.workspace .composer.quoting { grid-template-areas:"quote quote" "input actions"; padding-top:var(--x-s3); }
+.workspace .composer.has-attach { grid-template-areas:"attach attach" "input actions"; padding-top:var(--x-s4); }
+.workspace .composer.has-attach.quoting { grid-template-areas:"quote quote" "attach attach" "input actions"; padding-top:var(--x-s3); }
+.workspace .composer:focus-within { background:var(--x-fill-2); }
+.workspace .composer.recording { grid-template-columns:minmax(0,1fr); grid-template-areas:"rec"; padding:6px var(--x-s4) 6px var(--x-s6); }
+.workspace .composer.recording .composer-input,
+.workspace .composer.recording .composer-actions,
+.workspace .composer.recording .quote-row,
+.workspace .composer.recording .attach-row { display:none!important; }
+.workspace .composer-input {
+  min-height:var(--composer-btn-size); max-height:132px;
+  padding:5px 0; font-size:var(--x-fs-body); line-height:22px;
+}
+.workspace .composer.quoting .composer-input { padding:5px 0; height:auto; min-height:var(--composer-btn-size); }
+.workspace .composer-actions { grid-area:actions; align-self:end; align-items:center; gap:var(--x-s1); height:var(--composer-btn-size); padding:0; }
+.workspace .composer-actions .mic,
+.workspace .composer-actions .send {
+  width:var(--composer-btn-size); height:var(--composer-btn-size);
+  min-width:var(--composer-btn-size); min-height:var(--composer-btn-size);
+  border-radius:calc(var(--composer-btn-size) / 2);
+}
+.workspace .composer-actions .mic svg,
+.workspace .composer-actions .send svg { width:16px; height:16px; }
+.workspace .composer-actions .send { margin:0; }
+.workspace .attach-row { padding:0 4px 6px; }
+.workspace .attach-thumb { width:48px; height:48px; border-radius:8px; }
+.workspace .attach-thumb .attach-drop { width:18px; height:18px; min-width:18px; min-height:18px; }
+.workspace .quote-row { align-items:center; gap:6px; padding:0 4px 6px; font-size:12.5px; color:var(--x-muted); }
+.workspace .quote-row > .icon { width:14px; height:14px; color:var(--x-faint); }
+.workspace .quote-row .ghost { width:22px; height:22px; min-width:22px; min-height:22px; border-radius:6px; padding:0; color:var(--x-faint); }
+.workspace .quote-row .ghost .icon, .workspace .quote-row .ghost svg { width:13px; height:13px; }
 .workspace #work-status { width:100%; }
 .workspace .chat-search-pop { top:0; }
+/* Sliding thumb that tracks the selected workspace tab. */
+.tab-pill-indicator {
+  position:absolute; top:0; left:0; height:var(--workspace-tab-height);
+  border-radius:var(--x-r-sm); background:var(--x-fill-2); pointer-events:none; z-index:0;
+  transition:transform 200ms cubic-bezier(0.22,1,0.36,1), width 200ms cubic-bezier(0.22,1,0.36,1), opacity 150ms ease-out;
+}
 .workspace .memory-view { display:flex; flex-direction:column; gap:var(--workspace-space); animation:memory-enter var(--dur-press) ease-out; }
 .workspace .memory-documents { min-width:0; }
 .workspace .memory-document { background:var(--x-panel); padding:var(--x-s8); border-radius:var(--x-r-card); min-width:0; }
@@ -2964,7 +3027,6 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
   .memory-search { width:100%; }
   .workspace .memory-experience { padding:var(--x-s6); }
   .workspace > .chat .msg.bot .body { padding-left:0; }
-  .workspace > .chat .msg.bot .chat-copy { margin-left:0; }
   .workspace > .chat .bubble-col { max-width:var(--workspace-user-max-mobile); }
   .workspace > .chat .bubble, .workspace > .chat .bot-bubble.prose { font-size:var(--x-fs-ui); }
   .workspace .composer-input { font-size:var(--x-s6); }
@@ -2975,15 +3037,20 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
   .workspace .memory-view, .memory-detail { animation:none; }
 }
 
-.workspace > .chat .msg.bot .ht { left:auto; right:0; bottom:0; }
-.workspace > .chat .grpchat .msg.bot { flex-direction:row; gap:var(--x-s3); }
+/* Group chat: 28px face + name header; a same-speaker run indents the body
+   past the face (28 + 10 gap) instead of repeating it. */
+.workspace > .chat .grpchat .msg.bot { flex-direction:row; align-items:flex-start; gap:10px; }
+.workspace > .chat .grpchat .msg.bot > .avatar { width:28px; height:28px; margin-top:2px; }
 .workspace > .chat .grpchat .msg.bot .body { padding-left:0; }
+.workspace > .chat .grpchat .msg.bot.cont > .body { margin-left:38px; }
+.workspace > .chat .grpchat .who { font-size:var(--x-fs-sm); font-weight:560; color:var(--x-text-2); gap:var(--x-s3); margin-bottom:var(--x-s1); }
+.workspace > .chat .grpchat .who > time { font-size:var(--x-fs-cap); font-weight:400; color:var(--x-faint); font-variant-numeric:tabular-nums; }
 .workspace-tab:focus-visible, .workspace-menu-option:focus-visible { outline:var(--workspace-focus-width) solid var(--x-muted); outline-offset:var(--x-s1); }
 .workspace .workspace-menu-option:disabled { opacity:1; }
 
 /* Feedback belongs to the workspace, including non-chat views. */
 .workspace > .subtitle { width:min(var(--workspace-thread),100%); padding-inline:var(--x-s6); }
-.workspace > .subtitle[hidden] { display:block!important; visibility:hidden; }
+.workspace > .subtitle[hidden] { display:none!important; }
 
 /* Trace preserves its controls and reading panes across polling. */
 #workspace-view-trace{max-width:none;height:100%;min-height:0;padding:0 var(--workspace-gutter);display:flex;flex-direction:column;overflow:hidden}

@@ -21,11 +21,11 @@ func TestApprovalSecretNames(t *testing.T) {
 	installArgs := `{"description":"install","command":"\"$XBOT_BIN\" links install --self telegram","_xbot_links":{"action":"install","id":"telegram"}}`
 	summary := "install telegram\nTelegram\nsecrets: TELEGRAM_BOT_TOKEN"
 	cases := []struct {
-		name     string
-		tool     string
-		args     string
-		summary  string
-		want     []string
+		name    string
+		tool    string
+		args    string
+		summary string
+		want    []string
 	}{
 		{"retired links tool", "links", `{"action":"install","id":"telegram"}`, summary, []string{"TELEGRAM_BOT_TOKEN"}},
 		{"shell install intent", "sh", installArgs, summary, []string{"TELEGRAM_BOT_TOKEN"}},

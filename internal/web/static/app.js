@@ -672,6 +672,31 @@
     paintUpdate(st);
   }
 
+  // The dev rebuild button only exists on a dev instance; session.can_reload
+  // gates it. A click rebuilds the checkout and the process re-execs itself,
+  // so the page waits for the new tip the way an update install does.
+  const devReloadBtn = $("dev-reload");
+  function syncDevReload() {
+    devReloadBtn.hidden = !state.canReload;
+    if (state.canReload) setTip(devReloadBtn, "重新编译并重启（dev）");
+  }
+  devReloadBtn.addEventListener("click", async () => {
+    if (!state.canReload || devReloadBtn.classList.contains("busy")) return;
+    devReloadBtn.classList.add("busy");
+    devReloadBtn.disabled = true;
+    setTip(devReloadBtn, "正在编译…");
+    try {
+      await api("/api/dev/reload", { method: "POST" });
+      setTip(devReloadBtn, "编译完成，正在重启…");
+      waitForRestart("");
+    } catch (e) {
+      devReloadBtn.classList.remove("busy");
+      devReloadBtn.disabled = false;
+      setTip(devReloadBtn, (e && e.message) || "编译失败，稍后再试");
+      setTimeout(() => setTip(devReloadBtn, "重新编译并重启（dev）"), 4000);
+    }
+  });
+
   updateBtn.addEventListener("click", async () => {
     if (!updateState.latest) return;
     if (updateState.state === "manual") {
@@ -2181,7 +2206,8 @@
 
   function composerRefreshHeight() {
     input.style.height = "auto";
-    input.style.height = Math.min(input.scrollHeight, 140) + "px";
+    input.style.height = Math.min(input.scrollHeight, 132) + "px";
+    composer.classList.toggle("is-multiline", input.scrollHeight > 40);
   }
 
   // Renders the draft. No cap here: truncating after the fact silently eats
@@ -2321,8 +2347,8 @@
   }
 
   function emptyState(heading, line, who, starters) {
-    const box = el("div", "empty");
-    if (starters) box.append(doodle("chat"));
+    // v2: the bot empty state is avatar + name + one line + starters — no doodle.
+    const box = el("div", "empty" + (starters && who ? " empty-bot" : ""));
     if (who) box.append(avatar(who, paintOf(who), "lg"));
     box.append(el("h2", "", heading), el("p", "", line));
     if (starters && who) box.append(starterList(who));
@@ -2807,10 +2833,47 @@
     parent.append(bubble);
   }
 
-  function addBubbleTime(row, time) {
+  // Hover meta-bar (v2): one hidden-until-hover strip per message carries the
+  // quick actions and the timestamp. Quick copy/reply need the bound message
+  // data, so rows without bindMessageMenu (live bubble, optimistic send) get a
+  // bar with only the time.
+  function msgMetaBar(row) {
     const body = row.querySelector(".bubble-col, .body");
-    if (body && time) {
-      body.append(el("span", "ht", clockTime(time)));
+    if (!body) return null;
+    let bar = body.querySelector(":scope > .msg-meta-bar");
+    if (bar) return bar;
+    bar = el("div", "msg-meta-bar");
+    const data = messageContents.get(row);
+    if (data) {
+      if (data.message.seq) {
+        const reply = el("button", "msg-act");
+        reply.type = "button";
+        reply.setAttribute("aria-label", "回复");
+        reply.append(icon("reply"));
+        reply.addEventListener("click", () => armQuote(data.message.seq, previewText(data.message)));
+        bar.append(reply);
+      }
+      const copy = el("button", "msg-act");
+      copy.type = "button";
+      copy.setAttribute("aria-label", "复制");
+      copy.append(icon("copy"));
+      copy.addEventListener("click", async () => {
+        if (!await copyText(data.text, copy)) { showToast("复制失败，请重试"); return; }
+        copy.classList.add("copied");
+        setTimeout(() => copy.classList.remove("copied"), 1200);
+      });
+      bar.append(copy);
+    }
+    body.append(bar);
+    return bar;
+  }
+
+  function addBubbleTime(row, time, opts) {
+    const bar = msgMetaBar(row);
+    // Group rows already print the timestamp in the .who header.
+    if (bar && time && !opts?.inGroup) {
+      bar.querySelector(".msg-time")?.remove();
+      bar.append(el("span", "msg-time", clockTime(time)));
     }
   }
 
@@ -3160,12 +3223,9 @@
     appendMessageBubbles(body, displayText(text), pasted, audios, true);
     if (!say) window.XBotProviders.decorate(body, m.parts);
     bindMessageMenu(row, m, said);
-    const speaker = el("div", "chat-speaker");
-    speaker.append(avatar(who || state.sel?.id || "", paintOf(who || state.sel?.id), "xs"), el("span", "", niceName(who || state.sel?.id)));
-    row.append(speaker, body);
-    const copy = el("button", "ghost chat-copy"); copy.type = "button"; copy.setAttribute("aria-label", "复制回复"); copy.append(icon("copy"));
-    copy.addEventListener("click", async () => { if (!await copyText(messageContents.get(row)?.text || said, copy)) showToast("复制失败，请重试"); });
-    row.append(copy);
+    // Single chat reads on one left axis: no per-row avatar/name; copy/reply/time
+    // live in the hover meta-bar that addBubbleTime builds.
+    row.append(body);
     addBubbleTime(row, m.time);
     return row;
   }
@@ -3482,7 +3542,7 @@
         row.append(body);
         if (row.classList.contains("cont")) markContinuation(row, m.time);
       }
-      addBubbleTime(row, m.time);
+      addBubbleTime(row, m.time, {inGroup: true});
       last = key;
       inner.append(row);
     }
@@ -4392,7 +4452,7 @@
       body.append(text);
       row.append(body);
       if (cont) markContinuation(row, m.ts);
-      addBubbleTime(row, m.ts);
+      addBubbleTime(row, m.ts, {inGroup: true});
       inner.append(row);
       if (!target && at && (Date.parse(m.ts || "") || 0) >= at) target = row;
       last = key;
@@ -4975,11 +5035,29 @@
   const hiddenWorkspaceTabs = new Set();
   try { for (const id of JSON.parse(localStorage.getItem("xbot-workspace-hidden") || "[]")) if (id !== "chat") hiddenWorkspaceTabs.add(id); } catch (e) {}
   function availableWorkspaceTabs() { return state.sel?.type === "bot" && !state.peer ? TABS : TABS.slice(0, 1); }
+  // The sliding thumb under the selected tab (v2): one absolutely positioned
+  // pill inside #workspace-tabs, moved by transform so it never relayouts the
+  // strip. Hidden when the selection is the head-chip's details panel.
+  let tabPill = null;
+  function syncTabPill() {
+    const host = $("workspace-tabs");
+    if (!tabPill) {
+      tabPill = el("div", "tab-pill-indicator");
+      tabPill.setAttribute("aria-hidden", "true");
+      host.prepend(tabPill);
+    }
+    const sel = host.querySelector('.workspace-tab[aria-selected="true"]');
+    if (!sel || state.tab === "details") { tabPill.style.opacity = "0"; return; }
+    if (!tabPill.isConnected) host.prepend(tabPill); // the strip rebuild drops it
+    tabPill.style.opacity = "1";
+    tabPill.style.width = sel.offsetWidth + "px";
+    tabPill.style.transform = "translateX(" + sel.offsetLeft + "px)";
+  }
   function renderWorkspaceTabs() {
     const host = $("workspace-tabs");
     const available = availableWorkspaceTabs().filter(([id]) => !hiddenWorkspaceTabs.has(id));
     const ids = new Set(available.map(([id]) => id));
-    for (const node of [...host.children]) if (!ids.has(node.dataset.tab)) node.remove();
+    for (const node of [...host.children]) if (node !== tabPill && !ids.has(node.dataset.tab)) node.remove();
     for (const [id, label, glyph] of available) {
       let button = host.querySelector('[data-tab="' + id + '"]');
       if (!button) {
@@ -4999,6 +5077,7 @@
     $("workspace-more").disabled = !state.sel || !!state.peer;
     $("head-chip").setAttribute("aria-label", state.sel?.type === "group" ? "群组资料与成员" : "Bot 资料与模型");
     $("head-chip").setAttribute("aria-expanded", String(state.tab === "details"));
+    requestAnimationFrame(syncTabPill);
   }
   function workspaceView(id) {
     let body = $("workspace-view-" + id);
@@ -5080,6 +5159,7 @@
     ev.preventDefault(); selectWorkspaceTab(tabs[at].dataset.tab, true);
     tabs[at].scrollIntoView({block:"nearest", inline:"nearest"});
   });
+  window.addEventListener("resize", syncTabPill);
   $("workspace-more").addEventListener("click", () => {
     const open = $("workspace-more-menu").hidden;
     renderWorkspaceMore(); $("workspace-more-menu").hidden = !open;
@@ -5545,7 +5625,7 @@
   }
 
   function paintPanel() {
-    paintWorkspaceIdentity(); syncPanelChrome(); paintContextBar();
+    paintWorkspaceIdentity(); syncPanelChrome();
     for (const body of panelBody.children) body.hidden = body.id !== "workspace-view-" + state.tab;
     if (!state.sel || state.tab === "chat" || state.peer) return;
     const body = workspaceView(state.tab); body.hidden = false;
@@ -6058,6 +6138,9 @@
       wrap.append(panelEmpty("", "还没有快照", "发一句话，这里就会显示它这一轮读了哪些内容。"));
       return wrap;
     }
+    if (snap.stale) {
+      wrap.append(el("p", "hint", "这是最近一次唤醒留下的快照（重启前）。"));
+    }
     const req = ctxReq(snap);
     const latest = req === reqs[reqs.length - 1];
     const sums = ctxSums(req);
@@ -6223,43 +6306,6 @@
     state.ctxMenu = false;
     if (state.tab === "context") paintPanel();
   });
-
-  function paintContextBar() {
-    const host = $("ctxbar");
-    host.replaceChildren();
-    const snap = state.ctxSnap;
-    const req = snap?.requests?.at(-1);
-    host.hidden = !state.sel || state.sel.type !== "bot" || state.tab === "context" || !req || !(snap.ceiling > 0);
-    if (host.hidden) return;
-    const used = Math.max(0, req.prompt || 0), hard = snap.ceiling;
-    const bar = el("button", "ctxbar");
-    bar.type = "button";
-    bar.setAttribute("aria-label", "查看上下文");
-    setTip(bar, "上下文");
-    bar.append(icon("gauge"));
-    const label = el("span");
-    label.append(el("b", "", Math.round(used * 100 / hard) + "%"), document.createTextNode(" 已用"));
-    const band = el("div", "ubar");
-    const sums = ctxSums(req);
-    let room = 100;
-    for (const [key] of CTX_BANDS) {
-      if (!sums[key]) continue;
-      const seg = el("i", "ctx-c-" + key);
-      const pct = Math.min(room, Math.max(0, sums[key] * 100 / hard));
-      seg.style.width = pct + "%";
-      if (key === "tools") seg.style.marginLeft = "auto";
-      room -= pct;
-      band.append(seg);
-    }
-    if (snap.target > 0 && snap.target < hard) {
-      const tick = el("span", "soft");
-      tick.style.left = (snap.target * 100 / hard) + "%";
-      band.append(tick);
-    }
-    bar.append(label, band, el("span", "mono", ctxK(used) + " / " + ctxK(hard)));
-    bar.addEventListener("click", () => selectWorkspaceTab("context"));
-    host.append(bar);
-  }
 
   function modelHits(data) {
     const model = String((data && data.model) || "").trim();
@@ -8602,6 +8648,8 @@
       state.tip = session.tip || "";
       state.app = !!session.app;
       state.canRestart = !!session.can_restart;
+      state.canReload = !!session.can_reload;
+      syncDevReload();
       syncDevicesSession(session);
       renderMe();
       showApp();
@@ -9430,6 +9478,8 @@
     state.tip = (data && data.tip) || "";
     state.app = !!data.app;
     state.canRestart = !!data.can_restart;
+    state.canReload = !!data.can_reload;
+    syncDevReload();
     syncDevicesSession(data);
     if (data.needs_key) await showSetup(data.key_host || "");
     renderMe();
