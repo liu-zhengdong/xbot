@@ -223,6 +223,15 @@ func Start(root string, handlers Handlers) (*Server, error) {
 	mux.HandleFunc("/v1/links/remove", func(w http.ResponseWriter, r *http.Request) {
 		serveLinksRemove(w, r, handlers.Links)
 	})
+	mux.HandleFunc("/v1/subagent/list", func(w http.ResponseWriter, r *http.Request) {
+		serveSubagentList(w, r, handlers.Subagents)
+	})
+	mux.HandleFunc("/v1/subagent/read", func(w http.ResponseWriter, r *http.Request) {
+		serveSubagentRead(w, r, handlers.Subagents)
+	})
+	mux.HandleFunc("/v1/subagent/expand", func(w http.ResponseWriter, r *http.Request) {
+		serveSubagentExpand(w, r, handlers.Subagents)
+	})
 	guarded := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fail := func(code int, message string) {
 			w.Header().Set("Content-Type", "application/json")

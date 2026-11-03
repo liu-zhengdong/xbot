@@ -103,7 +103,7 @@ func (f *turnFit) view(msgs []provider.Message) []provider.Message {
 			if i == f.pre {
 				summary := turnSummary(f.summary, f.from, f.to)
 				if f.budget != nil {
-					summary.SetText("Earlier steps of this child conversation were summarized. Read its transcript with expand_subagent or read_file for original details.\n\n" + f.summary)
+					summary.SetText("Earlier steps of this child conversation were summarized. Read its transcript with \"$XBOT_BIN\" subagent expand --self or read_file for original details.\n\n" + f.summary)
 				}
 				out = append(out, summary)
 			}

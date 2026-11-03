@@ -102,6 +102,14 @@ callback 只持原 operations lease，原方法自行选择 currentIO。self 的
 
 三旧 wrapper/Known/schema/index 已退，无暗执行 shim；compact 的模型/State 写沿下文 CLI，空 context 工具注册组已退，Link.Context 器官与 Event、4 KiB 记忆文件写守卫保持。fit 的 seq→expand、无 seq→search→expand、自定义 noSeq 和 turnSummary 范围不变，仍提示不要重执行；ReplyRule、ExperienceRule、SearchExperiences detail 提示、manual 与 live Context 指引均用 CLI。research 同窄 lexer/纯 parser 允许合法三读 self/help；熔断只让规范 literal transcript search 承接原历史检索宽阈值，expand/detail/noun help 不额外放宽。旧 native 字面/工具配对历史仍读，不加 Env/Inbox/waker/MemoryReceipt 或假工具配对。现有 mock/eval 无三读 producer，MemoryRecall 的限定评测桥保持。决定见 [ADR0060](../adr/0060-transcript-read-runtime-cli.md)。
 
+## 子代理三读实例入口
+
+原 listener 的 `Handlers.Subagents` 挂 List/Read/Expand 三个 typed callback，经 `CallSubagentList/Read/Expand(ctx,endpoint,root,input)` 到 `/v1/subagent/list|read|expand`，同 transcript 三读形态。三原 Run 均忽略 ctx：不走 runtimeSourceCall、不要 XBOT_CALL_ID，承载 Shell 的原 gate 独立；必须命中同一运行中 kernel 由 endpoint 资格承载——list 的 `exec.ActiveTask` 活任务覆盖（Status/Blocked/TurnSeq）只在运行中 Local owner 表，`withCurrentIO` 取 route 锁保护的 current ref，离线进程不可等价。
+
+callback 持 operations lease，方法体逐字复用原 listSubagentsTool/readSubTool/expandSubTool：list 默认 40/上限 100、execID 过滤目录、ReadMeta/ReadDescriptor/clipSummary 300/Notable=nil、逐项短持 currentIO 取路径再 ActiveTask 覆盖、StartedAt 降序同刻 id 降序；read 的 `exec: bad id` 边界校验与五行+untrusted 尾行原样；expand 的 1 基 inclusive 钳位、`exec: bad range`、`# seq N role`、8KiB cap 与 untrusted 前缀原样。边界只补 held secrets 与 Resources scrub，不重建原文本。
+
+孩子 scoped Shell 内同形 `--self` 经父 endpoint 回同一 listener，`withCurrentIO` 取父 kernel current：任意有效 `sa_` id 的 read/expand 与全部兄弟的 list 可读（ADR0065 接受的 scoping 放宽；原 selfSubagentTool 钉自己 id 与排除 list 的工具面收窄不保留，孩子本就 read_file 可读兄弟 transcript，非硬安全边界）。三旧 wrapper、selfSubagentTool 整型、readonly 表三行与 registry agents 组三读名已退，写类 dispatch/spawn/agent_*/steer/queue/interrupt/cancel 保留；research 只读分类新增 subagent 分支放行 self/help 三读。决定见 [ADR0065](../adr/0065-subagent-read-cli.md)。
+
 ## 主动范围压缩实例入口
 
 原 listener 的单个 `Handlers.Compact` callback 经 CallCompact 接到同 K 的原 CompactRange。callback 持 operations lease，用未改的 runtimeSourceCall 找同 listener 实际 Local/running/未 finished Shell prepared ctx，再直调原方法；必须带原 XBOT_CALL_ID/header。它沿原 helper 保模型取消和 turnSeqOf 用量归属，不用 runtimeApprovalSource/审批 owner 重绑、审批 intent、确认卡或 approver 函数，不加 primary/person/project 资格及 Recall 专用的非 nil 冻结 turn 门。turnSeqOf 只看 prepared ctx 显式 seq/turn，否则 0，不借 latestTurn。source endpoint/规范 root/ref 为权威，早入口不离线 Load/new K，Shell gate 独立；协议集中见 [API](../API.md#主动范围压缩运行时-cli)。

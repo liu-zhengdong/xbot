@@ -139,9 +139,9 @@ var kernelTools = []struct {
 			start = dispatchTool{k}
 		}
 		if k.Dispatch {
-			return []tools.Tool{start, agentMessageTool{k}, agentStopTool{k}, listSubagentsTool{k}, readSubTool{k}, expandSubTool{k}}
+			return []tools.Tool{start, agentMessageTool{k}, agentStopTool{k}}
 		}
-		return []tools.Tool{start, steerTool{k}, queueTool{k}, interruptTool{k}, cancelTool{k}, readSubTool{k}, expandSubTool{k}}
+		return []tools.Tool{start, steerTool{k}, queueTool{k}, interruptTool{k}, cancelTool{k}}
 	}, nil},
 }
 

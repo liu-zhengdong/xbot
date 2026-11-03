@@ -164,7 +164,7 @@ func ReadTranscript(dir string, before, limit int) (TranscriptWindow, error) {
 		e := SeqEntry{Seq: seq, Truncated: truncated}
 		if truncated {
 			e.Kind = "truncated"
-			e.Entry = bot.Entry{Origin: bot.OriginInternal, Message: provider.Message{Role: provider.RoleUser, Internal: true, Content: provider.TextContent("记录过长；请通过 expand_subagent 按此序号读取原文。")}}
+			e.Entry = bot.Entry{Origin: bot.OriginInternal, Message: provider.Message{Role: provider.RoleUser, Internal: true, Content: provider.TextContent("记录过长；请通过 \"$XBOT_BIN\" subagent expand --self 按此序号读取原文。")}}
 		} else if err := json.Unmarshal(line, &e); err != nil {
 			return w, fmt.Errorf("exec: transcript line %d: %w", seq, err)
 		}

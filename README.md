@@ -257,7 +257,7 @@ xbot template import --file ada.json --name ada-copy
 
 一条链最多 3 跳（人发起是 0，第一次 Bot 投递是 1）。同一对发送者到目标每分钟最多 8 条。超限的发送直接失败，不会继续转下去。
 
-**子代理。** 主 Bot 自己做短活。长任务调用 `spawn(task, mode)`。`brief` 只有任务说明；`fork` 带上当前主上下文的一份拷贝。子代理有自己的只追加 transcript，步与步之间看自己的 inbox。主 Bot 可以 `steer`（下一步之前插入，已完成的工作保留）、`queue`（当前这次跑完再做）、`interrupt`（停掉当前这一步，用新指令重来，步数预算重置）、`cancel`（停掉，排队的也不做）。子代理把 progress、blocked、done、failed 投回主 inbox。这些事件不是终端输入，内核会包成 `<untrusted_event>`。`read_subagent` / `expand_subagent` 读它的状态和原文，输出有上限。同时最多 4 个，默认最多 16 步、10 分钟。子代理没有 spawn，也不会在后台弹 y/n：`xbot chat --yes` 才自动批准它的 shell；否则需要确认的工具直接拒绝。
+**子代理。** 主 Bot 自己做短活。长任务调用 `spawn(task, mode)`。`brief` 只有任务说明；`fork` 带上当前主上下文的一份拷贝。子代理有自己的只追加 transcript，步与步之间看自己的 inbox。主 Bot 可以 `steer`（下一步之前插入，已完成的工作保留）、`queue`（当前这次跑完再做）、`interrupt`（停掉当前这一步，用新指令重来，步数预算重置）、`cancel`（停掉，排队的也不做）。子代理把 progress、blocked、done、failed 投回主 inbox。这些事件不是终端输入，内核会包成 `<untrusted_event>`。`xbot subagent read --self <id>` / `expand --self <id>` 读它的状态和原文，输出有上限。同时最多 4 个，默认最多 16 步、10 分钟。子代理没有 spawn，也不会在后台弹 y/n：`xbot chat --yes` 才自动批准它的 shell；否则需要确认的工具直接拒绝。
 
 **执行器。** `Executor` 有本机 goroutine 实现，也有 HTTP 实现：`POST /v1/start`、`POST /v1/message`、`GET /v1/events`。`xbot runner` 只绑定环回地址，Bearer token 用常量时间比较。请求体里的模型密钥只在这条本机连接上出现。
 

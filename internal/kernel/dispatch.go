@@ -230,7 +230,7 @@ func (k *Kernel) wrapSub(req exec.StartRequest, p provider.Provider, pre int) pr
 	f := newTurnFit(pre, nil)
 	f.noSeq = "Read the file or run the call again if you still need it."
 	if req.Descriptor != nil {
-		f.noSeq = "Read this child's transcript with expand_subagent or read_file for the original result; do not rerun completed side effects."
+		f.noSeq = "Read this child's transcript with \"$XBOT_BIN\" subagent expand --self or read_file for the original result; do not rerun completed side effects."
 		window := compact.DefaultWindow
 		d := *req.Descriptor
 		if d.Provider != "" {

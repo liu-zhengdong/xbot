@@ -43,6 +43,10 @@ Usage:
   xbot [--root DIR] transcript search --self [--query TEXT | --query-file FILE|-] [--bot NAME] [--json]
   xbot [--root DIR] transcript expand --self --from N --to N [--bot NAME] [--json]
   xbot [--root DIR] transcript detail --self --seq N [--experience ID] [--json]
+  xbot subagent --help
+  xbot [--root DIR] subagent list --self [--limit N] [--json]
+  xbot [--root DIR] subagent read --self <id> [--json]
+  xbot [--root DIR] subagent expand --self <id> [--from N] [--to N] [--json]
   xbot experience --help
   xbot [--root DIR] experience record --self (--summary TEXT | --summary-file FILE|-) [--focus TEXT | --focus-file FILE|-] [--from N] [--to N] [--json]
   xbot [--root DIR] experience search --self [--query TEXT | --query-file FILE|-] [--limit N] [--json]
@@ -225,6 +229,9 @@ func run(argv []string) error {
 	}
 	if len(rest) > 0 && rest[0] == "links" {
 		return cmdLinksRuntime(root, len(argv) > len(rest), rest[1:])
+	}
+	if len(rest) > 0 && rest[0] == "subagent" {
+		return cmdSubagentRuntime(root, len(argv) > len(rest), rest[1:])
 	}
 	if len(rest) > 0 && rest[0] == "experience" {
 		return cmdExperienceRuntime(root, len(argv) > len(rest), rest[1:])

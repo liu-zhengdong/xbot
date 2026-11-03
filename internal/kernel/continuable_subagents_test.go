@@ -127,17 +127,11 @@ func TestContinuableChildToolsAndSelfRead(t *testing.T) {
 			names := map[string]bool{}
 			for _, tool := range list {
 				names[tool.Name()] = true
-				if tool.Name() == "read_subagent" {
-					_, err := tool.Run(context.Background(), json.RawMessage(`{"id":"sa_87654321"}`))
-					if err != exec.ErrNotFound {
-						t.Fatalf("could inspect sibling: %v", err)
-					}
-				}
 			}
 			if !names["send_message_to_parent"] {
 				t.Fatal("cannot send to parent")
 			}
-			for _, name := range []string{"dispatch", "spawn", "agent_message", "agent_stop", "list_subagents", "steer", "queue", "interrupt", "cancel", "send_message_to_user"} {
+			for _, name := range []string{"dispatch", "spawn", "agent_message", "agent_stop", "list_subagents", "read_subagent", "expand_subagent", "steer", "queue", "interrupt", "cancel", "send_message_to_user"} {
 				if names[name] {
 					t.Errorf("child exposes %s", name)
 				}

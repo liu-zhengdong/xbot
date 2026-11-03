@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -71,7 +70,7 @@ func (k *Kernel) StartSubagent(ctx context.Context, in SubagentRequest) (exec.Ta
 	}
 	persona := ty.Instructions(exec.SubPersona)
 	persona += "\n\n需要提前沟通时调用 send_message_to_parent；结束时运行时会自动交回结果。不要直接向用户发消息。"
-	persona += fmt.Sprintf("\n\n你的 id 是 %s。自己的原文记录在 %s；read_subagent / expand_subagent 仅能查看你自己，不能查看其他孩子。", id, ownDir)
+	persona += fmt.Sprintf("\n\n你的 id 是 %s。自己的原文记录在 %s；在 Shell 用 \"$XBOT_BIN\" subagent read --self <id>、expand --self <id> 查看原文，list --self 列出全部孩子。", id, ownDir)
 	if ty.Name != "research" {
 		if guide := k.cliProfileGuide(); guide != "" {
 			persona += "\n\n" + guide
@@ -368,83 +367,6 @@ func subagentReceipt(task exec.Task) (string, error) {
 	return string(raw), err
 }
 
-type listSubagentsTool struct{ k *Kernel }
-
-func (listSubagentsTool) Name() string { return "list_subagents" }
-func (listSubagentsTool) Description() string {
-	return "List your recent direct children, including completed conversations that can continue. No model call or new execution is started."
-}
-func (listSubagentsTool) Parameters() any {
-	return schema(map[string]any{"limit": intProp("Default 40, maximum 100")}, nil)
-}
-func (listSubagentsTool) Confirm(json.RawMessage) (bool, string, error) {
-	return false, "list_subagents", nil
-}
-func (t listSubagentsTool) Run(_ context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		Limit int `json:"limit"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	if in.Limit == 0 {
-		in.Limit = 40
-	}
-	if in.Limit < 1 || in.Limit > 100 {
-		return "", errors.New("limit must be 1–100")
-	}
-	items := []exec.Meta{}
-	err := t.k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
-		dirs, err := os.ReadDir(current.AgentsDir())
-		if os.IsNotExist(err) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		for _, dir := range dirs {
-			if !dir.IsDir() || !execID(dir.Name()) {
-				continue
-			}
-			m, err := exec.ReadMeta(current.AgentDir(dir.Name()))
-			if err != nil {
-				continue
-			}
-			_, err = exec.ReadDescriptor(current.AgentDir(dir.Name()))
-			m.Continuable = err == nil
-			m.Summary, m.Task = clipSummary(m.Summary, 300), clipSummary(m.Task, 300)
-			m.Notable = nil
-			items = append(items, m)
-		}
-		return nil
-	})
-	if err != nil {
-		return "", err
-	}
-	for i := range items {
-		var path string
-		if err := t.k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error { path = current.AgentDir(items[i].ID); return nil }); err != nil {
-			return "", err
-		}
-		// ActiveTask takes owners. Metadata file reads above have released route.
-		if live, ok := exec.ActiveTask(path); ok {
-			items[i].Status, items[i].Blocked, items[i].TurnSeq = live.Status, live.Blocked, live.TurnSeq
-		}
-	}
-	sort.Slice(items, func(i, j int) bool {
-		a, b := items[i].StartedAt, items[j].StartedAt
-		if a.Equal(b) {
-			return items[i].ID > items[j].ID
-		}
-		return a.After(b)
-	})
-	if len(items) > in.Limit {
-		items = items[:in.Limit]
-	}
-	raw, err := json.Marshal(items)
-	return string(raw), err
-}
-
 type sendParentTool struct {
 	k  *Kernel
 	id string
@@ -518,14 +440,12 @@ func (k *Kernel) continuableTools(req exec.StartRequest) []tools.Tool {
 	var out []tools.Tool
 	for _, t := range base {
 		switch t.Name() {
-		case "dispatch", "spawn", "agent_message", "agent_stop", "list_subagents", "steer", "queue", "interrupt", "cancel", "send_message_to_user":
+		case "dispatch", "spawn", "agent_message", "agent_stop", "steer", "queue", "interrupt", "cancel", "send_message_to_user":
 			continue
 		case "web_search":
 			if !searchOn {
 				continue
 			}
-		case "read_subagent", "expand_subagent":
-			t = selfSubagentTool{Tool: t, id: req.ID}
 		}
 		if image, ok := t.(*tools.ViewImage); ok {
 			// scopeTools created this instance for this refresh; mounted copies
@@ -543,36 +463,6 @@ func (k *Kernel) continuableTools(req exec.StartRequest) []tools.Tool {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Name() < out[j].Name() })
 	return out
-}
-
-type selfSubagentTool struct {
-	tools.Tool
-	id string
-}
-
-func (t selfSubagentTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	var in map[string]json.RawMessage
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	if in == nil {
-		in = map[string]json.RawMessage{}
-	}
-	if raw, ok := in["id"]; ok {
-		var id string
-		if err := json.Unmarshal(raw, &id); err != nil {
-			return "", err
-		}
-		if id != "" && id != t.id {
-			return "", exec.ErrNotFound
-		}
-	}
-	in["id"], _ = json.Marshal(t.id)
-	raw, err := json.Marshal(in)
-	if err != nil {
-		return "", err
-	}
-	return t.Tool.Run(ctx, raw)
 }
 
 // subagentBudget is request-local. It never changes the parent's window,

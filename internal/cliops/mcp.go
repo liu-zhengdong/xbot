@@ -70,4 +70,5 @@ type Handlers struct {
 	Transcript    *TranscriptHandlers
 	Compact       func(context.Context, Compact) (CompactReply, error)
 	Links         *LinksHandlers
+	Subagents     *SubagentHandlers
 }

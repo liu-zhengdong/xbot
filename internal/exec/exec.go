@@ -294,7 +294,7 @@ func (l *Local) Start(ctx context.Context, req StartRequest) (Task, error) {
 		if l.waitingCountLocked() >= maxWaiting {
 			return Task{}, fmt.Errorf("exec: %d subagents already queued", maxWaiting)
 		}
-		// The record exists from the start, so read_subagent and the
+		// The record exists from the start, so subagent read --self and the
 		// status list show it as queued.
 		if err := j.withStorageIO(func() error {
 			pid, start := tools.CurrentProcess()
