@@ -2,11 +2,11 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
-verified: 2026-11-02 @ fe6952b5 (links search readonly admission, load runtime-state rejection and retained install/remove card chain)
+verified: 2026-11-02 @ c9a6e170 (links install/remove approval-source owner card, secrets stage via _xbot_links blob and linksTool retirement)
 ---
 # 安全：保险箱与权限表
 
-> **30 秒版**：Bot 只知道密钥的名字，出站代理才换成真值。**生产内核永远不弹工具权限卡**（[ADR 0019](../adr/0019-no-permission-cards-by-default.md)）：`serve`/`chat` 固定 `Permissive: true`，旧 `permissions on` 不能开回卡；保险箱/密钥/配置路径、机器 ask/off、外部事件记忆写入也不弹卡。只保留 `links` 填 key 的输入卡。以下权限分类与确认条件仅描述直接构造的严格测试/评测内核，不是生产许可限制。
+> **30 秒版**：Bot 只知道密钥的名字，出站代理才换成真值。**生产内核永远不弹工具权限卡**（[ADR 0019](../adr/0019-no-permission-cards-by-default.md)）：`serve`/`chat` 固定 `Permissive: true`，旧 `permissions on` 不能开回卡；保险箱/密钥/配置路径、机器 ask/off、外部事件记忆写入也不弹卡。只保留 links install/remove CLI 意图的填 key 输入卡。以下权限分类与确认条件仅描述直接构造的严格测试/评测内核，不是生产许可限制。
 
 > **现阶段（2026-10-18 起）**：先把功能调通调顺，再接安全，见 [ADR 0013](../adr/0013-features-before-security.md)。本页写的是现行代码的行为。权限表、审查入口和保险箱占位作为接口保留；不再加新的安全工作。生产工具许可已经固定放行；文件新鲜度、密钥脱敏、出站域名绑定和存储校验不受这次改动影响。
 
@@ -64,13 +64,15 @@ research 只准当前 canonical BIN/精确受控 XBOT_BIN 经原 DirectXBotArgs 
 
 成功仅原短 ACK；错误沿动态 source redactor、held/Resources scrub，仅显示 error 可缩短，先输出实际回执再非 0，不自动重试。晚期错误前可能已有模型用量、环境或 State 效果，不伪造 Applied=false、成功回滚、零副作用或取消永不提交承诺。回执不含 summary/产物，不新增摘要读 API、权限表、阶段账或 Receipt/Inbox/wake；压缩不写记忆正文，既有读维护也不等物理零 IO。完整输入、DTO、容量见 [API](../API.md#主动范围压缩运行时-cli)，原 ctx/锁/保存链见 [内核](kernel.md#主动范围压缩实例入口)，决定见 [ADR0061](../adr/0061-compact-runtime-cli.md)。
 
-## links 目录搜索与加载 CLI
+## links 目录搜索加载与安装移除 CLI
 
-`links search --self` 为只读，`links load --self` 把目录项标进运行中 kernel 的进程内 loaded 状态（deferred 解除、stableLinkNames 排除 lazy），不算只读。两动作都需原 Shell CallID/header 经未改的 runtimeSourceCall 关联同 listener 实际 live Local/running/未 finished Shell prepared ctx——search 的 `mcpSpecs`/`EffectiveLinks`/`secretValues` 与 load 的 `snapshotLinks`/`markLoaded` 都要求同一运行中 kernel；缺失/完成/foreign/nonShell/cancel 沿原 helper 拒绝，不假造 ctx。这不调用 runtimeApprovalSource/owner 重绑、审批 intent、确认卡或 approver 函数，不加 primary/person/project 资格或 Recall 的非 nil 冻结 turn 门；承载 Shell 机器 gate/policy 独立。
+`links search --self` 为只读，`links load --self` 把目录项标进运行中 kernel 的进程内 loaded 状态（deferred 解除、stableLinkNames 排除 lazy），不算只读；`install`/`remove --self` 改授权与密钥，经 owner 卡。四动作都需原 Shell CallID/header 关联同 listener 实际 live Local/running/未 finished Shell：search/load 经未改的 runtimeSourceCall 取 prepared ctx（`mcpSpecs`/`EffectiveLinks`/`secretValues`/`snapshotLinks`/`markLoaded` 都要求同一运行中 kernel），install/remove 经 runtimeApprovalSource 在 prepared ctx 上 `WithValue(turnKey{}, source.owner)` 重绑 turn，卡显示在 owner 当前 fork 分支，child call 时 owner=nil 走原 approver 语义；缺失/完成/foreign/nonShell/cancel 沿原 helper 拒绝，不假造 ctx。search/load 不调用审批 intent/卡/approver，install/remove 必须经这条发卡；都不加 primary/person/project 资格或 Recall 的非 nil 冻结 turn 门；承载 Shell 机器 gate/policy 独立。
 
-research 经原 DirectXBotArgs 单 POSIX lexer 与首个 noun+subcommand 双层 `ParseLinksRuntime`，只放当前 canonical BIN/精确受控 `"$XBOT_BIN"` 的合法 help 与 `search --self`；`load --self` 在解释器前拒绝（进程态改变非只读，与 compact self 同档），裸 `links`/未知 subcommand/缺 `--self`/query 值中字面 `--help` 不放行。linksTool 保注册与 review 表 ExternalSend 归类，但工具只对 install/remove 有实际动作：search/load 分支是指 CLI 的指路错误，不出许可卡；install/remove 的 NeedsOwner 例外、permissive 唯一保卡与 `approvalSecretNames`（只认 tool=="links"）的 StageSecrets→takeSecrets→storeSecrets/dropSecrets→GrantLink/RevokeLink→EnableConnector/RemoveMCP→Reconcile 整链不变。旧 native literal/工具配对历史仍读，无执行 shim。
+install/remove 的卡在 runtime handler 里发：原 Shell ToolArgs map 嵌 canonical `_xbot_links` intent blob `{action,id}`（id 经 linksCardID 归一与 StageSecrets 键一致），summary 与原 linksTool Confirm 同构逐字节相同（`install <id>\n<summary>\nsecrets: <names>`/`connectorCard`/`remove <id>`），`approveRuntimeIntent` 发卡；`deniedBefore`/`parkable`/`grant` 按 `(name="sh", canonArgs嵌blob)` 键控，A 批准不喂 B。**permissive 不短路**：persona/bot delete 的 `checkRuntime*` early return 先例不照抄——密钥只能从卡 stage 来，handler 不走 `k.permissive()` 短路始终发卡，等价原 NeedsOwner permissive 例外的保留。web 侧 `approvalSecretNames` 按 args 判不按文案：`tool=="links"` 原分支保，另认 Shell 类 tool+`_xbot_links` blob+action=="install"；值经原 filterSecrets 白名单→StageSecrets→同 id takeSecrets→storeSecrets/dropSecrets→GrantLink/RevokeLink→EnableConnector/RemoveMCP→Reconcile 整链不变，模型永不接触值。
 
-search 返回原 TSV（`id\tstate\tsummary\tsecrets:…`，三态 listed/available/installed，空集 "no links"），收尾仍 `scrubSecrets(text, k.secretValues())`——密钥名出现、值不出现；错误沿原动态 redactor+secretValues scrub，仅显示 error 可缩短。human/JSONNL 各≤32 KiB、HTTP≤64 KiB，CLI 先输出事实再非 0，不自动重试。完整输入、DTO 与容量见 [API](../API.md#links-目录搜索与加载运行时-cli)，决定见 [ADR0062](../adr/0062-links-runtime-cli.md)。
+research 经原 DirectXBotArgs 单 POSIX lexer 与 noun+subcommand 双层 `ParseLinksRuntime`，只放当前 canonical BIN/精确受控 `"$XBOT_BIN"` 的合法 help 与 `search --self`；`load`/`install`/`remove --self` 都改变状态在解释器前拒绝（与 compact self 同档——parser 的 Action 判定天然不放行这三个），裸 `links`/未知 subcommand/缺 `--self`/query 值中字面 `--help` 不放行。linksTool 已整门退役：registry 无 links 条目、review 表无 `"links"` 行、NeedsOwner/cardtext/notable/todo 的 links 分支无残留，模型侧无双入口；工具结构体仅作领域方法容器，由 runtime handler 直调。旧 native literal/工具配对历史仍读，无执行 shim。
+
+search 返回原 TSV（`id\tstate\tsummary\tsecrets:…`，三态 listed/available/installed，空集 "no links"），install/remove 回原 `"installed <id>"`/`"removed <id>"`；收尾仍 `scrubSecrets(text, k.secretValues())`——密钥名出现、值不出现；错误沿原动态 redactor+secretValues scrub，仅显示 error 可缩短。human/JSONNL 各≤32 KiB、HTTP≤64 KiB，CLI 先输出事实再非 0，不自动重试。完整输入、DTO 与容量见 [API](../API.md#links-目录搜索加载与安装移除运行时-cli)，决定见 [ADR0062](../adr/0062-links-runtime-cli.md) 与 [ADR0063](../adr/0063-links-install-remove-cli.md)。
 
 ## 共享慢调用的脱敏
 
@@ -155,7 +157,7 @@ WantedBy=multi-user.target
 ```
 
 ## 危险操作审核
-生产路径只保留审查入口和分类，不出工具许可卡；`links` 填 key 输入例外。下列确认规则属于严格测试/评测模式：执行前审查动作本身，看工具名和参数，不看模型怎么说。要确认的走已有的确认卡。
+生产路径只保留审查入口和分类，不出工具许可卡；links install/remove CLI 意图的填 key 输入例外（runtime handler 始终发卡，permissive 不短路）。下列确认规则属于严格测试/评测模式：执行前审查动作本身，看工具名和参数，不看模型怎么说。要确认的走已有的确认卡。
 
 - **一张表定权限**：确认只经过这一张表；工具自己从不确认。内核里有一份显式的权限表，按工具名给出类别，`http`、`shell`、`self_edit` 再按参数判定。工具自己的 `Confirm` 只负责生成确认卡上的摘要，返回值一律不参与决定；模型改不了这个判断。
 - **permissions on 时只确认四类**：对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改；另外触及保险箱/密钥路径的 `shell`/文件工具总是确认。Bot之间的 peer-message/chat-group post、写计划文件、写技能、编码任务保持Normal；CLI承载Shell的原gate独立。routine纯排期不额外加审批，承载它的原Shell仍受自身机器gate/分类，非空命令另沿原ctx审查。
@@ -169,7 +171,7 @@ WantedBy=multi-user.target
 - **HTTP**：`http_request` 只在注入 `{{secret:名字}}`（URL、请求头或正文任意一处），或者方法不是 `GET`/`HEAD` 时确认。
 - **shell**：删除命令（`rm`、`rmdir`、`unlink`、`shred`、`find -delete`、`git clean` 等）和真正离开 XBot 的发送（`curl`/`wget` 上传或 POST/PUT、`mail`/`sendmail`、`nc`、发往远端的 `scp`/`rsync`、Python 的 `requests.post` 等）确认。
 - **删除**：文件/数据删除工具、strict Bot CLI delete、`secret rm`、删除 Link 或 MCP 服务器确认；routine CLI delete是Bot自己的排期，不额外走数据删除模型工具确认，外Shell原policy保持。
-- **对外发送**：连接器（`telegram_send`、`lark_send` 等）、`links` 的 `install`/`remove`、未知工具和没标 `readOnlyHint` 的 MCP 工具确认；标了 `readOnlyHint` 的 MCP 工具是 `readonly`。用户自己 Bot 之间的消息不算对外发送。
+- **对外发送**：连接器（`telegram_send`、`lark_send` 等）、未知工具和没标 `readOnlyHint` 的 MCP 工具确认；标了 `readOnlyHint` 的 MCP 工具是 `readonly`。用户自己 Bot 之间的消息不算对外发送。原 `links` 工具的 install/remove 已随工具退役离开此表，其 owner 卡改由 runtime handler 的 `approveRuntimeIntent` 直发。
 - **代理门**：`tools` 的 search、describe 归 `readonly`；call 在 agent 层转发成被调用的工具，确认卡、拒绝表和决定记录都用那个工具的名字和参数，跟直接调用一模一样，代理门本身不增加确认，也不能绕开确认（见 [内核](kernel.md#工具注册与代理门)、[ADR 0035](../adr/0035-unified-tool-registry.md)）。
 - **self_edit**：严格测试/评测内核对persona self CLI显式按SelfEdit审核职责修改；`write_file`/`edit_file` 只在解析后的路径正是本 Bot 的 `persona.md` 或 `config.json` 时按自改审核。资料更新已经由当前实例 CLI 领域入口承接，旧 profile 模型工具没有注册、Known 或专用审批卡入口；生产默认放行与现有 persona/group 规则保持。
 - **记忆文件夹**（记忆 v2 批 3）：不可信回合里 `write_file`/`edit_file` 写进任何 `bots/*/memory/` 或 `people/*/memory/` 都确认；可信回合不弹卡，但内核持目录锁校验（`memory.md` ≤ 4 KiB、日志只能在当月文件末尾按格式追加、索引和锁文件不许写、文件夹内不许符号链接），违规就恢复原文件并把原因告诉模型。`remember`/`forget` 工具已拿掉。
@@ -183,7 +185,7 @@ WantedBy=multi-user.target
 | `readonly` | `tools`（代理门的 search/describe）、`kernel_manual`、`read_file`、`web_fetch`、`web_search`、`view_image`、`shell_output`、`shell_status`、`list_secrets`、chat-group list/history CLI、memory-recall self CLI、transcript search/expand/detail self CLI、links search self CLI、`read_subagent`、`expand_subagent`、`code_show`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不（`read_file` 或 `view_image` 触及保险箱/密钥路径时确认） |
 | `normal` | `generate_image`（复用全局 OAuth 的生图代理）、`send_message_to_user`、compact self CLI、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`shell_cancel`、`ask_user`、`todo`、chat-group create/post CLI、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
 | `delete` | strict Bot CLI delete、`delete_file`、`remove_file`、`secret_rm`、`delete_link`、`remove_mcp` 等名称明确的删除工具 | 总是 |
-| `external_send` | `telegram_send`、`lark_send`、`send_email`、`send_webhook`、其余 `mcp_*`（按前缀规则，没标 `readOnlyHint` 的），以及 `links` 的 `install`/`remove` | 总是（`links` 只在 install/remove） |
+| `external_send` | `telegram_send`、`lark_send`、`send_email`、`send_webhook`、其余 `mcp_*`（按前缀规则，没标 `readOnlyHint` 的） | 总是 |
 | `http` | `http_request` | 注入 `{{secret:}}` 或方法非 `GET`/`HEAD` |
 | `shell` | `bash`、`sh`、`zsh`、`powershell`、`cmd`、`git-bash` | 删除或对外发送，`keys:true`，或触及保险箱/密钥路径 |
 | `self_edit` | strict persona self CLI、`write_file`、`edit_file` | 严格测试/评测模式的职责修改及 persona/profile 文件自改；触及保险箱/密钥路径沿原规则 |

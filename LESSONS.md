@@ -118,6 +118,8 @@
 
 - **mcpRuntimeModel 的 cue 匹配是 `strings.Contains(lastUser, candidate)` 子串选择且 map 遍历无顺序，共享前缀的 cue 名（如 `X` 和 `X_AGAIN`）会 misroute 请求、夹具 hang 住；cue 名必须互不包含。cliSkillSend 的 SSE "done" 可能先于 tool-result 的 provider request 落到 `script.results`，读 results 要包 WaitFor 不能直接断言。** 原因：handle 遍历 scripts map 取首个 `Contains(lastUser)` 命中的 cue，后发的 `X_AGAIN` 请求也会被先注册的 `X` 脚本截获，步骤错位后等待超时；done 事件只表示 SSE 流收尾，模型最后一轮 tool-result 请求可能还没打到 stub，`model.results(cue)` 读到空。守护：links 独立 chain/failures phase（eb7e3356）夹具使用互不重叠 cue 名并对结果读取加等待。Seen 1×（2026-11-02），范围为本项目 e2e runtime CLI 夹具。
 
+- **整门退役工具后要同时查守门测试的 want 列表与按名断言，不只看生产注册表。** 原因：registry/review 表删干净后，permissive 保卡断言、review.Table 断言、cardtext 标题、notable/todo 豁免和 links_approval 里仍可能留着旧工具名的 want 项或按名分支，它们不因编译失败而显形，只在运行时落空或漂移成假绿。正确做法：退役面盘点把每个「按工具名特判」的测试 want/分支列入退役断言迁移，并加一条「unknown tool 不再出现」的负断言。守护：links 整门退 test-only 3fc65077 迁移的 permissive/registry/review/cardtext/links_approval 断言与 unknown-tool 退役断言。Seen 1×（2026-11-02），范围为本项目模型工具整门退役切片。
+
 ## 界面交互
 
 - **滚动回归要比较可见文字的屏幕位置，并真正结束 SSE。** 只检查 scrollTop 或文本存在，会漏掉控件增高与临时回复收工后补头像／名字的位移；本次长回复逐字 Range 坐标在旧布局实测下移 34px。守护：`TestChatStickSettlementBrowser`、`TestChatStickHistoryNoticeBrowser`、`TestChatStickQuoteBrowser`，分别验证持久历史／临时正文收工保位、轮询控件／失败提示保锚和引用解除跟随，均有命中缺陷的先红证据。Seen 1×（2026-11-01）。

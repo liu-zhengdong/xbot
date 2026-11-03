@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall三项所测独立端到端按精确phase通过并已合main1053d0a9；transcript三读三项所测独立端到端按精确phase通过并已合mainc4b368bf；compact具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结dcbf05fd待集成main；links search/load两无审批子集具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结fe6952b5待集成main；links install/remove整门退具体合同已SINGLE PASS按Accepted ADR0063实施完毕，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall三项所测独立端到端按精确phase通过并已合main1053d0a9；transcript三读三项所测独立端到端按精确phase通过并已合mainc4b368bf；compact具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结dcbf05fd待集成main；links search/load两无审批子集具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结fe6952b5待集成main；links install/remove整门退具体合同已SINGLE PASS按Accepted ADR0063实施完毕、所测独立端到端分阶段通过并产品冻结c9a6e170待集成main，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -696,6 +696,8 @@ linksTool保留注册（Normal ExternalSend卡保），review.go:99归类、Need
 
 ## 批 linksinstallremove：owner卡secrets整门退具体合同PASS已实施
 
+**本刀完成状态（2026-11-02）**：impl c9a6e170（21 prod +228/-195）实现 `linksApproveRuntime`：runtimeApprovalSource owner重绑→原Shell args嵌`_xbot_links` intent blob→`approveRuntimeIntent`发原Confirm同构卡→原install/remove helper→Reconcile；`approvalSecretNames`认sh+`_xbot_links` blob+install；linksTool整门退（registry/review表/NeedsOwner/cardtext/notable/todo无残留）；permissive不短路。TEST-ONLY 3fc65077（12 testfiles +334/-219）kernel/cliops/web/review first-once+race全过，permissive/registry/review/cardtext/links_approval退役断言迁移，runLinksApprove真卡驱动。STATIC PASS ab29fc0f..c9a6e170 21prod。独立业务first-once：entry-red 8c69b732→merge 4570712f GREEN；samecut 313310ec Mutate+failures过（真卡secrets→vault/permissive发卡/remove幂等/CallID/退役断言/secrets不泄漏）。当前级别：所测独立端到端分阶段通过+STATIC PASS+作者first-once/race，产品21冻结c9a6e170，**待集成main**，未日用；links/connectors家族完成；精确phase数据见 MILESTONES 2026-11-02 links install/remove条目。
+
 基线 worktree `641ff57c`（6a 后 `linksTool` 只剩 install/remove；search/load 已合 main `9bdfee25`）。本刀把 install/remove 迁 runtime CLI 并**整门退 linksTool**（connectors-install-remove-inventory-20261102 候选A推荐，完整行号/secrets-stage洞/退役面/最窄验收已盘点）。[Accepted ADR0063](../adr/0063-links-install-remove-cli.md)；两doc经 SINGLE ACTUAL CONCRETE SHAPE PASS（reviewer确认permissive不短路写准、验收十点全对，summary secrets逗号分隔注记不阻塞），已按原结构实施完毕。
 
 调用方：
@@ -726,7 +728,7 @@ A离线Load+新Kernel：install/remove要owner卡+卡填secrets stage+live Recon
 - 批 0 的后续实际操作及入站依赖清单、尚未迁族的 research 业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已提炼 atlas，固定五项独立所测端到端按各自精确版本通过，证据见 MILESTONES；原 chat loop 下一输入/Timer handle 及其 recover、回放、通知实际消费者也已以局部红绿和 reviewer24 至 `63762ae5` 连续增量 PASS 收口，已合入本地 main，尚未日用；合并时与主线持久选择的交叠补单项真实浏览器红绿，不重跑固定五项。已通过的普通字段、avatar_seed、MCP 和本刀五项不重复整批验收，母路线其它族继续在本 dev 中推进。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
-- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search已合maind632e7a3；memory-recall已合main1053d0a9，transcript三读已合mainc4b368bf，compact模型与State写已按上方Accepted合同实施完毕（dcbf05fd产品冻结，待集成main）；links search/load已按上方Accepted合同实施完毕（fe6952b5产品冻结，待集成main），install/remove整门退合同已按上方Proposed ADR0063起草待批准（卡链与secrets-stage最小扩展已定点）；连接器及剩余目录管理等平台能力继续逐族迁移。
+- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search已合maind632e7a3；memory-recall已合main1053d0a9，transcript三读已合mainc4b368bf，compact模型与State写已按上方Accepted合同实施完毕（dcbf05fd产品冻结，待集成main）；links search/load已按上方Accepted合同实施完毕（fe6952b5产品冻结，待集成main），links install/remove整门退亦已按上方Accepted ADR0063实施完毕（c9a6e170产品冻结，待集成main，links/connectors家族完成）；剩余目录管理等平台能力继续逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。
 - 各批独立冒烟、相关旅程回归、性能与上下文收益测量、主人日用验收。
