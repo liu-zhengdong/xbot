@@ -75,7 +75,7 @@ func TestCLILinksRuntimeFailureSemantics(t *testing.T) {
 	for _, c := range []struct {
 		name, command, want string
 	}{
-		{"bare", `"$XBOT_BIN" links`, "links: expected search or load"},
+		{"bare", `"$XBOT_BIN" links`, "links: expected search, load, install, or remove"},
 		{"unknown_subcommand", `"$XBOT_BIN" links peek --self --json`, `links: unexpected subcommand "peek"`},
 		{"search_missing_self", `"$XBOT_BIN" links search --json`, "links: requires --self from an active XBot shell"},
 		{"load_missing_self", `"$XBOT_BIN" links load browser --json`, "links: requires --self from an active XBot shell"},
@@ -98,29 +98,20 @@ func TestCLILinksRuntimeFailureSemantics(t *testing.T) {
 	if !strings.Contains(notFoundReply.Error, "links: not found") {
 		t.Fatalf("unknown load id lost its original error: %+v", notFoundReply)
 	}
-	// The model-side door keeps its pointing errors: search and load are CLI
-	// only, so the tool returns the actual pointing text, not a reimplemented result.
-	for _, c := range []struct {
-		name string
-		args map[string]string
-		want string
-	}{
-		{"model_search", map[string]string{"action": "search"}, `"$XBOT_BIN" links search --self`},
-		{"model_load", map[string]string{"action": "load", "id": "browser"}, `"$XBOT_BIN" links load --self <id|name>`},
-	} {
-		model.add("LINKS_FAIL_"+strings.ToUpper(c.name), mcpRuntimeTool("links", c.args))
-		cliSkillSend(t, srv, source, "LINKS_FAIL_"+strings.ToUpper(c.name))
-		var got []string
-		WaitFor(t, 10*time.Second, "actual links tool result", func() (bool, string) {
-			results := model.results("LINKS_FAIL_" + strings.ToUpper(c.name))
-			if len(results) == 1 && results[0] != "" {
-				got = results
-				return true, ""
-			}
-			return false, fmt.Sprintf("results=%.300q", results)
-		})
-		if !strings.Contains(got[0], c.want) {
-			t.Fatalf("model-side links %s lost its CLI pointing error: %.900q", c.name, got)
+	// The model-side door is fully retired: the links tool no longer exists,
+	// so a model call returns the actual unknown-tool error, not a result.
+	model.add("LINKS_FAIL_MODEL_TOOL", mcpRuntimeTool("links", map[string]string{"action": "load", "id": "browser"}))
+	cliSkillSend(t, srv, source, "LINKS_FAIL_MODEL_TOOL")
+	var got []string
+	WaitFor(t, 10*time.Second, "actual links tool result", func() (bool, string) {
+		results := model.results("LINKS_FAIL_MODEL_TOOL")
+		if len(results) == 1 && results[0] != "" {
+			got = results
+			return true, ""
 		}
+		return false, fmt.Sprintf("results=%.300q", results)
+	})
+	if !strings.Contains(got[0], `unknown tool "links"`) {
+		t.Fatalf("model-side links tool did not stay retired: %.900q", got)
 	}
 }
