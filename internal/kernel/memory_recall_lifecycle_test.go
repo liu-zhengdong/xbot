@@ -175,8 +175,8 @@ func TestMemoryRecallRuntimeFullTextArtifactRedactionCurrentWorkspace(t *testing
 					return "", err
 				}
 				wantJSON = append(wantJSON, '\n')
-				if len(want) <= 6<<10 || len(wantJSON) <= tools.DefaultShellOutputBytes || (len(cliops.FormatMemoryRecall(full)) > tools.DefaultShellOutputBytes) != tc.humanOverflow || strings.Count(want, "- bot:") != 20 {
-					t.Errorf("overflow fixture text=%d json=%d human=%d hits=%d", len(want), len(wantJSON), len(cliops.FormatMemoryRecall(full)), strings.Count(want, "- bot:"))
+				if len(want) <= 6<<10 || len(wantJSON) <= tools.DefaultShellOutputBytes || (len(cliops.FormatTextResult(full)) > tools.DefaultShellOutputBytes) != tc.humanOverflow || strings.Count(want, "- bot:") != 20 {
+					t.Errorf("overflow fixture text=%d json=%d human=%d hits=%d", len(want), len(wantJSON), len(cliops.FormatTextResult(full)), strings.Count(want, "- bot:"))
 					return "", fmt.Errorf("overflow fixture precondition failed")
 				}
 				// The scanner has released its route when result redaction runs.

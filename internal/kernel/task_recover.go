@@ -15,7 +15,7 @@ import (
 // RecoverTasks uses the existing owners' records. No task is rerun from an
 // incomplete meta file, and repeated startup uses the same ordinary event id.
 func (k *Kernel) RecoverTasks() error {
-	k.recoverOnce.Do(func() { k.RecoverInterrupted(); k.recoverErr = k.recoverTasks() })
+	k.recoverOnce.Do(func() { k.recoverErr = k.recoverTasks() })
 	return k.recoverErr
 }
 

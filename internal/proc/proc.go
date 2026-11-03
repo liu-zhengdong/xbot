@@ -247,6 +247,7 @@ func Drain(ctx context.Context, k *kernel.Kernel) error {
 	if k == nil || (k.Resources == nil && k.Inbox == nil) {
 		return nil
 	}
+	k.RecoverInterrupted()
 	if err := reloadInbox(k); err != nil {
 		return err
 	}

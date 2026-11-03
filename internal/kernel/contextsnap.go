@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -12,6 +14,8 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/compact"
+	"xbot/internal/fsutil"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -129,12 +133,15 @@ type ContextSnap struct {
 	Requests []ContextRequest `json:"requests"`
 	// Detail is the row-level view of the newest request; nil before the first.
 	Detail *ContextDetail `json:"detail,omitempty"`
+	// Stale marks a snapshot read back from disk: it is the last wake's final
+	// state, not this process's live wake. Live snapshots leave it unset.
+	Stale bool `json:"stale,omitempty"`
 }
 
-// contextRing holds the recent requests of one kernel. It is memory only: a
-// snapshot must never reach disk, because it carries the assembled prompt
-// including memory and tool output, and the transcript already holds the
-// durable copy of every line.
+// contextRing holds the recent requests of one kernel. The live ring is memory
+// only; persistContextSnap keeps a single cached copy on disk so the inspector
+// still has the last wake after a restart. It only ever carries the clipped,
+// redacted rows — the transcript remains the durable copy of every line.
 type contextRing struct {
 	mu     sync.Mutex
 	reqs   []ContextRequest
@@ -159,11 +166,6 @@ func (k *Kernel) noteContext(t *turn, req provider.Request) {
 	k.context.mu.Lock()
 	k.context.tools = tools
 	k.context.mu.Unlock()
-	if t.isForked() {
-		// A background branch has its own context; its requests are not the
-		// foreground's and would otherwise replace what the owner is reading.
-		return
-	}
 	k.context.mu.Lock()
 	defer k.context.mu.Unlock()
 	k.context.calls++
@@ -187,7 +189,9 @@ func (k *Kernel) resetContext() {
 	k.context.mu.Unlock()
 }
 
-// ContextSnapshot returns the requests of the current wake, oldest first.
+// ContextSnapshot returns the requests of the current wake, oldest first. When
+// this process has none yet — a fresh serve, or this bot was never woken here —
+// it falls back to the snapshot the previous wake saved to disk, marked stale.
 func (k *Kernel) ContextSnapshot() ContextSnap {
 	snap := ContextSnap{}
 	if k == nil || k.Bot == nil {
@@ -200,7 +204,62 @@ func (k *Kernel) ContextSnapshot() ContextSnap {
 	snap.Requests = append([]ContextRequest(nil), k.context.reqs...)
 	snap.Detail = k.context.detail
 	k.context.mu.Unlock()
+	if len(snap.Requests) == 0 {
+		if saved, ok := LoadContextSnap(k.Bot); ok {
+			saved.Bot = snap.Bot
+			saved.Target, saved.Ceiling = snap.Target, snap.Ceiling
+			saved.Window = snap.Window
+			saved.Stale = true
+			return saved
+		}
+	}
 	return snap
+}
+
+// ContextSnapFile is the one cached snapshot a bot keeps: the last wake's
+// final state, replaced at the start of the next wake. It is a viewer cache —
+// the transcript remains the durable record of every sent byte, so the file is
+// best-effort: a write failure never fails a turn.
+const ContextSnapFile = "context-last.json"
+
+// persistContextSnap writes the current snapshot at the start and the end of a
+// wake: the start keeps whatever the ring already holds (the previous wake on
+// a fresh kernel), the end saves the finished wake for the next restart.
+// Requests in between mutate the in-memory ring only, so the file's cost is
+// two writes per wake, not per request.
+func (k *Kernel) persistContextSnap() {
+	if k == nil || k.Bot == nil {
+		return
+	}
+	snap := ContextSnap{Stale: true}
+	snap.Target, snap.Ceiling = k.lines()
+	snap.Window = k.contextWindow()
+	k.context.mu.Lock()
+	snap.Requests = append([]ContextRequest(nil), k.context.reqs...)
+	snap.Detail = k.context.detail
+	k.context.mu.Unlock()
+	_ = k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+		snap.Bot = current.Name()
+		raw, err := fsutil.Marshal(snap)
+		if err != nil {
+			return err
+		}
+		return fsutil.WriteAtomic(filepath.Join(bot.Dir(current.Root, current.Name()), ContextSnapFile), raw, 0600)
+	})
+}
+
+// LoadContextSnap reads a bot's cached snapshot. ok is false when none was
+// ever saved or the file cannot be parsed; a parse failure is not an error
+// worth reporting because the next wake rewrites it.
+func LoadContextSnap(b *bot.Bot) (snap ContextSnap, ok bool) {
+	if b == nil {
+		return snap, false
+	}
+	raw, err := os.ReadFile(filepath.Join(bot.Dir(b.Root, b.Name()), ContextSnapFile))
+	if err != nil || json.Unmarshal(raw, &snap) != nil || len(snap.Requests) == 0 {
+		return ContextSnap{}, false
+	}
+	return snap, true
 }
 
 // buildContextRequest turns one sent request into its band totals and its
@@ -547,7 +606,7 @@ func cutNumber(s string) (int, string, bool) {
 
 // endContext annotates the already-recorded request, including cancellations.
 func (k *Kernel) endContext(t *turn, err error) {
-	if t == nil || t.isForked() {
+	if t == nil {
 		return
 	}
 	k.context.mu.Lock()

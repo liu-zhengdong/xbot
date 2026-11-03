@@ -15,9 +15,9 @@ func (s *Server) registerContextAPI(mux *http.ServeMux) {
 
 // botContextAPI returns the requests of the bot's current wake.
 //
-// A bot with no live kernel here has no requests to show: the snapshot lives in
-// memory for one wake, and a bot driven by another process (or before the first
-// wake) has none. It answers with an empty list and a reason rather than 404,
+// A bot with no live kernel here answers from the snapshot the last wake left
+// on disk, marked stale, so a restart does not empty the panel. A bot that was
+// never woken still has none and answers with an empty list rather than 404,
 // because "no request yet" is a normal state, not a missing bot.
 func (s *Server) botContextAPI(w http.ResponseWriter, r *http.Request) {
 	if !s.require(w, r) {
@@ -34,6 +34,13 @@ func (s *Server) botContextAPI(w http.ResponseWriter, r *http.Request) {
 	snap := kernel.ContextSnap{Bot: b.Name()}
 	if k != nil {
 		snap = k.ContextSnapshot()
+	}
+	if len(snap.Requests) == 0 {
+		if saved, ok := kernel.LoadContextSnap(b); ok {
+			snap = saved
+			snap.Bot = b.Name()
+			snap.Stale = true
+		}
 	}
 	if snap.Requests == nil {
 		snap.Requests = []kernel.ContextRequest{}

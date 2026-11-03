@@ -46,29 +46,9 @@ func runChatGroupRuntime(ctx context.Context, rawRoot string, rootExplicit bool,
 		_, err := fmt.Fprint(out, chatGroupUsage)
 		return err
 	}
-	root := os.Getenv("XBOT_ROOT")
-	if strings.TrimSpace(root) == "" {
-		return errors.New("chat-group: --self requires XBOT_ROOT from an active runtime")
-	}
-	root, err = cliops.CanonicalRoot(root)
+	root, endpoint, err := runtimeSource("chat-group", rawRoot, rootExplicit)
 	if err != nil {
-		return fmt.Errorf("chat-group: runtime root: %w", err)
-	}
-	if rootExplicit {
-		if strings.TrimSpace(rawRoot) == "" {
-			return errors.New("chat-group: explicit --root must name the runtime data root")
-		}
-		given, err := cliops.CanonicalRoot(rawRoot)
-		if err != nil {
-			return fmt.Errorf("chat-group: explicit root: %w", err)
-		}
-		if given != root {
-			return errors.New("chat-group: runtime data root mismatch")
-		}
-	}
-	endpoint := os.Getenv("XBOT_ENDPOINT")
-	if endpoint == "" {
-		return errors.New("chat-group: --self requires an active local XBot endpoint")
+		return err
 	}
 	var result any
 	var text string

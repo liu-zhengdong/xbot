@@ -88,7 +88,8 @@ window.fetch=async(path,opts={})=>{
   if(match[2]==='/transcript')return json({messages:fixture.messages[bot]});
   if(match[2]==='/chat'){fixture.reads++;return json({messages:fixtureChatRows(fixture.messages[bot]||[])})}
   if(match[2]==='/messages'){
-   fixture.messages[bot].push(message('user',JSON.parse(opts.body).text));
+   const input=JSON.parse(opts.body);
+   fixture.messages[bot].push({...message('user',input.text),images:input.images,audios:input.audios,event_id:input.client_id});
    let controller;const body=new ReadableStream({start(c){controller=c}});
    const stream={bot,controller};fixture.streams.push(stream);
    return new Response(body,{headers:{'Content-Type':'text/event-stream'}});

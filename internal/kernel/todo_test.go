@@ -645,7 +645,7 @@ func TestTodoContinueKeepsList(t *testing.T) {
 	}
 }
 
-func TestTodoForegroundDoesNotArchiveBackgroundList(t *testing.T) {
+func TestTodoStatusTurnDoesNotArchiveExistingList(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
@@ -655,17 +655,16 @@ func TestTodoForegroundDoesNotArchiveBackgroundList(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: provider.TextContent("后台还在做。")},
+		{Role: provider.RoleAssistant, Content: provider.TextContent("清单还在。")},
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Inbox: box, Memory: memory.NopStore{}, MaxSteps: 4,
-		Links: []link.Link{link.Terminal{}}, AllowFork: true,
+		Links: []link.Link{link.Terminal{}},
 	}
 	list := `{"items":[{"id":"a","content":"step 1","status":"done"},{"id":"b","content":"step 2","status":"in_progress"},{"id":"c","content":"step 3","status":"pending"}]}`
 	if _, err := (todoTool{k}).Run(context.Background(), json.RawMessage(list)); err != nil {
 		t.Fatal(err)
 	}
-	k.bgs = map[string]*turn{"bg_task": {branch: "bg_task", task: "3-step migration"}}
 	ev := link.TerminalEvent("u1", "现在怎样", time.Unix(30, 0).UTC())
 	if err := box.Post(ev); err != nil {
 		t.Fatal(err)
@@ -673,15 +672,12 @@ func TestTodoForegroundDoesNotArchiveBackgroundList(t *testing.T) {
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
-	if len(k.Backgrounds()) != 1 || k.Backgrounds()[0].ID != "bg_task" {
-		t.Fatalf("background %+v", k.Backgrounds())
-	}
 	items, err := ReadTodos(b)
 	if err != nil || len(items) != 3 || items[1].Content != "step 2" {
-		t.Fatalf("foreground chat archived the background task's list: %+v %v", items, err)
+		t.Fatalf("status turn archived the existing list: %+v %v", items, err)
 	}
 	if _, err := os.Stat(TodoArchivePath(b)); !os.IsNotExist(err) {
-		t.Fatalf("foreground chat wrote an archive: %v", err)
+		t.Fatalf("status turn wrote an archive: %v", err)
 	}
 }
 

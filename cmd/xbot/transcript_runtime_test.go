@@ -187,7 +187,7 @@ func TestTranscriptRuntimePrintsPartialFactsBeforeFailure(t *testing.T) {
 				if out.String() != string(wire)+"\n" {
 					t.Fatalf("JSONNL facts changed: %q", out.String())
 				}
-			} else if out.String() != cliops.FormatTranscriptRead(want) {
+			} else if out.String() != cliops.FormatTextResult(want) {
 				t.Fatalf("human facts changed: %q", out.String())
 			}
 		}

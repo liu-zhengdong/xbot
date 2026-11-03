@@ -106,7 +106,7 @@ func TestTranscriptRuntimeDetailSemantic64KiBArtifactAfterRename(t *testing.T) {
 	}
 	want := k.Resources.Redact(held)
 	full := cliops.TranscriptReadReply{Text: want}
-	if len(cliops.FormatTranscriptRead(full)) <= tools.DefaultShellOutputBytes {
+	if len(cliops.FormatTextResult(full)) <= tools.DefaultShellOutputBytes {
 		t.Fatal("fixture must exceed the human 32KiB output budget")
 	}
 	status, reply := transcriptRuntimeHTTP(t, endpoint, root, "detail", "obsolete-call", cliops.TranscriptDetail{Seq: 1, Experience: e.ID})
@@ -153,8 +153,8 @@ func TestTranscriptRuntimeEscapedJSONArtifactMovesBetweenOutputAndWrite(t *testi
 	want := k.Resources.Redact(config.RedactHeld(original))
 	full := cliops.TranscriptReadReply{Text: want}
 	wire, err := json.Marshal(full)
-	if err != nil || len(want) <= 10<<10 || len(cliops.FormatTranscriptRead(full)) > tools.DefaultShellOutputBytes || len(wire)+1 <= tools.DefaultShellOutputBytes {
-		t.Fatalf("escaped JSON dimension must overflow while human fits: text=%d human=%d jsonNL=%d err=%v", len(want), len(cliops.FormatTranscriptRead(full)), len(wire)+1, err)
+	if err != nil || len(want) <= 10<<10 || len(cliops.FormatTextResult(full)) > tools.DefaultShellOutputBytes || len(wire)+1 <= tools.DefaultShellOutputBytes {
+		t.Fatalf("escaped JSON dimension must overflow while human fits: text=%d human=%d jsonNL=%d err=%v", len(want), len(cliops.FormatTextResult(full)), len(wire)+1, err)
 	}
 	for _, piece := range []string{"ESCAPED_BODY_BEGIN", "ESCAPED_BODY_END", `source="bot:remote"`, `type="transcript"`, `sender="remote"`, "\n</untrusted_event>", filepath.Join(work.BotDir(root, "source"), work.PastedDir, "diagram.png"), filepath.Join(work.BotDir(root, "source"), work.VoiceDir, "meeting.wav")} {
 		if !strings.Contains(want, piece) {

@@ -2,9 +2,11 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +18,33 @@ import (
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 )
+
+type slowLink struct{ t *slowTool }
+
+func (slowLink) Name() string          { return "slow" }
+func (l slowLink) Tools() []tools.Tool { return []tools.Tool{l.t} }
+
+type slowTool struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (*slowTool) Name() string        { return "slow" }
+func (*slowTool) Description() string { return "a long job" }
+func (*slowTool) Parameters() any     { return map[string]any{"type": "object"} }
+func (*slowTool) Confirm(json.RawMessage) (bool, string, error) {
+	return false, "slow", nil
+}
+func (s *slowTool) Run(ctx context.Context, _ json.RawMessage) (string, error) {
+	s.once.Do(func() { close(s.started) })
+	select {
+	case <-s.release:
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	return "job done", nil
+}
 
 // interjectModel answers the owner's interjection as soon as it is in the
 // request. Before that it runs the slow tool once, and its plain answer to

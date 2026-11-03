@@ -8,11 +8,9 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"xbot/internal/cliops"
-	"xbot/internal/tools"
 )
 
 const transcriptUsage = `Usage: xbot [--root DIR] transcript search --self [--query TEXT | --query-file FILE|-] [--bot NAME] [--json]
@@ -48,13 +46,9 @@ func runTranscriptRuntime(ctx context.Context, rawRoot string, rootExplicit bool
 		_, err := fmt.Fprint(out, transcriptUsage)
 		return err
 	}
-	root, err := transcriptSourceRoot(rawRoot, rootExplicit)
+	root, endpoint, err := runtimeSource("transcript", rawRoot, rootExplicit)
 	if err != nil {
 		return err
-	}
-	endpoint := os.Getenv("XBOT_ENDPOINT")
-	if endpoint == "" {
-		return errors.New("transcript: --self requires an active local XBot endpoint")
 	}
 	var reply cliops.TranscriptReadReply
 	var operationErr error
@@ -79,8 +73,8 @@ func runTranscriptRuntime(ctx context.Context, rawRoot string, rootExplicit bool
 	if err != nil {
 		return err
 	}
-	text := cliops.FormatTranscriptRead(reply)
-	if len(raw)+1 > tools.DefaultShellOutputBytes || len(text) > tools.DefaultShellOutputBytes {
+	text := cliops.FormatTextResult(reply)
+	if !cliops.FitsOutput(reply, text) {
 		return errors.New("transcript: runtime reply facts exceed 32 KiB Shell output budget")
 	}
 	if command.JSON {
@@ -92,30 +86,6 @@ func runTranscriptRuntime(ctx context.Context, rawRoot string, rootExplicit bool
 		return err
 	}
 	return operationErr
-}
-
-func transcriptSourceRoot(rawRoot string, rootExplicit bool) (string, error) {
-	root := os.Getenv("XBOT_ROOT")
-	if strings.TrimSpace(root) == "" {
-		return "", errors.New("transcript: --self requires XBOT_ROOT from an active runtime")
-	}
-	root, err := cliops.CanonicalRoot(root)
-	if err != nil {
-		return "", fmt.Errorf("transcript: runtime root: %w", err)
-	}
-	if rootExplicit {
-		if strings.TrimSpace(rawRoot) == "" {
-			return "", errors.New("transcript: explicit --root must name the runtime data root")
-		}
-		given, err := cliops.CanonicalRoot(rawRoot)
-		if err != nil {
-			return "", fmt.Errorf("transcript: explicit root: %w", err)
-		}
-		if given != root {
-			return "", errors.New("transcript: runtime data root mismatch")
-		}
-	}
-	return root, nil
 }
 
 func readTranscriptSearchInput(command cliops.TranscriptCommand, stdin io.Reader) (cliops.TranscriptSearch, error) {

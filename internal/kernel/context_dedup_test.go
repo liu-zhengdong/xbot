@@ -3,7 +3,6 @@ package kernel
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,10 +11,8 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
-	"xbot/internal/tools"
 )
 
 func TestTodoReceiptsAndRemindersOnlyCarryChanges(t *testing.T) {
@@ -78,106 +75,6 @@ func TestTodoReceiptsAndRemindersOnlyCarryChanges(t *testing.T) {
 		t.Fatalf("bad reminder delta: %s", diff)
 	}
 	t.Logf("todo receipts: initial=%d update=%d update2=%d bytes; reminder=%d bytes\n%s", len(results[0]), len(results[1]), len(results[2]), len(reminder), results[1])
-}
-
-func TestForkCompletionCarriesPointerIntoMainRequest(t *testing.T) {
-	for _, body := range []string{"SHORT_FORK_CONCLUSION", strings.Repeat("结论细节。", 90) + "FINAL_FACT_42"} {
-		t.Run(fmt.Sprint(len(body)), func(t *testing.T) {
-			b := testBot(t, link.NameTools)
-			if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("task")}}); err != nil {
-				t.Fatal(err)
-			}
-			id := "bg_dedup"
-			if _, err := b.AppendFork(id, 1, "task"); err != nil {
-				t.Fatal(err)
-			}
-			msg := provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent(body)}
-			if err := b.Append(bot.Entry{Branch: id, Message: msg}); err != nil {
-				t.Fatal(err)
-			}
-			box, err := inbox.Open(b.InboxPath())
-			if err != nil {
-				t.Fatal(err)
-			}
-			k := &Kernel{Bot: b, Inbox: box, Permissive: true, WorkDir: t.TempDir(), MaxSteps: 2}
-			k.finishBackground(&turn{branch: id, task: "task", replies: 3}, []provider.Message{msg}, nil)
-			pending := box.Pending()
-			if len(pending) != 1 {
-				t.Fatalf("events=%d", len(pending))
-			}
-			path := filepath.Join(b.AgentDir(id), "result.txt")
-			if strings.Contains(pending[0].Content, body) || !strings.Contains(pending[0].Content, "done，3 步") || !strings.Contains(pending[0].Content, path) {
-				t.Fatalf("duplicate conclusion: %s", pending[0].Content)
-			}
-			read := reviewedTool{Tool: &tools.ReadFile{Root: k.WorkDir}, k: k}
-			args, _ := json.Marshal(map[string]any{"path": path})
-			out, err := read.Run(context.Background(), args)
-			if err != nil || !strings.Contains(out, body) {
-				t.Fatalf("unreadable conclusion: %s %v", out, err)
-			}
-			p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("收到结果指针")}}}
-			k.Provider = p
-			if err := k.Handle(context.Background(), pending[0]); err != nil {
-				t.Fatal(err)
-			}
-			text := messagesText(p.reqs[0].Messages)
-			if strings.Count(text, body) != 1 || !strings.Contains(text, path) {
-				t.Fatalf("main request should retain the branch conclusion once, with a completion pointer: copies=%d", strings.Count(text, body))
-			}
-			t.Logf("fork body=%d completion=%d bytes\n%s", len(body), len(pending[0].Content), pending[0].Content)
-		})
-	}
-}
-
-func TestForkResultWriteFailureKeepsDiagnostics(t *testing.T) {
-	b := testBot(t)
-	id := "bg_save_failure"
-	if err := os.MkdirAll(filepath.Join(b.AgentDir(id), "result.txt"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	box, err := inbox.Open(b.InboxPath())
-	if err != nil {
-		t.Fatal(err)
-	}
-	k := &Kernel{Bot: b, Inbox: box}
-	task := &turn{branch: id, replies: 2, stopReason: "background_budget", ctrl: []*Control{{Kind: "steer", State: "pending", Text: "UNREAD_CONTROL"}}}
-	k.finishBackground(task, []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("SHORT_RESULT")}}, errors.New("ORIGINAL_ERROR"))
-	pending := box.Pending()
-	if len(pending) != 1 {
-		t.Fatalf("events=%d", len(pending))
-	}
-	for _, want := range []string{"failed，2 步", "保存后台结果失败", "ORIGINAL_ERROR", "background_budget", "UNREAD_CONTROL"} {
-		if !strings.Contains(pending[0].Content, want) {
-			t.Fatalf("lost diagnostic %s: %s", want, pending[0].Content)
-		}
-	}
-	if strings.Contains(pending[0].Content, "SHORT_RESULT") {
-		t.Fatal("failed save duplicated conclusion")
-	}
-}
-
-func TestForkCompletionBoundsUnreadControls(t *testing.T) {
-	b := testBot(t)
-	box, err := inbox.Open(b.InboxPath())
-	if err != nil {
-		t.Fatal(err)
-	}
-	id := "bg_long_control"
-	control := strings.Repeat("UNREAD_CONTROL_DETAIL\n", 1000) + "CONTROL_END_42"
-	task := &turn{branch: id, replies: 3, ctrl: []*Control{{Kind: "steer", State: "pending", Text: control}}}
-	k := &Kernel{Bot: b, Inbox: box}
-	k.finishBackground(task, []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("SHORT_FINAL_RESULT")}}, nil)
-	pending := box.Pending()
-	path := filepath.Join(b.AgentDir(id), "result.txt")
-	if len(pending) != 1 || len(pending[0].Content) > 4096 || strings.Contains(pending[0].Content, "SHORT_FINAL_RESULT") || strings.Contains(pending[0].Content, control) || !strings.Contains(pending[0].Content, path) {
-		t.Fatalf("unbounded completion: %+v", pending)
-	}
-	if raw, err := os.ReadFile(path); err != nil || !strings.Contains(string(raw), control) || !strings.Contains(string(raw), "SHORT_FINAL_RESULT") {
-		t.Fatalf("lost control or conclusion: %v", err)
-	}
-	if task.ctrl[0].State != "dropped" {
-		t.Fatal("unread control was not marked dropped")
-	}
 }
 
 func TestCreateBotPersonaOccursOnlyInArgumentsAndOwnPrefix(t *testing.T) {

@@ -66,7 +66,7 @@ window.fetch=async(path,opts={})=>{
  if(String(path).endsWith('/voice')){voiceRequests.push({kind:'upload',body:opts.body,path});return json({audio:voiceID})}
  if(String(path).endsWith('/messages')){
   const body=JSON.parse(opts.body);voiceRequests.push({kind:'message',body,path});
-  fixture.messages[bots[0].name].push({...message('user',body.text),audios:body.audios});
+  fixture.messages[bots[0].name].push({...message('user',body.text),audios:body.audios,event_id:body.client_id});
   return json({status:'queued'});
  }
  return voiceFetch(path,opts);

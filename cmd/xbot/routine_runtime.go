@@ -75,29 +75,9 @@ func runRoutineRuntime(ctx context.Context, rawRoot string, rootExplicit bool, a
 		_, err := fmt.Fprint(out, routineUsage)
 		return err
 	}
-	root := os.Getenv("XBOT_ROOT")
-	if strings.TrimSpace(root) == "" {
-		return errors.New("routine: --self requires XBOT_ROOT from an active runtime")
-	}
-	root, err = cliops.CanonicalRoot(root)
+	root, endpoint, err := runtimeSource("routine", rawRoot, rootExplicit)
 	if err != nil {
-		return fmt.Errorf("routine: runtime root: %w", err)
-	}
-	if rootExplicit {
-		if strings.TrimSpace(rawRoot) == "" {
-			return errors.New("routine: explicit --root must name the runtime data root")
-		}
-		given, err := cliops.CanonicalRoot(rawRoot)
-		if err != nil {
-			return fmt.Errorf("routine: explicit root: %w", err)
-		}
-		if given != root {
-			return errors.New("routine: runtime data root mismatch")
-		}
-	}
-	endpoint := os.Getenv("XBOT_ENDPOINT")
-	if endpoint == "" {
-		return errors.New("routine: --self requires an active local XBot endpoint")
+		return err
 	}
 	var result any
 	var text bytes.Buffer

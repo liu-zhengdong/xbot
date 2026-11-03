@@ -508,50 +508,6 @@ func forcePushArgs(args []string) bool {
 	return false
 }
 
-// ResourceOf names what a call writes, for the background conflict queue: a file
-// path for file edits, the working directory for shell and coding tasks. ok is
-// false for calls that write nothing a background could be touching. Two calls
-// conflict when they name the same resource.
-func ResourceOf(name string, args json.RawMessage, workdir string) (string, bool) {
-	var in struct {
-		Path    string `json:"path"`
-		Cwd     string `json:"cwd"`
-		Workdir string `json:"workdir"`
-		Repo    string `json:"repo"`
-	}
-	_ = json.Unmarshal(args, &in)
-	switch name {
-	case "write_file", "edit_file", "delete_file", "remove_file":
-		if in.Path == "" {
-			return "", false
-		}
-		p := in.Path
-		if !filepath.IsAbs(p) && workdir != "" {
-			p = filepath.Join(workdir, p)
-		}
-		return "file:" + filepath.Clean(p), true
-	case "shell", "bash", "sh", "zsh", "powershell", "cmd", "git-bash":
-		if ShellToolIsReadOnly(name, args) {
-			return "", false
-		}
-		dir := in.Cwd
-		if dir == "" {
-			dir = workdir
-		}
-		return "dir:" + filepath.Clean(dir), true
-	case "code_start":
-		if in.Repo != "" {
-			return "repo:" + in.Repo, true
-		}
-		dir := in.Workdir
-		if dir == "" {
-			dir = workdir
-		}
-		return "dir:" + filepath.Clean(dir), true
-	}
-	return "", false
-}
-
 var readOnlyShell = map[string]bool{
 	"ls": true, "cat": true, "pwd": true, "head": true, "tail": true, "grep": true, "rg": true,
 	"wc": true, "date": true, "echo": true, "stat": true, "du": true, "df": true, "which": true, "file": true,

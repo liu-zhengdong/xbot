@@ -247,7 +247,7 @@ func TestMemoryRecallRuntimeTransportBudgetsPartialFactsAndNoRetry(t *testing.T)
 		return MemoryRecallReply{File: "/current/results/recall.json", Access: "local", Bytes: 36712}, errors.New(strings.Repeat("\x00", 12<<10))
 	})
 	var got MemoryRecallReply
-	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || got.File != reply.File || got.Access != reply.Access || got.Bytes != reply.Bytes || got.Error == "" || w.Code != 400 || w.Body.Len() > memoryRecallOutputBudget || len(FormatMemoryRecall(got)) > memoryRecallOutputBudget {
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || got.File != reply.File || got.Access != reply.Access || got.Bytes != reply.Bytes || got.Error == "" || w.Code != 400 || w.Body.Len() > TextOutputBudget || len(FormatTextResult(got)) > TextOutputBudget {
 		t.Fatalf("bounded error lost metadata=%+v bytes=%d err=%v", got, w.Body.Len(), err)
 	}
 }

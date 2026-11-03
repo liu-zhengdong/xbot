@@ -14,7 +14,6 @@ import (
 	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
-	"xbot/internal/notable"
 	"xbot/internal/provider"
 )
 
@@ -100,39 +99,6 @@ func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestForkLongReportKeepsNotableDigest(t *testing.T) {
-	b := testBot(t)
-	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("start")}}); err != nil {
-		t.Fatal(err)
-	}
-	id := "bg_notable_result"
-	if _, err := b.AppendFork(id, 1, "long report"); err != nil {
-		t.Fatal(err)
-	}
-	box, err := inbox.Open(b.InboxPath())
-	if err != nil {
-		t.Fatal(err)
-	}
-	turn := &turn{branch: id, task: "long report", started: time.Now()}
-	ctx := notable.With(context.Background(), "/work", &turn.notable)
-	notable.Wrote(ctx, "/outside/notable-file.txt")
-	want := notable.Line(turn.notable.Items())
-	k := &Kernel{Bot: b, Inbox: box}
-	k.finishBackground(turn, []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent(strings.Repeat("long fact ", 1000) + "FULL_RESULT_TAIL_98")}}, nil)
-	pending := box.Pending()
-	if len(pending) != 1 {
-		t.Fatalf("reports=%d", len(pending))
-	}
-	report := pending[0].Content
-	if len(report) > 4096 || !strings.HasSuffix(report, want) || !strings.Contains(report, filepath.Join(b.AgentDir(id), "result.txt")) {
-		t.Fatalf("lost digest or path: %s", report)
-	}
-	full, err := os.ReadFile(filepath.Join(b.AgentDir(id), "result.txt"))
-	if err != nil || !strings.Contains(string(full), want) || !strings.Contains(string(full), "FULL_RESULT_TAIL_98") {
-		t.Fatalf("full result lost: %v", err)
 	}
 }
 

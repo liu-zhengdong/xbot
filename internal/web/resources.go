@@ -21,9 +21,7 @@ type kernelEntry struct {
 func (s *Server) entryLocked(b *bot.Bot) (*kernelEntry, error) {
 	if s.kernels == nil {
 		s.kernels = map[string]*kernelEntry{}
-		if !s.ForkTurns {
-			kernel.SetWaker(s.Root, s.wakeBot)
-		}
+		kernel.SetWaker(s.Root, s.wakeBot)
 	}
 	entry := s.kernels[b.Name()]
 	if entry == nil {
@@ -158,7 +156,6 @@ func (s *Server) renameResourcesLocked(name string, change bot.ProfileChange, en
 			entry.Kernel = nil
 		}
 	}
-	s.releaseNameHoldLocked(name)
 	return result, retire, err
 }
 
@@ -239,13 +236,6 @@ func webProfileSnapshot(b *bot.Bot, result bot.ProfileChangeResult) cliops.Profi
 	return cliops.Profile{Name: b.Name(), Description: bot.RedactText(description), Timezone: timezone, Avatar: avatar, AvatarSeed: bot.RedactText(seed), Scope: "runtime", Applied: result.Moved || len(result.AppliedFields) != 0, PreviousName: result.PreviousName, AppliedFields: result.AppliedFields, Moved: result.Moved}
 }
 
-func (s *Server) releaseNameHoldLocked(name string) {
-	if h := s.holds[name]; h != nil {
-		delete(s.holds, name)
-		_ = h.lock.Release()
-	}
-}
-
 // DeleteRuntimeBot keeps all global/resource locks free during cancellation and
 // the true owned-call join. Original completions and MCP notes can still arrive.
 func (s *Server) DeleteRuntimeBot(ctx context.Context, name string) (removed bool, err error) {
@@ -262,12 +252,10 @@ func (s *Server) DeleteRuntimeBot(ctx context.Context, name string) (removed boo
 				cached = entry.Kernel
 			}
 			delete(s.kernels, name)
-			s.releaseNameHoldLocked(name)
 		}
 		s.mu.Unlock()
 		if cached != nil {
 			cached.CloseOperations()
-			cached.CancelBackgrounds()
 		}
 		return removed, err
 	}
@@ -292,14 +280,12 @@ func (s *Server) DeleteRuntimeBot(ctx context.Context, name string) (removed boo
 	cached := entry.Kernel
 	if removed {
 		delete(s.kernels, name)
-		s.releaseNameHoldLocked(name)
 	}
 	s.mu.Unlock()
 	if removed {
 		resources.Close()
 		if cached != nil {
 			cached.CloseOperations()
-			cached.CancelBackgrounds()
 		}
 	} else {
 		err = errors.Join(err, resources.ResumeAdmission())

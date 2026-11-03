@@ -3,17 +3,9 @@
 //
 // # Lock order
 //
-// A Kernel lives for the whole serve process and is shared by the foreground
-// turn, background branches, the exec forwarder and MCP emitters. Most of its
-// locks guard one domain and are never held together. The background queue
-// functions that hold two locks take them in the same direction:
-//
-//	bgMu -> turn.mu          Queue, cancelQueued (bgturn.go)
-//
-// No function anywhere in this package takes turn.mu and then bgMu. Keep it
-// that way: a background finishing while the owner sends a message is the
-// normal case, so the reverse order would deadlock a live bot rather than a
-// test.
+// Kernels may be replaced between serve passes. BotResources owns shared Jobs
+// and MCP sessions. Turn state, real subagents and operation leases keep their
+// original owners. Most locks guard one domain and are never held together.
 //
 // Environment sampling may also take approvals.mu or promptEnv.mu under envMu;
 // neither projection takes envMu. Every other lock is taken and released before
@@ -25,9 +17,7 @@
 //	envMu       environment publication and input append (may sample approvals)
 //	approvals.mu live card projection; never acquires envMu
 //	turnMu      the foreground turn pointer (Kernel.turn)
-//	bgMu        the background map (Kernel.bgs, finished)
 //	turn.mu     one turn's own state (branch, steps, tools, todo flags)
-//	forkMu      the fork decision against absorbing the inbox
 //	memWriteMu  a memory write against its own before/after read
 //	todo.mu     the task list
 //	files.mu    read state for the freshness check
@@ -38,7 +28,7 @@
 //	compactMu   the auto-compaction job
 //	denyMu      tool calls the owner refused this turn
 //
-// The *Once fields (startOnce, recoverOnce, execOnce, shellOnce, promptOnce) never nest:
+// The *Once fields (startOnce, recoverOnce, legacyForkOnce, execOnce, shellOnce, promptOnce) never nest:
 // each body runs once and may take other locks freely, because nothing holds a
 // lock across the call that starts them, except promptOnce: registration may
 // run under envMu and only takes promptEnv.mu.
@@ -138,20 +128,8 @@ type Kernel struct {
 	// every other tool (ADR 0028).
 	Dispatch bool
 
-	// AllowFork moves a running turn to the background when the owner sends a
-	// message mid-turn, so the next Handle can answer at once. See docs/atlas/fork.md.
-	// ForkCap (default 3) caps concurrent backgrounds; ForkAfter (default 3s) is the
-	// age a turn without any tool call must reach before it forks.
-	AllowFork bool
-	// BackgroundApprove asks the owner for a background turn's confirmation without
-	// the request that started it, for example as a card in the transcript.
+	// BackgroundApprove asks the owner for a real subagent's confirmation.
 	BackgroundApprove agent.Approver
-	ForkCap           int
-	ForkAfter         time.Duration
-	// BackgroundMaxTime caps how long one background task may keep working. It
-	// comes from the bot's role; a negative value turns it off. The background
-	// turn's own context carries the deadline (see backgroundBudget).
-	BackgroundMaxTime time.Duration
 
 	approvals  approvalState
 	envMu      sync.Mutex // serializes environment comparison and publication
@@ -161,23 +139,21 @@ type Kernel struct {
 	operations operationState
 
 	// memWriteMu serializes own memory writes with their before/after reads.
-	memWriteMu  sync.Mutex
-	bgMu        sync.Mutex
-	bgs         map[string]*turn
-	finished    []BackgroundInfo
-	startOnce   sync.Once
-	recoverOnce sync.Once
-	recoverErr  error
-	execOnce    sync.Once
-	execMu      sync.RWMutex
-	loadMu      sync.Mutex
-	loaded      map[string]bool
-	linksMu     sync.Mutex
-	secretMu    sync.Mutex
-	secrets     map[string]map[string]string
-	compactMu   sync.Mutex
-	compactBusy bool
-	turn        *turn
+	memWriteMu     sync.Mutex
+	startOnce      sync.Once
+	legacyForkOnce sync.Once
+	recoverOnce    sync.Once
+	recoverErr     error
+	execOnce       sync.Once
+	execMu         sync.RWMutex
+	loadMu         sync.Mutex
+	loaded         map[string]bool
+	linksMu        sync.Mutex
+	secretMu       sync.Mutex
+	secrets        map[string]map[string]string
+	compactMu      sync.Mutex
+	compactBusy    bool
+	turn           *turn
 	// channel is the reminder sidecar for this kernel. Lazy, so tests that
 	// never remind pay only the first touch.
 	channel *Channel
@@ -215,7 +191,8 @@ type Kernel struct {
 	// tokens is model-reported usage for this kernel's lifetime.
 	tokens tokenState
 	// context keeps the recent requests of this wake for the web inspector.
-	// Memory only; see noteContext.
+	// Live state is memory only; persistContextSnap keeps one cached copy on
+	// disk for after a restart. See noteContext.
 	context contextRing
 }
 
@@ -254,8 +231,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	if err != nil {
 		return err
 	}
-	// Once per kernel lifetime, before repairTail: a branch left open by a crash
-	// gets its fork_end so the dangling call on it can be repaired on that branch.
+	// Real task owners recover independently of legacy transcript repair.
 	if err := k.RecoverTasks(); err != nil {
 		return err
 	}
@@ -270,13 +246,11 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	}
 	t.fromSeq = seq
 	defer func() {
-		if handleErr != nil && !errors.Is(handleErr, context.Canceled) && !k.AllowFork {
+		if handleErr != nil && !errors.Is(handleErr, context.Canceled) {
 			handleErr = errors.Join(handleErr, k.replyToFailedInputs(t))
 		}
 	}()
 	t.started = k.now()
-	t.task = clipRunes(strings.TrimSpace(ev.Content), forkTaskRunes)
-	t.forked = make(chan struct{})
 	imageGen := k.resolveImageGen(ctx)
 	t.imageGen = &imageGen
 	k.turnMu.Lock()
@@ -297,19 +271,17 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 			t.finishSink(Outcome{Err: errors.New("这一轮出错，插话原文已保留")})
 		}
 	}()
-	// A forked turn still belongs to its background goroutine. All other
-	// returns, including setup/repair errors, end this foreground turn.
 	defer func() {
 		t.mu.Lock()
-		if t.branch == "" {
-			t.finished = true
-		}
+		t.finished = true
 		t.mu.Unlock()
 	}()
 	k.clearDenials()
 	k.clearLoaded()
 	// A new wake sends a new context; the panel shows this wake, not the last.
+	// The last wake's final state is kept for the inspector after a restart.
 	k.resetContext()
+	k.persistContextSnap()
 	// Swap a finished background summary on the way in and on the way out.
 	// Both run outside the model call, including when this event is a replay.
 	defer func() {
@@ -319,6 +291,8 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 		}
 		_, _, _ = k.applyReadyJob(migrate(cur))
 	}()
+	// Callers hold the handle lock; legacy repair must not run during openKernel.
+	k.RecoverInterrupted()
 	if err := k.repairTail(); err != nil {
 		return err
 	}
@@ -453,10 +427,6 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	if err != nil {
 		return err
 	}
-	onDelta := k.OnDelta
-	if ev.Source == link.NameTimer {
-		onDelta = nil
-	}
 	var approve agent.Approver
 	if k.Approve != nil {
 		approve = k.trackApprove(k.Approve)
@@ -469,78 +439,29 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 			return inner(ctx, tool, summary)
 		}
 	}
-	if k.AllowFork && (approve != nil || k.BackgroundApprove != nil) {
-		inner := approve
-		approve = func(ctx context.Context, tool, summary string) (bool, error) {
-			if t.isForked() {
-				// The request that could show a card is gone; a background's card goes
-				// to the owner through BackgroundApprove, or the call is declined.
-				if k.BackgroundApprove == nil {
-					return false, nil
-				}
-				return k.trackApprove(k.BackgroundApprove)(ctx, tool, summary)
-			}
-			if inner == nil {
-				return false, nil
-			}
-			return inner(ctx, tool, summary)
-		}
-	}
-	if !k.AllowFork {
-		// Even with nobody to ask, an owner's grant from a parked card lets
-		// that one call run.
-		approve = k.parkable(t, approve)
-	}
-	t.fromSeq = seq
-	// A turn that may fork runs on a context the caller's cancel reaches only until
-	// it forks; a background outlives the request that started it.
+	// Parked owner grants also work when no live approver is attached.
+	approve = k.parkable(t, approve)
 	runCtx, cancelRun := context.WithCancel(ctx)
-	stopWatch := func() bool { return false }
-	if k.AllowFork {
-		runCtx, cancelRun = context.WithCancel(context.WithoutCancel(ctx))
-		stopWatch = context.AfterFunc(ctx, cancelRun)
-	}
+	defer cancelRun()
 	runCtx = context.WithValue(runCtx, turnKey{}, t)
 	t.runCtx = k.withImageGen(runCtx)
-	t.cancelRun = cancelRun
 	r := &turnRun{
 		k:         k,
 		t:         t,
 		p:         p,
 		list:      list,
 		assembled: assembled,
-		onDelta:   onDelta,
 		br:        newBreaker(),
 	}
-	opts := r.options(approve)
-	done := make(chan turnResult, 1)
-	go r.drive(opts, done)
-	var tick <-chan time.Time
-	if k.AllowFork {
-		ticker := time.NewTicker(forkPoll)
-		defer ticker.Stop()
-		tick = ticker.C
+	res := r.drive(r.options(approve))
+	k.persistContextSnap()
+	if r.err != nil {
+		return r.err
 	}
-	for {
-		select {
-		case res := <-done:
-			stopWatch()
-			cancelRun()
-			if r.err != nil {
-				return r.err
-			}
-			if pushErr := k.pushFindings(ctx, res.produced); pushErr != nil {
-				return pushErr
-			}
-			return res.err
-		case <-t.forked:
-			// The turn goes on in the background; the caller may answer the owner now.
-			stopWatch()
-			return nil
-		case <-tick:
-			k.tryFork(t)
-		}
+	if err := k.pushFindings(ctx, res.produced); err != nil {
+		return err
 	}
+	return res.err
 }
 
 // absorbInbox appends inbox events that arrived during this turn, oldest first.
@@ -720,8 +641,8 @@ func (k *Kernel) modelOverlay() (string, string, error) {
 }
 
 func (k *Kernel) repairTail() error {
-	// A call on a background still running here is in flight, not lost.
-	return k.closeDangling(k.danglingReason(), true)
+	// Historical branch calls retain their original pairing.
+	return k.closeDangling(k.danglingReason())
 }
 
 func (k *Kernel) newestReminderSeq(blocks []bot.SummaryBlock) (int, error) {

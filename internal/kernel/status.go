@@ -244,7 +244,6 @@ func (k *Kernel) Status() BotStatus {
 		}
 	}
 	t.mu.Unlock()
-	st.Backgrounds = len(k.Backgrounds())
 	if active, ok := k.execSnapshot().(interface{ ActiveCount() int }); ok {
 		st.Agents = active.ActiveCount()
 	}
@@ -252,7 +251,6 @@ func (k *Kernel) Status() BotStatus {
 	if use, ok := k.tokenSnap(); ok {
 		st.Tokens = &use
 	}
-	bgs := st.Backgrounds
 	st.Tool = tool
 	switch {
 	case awaiting:
@@ -261,7 +259,7 @@ func (k *Kernel) Status() BotStatus {
 			awaitingSince = now
 		}
 		st.Since = statusStamp(awaitingSince)
-	case active || bgs > 0 || st.Agents > 0:
+	case active || st.Agents > 0:
 		st.State = StateRunning
 		when := started
 		if !toolStart.IsZero() && toolStart.After(when) {
@@ -321,7 +319,6 @@ func (k *Kernel) beginStepDisplay(t *turn, id, name, summary, description string
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.tools++
-	t.lastTool = name
 	t.lastToolStart = k.now()
 	// Steps keep the confirmation summary; status uses only the description.
 	first, _, _ := strings.Cut(redact(summary), "\n")

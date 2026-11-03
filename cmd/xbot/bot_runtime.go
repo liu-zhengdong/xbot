@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"xbot/internal/cliops"
@@ -71,29 +70,9 @@ func runBotRuntime(ctx context.Context, rawRoot string, rootExplicit bool, args 
 	if command.Offline {
 		return errors.New("bot: expected a runtime command with --self")
 	}
-	root := os.Getenv("XBOT_ROOT")
-	if strings.TrimSpace(root) == "" {
-		return errors.New("bot: --self requires XBOT_ROOT from an active runtime")
-	}
-	root, err = cliops.CanonicalRoot(root)
+	root, endpoint, err := runtimeSource("bot", rawRoot, rootExplicit)
 	if err != nil {
-		return fmt.Errorf("bot: runtime root: %w", err)
-	}
-	if rootExplicit {
-		if strings.TrimSpace(rawRoot) == "" {
-			return errors.New("bot: explicit --root must name the runtime data root")
-		}
-		given, err := cliops.CanonicalRoot(rawRoot)
-		if err != nil {
-			return fmt.Errorf("bot: explicit root: %w", err)
-		}
-		if given != root {
-			return errors.New("bot: runtime data root mismatch")
-		}
-	}
-	endpoint := os.Getenv("XBOT_ENDPOINT")
-	if endpoint == "" {
-		return errors.New("bot: --self requires an active local XBot endpoint")
+		return err
 	}
 	var result any
 	var text string

@@ -202,7 +202,6 @@ func TestHostedSearchScopedTools(t *testing.T) {
 func TestHostedSearchToolFreeSummary(t *testing.T) {
 	b := testBot(t, link.NameTools)
 	k := &Kernel{Bot: b, Provider: &provider.Responses{WebSearch: true}}
-	k.AllowFork = true
 	r := &turnRun{k: k, p: k.Provider}
 	req, err := r.requestContext(provider.Request{})
 	if err != nil || req.HostedSearch {
@@ -230,7 +229,7 @@ func TestBindingIdleRejectsRunningToolJob(t *testing.T) {
 
 func TestBindingToolsBudgetBeforeFirstFitWithoutHostedSearch(t *testing.T) {
 	b := testBot(t)
-	k := &Kernel{Bot: b, AllowFork: true, Provider: &provider.Client{}}
+	k := &Kernel{Bot: b, Provider: &provider.Client{}}
 	r := &turnRun{k: k, p: k.Provider}
 	_, err := r.requestContext(provider.Request{Tools: []provider.ToolDef{{Name: "fake", Description: "definition must be reserved before fit"}}})
 	if err != nil {

@@ -48,8 +48,8 @@ func memoryRecallWrite(t *testing.T, root, group, id, rel, body string) string {
 func memoryRecallReceipt(t *testing.T, reply cliops.MemoryRecallReply) {
 	t.Helper()
 	raw, err := json.Marshal(reply)
-	if err != nil || len(raw)+1 > tools.DefaultShellOutputBytes || len(cliops.FormatMemoryRecall(reply)) > tools.DefaultShellOutputBytes {
-		t.Errorf("actual JSONNL/human budgets json=%d human=%d err=%v", len(raw)+1, len(cliops.FormatMemoryRecall(reply)), err)
+	if err != nil || len(raw)+1 > tools.DefaultShellOutputBytes || len(cliops.FormatTextResult(reply)) > tools.DefaultShellOutputBytes {
+		t.Errorf("actual JSONNL/human budgets json=%d human=%d err=%v", len(raw)+1, len(cliops.FormatTextResult(reply)), err)
 	}
 }
 

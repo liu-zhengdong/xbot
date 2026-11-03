@@ -34,11 +34,6 @@ func TestBotDeleteRuntimeRemovedFact(t *testing.T) {
 						deleteRuntime = resources.DeleteRuntime
 					}
 				}
-				if mode != "direct" {
-					if _, ok, err := f.s.acquireHandle(f.target); err != nil || !ok {
-						t.Fatalf("acquire host hold: ok=%v err=%v", ok, err)
-					}
-				}
 				key := filepath.Join(filepath.Dir(vault.GlobalKeyPath(f.s.Root)), "target.key")
 				if keyFailure {
 					// With no legacy ciphertext, this directory is ignored by migration
@@ -63,8 +58,8 @@ func TestBotDeleteRuntimeRemovedFact(t *testing.T) {
 				if _, err := os.Stat(bot.Dir(f.s.Root, "target")); !os.IsNotExist(err) {
 					t.Fatalf("removed fact disagrees with directory: %v", err)
 				}
-				if mode != "direct" && (f.s.kernels["target"] != nil || f.s.holds["target"] != nil) {
-					t.Fatal("removed target retained its host entry or hold")
+				if mode != "direct" && f.s.kernels["target"] != nil {
+					t.Fatal("removed target retained its host entry")
 				}
 				if resources != nil {
 					if resources.Jobs.AdmissionOpen() || resources.ResumeAdmission() == nil {

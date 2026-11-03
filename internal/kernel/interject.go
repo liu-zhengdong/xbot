@@ -74,21 +74,19 @@ type interjectState struct {
 }
 
 // openInterject routes t's output to first and registers t for its bot. A
-// kernel that forks turns does not register: interjections fork as before.
+// turn keeps its original execution identity.
 func (k *Kernel) openInterject(t *turn, first *Sink) {
 	t.inter.mu.Lock()
 	t.inter.open = true
 	t.inter.sink = first
 	t.inter.first = first
-	if !k.AllowFork {
-		key := botKey(k.Bot)
-		if k.Resources != nil {
-			key = bot.Dir(k.Bot.Root, k.Resources.Name())
-		}
-		value := &liveTurn{k: k, t: t}
-		t.inter.registrationKey, t.inter.registration = key, value
-		liveTurns.Store(key, value)
+	key := botKey(k.Bot)
+	if k.Resources != nil {
+		key = bot.Dir(k.Bot.Root, k.Resources.Name())
 	}
+	value := &liveTurn{k: k, t: t}
+	t.inter.registrationKey, t.inter.registration = key, value
+	liveTurns.Store(key, value)
 	t.inter.mu.Unlock()
 }
 

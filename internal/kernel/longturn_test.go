@@ -7,10 +7,17 @@ import (
 	"testing"
 	"time"
 
+	"xbot/internal/inbox"
 	"xbot/internal/link"
+	"xbot/internal/memory"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 )
+
+type oneToolLink struct{ tool tools.Tool }
+
+func (oneToolLink) Name() string          { return "fixture" }
+func (l oneToolLink) Tools() []tools.Tool { return []tools.Tool{l.tool} }
 
 // blockTool blocks until released.
 type blockTool struct{ release chan struct{} }
@@ -38,11 +45,20 @@ func callBlock(id string) provider.Message {
 
 func capKernel(t *testing.T, resps ...provider.Message) (*Kernel, *blockTool) {
 	t.Helper()
-	k, _, _ := forkKernel(t)
+	b := testBot(t, link.NameTerminal)
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	box, err := inbox.Open(b.InboxPath())
+	if err != nil {
+		t.Fatal(err)
+	}
 	bt := &blockTool{release: make(chan struct{})}
-	k.Links = []link.Link{link.Terminal{}, oneToolLink{tools.Tool(bt)}}
-	k.Provider = &scripted{resps: resps}
-	k.MaxSteps = 10
+	k := &Kernel{
+		Bot: b, Provider: &scripted{resps: resps}, Inbox: box,
+		Memory: memory.NopStore{}, MaxSteps: 10,
+		Links: []link.Link{link.Terminal{}, oneToolLink{tools.Tool(bt)}},
+	}
 	return k, bt
 }
 
@@ -55,17 +71,24 @@ func TestLongTurnStaysOnMainLine(t *testing.T) {
 	var streamed strings.Builder
 	k.OnDelta = func(s string) { streamed.WriteString(s) }
 	ev := link.TerminalEvent("u1", "做六步", time.Unix(10, 0).UTC())
-	_ = k.Inbox.Post(ev)
+	if err := k.Inbox.Post(ev); err != nil {
+		t.Fatal(err)
+	}
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(streamed.String(), "已转到后台") {
 		t.Fatalf("streamed %q", streamed.String())
 	}
-	if n := len(k.Backgrounds()) + len(k.FinishedBackgrounds()); n != 0 {
-		t.Fatalf("backgrounds %d", n)
+	entries, err := k.Bot.Entries()
+	if err != nil {
+		t.Fatal(err)
 	}
-	entries, _ := k.Bot.Entries()
+	for _, entry := range entries {
+		if entry.Branch != "" || entry.IsForkMark() {
+			t.Fatalf("main-line turn created a fork record: %+v", entry)
+		}
+	}
 	if last := entries[len(entries)-1]; last.Branch != "" || last.Message.Text() != "全部做完" {
 		t.Fatalf("last %+v", last)
 	}

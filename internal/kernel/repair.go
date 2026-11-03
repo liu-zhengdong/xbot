@@ -34,11 +34,6 @@ func unresolvedTail(entries []bot.Entry) ([]provider.ToolCall, error) {
 // its tombstone; the existing provider adapter pairs results without rewriting
 // the transcript. A later assistant on that branch still indicates corruption.
 func unresolvedCalls(span []bot.Entry, first int) ([]provider.ToolCall, map[string]string, error) {
-	return unresolvedCallsExcept(span, first, nil)
-}
-
-// unresolvedCallsExcept leaves live branches to their executing turns.
-func unresolvedCallsExcept(span []bot.Entry, first int, live map[string]bool) ([]provider.ToolCall, map[string]string, error) {
 	missing := missingResults(Messages(span))
 	if len(missing) == 0 {
 		return nil, nil, nil
@@ -61,9 +56,6 @@ func unresolvedCallsExcept(span []bot.Entry, first int, live map[string]bool) ([
 	}
 	var dangling []provider.ToolCall
 	for _, tc := range missing {
-		if live[branches[tc.ID]] {
-			continue
-		}
 		dangling = append(dangling, tc)
 		i, ok := at[tc.ID]
 		if !ok {

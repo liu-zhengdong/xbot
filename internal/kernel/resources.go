@@ -19,20 +19,21 @@ import (
 // BotResources survives replaceable kernels; the process Manager owns MCP.
 // The route protects short filesystem operations across an actual directory move.
 type BotResources struct {
-	MCP         *mcp.BotRef
-	Jobs        *tools.Jobs
-	route       sync.RWMutex
-	current     *bot.Bot
-	box         *inbox.Inbox
-	closed      bool
-	ctx         context.Context
-	manager     *mcp.Manager
-	Rename      func(*Kernel, bot.ProfileChange) (bot.ProfileChangeResult, error)
-	Delete      func(context.Context, string) (bool, error)
-	Redact      func(string) string
-	now         func() time.Time
-	closeOnce   sync.Once
-	stopContext func() bool
+	MCP            *mcp.BotRef
+	Jobs           *tools.Jobs
+	route          sync.RWMutex
+	current        *bot.Bot
+	box            *inbox.Inbox
+	closed         bool
+	ctx            context.Context
+	manager        *mcp.Manager
+	Rename         func(*Kernel, bot.ProfileChange) (bot.ProfileChangeResult, error)
+	Delete         func(context.Context, string) (bool, error)
+	Redact         func(string) string
+	now            func() time.Time
+	legacyForkOnce sync.Once
+	closeOnce      sync.Once
+	stopContext    func() bool
 }
 
 func NewBotResources(ctx context.Context, b *bot.Bot, manager *mcp.Manager, now ...func() time.Time) (*BotResources, error) {

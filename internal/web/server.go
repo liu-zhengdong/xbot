@@ -56,10 +56,6 @@ type Server struct {
 	// the import list reads. Empty means the serving user's own home.
 	SkillHome string
 
-	// ForkTurns lets an owner message sent mid-turn move the running turn to the
-	// background and get its own answer at once. See docs/atlas/fork.md.
-	ForkTurns bool
-
 	// App marks the desktop app's serve. Its only way in is the launch code
 	// minted at start, so logging out would lock the owner out until a relaunch.
 	App bool
@@ -107,14 +103,12 @@ type Server struct {
 	// ApprovalWait is how long permission and question cards wait. Zero uses 30 minutes.
 	ApprovalWait time.Duration
 
-	// PollInterval is how often a held handle lock checks whether its
-	// backgrounds ended. Zero uses 200ms. Tests shorten it.
+	// PollInterval controls cross-process handle waiting. Zero uses 200ms.
 	PollInterval time.Duration
 
 	mu        sync.Mutex
 	kernels   map[string]*kernelEntry
 	completed map[string]completionCount
-	holds     map[string]*handleHold
 	approvals map[string]*pendingApproval
 	// expired retains completed cards for one window: manual decisions return
 	// 409 on repetition, automatic permission decisions return 410.
@@ -335,8 +329,6 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/cancel", s.cancel)
 	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/queue", func(w http.ResponseWriter, r *http.Request) { s.control(w, r, "queue") })
 	mux.HandleFunc("POST /api/bots/{name}/agents/{id}/interrupt", func(w http.ResponseWriter, r *http.Request) { s.control(w, r, "interrupt") })
-	mux.HandleFunc("GET /api/bots/{name}/backgrounds", s.backgrounds)
-	mux.HandleFunc("DELETE /api/bots/{name}/queue/{qid}", s.cancelQueued)
 
 	mux.HandleFunc("GET /api/notes", s.notes)
 	mux.HandleFunc("POST /api/notes/read", s.readNotes)
@@ -1158,13 +1150,18 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	s.enterTab(s.owner)
 	later(func() { s.leaveTab(s.owner) })
 	var in struct {
-		Text    string   `json:"text"`
-		ReplyTo *int     `json:"reply_to"`
-		Images  []string `json:"images"`
-		Audios  []string `json:"audios"`
+		Text     string   `json:"text"`
+		ReplyTo  *int     `json:"reply_to"`
+		Images   []string `json:"images"`
+		Audios   []string `json:"audios"`
+		ClientID string   `json:"client_id"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	if in.ClientID != "" && (len(in.ClientID) != 36 || !strings.HasPrefix(in.ClientID, "web_") || strings.Trim(in.ClientID[4:], "0123456789abcdef") != "") {
+		writeErr(w, http.StatusBadRequest, "bad client_id")
 		return
 	}
 	text := strings.TrimSpace(in.Text)
@@ -1200,13 +1197,13 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	ev.ReplyTo = replyTo
 	ev.Images = images
 	ev.Audios = audios
-	if !s.ForkTurns {
-		// The owner's word goes straight into a running turn (ADR 0017).
-		// Accepted messages get either a reply or an explicit failed outcome
-		// on the transcript, including messages whose stream already handed off.
-		if s.interject(w, r, b, ev) {
-			return
-		}
+	if in.ClientID != "" {
+		ev.ID = in.ClientID
+	}
+	// This identifies the request; only the persisted event confirms receipt.
+	w.Header().Set("X-Xbot-Event-ID", ev.ID)
+	if s.interject(w, r, b, ev) {
+		return
 	}
 	resources, err := s.ResourcesFor(b)
 	if err != nil {
@@ -1214,16 +1211,11 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var (
-		shared bool
 		ok     bool
 		lock   *fsutil.FileLock
 		waited *inbox.Inbox
 	)
-	if s.ForkTurns {
-		shared, ok, err = s.acquireHandle(b)
-	} else {
-		lock, ok, err = b.TryLockHandle()
-	}
+	lock, ok, err = b.TryLockHandle()
 	if err != nil {
 		streamErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1238,16 +1230,13 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 			streamErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		if s.ForkTurns {
-			writeJSON(w, http.StatusAccepted, map[string]string{"status": "queued"})
-			return
-		}
 		// The running turn is in another process (a terminal chat), out of
 		// reach of Interject. The message waits in the inbox, which that turn
 		// reads at its next step boundary. This request stays open: once the
 		// lock is free it reports that turn's answer, or answers the message
 		// itself when the turn ended before reading it.
 		startStream(w)
+		sendEvent(w, "queued", map[string]string{"event_id": ev.ID})
 		if lock = s.waitHandle(r.Context(), b); lock == nil {
 			// The page went away or serve is restarting: the message stays in
 			// the inbox and serve answers it.
@@ -1256,32 +1245,12 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		waited = box
 	}
 	k, gate, err := s.kernel(b)
-	if s.ForkTurns {
-		later(func() { s.releaseHandle(b, k) })
-	} else {
-		later(func() { _ = lock.Release() })
-	}
+	later(func() { _ = lock.Release() })
 	if err != nil {
 		streamErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	box := waited
-	if shared && len(k.Backgrounds()) >= k.ForkCapValue() && k.QueueFull() {
-		writeErr(w, http.StatusTooManyRequests, fmt.Sprintf("队列已满（%d 个），没有建任务", kernel.QueueCap))
-		return
-	}
-	if shared {
-		// A turn is running here. Post the message so that turn can fork, then answer
-		// it as the foreground once the gate is free.
-		err = withInboxIO(resources, b, nil, func(_ *bot.Bot, currentBox *inbox.Inbox) error {
-			box = currentBox
-			return currentBox.Post(ev)
-		})
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-	}
 	startStream(w)
 	send := func(event string, v any) { sendEvent(w, event, v) }
 	gate.Lock()
@@ -1291,8 +1260,8 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		later(func() {
 			_ = withInboxIO(resources, b, box, func(_ *bot.Bot, currentBox *inbox.Inbox) error { return currentBox.Ack(ev.ID) })
 		})
-		if absorbed, text, bg, failed := s.absorbedReply(b, resources, box, ev.ID, text); absorbed {
-			// The running turn took the message in before it could fork.
+		if absorbed, text, bg, failed := s.absorbedReply(b, resources, box, ev.ID); absorbed {
+			// The other process already consumed this exact event.
 			switch {
 			case bg != "":
 				send("done", doneBody{Background: bg})
@@ -1303,10 +1272,6 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-	}
-	before := map[string]bool{}
-	for _, bg := range k.Backgrounds() {
-		before[bg.ID] = true
 	}
 	rs := &replyStream{w: w}
 	sendLocked := rs.send
@@ -1358,13 +1323,6 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	if k.HandedOff() {
 		send("done", doneBody{HandedOff: true})
 		return
-	}
-	for _, bg := range k.Backgrounds() {
-		if !before[bg.ID] {
-			// This turn moved to the background; its result comes back as an event.
-			send("done", doneBody{Background: bg.ID})
-			return
-		}
 	}
 	send("done", doneBody{Text: rs.reply(), ReplyTo: k.ReplySeq()})
 }
@@ -1514,7 +1472,11 @@ func sendEvent(w http.ResponseWriter, event string, v any) {
 // waitHandle waits for the bot's handle lock. It returns nil when ctx ends or
 // the server starts draining for a restart.
 func (s *Server) waitHandle(ctx context.Context, b *bot.Bot) *fsutil.FileLock {
-	tick := time.NewTicker(s.holdPoll())
+	interval := s.PollInterval
+	if interval <= 0 {
+		interval = 200 * time.Millisecond
+	}
+	tick := time.NewTicker(interval)
 	defer tick.Stop()
 	for {
 		lock, ok, err := b.TryLockHandle()
@@ -1541,7 +1503,7 @@ func (s *Server) waitHandle(ctx context.Context, b *bot.Bot) *fsutil.FileLock {
 type doneBody struct {
 	Text    string `json:"text"`
 	ReplyTo int    `json:"reply_to,omitempty"`
-	// Background is the bg_ id when this request's turn moved to the background.
+	// Background identifies a legacy branch found after waiting for another process.
 	Background string `json:"background,omitempty"`
 	// HandedOff is set when a newer owner message took over this turn; the
 	// answer arrives on that message's request.
@@ -1580,7 +1542,7 @@ func (s *Server) control(w http.ResponseWriter, r *http.Request, kind string) {
 		return
 	}
 	id := r.PathValue("id")
-	if !strings.HasPrefix(id, "bg_") && kind != exec.KindInterrupt {
+	if kind != exec.KindInterrupt {
 		var task exec.Task
 		if kind == exec.KindCancel {
 			task, err = k.StopSubagent(r.Context(), id)
@@ -1681,9 +1643,8 @@ func (s *Server) kernel(b *bot.Bot) (*kernel.Kernel, *sync.Mutex, error) {
 			return nil, nil, err
 		}
 		k.ApprovalWait = s.approvalWait()
-		k.AllowFork = s.ForkTurns
 		k.Statuses = statusSource{s}
-		if s.ForkTurns || k.Dispatch {
+		if k.Dispatch {
 			k.BackgroundApprove = s.webApprove(b, k, func(string, any) {})
 		}
 		entry.Kernel = k
@@ -1727,53 +1688,6 @@ func (s *Server) writeCursor(name string, n int) error {
 		}
 		return fsutil.WriteAtomic(s.cursorPath(), raw, 0600)
 	})
-}
-
-// backgrounds lists running background turns, the controls sent to them with
-// pending or applied state, and the queue with each item's reason and position.
-func (s *Server) backgrounds(w http.ResponseWriter, r *http.Request) {
-	if !s.require(w, r) {
-		return
-	}
-	b, err := s.owned(r.PathValue("name"))
-	if err != nil {
-		writeMissing(w, err)
-		return
-	}
-	k, _, err := s.kernel(b)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"backgrounds": k.Backgrounds(),
-		"finished":    k.FinishedBackgrounds(),
-		"controls":    k.Controls(),
-		"queue":       k.Queue(),
-		"queue_cap":   kernel.QueueCap,
-	})
-}
-
-func (s *Server) cancelQueued(w http.ResponseWriter, r *http.Request) {
-	if !s.require(w, r) {
-		return
-	}
-	b, err := s.owned(r.PathValue("name"))
-	if err != nil {
-		writeMissing(w, err)
-		return
-	}
-	k, _, err := s.kernel(b)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	msg, err := k.ControlSubagent(r.Context(), "bg_", "cancel_queued", r.PathValue("qid"))
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": msg})
 }
 
 // wakeBot handles a bot's inbox now, for an owner decision posted outside any

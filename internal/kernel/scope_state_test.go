@@ -29,22 +29,21 @@ func TestBackgroundUsageKeepsForegroundCount(t *testing.T) {
 	}
 }
 
-// Each background branch and subagent has its own cwd entry; it is dropped
-// when that branch or subagent ends (#22).
+// Each subagent has its own cwd entry; it is dropped
+// when that subagent ends (#22).
 func TestEndedScopesDropTheirCwd(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
 	k := &Kernel{Bot: b, Now: func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }}
 	dir := t.TempDir()
-	for _, scope := range []string{"bg_1", "sa_1", "sa_2"} {
+	for _, scope := range []string{"sa_1", "sa_2"} {
 		k.noteScope(scope, dir)
 	}
-	k.finishBackground(&turn{branch: "bg_1", task: "t"}, nil, nil)
 	ch := make(chan exec.Event, 2)
 	ch <- exec.Event{AgentID: "sa_1", Kind: exec.EvDone}
 	ch <- exec.Event{AgentID: "sa_2", Kind: exec.EvProgress}
 	close(ch)
 	k.forwardExec(ch)
-	for scope, want := range map[string]string{"bg_1": "", "sa_1": "", "sa_2": dir} {
+	for scope, want := range map[string]string{"sa_1": "", "sa_2": dir} {
 		if got := k.readScope(scope); got != want {
 			t.Fatalf("scope %s: %q, want %q", scope, got, want)
 		}

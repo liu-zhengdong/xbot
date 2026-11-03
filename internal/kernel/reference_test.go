@@ -368,59 +368,6 @@ func TestReferenceReminderOverflowRetry(t *testing.T) {
 	}
 }
 
-func TestReferenceReminderSurvivesFork(t *testing.T) {
-	k, g, box := forkKernel(t)
-	dir := filepath.Join(bot.Dir(k.Bot.Root, k.Bot.Name()), "memory", "nested")
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(dir, "a.md")
-	if err := os.WriteFile(path, []byte("---\nkeywords: [needle]\n---\nsecret"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	ev := link.TerminalEvent("u1", "needle", time.Unix(10, 0))
-	if err := box.Post(ev); err != nil {
-		t.Fatal(err)
-	}
-	if err := k.Handle(context.Background(), ev); err != nil {
-		t.Fatal(err)
-	}
-	if len(k.Backgrounds()) != 1 {
-		t.Fatal("turn did not fork")
-	}
-	close(g.release)
-	deadline := time.Now().Add(5 * time.Second)
-	for len(k.Backgrounds()) != 0 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if len(k.Backgrounds()) != 0 {
-		t.Fatal("background did not finish")
-	}
-	p := k.Provider.(*scripted)
-	if len(p.reqs) < 2 {
-		t.Fatalf("requests: %d", len(p.reqs))
-	}
-	for i, req := range p.reqs {
-		text := messagesText(req.Messages)
-		if strings.Count(text, "Save lasting preferences") != 1 || strings.Count(text, path) != 1 {
-			t.Fatalf("request %d: %s", i, text)
-		}
-	}
-	notes, err := k.reminders().log.all()
-	if err != nil {
-		t.Fatal(err)
-	}
-	n := 0
-	for _, note := range notes {
-		if note.Kind == KindReference {
-			n++
-		}
-	}
-	if n != 1 {
-		t.Fatalf("sidecar records: %d", n)
-	}
-}
-
 func TestReferenceKeywordsAcrossPrivateAndShared(t *testing.T) {
 	b := testBot(t)
 	k := &Kernel{Bot: b}

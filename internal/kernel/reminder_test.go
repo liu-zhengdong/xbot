@@ -132,46 +132,6 @@ func TestReminderPluginKinds(t *testing.T) {
 	}
 }
 
-func TestNoDuplicateBackgroundDoneReminder(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
-	if err := b.SetOwners([]string{"u1"}); err != nil {
-		t.Fatal(err)
-	}
-	now := time.Unix(8000, 0).UTC()
-	ended := now.Add(-time.Second)
-	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("told")}}}
-	k := &Kernel{
-		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 2,
-		Links: []link.Link{link.Terminal{}},
-		Now:   func() time.Time { return now },
-		finished: []BackgroundInfo{{
-			ID: "bg_abcd", Task: "rename the notes", Steps: 2, Status: "done", Ended: &ended,
-		}},
-	}
-	ev := link.TerminalEvent("u1", "status?", now)
-	if err := k.Handle(context.Background(), ev); err != nil {
-		t.Fatal(err)
-	}
-	last := newestConversationMessage(p.reqs[0].Messages)
-	if !strings.Contains(last.Text(), "status?") || strings.Contains(last.Text(), "<background_done>") {
-		t.Fatalf("completion not on the newest message: %q", last.Text())
-	}
-	p.resps = append(p.resps, provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("again")})
-	ev2 := link.TerminalEvent("u1", "and now?", now.Add(time.Second))
-	if err := k.Handle(context.Background(), ev2); err != nil {
-		t.Fatal(err)
-	}
-	var fresh int
-	for _, m := range p.reqs[1].Messages {
-		if strings.Contains(m.Text(), "and now?") && strings.Contains(m.Text(), "<background_done>") {
-			fresh++
-		}
-	}
-	if fresh != 0 {
-		t.Fatal("background completion was reminded twice")
-	}
-}
-
 func TestRetryLimitAndPollingStopAgree(t *testing.T) {
 	if !strings.Contains(DefaultRules(), ConvergenceRule) || !strings.Contains(ConvergenceRule, "最多一次") {
 		t.Fatal("shared convergence rule lost the external-failure limit")

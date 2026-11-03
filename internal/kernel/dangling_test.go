@@ -91,7 +91,7 @@ func TestCancelSealsOpenCall(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("sealed %d times", n)
 	}
-	if err := k.closeDangling(DangleCancel, false); err != nil {
+	if err := k.closeDangling(DangleCancel); err != nil {
 		t.Fatal(err)
 	}
 	entries, _ = b.Entries()

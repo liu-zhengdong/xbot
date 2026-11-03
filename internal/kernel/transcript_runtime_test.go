@@ -70,8 +70,8 @@ func transcriptRuntimeRequest(endpoint, root, action, callID string, input any) 
 func transcriptRuntimeBudget(t *testing.T, reply cliops.TranscriptReadReply, raw []byte) {
 	t.Helper()
 	encoded, err := json.Marshal(reply)
-	if err != nil || len(encoded)+1 > tools.DefaultShellOutputBytes || len(cliops.FormatTranscriptRead(reply)) > tools.DefaultShellOutputBytes {
-		t.Fatalf("JSONNL/human budget json=%d human=%d err=%v", len(encoded)+1, len(cliops.FormatTranscriptRead(reply)), err)
+	if err != nil || len(encoded)+1 > tools.DefaultShellOutputBytes || len(cliops.FormatTextResult(reply)) > tools.DefaultShellOutputBytes {
+		t.Fatalf("JSONNL/human budget json=%d human=%d err=%v", len(encoded)+1, len(cliops.FormatTextResult(reply)), err)
 	}
 	if raw != nil && (len(raw) == 0 || len(raw) > cliops.TranscriptMaxReply || raw[len(raw)-1] != '\n') {
 		t.Fatalf("HTTP response/newline budget: %d bytes", len(raw))

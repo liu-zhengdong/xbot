@@ -2,9 +2,8 @@ package cliops
 
 import "context"
 
-const TranscriptMaxRequest = 1 << 20
-const TranscriptMaxReply = 64 << 10
-const transcriptOutputBudget = 32 << 10
+const TranscriptMaxRequest = jsonRequestLimit
+const TranscriptMaxReply = jsonReplyLimit
 
 // Transcript inputs preserve the original methods' domain validation.
 type TranscriptSearch struct {
@@ -25,13 +24,7 @@ type TranscriptDetail struct {
 }
 
 // Text is the original semantic result; File refers to its complete JSON artifact.
-type TranscriptReadReply struct {
-	Text   string `json:"text,omitempty"`
-	File   string `json:"file,omitempty"`
-	Access string `json:"access,omitempty"`
-	Bytes  int64  `json:"bytes,omitempty"`
-	Error  string `json:"error,omitempty"`
-}
+type TranscriptReadReply = TextResult
 
 type TranscriptHandlers struct {
 	Search func(context.Context, TranscriptSearch) (TranscriptReadReply, error)

@@ -286,12 +286,6 @@ func (k *Kernel) taskEnvironment(prev []bot.TaskEnv, ev link.Event) ([]bot.TaskE
 			}
 		}
 	}
-	for _, bg := range k.Backgrounds() {
-		if !seen[bg.ID] {
-			out = append(out, bot.TaskEnv{ID: bg.ID, Task: bg.Task, Status: "running"})
-			seen[bg.ID] = true
-		}
-	}
 	for _, old := range prev {
 		if seen[old.ID] || (old.Status != "running" && old.Status != "queued" && old.Status != exec.EvBlocked) {
 			continue

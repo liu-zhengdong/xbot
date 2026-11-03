@@ -187,8 +187,8 @@ func TestIdleShellJobWakesAndStaysANormalTurn(t *testing.T) {
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
-	if len(k.Backgrounds()) != 0 {
-		t.Fatalf("wake opened a background segment: %+v", k.Backgrounds())
+	if k.execSnapshot() != nil {
+		t.Fatal("tool job wake created a subagent executor")
 	}
 	if len(p.reqs) == 0 {
 		t.Fatal("no model request")

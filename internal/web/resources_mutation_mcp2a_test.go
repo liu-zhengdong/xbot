@@ -40,7 +40,7 @@ func newMutationHostFixture(t *testing.T) *mutationHostFixture {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	manager := mcp.NewManager(ctx, mcp.Options{})
-	f := &mutationHostFixture{target: target, s: &Server{Root: root, ForkTurns: true}}
+	f := &mutationHostFixture{target: target, s: &Server{Root: root}}
 	f.s.NewResources = func(b *bot.Bot) (*kernel.BotResources, error) {
 		r, err := kernel.NewBotResources(ctx, b, manager)
 		if err == nil {
@@ -57,7 +57,13 @@ func newMutationHostFixture(t *testing.T) *mutationHostFixture {
 		}
 		return &kernel.Kernel{Bot: b, Resources: r, Inbox: box}, nil
 	}
-	t.Cleanup(func() { f.s.CloseOperations(); f.s.CloseResources(); cancel(); _ = manager.Close() })
+	t.Cleanup(func() {
+		f.s.CloseOperations()
+		f.s.CloseResources()
+		kernel.SetWaker(root, nil)
+		cancel()
+		_ = manager.Close()
+	})
 	return f
 }
 

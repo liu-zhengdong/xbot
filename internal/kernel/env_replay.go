@@ -535,9 +535,6 @@ func (k *Kernel) beginOwnWrite(ctx context.Context, scope memory.Scope, personID
 // finishEnvironment sees the actual fitted view. A surviving unrelated update
 // cannot stand in for the full snapshot of this compression boundary.
 func (r *turnRun) finishEnvironment(ctx context.Context, raw, fitted provider.Request) (provider.Request, error) {
-	if r.k.AllowFork {
-		return fitted, nil
-	}
 	k := r.k
 	k.envMu.Lock()
 	defer k.envMu.Unlock()

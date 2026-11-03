@@ -2,9 +2,8 @@ package cliops
 
 import "context"
 
-const ExperienceMaxRequest = 1 << 20
-const ExperienceMaxReply = 64 << 10
-const experienceOutputBudget = 32 << 10
+const ExperienceMaxRequest = jsonRequestLimit
+const ExperienceMaxReply = jsonReplyLimit
 
 // ExperienceRecord leaves summary and transcript range validation to the source.
 type ExperienceRecord struct {
@@ -31,13 +30,7 @@ type ExperienceRecordReply struct {
 
 // Text is the original rendered search result, or File identifies that complete
 // result's JSON artifact. The client never expands artifact metadata.
-type ExperienceSearchReply struct {
-	Text   string `json:"text,omitempty"`
-	File   string `json:"file,omitempty"`
-	Access string `json:"access,omitempty"`
-	Bytes  int64  `json:"bytes,omitempty"`
-	Error  string `json:"error,omitempty"`
-}
+type ExperienceSearchReply = TextResult
 
 type ExperienceHandlers struct {
 	Record func(context.Context, ExperienceRecord) (ExperienceRecordReply, error)

@@ -1,5 +1,17 @@
 # XBot 里程碑与进度
 
+## 2026-11-02 三处代码坏味道整治（所选端到端通过，待用户日用）
+
+- 用户批准修复全仓审查选出的三项。UC-1 保现行对话、插话和真实任务；UC-2 保 CLI 原语义；UC-3 保独立附件发送身份。原始 UC 与选型保存在 Obsidian「三处代码坏味道整治」。结构决定见 [ADR0067](adr/0067-review-hotspot-simplification.md)。guard 步骤和验收未改。
+- 三个隔离增量为 `243acf32`、`3fe20568`、`6441e139`。整合只取这些增量，不合入隔离 snapshot。已删除旧实时分叉、控制队列、资源冲突表和共享 hold；保留旧历史与持锁遗留修复。真实子代理、Jobs、bot-fork 和 dispatch context=fork 保留。
+- 三族文本结果、formatter、严格 JSON 解码、POST 和完整产物出口已统一。13 个当前 runtime 命令共用 source 定位。领域 CallID、冻结上下文、脱敏和部分事实保持。网页状态改为普通记录，并按现有 EventID 精确关联；群消息保原 sent 语义。
+- 独立浏览器回归先命中同文不同图片误删失败行，整合后通过。HTTP、排队、插话、跨进程精确回复及图片回归合计通过，包耗时 2.044 秒。作者语音重试、Group、SSE 提前结束、流式、增量和窗口检查通过。独立代码复核无阻断；父补审了 fork 末尾清理和合并冲突。
+- 整合态真实 serve 的六条 fake/scripted 冒烟全部通过：WebChat、InterjectMidTask、BotForkRuntimeEntry、ExperienceRuntimeSourceConsumers、MemoryRecallRuntimeSourceConsumers、PendingSendIdentityThroughServe。包耗时 16.761 秒。两次插话首条送达为 334/327 毫秒；这是用例观测值，不是 p95。
+- 配套修复 persistContextSnap 的旧路径写口，沿已有 withCurrentIO 写当前目录。原 TranscriptRuntimeDetailCurrent 从旧目录断言失败转为通过，包耗时 3.224 秒。Web 改名 Ack 与 proc retained Inbox 的 drain/run 也全部通过。遗留恢复的 10 个替换 Kernel 调用为 0 次分配；绕 once 对照为 2473 次。
+- cliops 整包、CLI/kernel 定向检查及整合后的六包 vet、JavaScript 语法和 diff 检查通过。架构、API 与 ADR 已同步。待用户日用；未推送或发布。
+- 主工作树保留后续并行合入的 HTTP/restart 迁移。最终 7 个选定入口均有通过证据。经历用例曾在环境断言失败。检查发现，原请求筛选把忙时插话提示当成最后用户输入。仅修该用例筛选，保原始请求及全部环境事实断言；单例随后通过，包耗时 2.700 秒。其它 6 个入口复用同一产品状态的通过结果。主工作树 cliops 整包 0.775 秒，消息浏览器与关联回归包 2.078 秒，恢复与改名回归也通过。
+- 基线对照记录：EnvStreamSilenceRules 的 terminal/subagent、MCP2aDifferentRenameSourceInvalidatesCachedKernel，以及 ChatStickSettlementBrowser 的 5.609375px 偏移，在原 snapshot 也失败。保留原有效断言，未扩修这些问题。Not run: 全仓、race、真模型、专项 p95、完整视觉矩阵、Linux/Windows。
+
 ## 2026-11-02 卡族 restart+http runtime CLI（所测独立端到端分阶段通过，待集成）
 
 - 合同 1c39da75 [ADR0068](adr/0068-cards-family-cli.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS 10/10（HTTPNeedsOwner 导出防 carddrop、permissive 反 links、restart 死代码纠正）→97dca3e0 Accepted（help 措辞无分支拒更严）。

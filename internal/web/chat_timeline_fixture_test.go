@@ -9,7 +9,7 @@ function fixtureChatRows(messages) {
  const out=[];let run=[],id=0;
  const push=(m,text,kind,extra={})=>{
   const seq=m.seq||messages.indexOf(m)+1;id=Math.max(id+1,seq);
-  out.push({id,transcript_seq:seq,delivery_key:kind+':'+id,kind,time:m.time,text,images:m.images,audios:m.audios,reply_to_seq:m.reply_to,meta:{branch:m.branch,parts:m.parts},from_device:m.from_device,relay:m.relay,...extra});
+  out.push({id,transcript_seq:seq,delivery_key:kind+':'+id,kind,time:m.time,text,images:m.images,audios:m.audios,reply_to_seq:m.reply_to,meta:{event_id:m.event_id,branch:m.branch,parts:m.parts},from_device:m.from_device,relay:m.relay,...extra});
  };
  const close=()=>{
   const says=[],images=[],audios=[];let reply=0,media;

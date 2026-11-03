@@ -1,12 +1,10 @@
 package cliops
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 )
 
@@ -16,7 +14,7 @@ func serveTranscriptSearch(w http.ResponseWriter, r *http.Request, handlers *Tra
 		return
 	}
 	var input TranscriptSearch
-	if status, err := decodeTranscriptRequest(w, r, &input); err != nil {
+	if status, err := decodePOSTJSON(w, r, "transcript", &input); err != nil {
 		writeTranscriptReadReply(w, status, TranscriptReadReply{Error: err.Error()})
 		return
 	}
@@ -30,7 +28,7 @@ func serveTranscriptExpand(w http.ResponseWriter, r *http.Request, handlers *Tra
 		return
 	}
 	var input TranscriptExpand
-	if status, err := decodeTranscriptRequest(w, r, &input); err != nil {
+	if status, err := decodePOSTJSON(w, r, "transcript", &input); err != nil {
 		writeTranscriptReadReply(w, status, TranscriptReadReply{Error: err.Error()})
 		return
 	}
@@ -44,7 +42,7 @@ func serveTranscriptDetail(w http.ResponseWriter, r *http.Request, handlers *Tra
 		return
 	}
 	var input TranscriptDetail
-	if status, err := decodeTranscriptRequest(w, r, &input); err != nil {
+	if status, err := decodePOSTJSON(w, r, "transcript", &input); err != nil {
 		writeTranscriptReadReply(w, status, TranscriptReadReply{Error: err.Error()})
 		return
 	}
@@ -52,41 +50,11 @@ func serveTranscriptDetail(w http.ResponseWriter, r *http.Request, handlers *Tra
 	finishTranscriptRead(w, reply, err)
 }
 
-func decodeTranscriptRequest(w http.ResponseWriter, r *http.Request, input any) (int, error) {
-	if r.Method != http.MethodPost {
-		return http.StatusMethodNotAllowed, errors.New("transcript: requires POST")
-	}
-	if r.URL.RawQuery != "" || r.URL.ForceQuery {
-		return http.StatusBadRequest, errors.New("transcript: query fields are not supported")
-	}
-	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, TranscriptMaxRequest))
-	if err != nil {
-		return http.StatusBadRequest, errors.New("transcript: invalid request or request exceeds 1 MiB")
-	}
-	raw = bytes.TrimLeft(raw, " \t\r\n")
-	if len(raw) == 0 || raw[0] != '{' {
-		return http.StatusBadRequest, errors.New("transcript: request must be one JSON object")
-	}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(input); err != nil {
-		return http.StatusBadRequest, errors.New("transcript: invalid request fields")
-	}
-	if err := decoder.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
-		return http.StatusBadRequest, errors.New("transcript: request must be one JSON object followed by EOF")
-	}
-	wire, err := json.Marshal(input)
-	if err != nil || len(wire) > TranscriptMaxRequest {
-		return http.StatusBadRequest, errors.New("transcript: request exceeds 1 MiB after JSON encoding")
-	}
-	return 0, nil
-}
-
 func finishTranscriptRead(w http.ResponseWriter, reply TranscriptReadReply, problem error) {
 	if problem != nil {
 		reply.Error = problem.Error()
 	}
-	reply, displayErr := boundTranscriptReadReply(reply)
+	reply, displayErr := boundTextResult(reply, "transcript: reply exceeds 32 KiB Shell output budget; source must provide a complete result artifact")
 	status := http.StatusOK
 	if problem != nil || displayErr != nil || reply.Error != "" {
 		status = http.StatusBadRequest
@@ -124,46 +92,22 @@ func CallTranscriptDetail(ctx context.Context, endpoint, root string, input Tran
 
 func callTranscriptRead(ctx context.Context, endpoint, root, action string, input any) (TranscriptReadReply, error) {
 	var reply TranscriptReadReply
-	root, err := sourceRoot(endpoint, root, "transcript")
+	raw, status, err := postJSON(ctx, endpoint, root, "transcript", "/v1/transcript/"+action, "", input)
 	if err != nil {
 		return reply, err
-	}
-	body, err := json.Marshal(input)
-	if err != nil {
-		return reply, err
-	}
-	if len(body) > TranscriptMaxRequest {
-		return reply, errors.New("transcript: request exceeds 1 MiB after JSON encoding")
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint+"/v1/transcript/"+action, bytes.NewReader(body))
-	if err != nil {
-		return reply, err
-	}
-	req.Header.Set("X-XBot-Root", root)
-	req.Header.Set("Content-Type", "application/json")
-	client := LocalHTTPClient(0)
-	defer client.CloseIdleConnections()
-	response, err := client.Do(req)
-	if err != nil {
-		return reply, fmt.Errorf("transcript: runtime request: %w", err)
-	}
-	defer response.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(response.Body, TranscriptMaxReply+1))
-	if err != nil || len(raw) > TranscriptMaxReply {
-		return reply, errors.New("transcript: invalid runtime response or response exceeds 64 KiB")
 	}
 	if err := json.Unmarshal(raw, &reply); err != nil {
 		return TranscriptReadReply{}, errors.New("transcript: invalid runtime response")
 	}
-	reply, err = boundTranscriptReadReply(reply)
+	reply, err = boundTextResult(reply, "transcript: reply exceeds 32 KiB Shell output budget; source must provide a complete result artifact")
 	if err != nil {
 		return reply, err
 	}
 	if reply.Error != "" {
 		return reply, errors.New(reply.Error)
 	}
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		err := fmt.Errorf("transcript: runtime returned HTTP %d", response.StatusCode)
+	if status < http.StatusOK || status >= http.StatusMultipleChoices {
+		err := fmt.Errorf("transcript: runtime returned HTTP %d", status)
 		reply.Error = err.Error()
 		return reply, err
 	}

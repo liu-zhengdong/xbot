@@ -32,8 +32,7 @@ func danglingText(reason string) string {
 }
 
 // closeDangling appends one tombstone per open call that can still be answered.
-// skipRunning leaves a call on a live background alone: that call is in flight.
-func (k *Kernel) closeDangling(reason string, skipRunning bool) error {
+func (k *Kernel) closeDangling(reason string) error {
 	if reason == "" {
 		reason = DangleInterrupt
 	}
@@ -60,16 +59,7 @@ func (k *Kernel) closeDangling(reason string, skipRunning bool) error {
 	if err != nil {
 		return err
 	}
-	var live map[string]bool
-	if skipRunning {
-		live = map[string]bool{}
-		k.bgMu.Lock()
-		for id := range k.bgs {
-			live[id] = true
-		}
-		k.bgMu.Unlock()
-	}
-	missing, branches, err := unresolvedCallsExcept(span, minSeq, live)
+	missing, branches, err := unresolvedCalls(span, minSeq)
 	if err != nil {
 		return err
 	}

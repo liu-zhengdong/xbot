@@ -11,6 +11,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/compact"
+	"xbot/internal/exec"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -83,11 +84,21 @@ func publishedSnapshot(text string) bool {
 	body := strings.TrimSuffix(strings.TrimPrefix(text, "<environment_update>\n"), "\n</environment_update>")
 	return json.Unmarshal([]byte(body), &p) == nil && p.Snapshot != ""
 }
+
+type environmentTasksExecutor struct {
+	exec.Executor
+	tasks []exec.Task
+}
+
+func (e *environmentTasksExecutor) Tasks() ([]exec.Task, error) {
+	return append([]exec.Task(nil), e.tasks...), nil
+}
+
 func TestEnvironmentCompressionRestoresFullDespiteUnrelatedUpdate(t *testing.T) {
 	k, _ := envBaselineKernel(t)
 	k.Compactor = &recCompactor{}
 	k.Budget.KeepTail = 1
-	k.bgs = map[string]*turn{"bg_live": {branch: "bg_live", task: "UNFINISHED_TASK"}}
+	k.Exec = &environmentTasksExecutor{tasks: []exec.Task{{ID: "sa_0123456789abcdef", Task: "UNFINISHED_TASK", Status: "running"}}}
 	st0, err := k.Bot.LoadState()
 	if err != nil {
 		t.Fatal(err)
@@ -142,7 +153,7 @@ func TestEnvironmentInlineFoldRestoresLiveSnapshot(t *testing.T) {
 	if err := k.Memory.Remember(context.Background(), memory.Fact{Scope: memory.ScopePerson, PersonID: "u1", Tier: memory.TierProfile, Key: "name", Text: "PERSON_IN_FOLD_49", WrittenBy: "u1"}); err != nil {
 		t.Fatal(err)
 	}
-	k.bgs = map[string]*turn{"bg_live": {branch: "bg_live", task: "LIVE_AFTER_FOLD"}}
+	k.Exec = &environmentTasksExecutor{tasks: []exec.Task{{ID: "sa_0123456789abcdef", Task: "LIVE_AFTER_FOLD", Status: "running"}}}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0))); err != nil {
 		t.Fatal(err)
 	}

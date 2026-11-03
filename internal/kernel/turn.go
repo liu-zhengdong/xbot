@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 	"time"
 	"xbot/internal/notable"
-	"xbot/internal/provider"
 )
 
 // turn is the state of one kernel turn. Kernel holds a pointer to the active
@@ -51,12 +50,11 @@ type turn struct {
 	// inter takes owner messages while the turn runs (interject.go).
 	inter interjectState
 
-	// Fork state. mu guards branch, finished, tools, replies, steps, and lastTool.
-	// branch is set once, when the turn moves to the background.
+	// mu guards reply, tool and completion state. branch preserves execution provenance.
 	mu       sync.Mutex
 	branch   string
 	finished bool
-	answered bool // a final answer is on the transcript; too late to fork
+	answered bool // a final answer is on the transcript
 	// replyGen counts committed final replies. Image calls capture it when
 	// issued so a continuation can attach without reviving an older call.
 	replyGen int
@@ -68,12 +66,7 @@ type turn struct {
 	outAudios []string
 	outImages []string
 	outBytes  int
-	// forkMu serializes the fork decision with absorbing the inbox, so a message
-	// absorbed into this turn cannot also be the one that forks it.
-	forkMu   sync.Mutex
-	tools    int
-	replies  int // assistant messages recorded on this turn, for the step count
-	lastTool string
+	tools     int
 	// Status tracking for the bot status feature: when the last tool call
 	// started and ended, whether the turn waits on the owner, and a ring of the
 	// last stepRingCap steps.
@@ -84,15 +77,8 @@ type turn struct {
 	steps         []Step
 	started       time.Time
 	fromSeq       int
-	task          string
-	forked        chan struct{}
 	imageGen      *imageGenCapability
 	runCtx        context.Context
-	cancelRun     context.CancelFunc
-	// stopReason says why a background ended before the task was done: the
-	// wall-clock budget ran out with a control still waiting. finishBackground
-	// reports it and leaves the control unread.
-	stopReason string
 	// lastRec is the sequence of the last transcript line this turn wrote.
 	lastRec int
 	// todoGated is set once the completion gate has continued this turn.
@@ -105,10 +91,6 @@ type turn struct {
 	// todoQuiet is cached for the turn so a step does not rebuild the tool list.
 	todoQuietSet bool
 	todoQuietV   bool
-	// ctrl is controls sent to a background, read between its steps. resources is
-	// what this turn has written (review.ResourceOf), for the conflict queue.
-	ctrl      []*Control
-	resources map[string]bool
 }
 
 func (t *turn) lastSeq() int {
@@ -118,79 +100,6 @@ func (t *turn) lastSeq() int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.lastRec
-}
-
-// queueCtrl adds a control message. It fails once the turn has finished.
-func (t *turn) queueCtrl(c *Control) bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.finished {
-		return false
-	}
-	c.Background = t.branch
-	c.State = "pending"
-	t.ctrl = append(t.ctrl, c)
-	return true
-}
-
-// takeCtrl marks every pending control applied and returns them as user messages.
-// It runs between steps: after the current tool call returned, before the next
-// model call.
-func (t *turn) takeCtrl() []provider.Message {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.takeCtrlLocked()
-}
-
-// pendingCtrlLocked lists the controls the background has not read yet without
-// changing their state, so the segment loop can decide whether another segment
-// may run before it consumes them.
-func (t *turn) pendingCtrlLocked() []*Control {
-	var out []*Control
-	for _, c := range t.ctrl {
-		if c.State == "pending" {
-			out = append(out, c)
-		}
-	}
-	return out
-}
-
-func (t *turn) takeCtrlLocked() []provider.Message {
-	var out []provider.Message
-	for _, c := range t.ctrl {
-		if c.State == "pending" {
-			c.State = "applied"
-			// A control is addressed to the background, not said in the owner's
-			// thread: the chat hides it and the task popover shows it.
-			out = append(out, provider.Message{Role: provider.RoleUser, Internal: true, Content: provider.TextContent(c.message())})
-		}
-	}
-	return out
-}
-
-func (t *turn) addResource(res string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.resources == nil {
-		t.resources = map[string]bool{}
-	}
-	t.resources[res] = true
-}
-
-func (t *turn) touches(res string) bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.resources[res]
-}
-
-func (t *turn) isForked() bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.branch != ""
-}
-
-func (t *turn) cancelled() bool {
-	return t.runCtx != nil && t.runCtx.Err() != nil
 }
 
 // curTurn returns the active turn, or a zero turn when none is running, so a

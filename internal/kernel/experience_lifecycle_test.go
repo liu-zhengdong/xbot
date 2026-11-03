@@ -176,8 +176,8 @@ func TestExperienceRuntimeSearchArtifactExactSemanticTextAndCurrentRename(t *tes
 				t.Fatal(err)
 			}
 			wantJSON = append(wantJSON, '\n')
-			if len(want) > experienceSearchCap || len(wantJSON) <= tools.DefaultShellOutputBytes || len(cliops.FormatExperienceSearch(full)) > tools.DefaultShellOutputBytes || strings.Contains(want, "SEMANTICALLY_CROPPED_SUMMARY") {
-				t.Fatalf("fixture must exceed exact JSON budget after semantic cap: text=%d json=%d human=%d", len(want), len(wantJSON), len(cliops.FormatExperienceSearch(full)))
+			if len(want) > experienceSearchCap || len(wantJSON) <= tools.DefaultShellOutputBytes || len(cliops.FormatTextResult(full)) > tools.DefaultShellOutputBytes || strings.Contains(want, "SEMANTICALLY_CROPPED_SUMMARY") {
+				t.Fatalf("fixture must exceed exact JSON budget after semantic cap: text=%d json=%d human=%d", len(want), len(wantJSON), len(cliops.FormatTextResult(full)))
 			}
 			// presentHistory invokes this legitimate dependency after SQLite IO
 			// has released the route. Move the source at that exact boundary,
@@ -193,7 +193,7 @@ func TestExperienceRuntimeSearchArtifactExactSemanticTextAndCurrentRename(t *tes
 			}
 			var reply cliops.ExperienceSearchReply
 			status, raw := experienceRuntimeHTTP(t, endpoint, k.Bot.Root, "search", "", cliops.ExperienceSearch{}, &reply)
-			if renameErr != nil || status != http.StatusOK || reply.Text != "" || reply.File == "" || reply.Access != "local" || reply.Bytes != int64(len(wantJSON)) || len(cliops.FormatExperienceSearch(reply)) > tools.DefaultShellOutputBytes {
+			if renameErr != nil || status != http.StatusOK || reply.Text != "" || reply.File == "" || reply.Access != "local" || reply.Bytes != int64(len(wantJSON)) || len(cliops.FormatTextResult(reply)) > tools.DefaultShellOutputBytes {
 				t.Fatalf("current artifact metadata %s renameErr=%v status=%d", raw, renameErr, status)
 			}
 			path := filepath.Join(work.BotDir(k.Bot.Root, "renamed"), filepath.FromSlash(reply.File))

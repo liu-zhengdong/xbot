@@ -352,7 +352,7 @@ func TestExperienceRuntimePartialOutputBeforeFailureAndArtifactMetadata(t *testi
 				if err := json.Unmarshal(out.Bytes(), &got); err != nil || got != want {
 					t.Fatalf("metadata changed got=%+v want=%+v err=%v", got, want, err)
 				}
-			} else if out.String() != cliops.FormatExperienceSearch(want) {
+			} else if out.String() != cliops.FormatTextResult(want) {
 				t.Fatalf("human metadata=%q", out.String())
 			}
 		}

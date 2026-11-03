@@ -135,12 +135,6 @@ func (k *Kernel) adoptScope(ctx context.Context, scope string) {
 	k.noteScope(scope, dir)
 }
 
-// adoptForeground copies the foreground cwd into scope. tryFork calls it while
-// holding the turn lock, so it must not call BranchOf.
-func (k *Kernel) adoptForeground(scope string) {
-	k.adoptScope(context.Background(), scope)
-}
-
 func (k *Kernel) storeCwd(dir string) {
 	k.storeScope("", dir)
 }

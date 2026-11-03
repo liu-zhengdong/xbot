@@ -1,8 +1,7 @@
 package cliops
 
-const MemoryRecallMaxRequest = 1 << 20
-const MemoryRecallMaxReply = 64 << 10
-const memoryRecallOutputBudget = 32 << 10
+const MemoryRecallMaxRequest = jsonRequestLimit
+const MemoryRecallMaxReply = jsonReplyLimit
 
 // MemoryRecall preserves the original scanner's query, scope and local date input.
 type MemoryRecall struct {
@@ -12,10 +11,4 @@ type MemoryRecall struct {
 }
 
 // Text is the full original rendered result, or File refers to its complete JSON.
-type MemoryRecallReply struct {
-	Text   string `json:"text,omitempty"`
-	File   string `json:"file,omitempty"`
-	Access string `json:"access,omitempty"`
-	Bytes  int64  `json:"bytes,omitempty"`
-	Error  string `json:"error,omitempty"`
-}
+type MemoryRecallReply = TextResult

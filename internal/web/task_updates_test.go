@@ -24,7 +24,8 @@ func TestSlowToolNoticeRequiresAnOwnerInterjection(t *testing.T) {
  assert.equal(slowToolNotice(current,[{...initial,content:'event:timer',time:'2026-10-21T08:00:05Z'}],[],now),'');
  const aside={...initial,content:'顺便问一句',time:'2026-10-21T08:00:04Z'};
  assert.match(slowToolNotice(current,[initial,aside],[],now),/已 6 秒/);
- assert.match(slowToolNotice(current,[initial],[{dataset:{time:aside.time}}],now),/你的话会接在它后面/);
+ assert.match(slowToolNotice(current,[initial],[{status:'sending',time:aside.time}],now),/你的话会接在它后面/);
+ for(const status of ['failed','uncertain'])assert.equal(slowToolNotice(current,[initial],[{status,time:aside.time}],now),'');
  assert.equal(slowToolNotice(current,[aside],[],Date.parse('2026-10-21T08:00:01Z')),'');
  assert.equal(slowToolNotice({},[aside],[],now),'');assert.equal(slowToolNotice({...current,state:'awaiting'},[aside],[],now),'');
  `

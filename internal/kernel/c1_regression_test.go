@@ -421,8 +421,8 @@ func TestC1MixedBatchKeepsOneOrderedResultPerCall(t *testing.T) {
 	if strings.Join(ids, ",") != "fast,fetch,search" {
 		t.Fatalf("results reordered or duplicated: %v", ids)
 	}
-	if len(k.Backgrounds()) != 0 || k.execSnapshot() != nil {
-		t.Fatal("tool job consumed a subagent/fork slot")
+	if k.execSnapshot() != nil {
+		t.Fatal("tool job consumed a subagent slot")
 	}
 	once.Do(func() { close(a.release); close(b.release) })
 	end := time.Now().Add(time.Second)

@@ -2732,7 +2732,7 @@
     send.append(rawSvg(SEND_PATH, 14, 2.4));
     const submit = () => {
       const text = field.value.trim();
-      if (text) sendText(text);
+      if (text) sendText(newSend(text));
     };
     send.addEventListener("click", submit);
     field.addEventListener("keydown", (ev) => {
@@ -3027,7 +3027,7 @@
       if(!res.ok)throw Error("语音没传上来，请重试");
       const data=await res.json();if(recording!==rec||state.sel!==rec.owner)return;
       recording=null;recordingUI(false);
-      sendText("",null,[],[data.audio]);
+      sendText(newSend("", [], [data.audio]));
     } catch(e) {
       if(recording===rec){showToast(e.message);recSend.disabled=false;}
     }
@@ -3419,7 +3419,7 @@
     for (const row of old.values()) if (row.dataset.transcriptKey) { row.remove(); changed = true; }
     restoreSendFeedback(current);
     for (const row of Array.from(current.children)) {
-      if (!row.dataset.transcriptKey && !row.hasAttribute("data-history-controls") && !state.pendingSends.includes(row) && !state.replyErrors.includes(row)) { row.remove(); changed = true; }
+      if (!row.dataset.transcriptKey && !row.hasAttribute("data-history-controls") && !state.pendingSends.some(send => send.row === row) && !state.replyErrors.includes(row)) { row.remove(); changed = true; }
     }
     if (activeVoice && !activeVoice.isConnected) stopVoice();
     return changed;
@@ -3732,7 +3732,7 @@
       const box = el("div", "question-card");
       const botName = state.sel && state.sel.id;
       const choose = async (choice) => {
-        if (automatic) { sendText(choice); return; }
+        if (automatic) { sendText(newSend(choice)); return; }
         try {
           await api("/api/bots/" + encodeURIComponent(botName) + "/questions/" + encodeURIComponent(card.id), {method:"POST",body:{choice}});
           await loadThread();
@@ -6627,7 +6627,7 @@
   function slowToolNotice(current, messages, pending, now = Date.now()) {
     const since = Date.parse(current?.since);
     if (current?.state !== "running" || !current.tool || !current.tool_summary || !Number.isFinite(since) || now - since < 3000) return "";
-    const interjected = pending.some(row => !row.keepFailed && Date.parse(row.dataset.time) > since) ||
+    const interjected = pending.some(send => !["failed", "uncertain"].includes(send.status) && Date.parse(send.time) > since) ||
       messages.some(m => m.role === "user" && !m.internal && !unwrap(m.content || "").untrusted && Date.parse(m.time) > since);
     if (!interjected) return "";
     if (current.tool === "todo") return "正在更新待办，已 " + elapsedWork(current.since, now) + "。你的话会接在它后面，返回后马上回你。";
@@ -6858,7 +6858,7 @@
   }
 
   function syncTaskView(root, data) {
-    // The task page keeps routines, fork backgrounds and external coding jobs.
+    // The task page keeps routines, legacy tasks and external coding jobs.
     const agents = (data.agents || []).filter(a => !window.XBotSubagents.isChild(a));
     const sections = [
       ["进行中", agents.filter(a => ["running", "awaiting"].includes(a.status)), "agent"],
@@ -7707,27 +7707,35 @@
     return card;
   }
 
-  // How many owner messages in the loaded transcript carry exactly this text
-  // (raw content, so image links and blank lines do not change the match).
-  function ownerSends(text) {
-    // Owner messages only: timer, webhook and other untrusted events never count.
-    return (state.messages || []).filter((m) => m && m.role === "user" && !unwrap(m.content || "").untrusted &&
-      String(m.content || "").replace(/\r\n/g, "\n").trim() === text).length;
+  function newSend(text, images = [], audios = []) {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    return {id: "web_" + Array.from(bytes, b => b.toString(16).padStart(2, "0")).join(""),
+      text: (text || "").trim(), images: [...images], audios: [...audios], status: "sending",
+      serverId: null, row: null, selection: state.sel, time: new Date().toISOString(), replyTo: state.replyTo?.seq || 0};
+  }
+
+  function setSendStatus(send, status) {
+    if (send.status === "recorded") return;
+    send.status = status;
+    if (state.sel === send.selection) paintPendingSend(send);
+  }
+
+  function reconcilePendingSends(messages) {
+    if (state.sel?.type !== "bot") return;
+    const recorded = new Map(messages.filter(m => m.kind === "owner" && m.meta?.event_id).map(m => [m.meta.event_id, m.id]));
+    for (const send of state.pendingSends) {
+      if (send.selection === state.sel && recorded.has(send.id)) {
+        send.serverId = recorded.get(send.id);
+        setSendStatus(send, "recorded");
+      }
+    }
   }
 
   function restoreSendFeedback(inner) {
-    // A queued send stays until the transcript gains one more copy of its text
-    // than it had when the send was queued; each copy resolves one queued row.
-    const queuedRecorded = (row) => {
-      if (!(state.sel && state.sel.type === "bot") || ownerSends(row.dataset.sendText) <= row.baseline) return false;
-      for (const other of state.pendingSends) {
-        if (other !== row && (other.queued || other.keepFailed) && other.dataset.sendText === row.dataset.sendText) other.baseline++;
-      }
-      return true;
-    };
-    state.pendingSends = state.pendingSends.filter((row) => !row.accepted || ((row.queued || row.keepFailed) && !queuedRecorded(row)));
+    reconcilePendingSends(state.messages || []);
+    state.pendingSends = state.pendingSends.filter(send => send.status !== "recorded");
     if (state.pendingSends.length) inner.querySelector(".empty")?.remove();
-    inner.append(...state.pendingSends, ...state.replyErrors);
+    inner.append(...state.pendingSends.map(paintPendingSend), ...state.replyErrors);
     updateWorkTimes();
   }
 
@@ -7843,7 +7851,7 @@
   async function readSSE(res, selection, prose, onQueued, onLive) {
     const reader = res.body.getReader();
     const dec = new TextDecoder();
-    let buf = "";
+    let buf = "", finished = false;
     // After a switch keep reading without touching the view: closing the
     // request would cancel the turn on the server.
     const drain = async () => { try { while (!(await reader.read()).done) { /* discard */ } } catch (e) { /* gone */ } };
@@ -7868,6 +7876,7 @@
         let payload = {};
         try { payload = JSON.parse(data); } catch (e) { continue; }
         if (payload.status === "queued") { onQueued(); continue; }
+        if (event === "done") finished = true;
         const host = prose.closest(".body") || prose.parentElement;
         if (event === "tool") {
           // Tool steps show only as the busy line; the trace has the detail.
@@ -7901,17 +7910,15 @@
             if (bubble) host.insertBefore(block, bubble);
             else host.prepend(block);
           }
-        } else if (event === "done" && payload.background && host) {
-          const status = host.querySelector(".live-status");
-          if (status) status.remove();
         } else if (event === "error") {
           throw new Error(payload.error || payload.message || "回复出错了");
         }
       }
     }
+    if (!finished) throw new Error("连接中断");
   }
 
-  function optimisticMessage(text, images, audios) {
+  function optimisticMessage(send) {
     let inner = thread.querySelector(".thread-inner:not(.thread-skeleton)");
     if (!inner) {
       inner = el("div", "thread-inner");
@@ -7921,88 +7928,79 @@
     const row = el("div", "msg user optimistic");
     const body = el("div", "bubble-col");
     row.dataset.sender = "user";
-    row.dataset.time = new Date().toISOString();
-    // The picture is already on the server by the time a send starts, so the
-    // optimistic row points at it directly. Nothing local to revoke, and the
-    // row after the repaint looks exactly the same.
-    appendMessageBubbles(body, text, pastedURLs(state.sel, images), audios);
-    body.append(el("div", "send-state", "发送中"));
+    row.dataset.time = send.time;
+    appendMessageBubbles(body, send.text, pastedURLs(send.selection, send.images), send.audios);
     row.append(body);
     markLiveGroup(inner, row);
-    addBubbleTime(row, row.dataset.time);
+    addBubbleTime(row, send.time);
     addTimeDivider(inner, row);
     inner.append(row);
     threadStick.changed();
-    state.pendingSends.push(row);
     return row;
   }
 
-  async function sendText(text, pending, images, audios) {
-    text = (text || "").trim();
-    images = images || [];
-    audios = audios || [];
-    // A message sent while a reply is streaming interrupts it: the server forks the
-    // running turn to the background and answers this one at once.
-    if ((!text && !images.length && !audios.length) || !state.sel) return;
-    const selection = state.sel;
+  function paintPendingSend(send) {
+    if (send.status === "recorded") { send.row?.remove(); return send.row; }
+    const row = send.row || (send.row = optimisticMessage(send));
+    if (row._sendStatus === send.status && row._sendError === send.error) return row;
+    row._sendStatus = send.status;
+    row._sendError = send.error;
+    row.classList.toggle("optimistic", send.status === "sending");
+    let marker = row.querySelector(".send-state");
+    if (send.status === "accepted") { marker?.remove(); return row; }
+    if (!marker) { marker = el("div", "send-state"); row.querySelector(".bubble-col").append(marker); }
+    marker.className = "send-state";
+    if (send.status === "sending" || send.status === "queued") {
+      marker.textContent = send.status === "queued" ? "已排队" : "发送中";
+      return row;
+    }
+    marker.classList.add("send-failed");
+    const {text, images, audios, error} = send;
+    const accepted = error.phase === "reply";
+    const pictureNote = images.length ? "；图片要重新贴一次" : "";
+    if (error.restored) {
+      marker.replaceChildren(el("span", "", (accepted ? "没送到，原文还在输入框里" : "没发出去，原文还在输入框里") + pictureNote));
+    } else if (audios.length) {
+      const retry = el("button", "secondary", "重试"); retry.type = "button";
+      retry.onclick = () => sendText(send);
+      marker.replaceChildren(el("span", "", "语音没发出去"), retry);
+    } else if (!text && images.length) {
+      marker.replaceChildren(el("span", "", accepted ? "没送到；图片要重新贴一次" : "没发出去；图片要重新贴一次"));
+    } else {
+      const back = el("button", "secondary", "放回输入框"); back.type = "button";
+      back.addEventListener("click", () => {
+        const cur = composerText(input);
+        composerSet(cur.trim() ? cur.replace(/\s*$/, "\n") + text : text);
+        composerRefreshHeight(); syncComposer(); input.focus(); composerCaretTo(Infinity);
+      });
+      marker.replaceChildren(el("span", "", (accepted ? "没送到" : "没发出去") + pictureNote), back);
+    }
+    return row;
+  }
+
+  async function sendText(send) {
+    const {text, images, audios, selection} = send;
+    if (send.status === "recorded" || state.sel !== selection || (!text && !images.length && !audios.length) || !selection) return;
+    // Owner messages enter the running turn through the existing interjection path.
     if (selection.type === "bot" && selection.history?.has_more_after && !state.streaming) {
       await loadThread("latest");
-      if (state.sel !== selection) return;
-      // Sending still works if reading history fails. Reconcile at the tail
-      // when the turn settles, instead of losing the already submitted draft.
+      if (state.sel !== selection || send.status === "recorded") return;
       selection.history = null;
       selection.transcriptETag = null;
     }
     ++state.threadLoad;
     selection.historyLoading = false;
-    if (!pending) {
-      // Resending a failed text from the composer replaces its failed row.
-      state.pendingSends = state.pendingSends.filter((row) => {
-        const stale = !row.accepted && row.querySelector(".send-failed") && row.dataset.sendText === text;
-        if (stale) row.remove();
-        return !stale;
-      });
-    }
-    pending = pending || optimisticMessage(text, images, audios);
-    pending.dataset.sendText = text;
-    pending.baseline = ownerSends(text);
-    const marker = pending.querySelector(".send-state");
-    marker.className = "send-state";
-    marker.replaceChildren(document.createTextNode("发送中"));
+    if (!state.pendingSends.includes(send)) state.pendingSends.push(send);
+    send.error = null;
+    setSendStatus(send, "sending");
     announceSend("发送中");
     let prose = selection.type === "bot" ? liveBubble() : null;
     let live = prose?.closest(".msg.live");
     const markQueued = () => {
-      if (!state.pendingSends.includes(pending)) state.pendingSends.push(pending);
-      pending.queued = true;
-      pending.keepFailed = false;
-      pending.querySelector(".send-state")?.remove();
-      pending.querySelector(".bubble-col")?.append(el("div", "send-state", "已排队"));
+      setSendStatus(send, "queued");
       announceSend("已排队");
     };
-    let accepted = false;
-    const markSent = () => {
-      accepted = true;
-      pending.accepted = true;
-      if (state.sel === selection) state.pendingSends = state.pendingSends.filter((row) => {
-        // Only a failed copy of this same text is resolved by this send.
-        if (row !== pending && !row.keepFailed && row.querySelector(".send-failed") && row.dataset.sendText === text) {
-          row.remove();
-          return false;
-        }
-        return true;
-      });
-      pending.classList.remove("optimistic");
-      marker.remove();
-      // An older 回复出错了 line is resolved by the next accepted send.
-      if (state.sel === selection) {
-        state.replyErrors.forEach((row) => row.remove());
-        state.replyErrors = [];
-      }
-    };
-    if (selection.type === "bot" && !state.streaming && stStatus.map[selection.id]?.state !== "running") {
-      workDescriptions.delete(selection.id);
-    }
+    if (selection.type === "bot" && !state.streaming && stStatus.map[selection.id]?.state !== "running") workDescriptions.delete(selection.id);
     state.streaming = (state.streaming || 0) + 1;
     let counted = true;
     const settle = () => {
@@ -8012,105 +8010,64 @@
       }
     };
     try {
-      const payload = { text: text };
+      const payload = {text};
+      if (selection.type === "bot") payload.client_id = send.id;
       if (images.length) payload.images = images;
       if (audios.length) payload.audios = audios;
-      if (state.replyTo && state.replyTo.seq > 0) payload.reply_to = state.replyTo.seq;
+      if (send.replyTo > 0) payload.reply_to = send.replyTo;
       const res = await apiFetch("/api/" + (selection.type === "group" ? "groups/" : "bots/") + encodeURIComponent(selection.id) + "/messages", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("发送失败");
-      markSent();
+      if (!res.ok) throw Object.assign(new Error("发送失败"), {status: res.status});
+      setSendStatus(send, "accepted");
+      if (state.sel !== selection) {
+        if (prose && !(res.headers.get("content-type") || "").includes("application/json")) await readSSE(res, selection, prose, markQueued, () => {});
+        return;
+      }
+      state.replyErrors.forEach(row => row.remove()); state.replyErrors = [];
       const ct = res.headers.get("content-type") || "";
       if (ct.includes("application/json")) {
-        const data = await res.json().catch(() => ({}));
+        const data = await res.json();
         if (state.sel !== selection) return;
-        if (data.status === "queued") {
-          markQueued();
-        }
+        if (selection.type === "group" && data.status === "sent") setSendStatus(send, "recorded");
+        else if (data.status === "queued") markQueued();
+        else throw new Error("发送失败");
         setStatus(data.status === "queued" ? "已排队" : "");
       } else if (prose) {
-        await readSSE(res, selection, prose, markQueued, (p) => { prose = p; live = p.closest(".msg.live"); });
+        await readSSE(res, selection, prose, markQueued, p => { prose = p; live = p.closest(".msg.live"); });
       }
       if (state.sel !== selection) return;
       state.sig = "";
-      clearQuote();
+      if (state.replyTo?.seq === send.replyTo) clearQuote();
       settle();
-      // A completed send must reconcile temporary rows even if the reader
-      // left the bottom; only background polls freeze the historical window.
       await loadThread("settle");
     } catch (e) {
-      // Session expired mid-send: keep the text so the input gets it back
-      // after the owner logs in again (showLogin already dropped the thread).
-      if (!accepted && !authenticated) {
+      const replyFailed = send.status === "accepted" || send.status === "queued";
+      if (!replyFailed && !authenticated) {
         const key = "xbot-draft:" + (selection.type === "group" ? "group:" : "") + selection.id;
         try { sessionStorage.setItem(key, text); } catch (err) {}
       }
       if (state.sel !== selection) return;
       setStatus("");
-      if (accepted) {
-        if (pending.queued) {
-          live?.remove();
-          settle();
-          state.sig = "";
-          await loadThread("settle");
-          return;
+      if (replyFailed) {
+        if (send.status === "queued") {
+          live?.remove(); settle(); state.sig = ""; await loadThread("settle"); return;
         }
-        if (!state.pendingSends.includes(pending)) state.pendingSends.push(pending);
-        pending.keepFailed = true;
-        const error = el("div", "msg bot");
-        const errorBody = el("div", "body");
+        const error = el("div", "msg bot"), errorBody = el("div", "body");
         const errorText = el("div", "prose bot-bubble reply-error", "回复出错了：" + zhError(e.message));
-        errorDetails(errorText, e.message, zhError(e.message));
-        errorBody.append(errorText);
-        error.append(errorBody);
+        errorDetails(errorText, e.message, zhError(e.message)); errorBody.append(errorText); error.append(errorBody);
         live?.replaceWith(error);
         if (!live) thread.querySelector(".thread-inner")?.append(error);
-        state.replyErrors.push(error);
-        announceSend("回复出错了");
-        settle();
-        state.sig = "";
-        await loadThread("settle");
-        if (state.sel !== selection) return;
-        // The transcript already holds this message: it did arrive, only the reply failed.
-        if (!state.pendingSends.includes(pending)) return;
+        state.replyErrors.push(error); announceSend("回复出错了");
+        settle(); state.sig = ""; await loadThread("settle");
+        if (state.sel !== selection || send.status === "recorded") return;
       }
       live?.remove();
-      if (!marker.isConnected) pending.querySelector(".bubble-col")?.append(marker);
-      marker.className = "send-state send-failed";
-      // A picture cannot go back into the textarea, but its words can: the
-      // send cleared the input, so the text is restored whether or not a
-      // picture came with it, and the row says what the picture needs.
-      const pictureNote = images.length ? "；图片要重新贴一次" : "";
-      if (!composerText(input).trim() && text) {
-        composerSet(text);
-        composerRefreshHeight();
-        marker.replaceChildren(el("span", "", (accepted ? "没送到，原文还在输入框里" : "没发出去，原文还在输入框里") + pictureNote));
-        announceSend("没发出去，原文还在输入框里" + (images.length ? "，图片要重新贴一次" : ""));
-      } else if (audios.length) {
-        const retry=el("button","secondary","重试");retry.type="button";retry.onclick=()=>sendText(text,pending,images,audios);
-        marker.replaceChildren(el("span","","语音没发出去"),retry);announceSend("语音没发出去，可以重试");
-      } else if (!text && images.length) {
-        marker.replaceChildren(el("span", "", accepted ? "没送到；图片要重新贴一次" : "没发出去；图片要重新贴一次"));
-        announceSend("没发出去，图片要重新贴一次");
-      } else {
-        // A newer draft is in the composer: keep it, and let the owner bring this text back.
-        const back = el("button", "secondary", "放回输入框");
-        back.type = "button";
-        back.addEventListener("click", () => {
-          const cur = composerText(input);
-          composerSet(cur.trim() ? cur.replace(/\s*$/, "\n") + text : text);
-          composerRefreshHeight();
-          syncComposer();
-          input.focus();
-          composerCaretTo(Infinity);
-        });
-        marker.replaceChildren(el("span", "", (accepted ? "没送到" : "没发出去") + pictureNote), back);
-        announceSend("没发出去，可以放回输入框" + (images.length ? "，图片要重新贴一次" : ""));
-      }
+      const restored = !composerText(input).trim() && !!text;
+      if (restored) { composerSet(text); composerRefreshHeight(); }
+      send.error = {phase: replyFailed ? "reply" : "send", restored};
+      setSendStatus(send, e.status >= 400 && e.status < 500 ? "failed" : "uncertain");
+      announceSend(restored ? "没发出去，原文还在输入框里" + (images.length ? "，图片要重新贴一次" : "") : audios.length ? "语音没发出去，可以重试" : "没发出去" + (images.length ? "，图片要重新贴一次" : ""));
       syncComposer();
     } finally {
       live?.querySelector(".live-status")?.remove();
@@ -9209,7 +9166,7 @@
     composerRefreshHeight();
     clearAttach();
     syncComposer();
-    sendText(text, null, images);
+    sendText(newSend(text, images));
   });
 
   // A screenshot pasted from the clipboard arrives here, not as text. The

@@ -55,7 +55,7 @@ func TestProfileAbsorbedReplyUsesCurrentInboxAndTranscript(t *testing.T) {
 	if err := box.Post(event); err != nil {
 		t.Fatal(err)
 	}
-	if err := original.Append(bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(event.Content)}}); err != nil {
+	if err := original.Append(bot.Entry{EventID: event.ID, Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(event.Content)}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := original.Append(bot.Entry{Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("reply recorded before rename")}}); err != nil {
@@ -68,7 +68,7 @@ func TestProfileAbsorbedReplyUsesCurrentInboxAndTranscript(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &Server{Root: root}
-	absorbed, reply, background, failed := s.absorbedReply(original, resources, box, event.ID, event.Content)
+	absorbed, reply, background, failed := s.absorbedReply(original, resources, box, event.ID)
 	if !absorbed || failed || background != "" || reply != "reply recorded before rename" {
 		t.Fatalf("lost original absorbed reply after wait: %v %q %q %v", absorbed, reply, background, failed)
 	}
@@ -78,13 +78,13 @@ func TestProfileAbsorbedReplyUsesCurrentInboxAndTranscript(t *testing.T) {
 }
 
 func TestProfileInboxAckAfterHandleRename(t *testing.T) {
-	for _, mode := range []string{"shared_message", "cli_event"} {
+	for _, mode := range []string{"waiting_message", "cli_event"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			root := t.TempDir()
 			original := mustWebBot(t, root, "before", "u1")
-			s := &Server{Root: root, Owner: "u1", ForkTurns: mode == "shared_message"}
+			s := &Server{Root: root, Owner: "u1"}
 			token, _, err := s.EnsureToken()
 			if err != nil {
 				t.Fatal(err)
@@ -118,13 +118,29 @@ func TestProfileInboxAckAfterHandleRename(t *testing.T) {
 			defer s.CloseResources()
 			defer s.CloseOperations()
 			defer kernel.SetWaker(root, nil)
-			if _, _, err := s.kernel(original); err != nil {
+			cached, _, err := s.kernel(original)
+			if err != nil {
 				t.Fatal(err)
 			}
-			if mode == "shared_message" {
-				if _, ok, err := s.acquireHandle(original); err != nil || !ok {
-					t.Fatalf("shared handle: %v %v", ok, err)
+			if mode == "waiting_message" {
+				lock, ok, err := original.TryLockHandle()
+				if err != nil || !ok {
+					t.Fatalf("other-process handle: %v %v", ok, err)
 				}
+				var wake <-chan struct{}
+				if err := cached.Resources.WithCurrentIO(func(_ *bot.Bot, box *inbox.Inbox) error { wake = box.Wait(); return nil }); err != nil {
+					t.Fatal(err)
+				}
+				released := make(chan struct{})
+				go func() {
+					defer close(released)
+					defer lock.Release()
+					select {
+					case <-wake:
+					case <-ctx.Done():
+					}
+				}()
+				t.Cleanup(func() { cancel(); <-released })
 			}
 			host := httptest.NewServer(muxOf(s))
 			defer host.Close()

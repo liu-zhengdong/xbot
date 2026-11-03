@@ -15,8 +15,7 @@ import (
 	"xbot/internal/tools"
 )
 
-// forkMetaFile is the on-disk shape Kernel.writeForkMeta writes for a background
-// turn. It is read back on recovery and rewritten with status interrupted.
+// forkMetaFile retains the metadata written by the retired fork-turn engine.
 type forkMetaFile struct {
 	PID       int       `json:"pid,omitempty"`
 	ProcStart int64     `json:"proc_start,omitempty"`
@@ -29,25 +28,20 @@ type forkMetaFile struct {
 	Started   time.Time `json:"started"`
 }
 
-// RecoverInterrupted closes background branches the transcript left open when
-// the process died: a fork marker with no fork_end. It writes
-// fork_end{interrupted}, marks meta.json interrupted, and posts one completion
-// event per branch. It is idempotent: a branch that already has a fork_end is
-// skipped, and the inbox ignores a repeated event id.
-//
-// It refuses to run on a kernel that still owns live backgrounds, so a running
-// turn is never mistaken for a crash. Call it once per kernel lifetime, before
-// repairTail, so a dangling branch tool call is repaired on that branch.
+// RecoverInterrupted repairs legacy transcript branches once per resource lifetime.
+// The caller holds the handle lock. This is best effort: it never reruns work.
 func (k *Kernel) RecoverInterrupted() {
 	if k == nil || k.Bot == nil {
 		return
 	}
-	k.bgMu.Lock()
-	live := len(k.bgs)
-	k.bgMu.Unlock()
-	if k.AllowFork && live > 0 {
+	if k.Resources != nil {
+		k.Resources.legacyForkOnce.Do(k.recoverInterrupted)
 		return
 	}
+	k.legacyForkOnce.Do(k.recoverInterrupted)
+}
+
+func (k *Kernel) recoverInterrupted() {
 	n, err := k.currentCount()
 	if err != nil || n == 0 {
 		return
@@ -75,12 +69,6 @@ func (k *Kernel) RecoverInterrupted() {
 	}
 	sort.Strings(ids)
 	for _, id := range ids {
-		k.bgMu.Lock()
-		_, running := k.bgs[id]
-		k.bgMu.Unlock()
-		if running {
-			continue
-		}
 		var meta forkMetaFile
 		_ = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { meta = readForkMeta(b.AgentDir(id)); return nil })
 		if tools.SameProcess(meta.PID, meta.ProcStart) {
@@ -103,8 +91,8 @@ func (k *Kernel) RecoverInterrupted() {
 		if started.IsZero() {
 			started = k.now()
 		}
-		k.writeForkMeta(&turn{branch: id, task: task, fromSeq: fromSeq[id], replies: steps, started: started}, bot.ForkInterrupted)
-		if k.Inbox == nil {
+		k.writeInterruptedForkMeta(forkMetaFile{ID: id, Mode: "fork-turn", Status: bot.ForkInterrupted, Task: task, From: fromSeq[id], Steps: steps, Started: started})
+		if k.Inbox == nil && k.Resources == nil {
 			continue
 		}
 		text := fmt.Sprintf("后台任务 %s 因进程重启中断，做到第 %d 步。任务：%s。没有自动续跑，需要的话重新交代。", id, steps, task)
@@ -144,4 +132,19 @@ func readForkMeta(dir string) forkMetaFile {
 		return forkMetaFile{}
 	}
 	return m
+}
+
+// writeInterruptedForkMeta updates only the legacy task snapshot.
+func (k *Kernel) writeInterruptedForkMeta(meta forkMetaFile) {
+	raw, err := json.Marshal(meta)
+	if err != nil {
+		return
+	}
+	_ = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error {
+		dir := b.AgentDir(meta.ID)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(dir, "meta.json"), raw, 0600)
+	})
 }

@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"xbot/internal/cliops"
@@ -45,29 +44,9 @@ func runSubagentRuntime(ctx context.Context, rawRoot string, rootExplicit bool, 
 		_, err := fmt.Fprint(out, subagentUsage)
 		return err
 	}
-	root := os.Getenv("XBOT_ROOT")
-	if strings.TrimSpace(root) == "" {
-		return errors.New("subagent: --self requires XBOT_ROOT from an active runtime")
-	}
-	root, err = cliops.CanonicalRoot(root)
+	root, endpoint, err := runtimeSource("subagent", rawRoot, rootExplicit)
 	if err != nil {
-		return fmt.Errorf("subagent: runtime root: %w", err)
-	}
-	if rootExplicit {
-		if strings.TrimSpace(rawRoot) == "" {
-			return errors.New("subagent: explicit --root must name the runtime data root")
-		}
-		given, err := cliops.CanonicalRoot(rawRoot)
-		if err != nil {
-			return fmt.Errorf("subagent: explicit root: %w", err)
-		}
-		if given != root {
-			return errors.New("subagent: runtime data root mismatch")
-		}
-	}
-	endpoint := os.Getenv("XBOT_ENDPOINT")
-	if endpoint == "" {
-		return errors.New("subagent: --self requires an active local XBot endpoint")
+		return err
 	}
 	var reply cliops.SubagentReply
 	var operationErr error

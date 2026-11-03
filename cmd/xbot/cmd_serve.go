@@ -150,10 +150,6 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	if local, ok := store.(*vault.Store); ok {
 		vault.Register(local)
 	}
-	// The bot's role picks the working defaults: how long a reply may stay on the
-	// main line, and how long a background task may keep working. An explicit
-	// --max-steps still bounds one run for evals and tests that want it short.
-	work := b.Config().Working()
 	k := &kernel.Kernel{
 		Bot:             b,
 		Resources:       runtime,
@@ -172,13 +168,11 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		Dispatch: true,
 		// Production never asks for tool permission (ADR 0019).
 		Permissive: true,
-		// How long one background task may keep going.
-		BackgroundMaxTime: work.BackgroundMaxTime,
-		WorkDir:           workDir,
-		SharedDir:         sharedDir,
-		SkillsDir:         skill.Dir(root),
-		Vault:             store,
-		Redact:            store.Redact,
+		WorkDir:    workDir,
+		SharedDir:  sharedDir,
+		SkillsDir:  skill.Dir(root),
+		Vault:      store,
+		Redact:     store.Redact,
 	}
 	if pr != nil {
 		k.OnDelta = pr.Delta
@@ -515,8 +509,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		DefaultLinks: defaultLinks,
 		// Interjections no longer fork the running turn (ADR 0016): the
 		// foreground's turns are short and the work runs in subagents.
-		ForkTurns: false,
-		App:       cfg.App,
+		App: cfg.App,
 		NewResources: func(b *bot.Bot) (*kernel.BotResources, error) {
 			resources, err := kernel.NewBotResources(ctx, b, manager, clock.Now)
 			if err == nil {

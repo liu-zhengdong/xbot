@@ -15,7 +15,7 @@ import (
 
 func TestMCP2bHumanDomainChecksOwnerAndOnlyExplicitRoot(t *testing.T) {
 	root := t.TempDir()
-	s := &Server{Root: root, Owner: "owner", ForkTurns: true}
+	s := &Server{Root: root, Owner: "owner"}
 	token, _, err := s.EnsureToken()
 	if err != nil {
 		t.Fatal(err)
@@ -37,7 +37,7 @@ func TestMCP2bHumanDomainChecksOwnerAndOnlyExplicitRoot(t *testing.T) {
 		return kernel.NewBotResources(ctx, b, manager)
 	}
 	_ = muxOf(s)
-	t.Cleanup(func() { s.CloseResources(); cancel(); _ = manager.Close() })
+	t.Cleanup(func() { s.CloseResources(); kernel.SetWaker(root, nil); cancel(); _ = manager.Close() })
 	call := func(name, header string, auth bool) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/api/bots/"+name+"/mcp/servers", nil)
 		req.SetPathValue("name", name)

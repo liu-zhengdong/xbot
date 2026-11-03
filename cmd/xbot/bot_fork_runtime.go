@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"xbot/internal/cliops"
@@ -44,29 +43,9 @@ func runBotForkRuntime(ctx context.Context, rawRoot string, rootExplicit bool, a
 		_, err := fmt.Fprint(out, botForkUsage)
 		return err
 	}
-	root := os.Getenv("XBOT_ROOT")
-	if strings.TrimSpace(root) == "" {
-		return errors.New("bot-fork: --self requires XBOT_ROOT from an active runtime")
-	}
-	root, err = cliops.CanonicalRoot(root)
+	root, endpoint, err := runtimeSource("bot-fork", rawRoot, rootExplicit)
 	if err != nil {
-		return fmt.Errorf("bot-fork: runtime root: %w", err)
-	}
-	if rootExplicit {
-		if strings.TrimSpace(rawRoot) == "" {
-			return errors.New("bot-fork: explicit --root must name the runtime data root")
-		}
-		given, err := cliops.CanonicalRoot(rawRoot)
-		if err != nil {
-			return fmt.Errorf("bot-fork: explicit root: %w", err)
-		}
-		if given != root {
-			return errors.New("bot-fork: runtime data root mismatch")
-		}
-	}
-	endpoint := os.Getenv("XBOT_ENDPOINT")
-	if endpoint == "" {
-		return errors.New("bot-fork: --self requires an active local XBot endpoint")
+		return err
 	}
 	input, err := readBotForkInput(command, stdin)
 	if err != nil {

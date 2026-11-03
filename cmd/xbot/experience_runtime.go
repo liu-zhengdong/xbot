@@ -8,11 +8,9 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"xbot/internal/cliops"
-	"xbot/internal/tools"
 )
 
 const experienceUsage = `Usage: xbot [--root DIR] experience record --self (--summary TEXT | --summary-file FILE|-) [--focus TEXT | --focus-file FILE|-] [--from N] [--to N] [--json]
@@ -47,29 +45,9 @@ func runExperienceRuntime(ctx context.Context, rawRoot string, rootExplicit bool
 		_, err := fmt.Fprint(out, experienceUsage)
 		return err
 	}
-	root := os.Getenv("XBOT_ROOT")
-	if strings.TrimSpace(root) == "" {
-		return errors.New("experience: --self requires XBOT_ROOT from an active runtime")
-	}
-	root, err = cliops.CanonicalRoot(root)
+	root, endpoint, err := runtimeSource("experience", rawRoot, rootExplicit)
 	if err != nil {
-		return fmt.Errorf("experience: runtime root: %w", err)
-	}
-	if rootExplicit {
-		if strings.TrimSpace(rawRoot) == "" {
-			return errors.New("experience: explicit --root must name the runtime data root")
-		}
-		given, err := cliops.CanonicalRoot(rawRoot)
-		if err != nil {
-			return fmt.Errorf("experience: explicit root: %w", err)
-		}
-		if given != root {
-			return errors.New("experience: runtime data root mismatch")
-		}
-	}
-	endpoint := os.Getenv("XBOT_ENDPOINT")
-	if endpoint == "" {
-		return errors.New("experience: --self requires an active local XBot endpoint")
+		return err
 	}
 	var reply any
 	var text string
@@ -93,13 +71,13 @@ func runExperienceRuntime(ctx context.Context, rawRoot string, rootExplicit bool
 		if err != nil && value.Error == "" && value.Text == "" && value.File == "" && value.Access == "" && value.Bytes == 0 {
 			return err
 		}
-		reply, text, operationErr = value, cliops.FormatExperienceSearch(value), err
+		reply, text, operationErr = value, cliops.FormatTextResult(value), err
 	}
 	raw, err := json.Marshal(reply)
 	if err != nil {
 		return err
 	}
-	if len(raw)+1 > tools.DefaultShellOutputBytes || len(text) > tools.DefaultShellOutputBytes {
+	if !cliops.FitsOutput(reply, text) {
 		return errors.New("experience: runtime reply facts exceed 32 KiB Shell output budget")
 	}
 	if command.JSON {

@@ -83,10 +83,6 @@ func (k *Kernel) currentWalk(from, to int, fn func(int, bot.Entry) error) error 
 	}
 	return nil
 }
-func (k *Kernel) appendCurrentFork(branch string, from int, task string) (seq int, err error) {
-	err = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { seq, err = b.AppendFork(branch, from, task); return err })
-	return
-}
 func (k *Kernel) appendCurrentForkEnd(branch, status string, steps int) (seq int, err error) {
 	err = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { seq, err = b.AppendForkEnd(branch, status, steps); return err })
 	return

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"xbot/internal/bot"
 	"xbot/internal/config"
@@ -357,3 +358,10 @@ func vaultFormGen(k *Kernel) uint64 {
 }
 
 var errNoShellJobs = errors.New("shell: background jobs are not available")
+
+func clipRunes(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	return string([]rune(s)[:n]) + "…"
+}

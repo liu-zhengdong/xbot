@@ -35,7 +35,7 @@ func (k *Kernel) ensureExec() exec.Executor {
 				if k.Dispatch {
 					// Typed subagents do the work, so they run as long as
 					// their type allows; the step count is only the guard.
-					loc = exec.NewLocal(exec.Limits{MaxConcurrent: k.forkCap(), MaxSteps: maxStepsGuard, Timeout: k.maxTypeBudget()})
+					loc = exec.NewLocal(exec.Limits{MaxConcurrent: 3, MaxSteps: maxStepsGuard, Timeout: k.maxTypeBudget()})
 					loc.ToolsFor = k.toolsFor
 					loc.Wrap = k.wrapSub
 					_ = k.withCurrentIO(func(b *bot.Bot, _ *inbox.Inbox) error { loc.AgentsDir = b.AgentsDir(); return nil })
@@ -422,9 +422,6 @@ func (k *Kernel) ControlSubagent(ctx context.Context, id, kind, text string) (st
 }
 
 func (k *Kernel) control(ctx context.Context, id, kind, text string) (string, error) {
-	if strings.HasPrefix(id, "bg_") {
-		return k.controlBackground(id, kind, text)
-	}
 	if !execID(id) {
 		return "", fmt.Errorf("exec: bad id %q", id)
 	}
@@ -607,9 +604,6 @@ func (k *Kernel) CheckBindingIdle() error {
 				return errors.New("Bot 的工具任务仍在运行")
 			}
 		}
-	}
-	if len(k.Backgrounds()) > 0 {
-		return errors.New("Bot 的后台任务仍在运行")
 	}
 	if e := k.execSnapshot(); e != nil {
 		tasks, err := e.Tasks()

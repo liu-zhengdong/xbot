@@ -462,34 +462,6 @@ func TestEnvStreamSummaryKeepsOriginalTaskFacts(t *testing.T) {
 	}
 }
 
-func TestForkLongResultWriteFailureIsFailed(t *testing.T) {
-	b := testBot(t)
-	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("start")}}); err != nil {
-		t.Fatal(err)
-	}
-	id := "bg_result_failure"
-	if _, err := b.AppendFork(id, 1, "long report"); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(b.AgentDir(id), "result.txt"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	box, err := inbox.Open(b.InboxPath())
-	if err != nil {
-		t.Fatal(err)
-	}
-	k := &Kernel{Bot: b, Inbox: box}
-	k.finishBackground(&turn{branch: id, task: "long report", started: time.Now()}, []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent(strings.Repeat("result", 1000))}}, nil)
-	status, _ := readMeta(t, b, id)
-	if status != "failed" {
-		t.Fatalf("saved result failed but task says %s", status)
-	}
-	pending := box.Pending()
-	if len(pending) != 1 || !strings.Contains(pending[0].Content, "保存后台结果失败") {
-		t.Fatalf("report %+v", pending)
-	}
-}
-
 type boundedFactCompactor struct {
 	calls   int
 	sawTail bool

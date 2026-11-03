@@ -27,15 +27,9 @@ func (s *Server) forgetKernel(name string) {
 	if entry := s.kernels[name]; entry != nil {
 		entry.Kernel = nil
 	}
-	if h := s.holds[name]; h != nil {
-		// The bot is gone or renamed: drop the held lock so nothing keeps the old name.
-		delete(s.holds, name)
-		_ = h.lock.Release()
-	}
 	s.mu.Unlock()
 	if k != nil {
 		k.CloseOperations()
-		k.CancelBackgrounds()
 	}
 }
 

@@ -276,6 +276,8 @@ func (p *fitProvider) fitted(ctx context.Context, req provider.Request, overflow
 	return out, nil
 }
 
+const defaultSubagentBudget = 20 * time.Minute
+
 // maxTypeBudget is the longest budget among the types: the executor's cap.
 func (k *Kernel) maxTypeBudget() time.Duration {
 	max := time.Duration(0)
@@ -285,7 +287,7 @@ func (k *Kernel) maxTypeBudget() time.Duration {
 		}
 	}
 	if max <= 0 {
-		max = defaultBackgroundMaxTime
+		max = defaultSubagentBudget
 	}
 	return max
 }

@@ -8,11 +8,9 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"xbot/internal/cliops"
-	"xbot/internal/tools"
 )
 
 const memoryRecallUsage = `Usage: xbot [--root DIR] memory-recall --self [--query TEXT | --query-file FILE|-] [--scope bot|person] [--since YYYY-MM-DD] [--json]
@@ -42,29 +40,9 @@ func runMemoryRecallRuntime(ctx context.Context, rawRoot string, rootExplicit bo
 		_, err := fmt.Fprint(out, memoryRecallUsage)
 		return err
 	}
-	root := os.Getenv("XBOT_ROOT")
-	if strings.TrimSpace(root) == "" {
-		return errors.New("memory-recall: --self requires XBOT_ROOT from an active runtime")
-	}
-	root, err = cliops.CanonicalRoot(root)
+	root, endpoint, err := runtimeSource("memory-recall", rawRoot, rootExplicit)
 	if err != nil {
-		return fmt.Errorf("memory-recall: runtime root: %w", err)
-	}
-	if rootExplicit {
-		if strings.TrimSpace(rawRoot) == "" {
-			return errors.New("memory-recall: explicit --root must name the runtime data root")
-		}
-		given, err := cliops.CanonicalRoot(rawRoot)
-		if err != nil {
-			return fmt.Errorf("memory-recall: explicit root: %w", err)
-		}
-		if given != root {
-			return errors.New("memory-recall: runtime data root mismatch")
-		}
-	}
-	endpoint := os.Getenv("XBOT_ENDPOINT")
-	if endpoint == "" {
-		return errors.New("memory-recall: --self requires an active local XBot endpoint")
+		return err
 	}
 	callID := os.Getenv("XBOT_CALL_ID")
 	if callID == "" {
@@ -82,8 +60,8 @@ func runMemoryRecallRuntime(ctx context.Context, rawRoot string, rootExplicit bo
 	if err != nil {
 		return err
 	}
-	text := cliops.FormatMemoryRecall(reply)
-	if len(raw)+1 > tools.DefaultShellOutputBytes || len(text) > tools.DefaultShellOutputBytes {
+	text := cliops.FormatTextResult(reply)
+	if !cliops.FitsOutput(reply, text) {
 		return errors.New("memory-recall: runtime reply facts exceed 32 KiB Shell output budget")
 	}
 	if command.JSON {

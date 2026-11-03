@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -248,112 +247,36 @@ func TestRecoverBeforeRepairTagsBranchPlaceholder(t *testing.T) {
 	}
 }
 
-// A live forking kernel that still owns backgrounds must never treat its own
-// in-flight branch as a crash.
-func TestRecoverSkipsLiveBackground(t *testing.T) {
+// Legacy metadata can still identify a process from before the engine retired.
+func TestRecoverSkipsLiveLegacyProcess(t *testing.T) {
 	b := testBot(t, link.NameTerminal)
-	if err := b.Append(bot.Entry{EventID: "u0", Time: time.Unix(1, 0).UTC(),
-		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("做个长任务")}}); err != nil {
+	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("start")}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.AppendFork("bg_live", 1, "正在跑"); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.Append(bot.Entry{Branch: "bg_live", Message: provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("一步")}}); err != nil {
+	pid, start := tools.CurrentProcess()
+	raw, err := json.Marshal(forkMetaFile{ID: "bg_live", PID: pid, ProcStart: start, Mode: "fork-turn", Status: "running"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(b.AgentDir("bg_live"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(b.AgentDir("bg_live"), "meta.json"), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
 	box, err := inbox.Open(b.InboxPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	k := &Kernel{Bot: b, Inbox: box, Memory: memory.NopStore{}, AllowFork: true,
-		bgs: map[string]*turn{"bg_live": {branch: "bg_live"}}}
+	k := &Kernel{Bot: b, Inbox: box}
 	k.RecoverInterrupted()
 	if n := forkEndCount(t, b, "bg_live"); n != 0 {
-		t.Fatalf("live branch was marked interrupted: %d", n)
+		t.Fatalf("live process was marked interrupted: %d", n)
 	}
 	if n := inboxPostCount(t, b.InboxPath(), "ev_bg_live_end"); n != 0 {
 		t.Fatalf("live branch got a recovery event: %d", n)
-	}
-}
-
-type holdTool struct {
-	started chan struct{}
-	once    sync.Once
-}
-
-func (*holdTool) Name() string        { return "hold" }
-func (*holdTool) Description() string { return "hold until cancelled" }
-func (*holdTool) Parameters() any     { return map[string]any{"type": "object"} }
-func (*holdTool) Confirm(json.RawMessage) (bool, string, error) {
-	return false, "hold", nil
-}
-func (h *holdTool) Run(ctx context.Context, _ json.RawMessage) (string, error) {
-	h.once.Do(func() { close(h.started) })
-	<-ctx.Done()
-	return "", ctx.Err()
-}
-
-type holdLink struct{ t *holdTool }
-
-func (holdLink) Name() string          { return "hold" }
-func (l holdLink) Tools() []tools.Tool { return []tools.Tool{l.t} }
-
-// Cancelling a running background writes fork_end{cancelled}, a cancelled meta,
-// exactly one completion event, and drops it from k.bgs.
-func TestCancelBackgroundWritesForkEnd(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
-	if err := b.SetOwners([]string{"u1"}); err != nil {
-		t.Fatal(err)
-	}
-	box, err := inbox.Open(b.InboxPath())
-	if err != nil {
-		t.Fatal(err)
-	}
-	h := &holdTool{started: make(chan struct{})}
-	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "hold", Arguments: "{}"}}})},
-		{Role: provider.RoleAssistant, Content: provider.TextContent("后台完成")},
-	}}
-	k := &Kernel{Bot: b, Provider: p, Inbox: box, Memory: memory.NopStore{}, MaxSteps: 4,
-		Links: []link.Link{link.Terminal{}, holdLink{h}}, AllowFork: true}
-	// The owner's message waits in the inbox, so the running turn forks.
-	if err := box.Post(link.TerminalEvent("u1", "插一句", time.Unix(20, 0).UTC())); err != nil {
-		t.Fatal(err)
-	}
-	ev := link.TerminalEvent("u1", "做个长任务", time.Unix(10, 0).UTC())
-	if err := box.Post(ev); err != nil {
-		t.Fatal(err)
-	}
-	if err := k.Handle(context.Background(), ev); err != nil {
-		t.Fatal(err)
-	}
-	bgs := k.Backgrounds()
-	if len(bgs) != 1 {
-		t.Fatalf("backgrounds %+v", bgs)
-	}
-	id := bgs[0].ID
-	if _, err := k.ControlSubagent(context.Background(), id, "cancel", ""); err != nil {
-		t.Fatal(err)
-	}
-	waitNoBackgrounds(t, k, id)
-
-	if n := forkEndCount(t, b, id); n != 1 {
-		t.Fatalf("fork_end rows %d", n)
-	}
-	entries, _ := b.Entries()
-	for _, e := range entries {
-		if e.Mark != nil && e.Mark.Kind == bot.ForkKindEnd && e.Mark.Branch == id && e.Mark.Status != bot.ForkCancelled {
-			t.Fatalf("status %+v", e.Mark)
-		}
-	}
-	if status, _ := readMeta(t, b, id); status != "cancelled" {
-		t.Fatalf("meta status %q", status)
-	}
-	if n := inboxPostCount(t, b.InboxPath(), "ev_"+id+"_end"); n != 1 {
-		t.Fatalf("completion events %d", n)
-	}
-	if len(k.Backgrounds()) != 0 {
-		t.Fatal("cancelled background still registered")
 	}
 }

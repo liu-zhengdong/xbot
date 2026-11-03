@@ -49,29 +49,9 @@ func runSkillRuntime(ctx context.Context, rawRoot string, rootExplicit bool, arg
 		_, err := fmt.Fprint(out, skillUsage)
 		return err
 	}
-	root := os.Getenv("XBOT_ROOT")
-	if strings.TrimSpace(root) == "" {
-		return errors.New("skill: --self requires XBOT_ROOT from an active runtime")
-	}
-	root, err = cliops.CanonicalRoot(root)
+	root, endpoint, err := runtimeSource("skill", rawRoot, rootExplicit)
 	if err != nil {
-		return fmt.Errorf("skill: runtime root: %w", err)
-	}
-	if rootExplicit {
-		if strings.TrimSpace(rawRoot) == "" {
-			return errors.New("skill: explicit --root must name the runtime data root")
-		}
-		given, err := cliops.CanonicalRoot(rawRoot)
-		if err != nil {
-			return fmt.Errorf("skill: explicit root: %w", err)
-		}
-		if given != root {
-			return errors.New("skill: runtime data root mismatch")
-		}
-	}
-	endpoint := os.Getenv("XBOT_ENDPOINT")
-	if endpoint == "" {
-		return errors.New("skill: --self requires an active local XBot endpoint")
+		return err
 	}
 	var value any
 	var text bytes.Buffer

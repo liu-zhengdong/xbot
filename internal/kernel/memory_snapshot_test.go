@@ -488,40 +488,71 @@ func TestMemoryDiffRecentLogOnlyNewEntries(t *testing.T) {
 
 }
 
-// TestMemoryOwnWriteInForkedTurnSkipped: a file write made after the turn forked
-// is still the bot's own change; the next wake does not report it back.
+// A legacy branch's canonical file receipt still supplies the memory baseline.
 func TestBranchMemoryReceiptReplaysFromConversation(t *testing.T) {
-	k, g, box := forkKernel(t)
-	store := memory.Open(k.Bot.Root)
-	k.Memory = store
-	k.Links = append(k.Links, link.Memory{}, link.NewToolsLinkAt(k.Bot.Root, ""))
+	b := testBot(t, link.NameTerminal)
+	if err := b.SetOwners([]string{"u1"}); err != nil {
+		t.Fatal(err)
+	}
+	store := memory.Open(b.Root)
 	p := &scripted{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{ID: "c1", Type: "function", Function: provider.FunctionCall{Name: "gate", Arguments: "{}"}}})},
-		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{memoryWriteCall(k.Bot, "c2", memory.ScopeBot, "written in the background")})},
+		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{memoryWriteCall(b, "c2", memory.ScopeBot, "written in the background")})},
 		{Role: provider.RoleAssistant, Content: provider.TextContent("后台做完了")},
 		{Role: provider.RoleAssistant, Content: provider.TextContent("next")},
 	}}
-	k.Provider = p
-	ev := link.TerminalEvent("u1", "做个长任务", time.Unix(10, 0).UTC())
-	if err := box.Post(ev); err != nil {
-		t.Fatal(err)
+	k := &Kernel{
+		Bot: b, Provider: p, Memory: store, MaxSteps: 4,
+		Links: []link.Link{link.Terminal{}, link.Memory{}, link.NewToolsLinkAt(b.Root, "")},
 	}
+	ev := link.TerminalEvent("u1", "做个长任务", time.Unix(10, 0).UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
-	close(g.release)
-	waitNoBackgrounds(t, k)
+	from, err := b.FindEvent(ev.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The old marker assigns the completed call and receipt to its branch.
+	// Generate the receipt through the real file tool, without a live fork.
+	const branch = "bg_legacy_receipt"
+	if _, err := b.AppendFork(branch, from, "legacy memory write"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.AppendForkEnd(branch, bot.ForkDone, 2); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := b.Entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seqs := make([]bot.SeqEntry, len(entries))
+	for i, entry := range entries {
+		seqs[i] = bot.SeqEntry{Seq: i + 1, Entry: entry}
+	}
+	rows, _ := bot.Replay(seqs)
+	sawReceipt := false
+	for _, row := range rows {
+		if row.Entry.Message.Role != provider.RoleTool || row.Entry.Message.CallID() != "c2" {
+			continue
+		}
+		_, receipt, _ := bot.SplitEnvironmentReceipt(row.Entry.Message.Text())
+		if row.Branch != branch || !strings.Contains(receipt, "written in the background") {
+			t.Fatalf("legacy branch lost its canonical receipt: %+v", row)
+		}
+		sawReceipt = true
+	}
+	if !sawReceipt {
+		t.Fatal("legacy fixture contains no file receipt")
+	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "and now", time.Unix(30, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	assertMemoryFileWrites(t, k.Bot, 1)
-	facts, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, BotName: k.Bot.Name()})
+	assertMemoryFileWrites(t, b, 1)
+	facts, err := store.Recall(context.Background(), memory.Query{Scope: memory.ScopeBot, BotName: b.Name()})
 	if err != nil || len(facts) != 1 {
 		t.Fatalf("facts %v %v", facts, err)
 	}
-	// Projected history includes branch tool results too. Its original
-	// canonical receipt is therefore the baseline, without a second ledger.
-	for _, up := range envUpdates(t, k.Bot) {
+	for _, up := range envUpdates(t, b) {
 		if strings.Contains(up, "written in the background") {
 			t.Fatalf("own receipt repeated: %s", up)
 		}
@@ -529,7 +560,6 @@ func TestBranchMemoryReceiptReplaysFromConversation(t *testing.T) {
 	if !strings.Contains(messagesText(p.reqs[len(p.reqs)-1].Messages), "written in the background") {
 		t.Fatal("receipt not visible in subsequent conversation")
 	}
-
 }
 
 // TestMemoryTimerWakeKeepsView: a timer wake keeps the owner's view, so msgs[1]

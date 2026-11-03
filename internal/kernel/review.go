@@ -70,9 +70,7 @@ func (t reviewedTool) ConfirmContext(ctx context.Context, args json.RawMessage) 
 	return t.k.reviewCall(ctx, t.Tool, args, summary)
 }
 
-// Run applies file freshness, then the background conflict queue. A foreground
-// write to something a running background has written is queued behind that
-// background instead of running beside it.
+// Run applies file freshness and the existing memory guards.
 func (t reviewedTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	p, err := t.PrepareRun(ctx, args)
 	if err != nil {
@@ -104,28 +102,6 @@ func (t reviewedTool) PrepareRun(ctx context.Context, args json.RawMessage) (too
 			return tools.PreparedRun{}, err
 		}
 	}
-	k := t.k
-	base := k.WorkDir
-	if dir := k.cwdFor(ctx); dir != "" {
-		base = dir
-	}
-	if res, ok := review.ResourceOf(t.Tool.Name(), args, base); ok {
-		cur := k.turnFor(ctx)
-		if !cur.isForked() {
-			if bg := k.conflictingBackground(cur, res); bg != nil {
-				_, summary, _ := tools.ConfirmCall(ctx, t.Tool, args)
-				if k.QueueFull() {
-					return tools.PreparedRun{Text: fmt.Sprintf("队列已满（%d 个），没有建任务：这一步和后台正在动的 %s 冲突，等它做完再试。", QueueCap, res)}, nil
-				}
-				c := &Control{ID: fmt.Sprintf("q%d", ctrlSeq.Add(1)), Kind: "conflict", Resource: res, Text: t.Tool.Name() + " " + summary}
-				if bg.queueCtrl(c) {
-					return tools.PreparedRun{Text: fmt.Sprintf("已排到后台 %s 之后（队列 %s）：它正在动 %s，做完当前的事会接着做这一步。", c.Background, c.ID, res)}, nil
-				}
-			}
-		}
-		cur.addResource(res)
-	}
-
 	return tools.PreparedRun{Run: func(ctx context.Context) (string, error) {
 		start := time.Now()
 		out, err := t.runMemoryGuard(ctx, args)

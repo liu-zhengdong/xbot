@@ -17,10 +17,6 @@ func TestInterpreterPolicyParity(t *testing.T) {
 					t.Fatalf("missed review %s", raw)
 				}
 			}
-			raw := json.RawMessage(`{"command":"echo x > file"}`)
-			if resource, ok := ResourceOf(name, raw, "/work"); !ok || resource != "dir:/work" {
-				t.Fatalf("missing resource %q %v", resource, ok)
-			}
 			title, subtitle := CardText(name, json.RawMessage(`{"command":"rm file"}`), "purpose", "local")
 			if title != "删除文件" || !strings.Contains(subtitle, "本机") {
 				t.Fatal(title, subtitle)

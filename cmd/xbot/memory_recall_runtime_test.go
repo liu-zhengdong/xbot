@@ -241,8 +241,8 @@ func TestMemoryRecallRuntimePartialOutputBeforeFailureAndArtifactMetadata(t *tes
 				if err := json.Unmarshal(out.Bytes(), &got); err != nil || got != want {
 					t.Fatalf("facts changed got=%+v want=%+v err=%v", got, want, err)
 				}
-			} else if out.String() != cliops.FormatMemoryRecall(want) {
-				t.Fatalf("human changed bytes=%d want=%d", out.Len(), len(cliops.FormatMemoryRecall(want)))
+			} else if out.String() != cliops.FormatTextResult(want) {
+				t.Fatalf("human changed bytes=%d want=%d", out.Len(), len(cliops.FormatTextResult(want)))
 			}
 		}
 	}

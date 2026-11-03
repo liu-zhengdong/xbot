@@ -1,6 +1,6 @@
 ---
 kind: part
-verified: 2026-10-17 @ c940085
+verified: 2026-11-02 @ 1fb6b41d (current execution and legacy branch boundaries)
 ---
 # XBot：新人导览
 
@@ -13,13 +13,13 @@ Bot 是第三代交互模型。第一代是 Chat，第二代是 Session 和 Agen
 
 Bot 有主动性。webhook、文件监听、其他 Bot、定时器都能唤醒它；它自己判断有没有值得说的事，有就说，没有就保持安静（回复 `SILENT`）。主动性靠评测保证：看行为和结果，不看模型自己的汇报——自己设定目标，被打断后继续同一件事，做不到时停下来说明原因。
 
-内核要薄，机制最小够用。不为特殊情况加规则，新能力尽量用已有的抽象（Link、Event、收件箱、执行器任务）表达。例如插话分叉的后台直接登记成执行器任务，确认规则收拢在一张权限表里。
+内核要薄，机制最小够用。不为特殊情况加规则，新能力尽量用已有的抽象（Link、Event、收件箱、执行器任务）表达。早期分叉后台曾复用执行器任务；该实时机制现已退役。现行子代理复用执行器，确认规则仍收拢在一张权限表里。
 
 Bot 是全能的。授权给它的机器，它能做用户在终端里能做的任何事。隔离靠部署方式，安全靠操作审核和保险箱，不靠假装能限制文件访问。
 
 **现阶段优先级**：产品还没有用户，现阶段最重要的是把功能调通、调顺，然后再接安全。安全只留接口（一张权限表和它的守门测试、内核的统一审查入口、保险箱占位），不再加新的安全工作；挡住 Agent 干活的确认和拒写要收进一个默认放行的开关。见 [ADR 0013](../adr/0013-features-before-security.md)。
 
-用户希望 Bot 任何时候都能在几秒内回应，哪怕它正忙着长任务，这一点靠「插话时分叉」做到了。现在在做的是对照 Claude Code 内部机制调研定下的 8 步内核计划：提醒通道与熔断、文件新鲜度、待办清单、shell 后台化、环境感知、搜索与看图已经合入，接下来是子代理类型；权限规则按 ADR 0013 暂缓。同时三个 Bot 连续运行两周做验收，到 10-30 结束。再往后是开源网关、P2P 和跨用户通信。新想法先进候选清单（在用户的 Obsidian，不在仓库），不当场开工；计划和进度见 [MILESTONES](../MILESTONES.md)。
+用户希望 Bot 任何时候都能在几秒内回应，哪怕它正忙着长任务，现行机制是同轮插话续跑、慢工具 Jobs 和独立子代理。现在在做的是对照 Claude Code 内部机制调研定下的 8 步内核计划：提醒通道与熔断、文件新鲜度、待办清单、shell 后台化、环境感知、搜索与看图已经合入，接下来是子代理类型；权限规则按 ADR 0013 暂缓。同时三个 Bot 连续运行两周做验收，到 10-30 结束。再往后是开源网关、P2P 和跨用户通信。新想法先进候选清单（在用户的 Obsidian，不在仓库），不当场开工；计划和进度见 [MILESTONES](../MILESTONES.md)。
 
 ## 思想地图
 上面「愿景与思想」讲的是想把 XBot 做成什么样；下面几篇讲用户做这件事的方法。改内核、改提示、改合并流程之前，先读对应的那一篇。
@@ -50,7 +50,7 @@ Bot 是全能的。授权给它的机器，它能做用户在终端里能做的�
 | Event | 统一的事件结构 `{source, type, content, sender, time}` | `inbox` |
 | transcript | 每个 Bot 一份只追加、带 seq 编号的原文记录 | `bot/transcript.go` |
 | 用户（owner） | 拥有并授权 Bot 的人；只有用户经认证入口发的消息算可信 | `person` |
-| 执行器任务 | 子代理和分叉后台共用的任务记录（`agents/<id>/`） | `exec` |
+| 执行器任务 | 子代理任务记录（`agents/<id>/`）；旧分叉记录只读保留 | `exec` |
 
 ## 组成
 | 部分 | 一句话 | 什么时候读 | 文档 |
@@ -59,7 +59,7 @@ Bot 是全能的。授权给它的机器，它能做用户在终端里能做的�
 | 上下文与 transcript | 固定前缀、分段存储、索引、压缩、找回、导出 | 改 `internal/bot/transcript.go`、压缩、导出 | [context.md](context.md) |
 | 身份与记忆 | 人、两层记忆、冲突规则 | 改 `internal/memory`、`internal/person` | [memory.md](memory.md) |
 | 子代理 | 后台子代理与执行者 | 改 `internal/exec`、`internal/agent` | [subagents.md](subagents.md) |
-| 插话时分叉 | 插话时一轮分成前台和后台 | 做 F1–F5，改分支、前后台调度 | [fork.md](fork.md) |
+| 旧分叉记录 | 历史分支读取与未闭合修复 | 改 branch、Replay、旧格式恢复 | [fork.md](fork.md) |
 | 多 Bot | 主 Bot、分组、Fork Bot、Bot 间通信、档案、例程 | 改 `internal/bot`、`internal/peer`、`internal/cron` | [multibot.md](multibot.md) |
 | 机器与设备 | 机器开关、隧道、多台电脑靠[网关配对](gateway.md)、浏览器、桌面 | 改 `internal/machine`、`browser`、`desktop` | [machines.md](machines.md) |
 | 生态 | 内置 Link、MCP、技能、连接器、编码代理 | 加 Link、改 MCP、技能或编码代理 | [ecosystem.md](ecosystem.md) |
@@ -81,7 +81,7 @@ flowchart LR
   Kernel --> Provider[模型供应商]
   Kernel --> Store[(transcript 段文件 + SQLite 索引)]
   Kernel --> Mem[(记忆)]
-  Kernel --> Exec[执行器: 子代理 / 分叉后台]
+  Kernel --> Exec[执行器: 子代理]
 ```
 所有输入都变成 Event 进收件箱，每个 Bot 一个事件循环按顺序处理。一轮里内核组装上下文、调模型、把工具调用交给权限表审查后执行，所有结果只追加进 transcript。
 
@@ -91,7 +91,9 @@ flowchart LR
 3. 调用绑定的模型（[internal/provider](../../internal/provider/)）；回复里的多个工具调用并行执行。
 4. 每个工具调用先过权限表和机器开关（[security.md](security.md)）；读文件、shell 读命令直接跑，删除或对外发送弹确认卡，卡片也写进 transcript。
 5. 结果按调用顺序追加进 transcript，SSE 流式回网页；轨迹进信息面板（[ui.md](ui.md)）。
-6. 如果这一轮很长、用户又插了一句，这一轮分叉成后台继续，前台几秒内回答（[fork.md](fork.md)）。
+6. 用户插话时，内核接入同一轮；等待模型时取消重发，慢工具沿原 Jobs 继续。独立子代理保持运行（[kernel.md](kernel.md)、[subagents.md](subagents.md)）。
+
+三处审查修复的结构决定见 [ADR 0067](../adr/0067-review-hotspot-simplification.md)。
 
 ## 文档地图
 | 文档 | 在哪 | 给谁 | 活的 / 冻结 | 谁维护 |

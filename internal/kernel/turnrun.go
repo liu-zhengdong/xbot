@@ -29,7 +29,6 @@ type turnRun struct {
 	// assembled is the context the first model call receives. A later run in the
 	// same turn appends to a copy of it, never to this slice.
 	assembled []provider.Message
-	onDelta   func(string)
 	br        *Breaker
 
 	// msgSeqs are the transcript lines this turn recorded, in order, so the
@@ -84,9 +83,6 @@ func (r *turnRun) requestContext(req provider.Request) (provider.Request, error)
 	r.k.context.mu.Lock()
 	r.k.context.tools = estimateTools(req.ToolDefinitions())
 	r.k.context.mu.Unlock()
-	if r.k.AllowFork {
-		return req, nil
-	}
 	var out []provider.Message
 	seen := map[int]bool{}
 	through := 0
@@ -170,22 +166,12 @@ func (r *turnRun) options(approve agent.Approver) agent.Options {
 		Guard:         r.guardStep,
 		OnIdle:        r.onIdle,
 	}
-	// A timer wake has no one to stream to, until an owner message takes
-	// over its output.
-	if r.onDelta == nil && r.k.AllowFork {
-		opts.OnDelta = nil
-	}
-	if !r.k.AllowFork {
-		opts.Preempt = r.t.preempt
-		opts.Preempted = r.t.takeInterjected
-	}
+	opts.Preempt = r.t.preempt
+	opts.Preempted = r.t.takeInterjected
 	return opts
 }
 
 func (r *turnRun) delta(s string) {
-	if r.t.isForked() {
-		return
-	}
 	if sk := r.t.sinkNow(); sk != nil && sk.OnDelta != nil {
 		sk.OnDelta(s)
 	}
@@ -203,17 +189,14 @@ func (r *turnRun) toolStart(id, name, summary, description string) {
 	if name == "send_message_to_user" {
 		display = summary
 	}
-	r.t.mu.Lock()
-	forked := r.t.branch != ""
-	r.t.mu.Unlock()
-	if sk := r.t.sinkNow(); sk != nil && sk.OnTool != nil && !forked {
+	if sk := r.t.sinkNow(); sk != nil && sk.OnTool != nil {
 		sk.OnTool(name, display)
 	}
 }
 
 func (r *turnRun) toolEnd(id, name, output string) {
 	r.k.endStep(r.t, id, output)
-	if sk := r.t.sinkNow(); sk != nil && sk.OnResult != nil && !r.t.isForked() {
+	if sk := r.t.sinkNow(); sk != nil && sk.OnResult != nil {
 		sk.OnResult(name, output)
 	}
 }
@@ -233,28 +216,11 @@ func (r *turnRun) onMessage(m provider.Message) {
 	}
 }
 
-// afterStep hands the model the messages that arrived during the step, or, for
-// a turn that may fork, the controls addressed to its background.
+// afterStep takes owner words first, then ordinary inbox events.
 func (r *turnRun) afterStep() ([]provider.Message, error) {
-	if !r.k.AllowFork {
-		// The owner's words go first, then whatever the inbox brought.
-		owner := r.t.takeInterjected()
-		rest, err := r.k.absorbInbox()
-		messages := append(owner, rest...)
-		r.referenceInputs = append(r.referenceInputs, messages...)
-		return messages, err
-	}
-	r.t.forkMu.Lock()
-	defer r.t.forkMu.Unlock()
-	if r.t.isForked() || r.k.tryForkLocked(r.t) {
-		// A background never reads the owner's messages; they belong to the
-		// foreground. It reads only the controls sent to it: steer, queue,
-		// interrupt.
-		messages := r.t.takeCtrl()
-		r.referenceInputs = append(r.referenceInputs, messages...)
-		return messages, nil
-	}
-	messages, err := r.k.absorbInbox()
+	owner := r.t.takeInterjected()
+	rest, err := r.k.absorbInbox()
+	messages := append(owner, rest...)
 	r.referenceInputs = append(r.referenceInputs, messages...)
 	return messages, err
 }
@@ -309,11 +275,6 @@ func (r *turnRun) guardStep(_ int, stepMsgs []provider.Message) (string, bool, s
 	// instructions and context usage use the same boundary: they show up on the
 	// next model call, not in the middle of one.
 	join.add(r.k.stepBoundaryNotes(r.t))
-	if !stop {
-		if why, over := r.k.backgroundOverBudget(r.t); over {
-			stop, reason = true, why
-		}
-	}
 	if stop {
 		_ = r.k.logCurrentTrace(bot.TraceStop, reason)
 	}
@@ -340,9 +301,8 @@ func (j *textJoin) add(s string) {
 
 func (j *textJoin) String() string { return j.b.String() }
 
-// drive runs the model loop for this turn and reports to done, or finishes the
-// background itself. It owns every write to r.err and r.msgSeqs during the run.
-func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
+// drive owns the model loop and its transcript writes until the turn ends.
+func (r *turnRun) drive(opts agent.Options) turnResult {
 	rp := &replyProvider{
 		inner:   r.p,
 		prepare: r.requestContext,
@@ -365,11 +325,11 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 		validate: r.validateReply,
 	}
 	fit := newTurnFit(len(r.assembled), r.seqAt)
-	fit.refreshEnvironment = !r.k.AllowFork
+	fit.refreshEnvironment = true
 	rp.fit = func(ctx context.Context, req provider.Request, overflow bool) provider.Request {
 		// Reserve the sampled replacement before fit, so a snapshot never bypasses H.
 		st, err := r.k.currentState()
-		if err == nil && !r.k.AllowFork {
+		if err == nil {
 			prev := replayEnvironment(req.Messages, st.MemSnap)
 			next, sampleErr := r.k.sampleEnvironment(prev)
 			if sampleErr == nil {
@@ -384,30 +344,14 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 		return r.k.fit(ctx, r.t, fit, req, overflow)
 	}
 	produced, err := agent.Run(r.modelContext(), rp, r.list, r.assembled, opts)
-	var bg bool
 	for {
 		if err == nil {
 			err = r.err
 		}
-		// A control that arrived after the last step starts another run, so a
-		// background works through its queue before it ends. Nothing else
-		// continues it: a background stops when the model stops, when the
-		// breaker trips, or when its wall-clock budget is spent. Controls are
-		// read only once another run is certain: a run the budget refuses leaves
-		// them pending, and finishBackground reports them as unread.
 		r.t.mu.Lock()
-		bg = r.t.branch != ""
 		var pend []provider.Message
-		if err == nil && bg && len(r.t.pendingCtrlLocked()) > 0 {
-			if spent, over := r.k.backgroundBudgetSpent(r.t); over {
-				r.t.stopReason = spent
-			} else {
-				pend = r.t.takeCtrlLocked()
-			}
-		}
-		if len(pend) == 0 && !bg && !r.k.AllowFork && err == nil {
+		if err == nil {
 			// The owner spoke as the model finished: answer in this turn.
-			// The lock order is t.mu, then t.inter.mu, the same everywhere.
 			pend = r.k.closeInterject(r.t, false)
 		}
 		finishing := len(pend) == 0
@@ -450,34 +394,22 @@ func (r *turnRun) drive(opts agent.Options, done chan<- turnResult) {
 		produced[i].Images = nil
 	}
 	if errors.Is(err, context.Canceled) {
-		r.fail(r.k.closeDangling(DangleCancel, false))
-	}
-	if bg {
-		r.k.finishBackground(r.t, produced, err)
-		r.k.flushToolJobs()
-		r.t.cancelRun()
-		return
+		r.fail(r.k.closeDangling(DangleCancel))
 	}
 	r.k.flushToolJobs()
-	if !r.k.AllowFork {
-		// A failed run leaves accepted words on the transcript and reports the
-		// error to the current sink. Handle appends their failure replies.
-		dropped := r.k.closeInterject(r.t, true)
-		r.t.mu.Lock()
-		replyTo := r.t.replyTo
-		r.t.mu.Unlock()
-		if len(dropped) > 0 && err == nil {
-			err = errors.New("插话尚未处理完成；原话已保留")
-		}
-		r.t.finishSink(Outcome{Err: err, ReplyTo: replyTo})
+	// Accepted words stay durable even when their request has handed off.
+	dropped := r.k.closeInterject(r.t, true)
+	r.t.mu.Lock()
+	replyTo := r.t.replyTo
+	r.t.mu.Unlock()
+	if len(dropped) > 0 && err == nil {
+		err = errors.New("插话尚未处理完成；原话已保留")
 	}
-	done <- turnResult{produced: produced, err: err}
+	r.t.finishSink(Outcome{Err: err, ReplyTo: replyTo})
+	return turnResult{produced: produced, err: err}
 }
 
 func (r *turnRun) part(p provider.ContentPart) {
-	if r.t.isForked() {
-		return
-	}
 	m := r.k.scrubEntry(provider.Message{Role: provider.RoleAssistant, Content: []provider.ContentPart{p}})
 	if sk := r.t.sinkNow(); sk != nil && sk.OnPart != nil {
 		for _, p := range m.Content {

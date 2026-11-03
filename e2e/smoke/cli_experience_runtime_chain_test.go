@@ -178,7 +178,17 @@ func TestCLIExperienceRuntimeSourceConsumers(t *testing.T) {
 	envSeen := false
 	for _, raw := range captured {
 		var req stubRequest
-		if json.Unmarshal(raw, &req) != nil || !strings.Contains(lastUser(req), searchCue) {
+		if json.Unmarshal(raw, &req) != nil {
+			continue
+		}
+		// A handoff can append an internal note after the actual owner input.
+		ownerInput := ""
+		for _, message := range req.Messages {
+			if message.Role == "user" && !strings.HasPrefix(message.Content, "<environment_") && !strings.HasPrefix(message.Content, "<owner_interjected>") {
+				ownerInput = message.Content
+			}
+		}
+		if !strings.Contains(ownerInput, searchCue) {
 			continue
 		}
 		for _, message := range req.Messages {

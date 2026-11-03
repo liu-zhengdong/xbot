@@ -3,6 +3,8 @@ package kernel
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -244,4 +246,51 @@ type failModel struct{}
 
 func (failModel) Chat(context.Context, provider.Request, func(string)) (provider.Message, error) {
 	return provider.Message{}, errors.New("boom")
+}
+
+// TestContextSnapSurvivesRestart is the panel's promise: a fresh kernel over
+// the same bot directory still shows the last wake instead of an empty card.
+func TestContextSnapSurvivesRestart(t *testing.T) {
+	b, err := bot.Create(t.TempDir(), "ada", "duty", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := &Kernel{Bot: b}
+	t0 := &turn{}
+	k.noteContext(t0, provider.Request{Messages: []provider.Message{
+		{Role: provider.RoleSystem, Content: provider.TextContent("p")},
+		{Role: provider.RoleUser, Content: provider.TextContent("go")},
+	}})
+	k.persistContextSnap()
+
+	fresh, err := bot.Load(b.Root, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap := (&Kernel{Bot: fresh}).ContextSnapshot()
+	if !snap.Stale || len(snap.Requests) != 1 || snap.Requests[0].Prompt <= 0 {
+		t.Fatalf("restarted snapshot %+v, want one stale request", snap)
+	}
+	if snap.Detail == nil {
+		t.Fatal("the saved snapshot lost its detail")
+	}
+}
+
+// TestContextSnapFileIgnoredWhenBroken keeps a corrupt cache harmless: the
+// panel falls back to empty and the next wake rewrites the file.
+func TestContextSnapFileIgnoredWhenBroken(t *testing.T) {
+	b, err := bot.Create(t.TempDir(), "ada", "duty", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(bot.Dir(b.Root, b.Name()), ContextSnapFile)
+	if err := os.WriteFile(path, []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := LoadContextSnap(b); ok {
+		t.Fatal("a broken file was reported as a snapshot")
+	}
+	if snap := (&Kernel{Bot: b}).ContextSnapshot(); snap.Stale || len(snap.Requests) != 0 {
+		t.Fatalf("a broken file became a snapshot: %+v", snap)
+	}
 }
