@@ -1,5 +1,14 @@
 # XBot 里程碑与进度
 
+## 2026-11-02 shell jobs 三工具 runtime CLI（所测独立端到端分阶段通过，待集成）
+
+- 合同 690abfdf [ADR0066](adr/0066-shell-jobs-cli.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS 10/10（3 非阻塞修正：formatBackground 指引补、shelljob_test 断言迁移清单、c1_output/prop 测试断言补记）→1215169f Accepted。
+- impl e80548b1（25 文件 +642/-227）：`xbot jobs output|status|cancel --self` 经 source `XBOT_ENDPOINT` POST `/v1/jobs/{output,status,cancel}` 回同 listener，三原 Run 均 IGNORE ctx、无 `XBOT_CALL_ID`；kernel `JobsHandlers` 在 `holdOperations` 下逐字复用原方法体（`k.shellJobs()`→`jobs.Output`/`Status`/`List`/`Cancel`+`ErrForeignJob`→`exec.Remote` 兜底 `CancelToolJob`）。退役：registry `"shell_jobs"` 组整行退（首个整组退的 registry 组）、`review.go:51-53` 三行删、`shellOutputTool`/`shellStatusTool`/`shellCancelTool` 三 wrapper 与 `errNoShellJobs`/`errShell` 按唯一消费定去留、`tooljob.go:36-38` `runToolCall` 免 Jobs 槽位分支退、`shell.go:260` 指引与 `tools/shelljob.go:803`、atlas kernel/ecosystem/security 三处改指 CLI；readonly 分支加 `jobs`——`output|status --self` 放行、`cancel --self` 拒（原 Normal 写类）、help 放行。
+- TEST-ONLY 41540050（6 testfiles）：e2e 四处 scripted 迁 `sh "$XBOT_BIN" jobs …`——`mcp_runtime` 新增 `mcpRuntimeJobs` helper（cancel 断言 `cancellation requested|cancelled <id>`）、`cli_profile_full` `FULL_AFTER_MOVE` 的 `shell_status`、`chat_group`/`bot_projection` 的 `shell_output` 经 `commandOutput` 解包后按 status/offset/next_offset 四段断言（formatBackground 等价断言随迁）；`shelljob_test`/`shelljob_prop_test` 死名改 retired/jobs output。`TestMCPRuntimeCallsAndSourceLease` 23s 全量 status/output/cancel 流 PASS。
+- STATIC prod PASS 1215169f..e80548b1（25 actualPROD，三领域方法体逐字复用，无实际不一致）。
+- 独立业务：entry-red c5464592 FAIL .92s（door `unknown command`）→merge 9a9b430b GREEN 2.724s。
+- 当前级别：所测独立端到端分阶段通过+STATIC prod PASS+作者 checks，产品 25 文件冻结 e80548b1，**待集成 main**、未日用。`shell_jobs` 组整组退是首个 shell group entry 退组。Not run：kernel3 旧族/真模型/p95/主人日用/push。Pre-existing fails 无关：TestCardText `delete_bot`、`TestEnvStreamSilenceRules`、`TestRequestContextSkipsForkMarkers`、dirty-worktree `persistContextSnap` stale `k.Bot.Name()` WIP——均在 e80548b1 上已红。
+
 ## 2026-11-02 subagent 三读 runtime CLI（所测独立端到端分阶段通过，待集成）
 
 - 合同 3d5a08e8 [ADR0065](adr/0065-subagent-read-cli.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS（1 实质修正：接受 scoping 放宽——孩子无 kernel、scoped sh 绑父 endpoint、IGNORE ctx 后无调用方识别，`selfSubagentTool` 钉自己 id 的工具面收窄不保留，孩子本就 `read_file` 可读兄弟 transcript，非硬安全边界；另补退役面清单与小错）→ca5fe01e Accepted。

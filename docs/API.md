@@ -376,6 +376,18 @@ linksTool 已整门退役，模型侧不再有 `links` 入口：registry `"links
 
 `list_subagents`/`read_subagent`/`expand_subagent` 三个 Readonly 模型工具已退注册：模型经 `sh` 运行 `"$XBOT_BIN" subagent list|read|expand --self`，沿原 source `XBOT_ENDPOINT`/`XBOT_ROOT` POST 到同 listener 的 `POST /v1/subagent/list|read|expand`，由同一运行中 kernel 的原方法体读 `exec.ReadStatus`/`Expand`/`ReadMeta`/`ReadDescriptor`/`ActiveTask`。三原 Run 均 IGNORE ctx，无 `XBOT_CALL_ID` 要求；endpoint 是同实例资格——`ActiveTask` 活任务覆盖与 route 锁保护的 current ref 只在运行中 kernel 存在。孩子 scoped Shell 的 `--self` 经父 endpoint 回同一 listener 取父 current：read/expand 任意有效 `sa_` id、list 全部兄弟——scoping 放宽是接受的语义（原 `selfSubagentTool` 钉自己 id 的工具面收窄不保留，孩子本就 `read_file` 可读兄弟 transcript，非硬安全边界）。退役面：`listSubagentsTool`/`readSubTool`/`expandSubTool` 三 wrapper、`selfSubagentTool` 整型及其 `scopeTools` 分支、readonly 表三行、`looseCall` 的 `read_subagent` 豁免、persona/agenttype/manual/atlas/README 与三处 `expand_subagent`/`read_subagent` 指引均改指 CLI；agents 组写类保留。回包 `{text?,error?}`，human 与整 JSONNL 各≤原 Shell 32 KiB，HTTP 64 KiB。实例接线见 [内核](atlas/kernel.md)，决定见 [ADR0065](adr/0065-subagent-read-cli.md)。
 
+## 后台任务运行时 CLI
+
+```sh
+"$XBOT_BIN" jobs output --self <id> [--offset N | --tail N] [--json]
+"$XBOT_BIN" jobs status --self [<id>] [--json]
+"$XBOT_BIN" jobs cancel --self <id> [--json]
+"$XBOT_BIN" jobs --help
+"$XBOT_BIN" jobs output|status|cancel --help
+```
+
+`shell_output`/`shell_status`/`shell_cancel` 三个模型工具已退注册（首个整组退的 registry 组）：模型经 `sh` 运行 `"$XBOT_BIN" jobs output|status|cancel --self`，沿原 source `XBOT_ENDPOINT`/`XBOT_ROOT` POST 到同 listener 的 `POST /v1/jobs/output|status|cancel`，由同一运行中 kernel 的 `JobsHandlers` 在 `holdOperations` 下逐字复用原方法体读 `k.shellJobs()` 活表（`Output`/`Status`/`List`/`Cancel`，`ErrForeignJob`→`exec.Remote` 兜底）。三原 Run 均 IGNORE ctx，无 `XBOT_CALL_ID` 要求；endpoint 是同实例资格——live writer 的 span/held、`lv.cancel` 回调与 Remote 远进程兜底只在本实例，离线 `NewJobs.Load` 把 running 全标 lost。`cancel` 原归 Normal、无 owner 卡。退役面：registry `"shell_jobs"` 组整行退、`review.go` 三行删、`shellOutputTool`/`shellStatusTool`/`shellCancelTool` 三 wrapper 与 `errNoShellJobs`/`errShell` 按消费定去留、`tooljob.go` `runToolCall` 免 Jobs 槽位分支退、`shell.go` 指引与 atlas kernel/ecosystem/security 三处改指 CLI；readonly 分支放行 `jobs output|status --self`、拒 `cancel --self`（原 Normal 写类）。回包 `{text?,error?}`，human 与整 JSONNL 各≤原 Shell 32 KiB，HTTP 64 KiB。实例接线见 [内核](atlas/kernel.md)，决定见 [ADR0066](adr/0066-shell-jobs-cli.md)。
+
 ## Bot 列表与创建
 
 `GET /api/bots` 返回当前 owner 的 Bot。顺序是置顶在前，组内按名字。主 Bot 会被 `SetPrimary` 置顶，所以通常排在置顶组里。
