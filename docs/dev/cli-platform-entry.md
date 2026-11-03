@@ -825,6 +825,10 @@ A 离线读 `shell-jobs/` 目录（`bot.Load`+`NewJobs(dir).Load()`）：落选�
 
 **最窄验收**：①restart 无 hint→`runtimeSourceCall`→`saveRestartContinuation` 写文件→`restartCh` 投递→response 先行回固定 ACK→桩 k.Restart 断 hint（不真重启）；②hint 传参/超 4000 原错/`k.Restart==nil` 原 unavailable 错/二次 `restart already requested`；③GET 无 secret→HTTPNeedsOwner=false 直通无卡→`Status\nbody`；④POST/body→卡（tool=sh、`"POST <url>"`）→批准→发出；⑤`{{secret:NAME}}` 触发卡→egress 替换→值不出现在结果/卡/回包；⑥permissive 下 http secret/写方法**无卡直跑**、restart 无卡（与 links 相反钉死）；⑦拒→`denied by user`/超时→自动 allow/`(sh,canonArgs)` 键控 A→B 不吃 A/`noApprover` 原错；⑧退役面全项（registry/review/class 常量/cardtext/restart_unattended_test/`NeedsOwner("http_request")` 无消费者）；⑨CallID 缺失报错、双 32KiB/HTTP 64KiB、`allowReadOnlyPlatform` 不放两 `--self`（无 restart/http 分支时 `--help` 一并拒，更严一致，放行需加分支）；⑩Drain 语义：response 完整+restartCh 收到 reason，`deliverRestartContinuation` 重启后投 restart 事件原样。复用 links/jobs 骨架与已绿族，只 new+必要 affected 最小 once，不整 longrun/真模型/性能矩阵。
 
+## 批 toolslinkbaseset：ToolsLink 整体退役决策已 Accepted
+
+合同 7f045a87 [ADR0069](../adr/0069-toolslink-base-set-decision.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS（24 shape）→Accepted。附强约束：kernel 行工厂须持这批工具单例句柄供 `attachShell`/`shown()` 绑定，不得每 `toolRegistry()` 重 new 致绑定落空。两笔误已核并修正（shell 解释器按平台至多 3、darwin zsh/bash/sh 与 windows powershell/cmd/git-bash；`sandboxLink` 注入点 `eval/run.go:410` 原误写 `jail.go:410`）。决策：ToolsLink organ 整体退役，六件（shells/files/web_fetch/web_search/view_image）改 kernel 行按真实依赖注册、不迁 CLI；desktop/browser/code/connector 各保自有 link。基线 main `8617fd5e`，未实施。
+
 
 
 - 主人日用验收尚未开始。普通资料首刀的独立审计、真入口验证与合入已完成；后续不重复该刀设计审批，按新切片复核实际增量。

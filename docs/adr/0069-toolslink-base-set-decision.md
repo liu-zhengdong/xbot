@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0069 ToolsLink 基础集决策：ToolsLink 整体退役，工具按各 node 能力条件注册
@@ -10,13 +10,13 @@ date: 2026-11-02
 
 基线 main `8617fd5e`（cards family 已合 `fa800f10`，本仓 main 已含至 `8617fd5e` 全部工具家族）。盘点依据 remaining-inventory §1.2「ToolsLink 是 namedLink(links,link.NameTools) gating 所有 base 工具」与母路线批 5「盘点剩余基础模型工具」。**先纠背景**：inventory 写的 `namedLink(links,link.NameTools)` gating 实际只剩 `mountGrantLocked` 一处消费——早期 secrets/shell_jobs 两组的 `namedLink` 行判据已在 ADR0064/0066/0068 随整组退役，现码 `internal/kernel/` 内除 `links.go:450` mount 开关外无 `NameTools` 消费点。
 
-ToolsLink（`internal/link/tools.go:6-32`）是名为 `"tools"` 的 organ（`store.go:37` `{ID:"tools", Grant:"tools", Kind:AppNative}`），`syncGrantsLocked` 的 organ 循环（`links.go:377-386`）**每 snapshot 强制挂载**——不进 `apps.json`、不经商店卡、不可授权/收回。`NewToolsLinkAt(work.BotDir(root,name), work.SharedDir(root))` 产 6 个 `*tools.Shell` 解释器（`zsh`/`bash`/`sh`/`powershell`/`cmd`/`git-bash`，按平台探测挂实际可执行项）+ `&tools.ReadFile`/`WriteFile`/`EditFile`/`ViewImage`（`Root` 钉 work.BotDir）+ `&tools.WebFetch`/`WebSearch`。这批工具经 `registry.go:146-155` 的 link 循环注册（`source="organ"`、`group="tools"`、`deferred=false`——organ 非 StoreGrant，不 deferred）。
+ToolsLink（`internal/link/tools.go:6-32`）是名为 `"tools"` 的 organ（`store.go:37` `{ID:"tools", Grant:"tools", Kind:AppNative}`），`syncGrantsLocked` 的 organ 循环（`links.go:377-386`）**每 snapshot 强制挂载**——不进 `apps.json`、不经商店卡、不可授权/收回。`NewToolsLinkAt(work.BotDir(root,name), work.SharedDir(root))` 按平台至多产 3 个 `*tools.Shell` 解释器（darwin `zsh`/`bash`/`sh`、windows `powershell`/`cmd`/`git-bash`，按平台探测挂实际可执行项）+ `&tools.ReadFile`/`WriteFile`/`EditFile`/`ViewImage`（`Root` 钉 work.BotDir）+ `&tools.WebFetch`/`WebSearch`。这批工具经 `registry.go:146-155` 的 link 循环注册（`source="organ"`、`group="tools"`、`deferred=false`——organ 非 StoreGrant，不 deferred）。
 
 kernel 侧有三个消费点把 ToolsLink 的工具绑上本实例状态：
 
 - `attachShell`（`shelljob.go:74-94`，每次 `toolRegistry()` 都跑）：遍历 `k.snapshotLinks()` 的 `l.Tools()`，对 `*tools.Shell` 调 `BindJobs`/`BindSession`/`SetMarkerDir`/`bindShellRuntime`（XBOT_* env 装配 + `withShellStartIO` + `BindMarkerIO` + `BindLocalSudo`→vault），对文件/web 工具调 `bindFileCwd`（`BindRoot(k.cwdFor)`、ViewImage 加 `Allowed`）与 `configureWeb`（`Store`/`Now`/`Backend`/`Fetcher`/vision model）。
 - `kernel.go:746-757` `memoryEnv` 的 `shown()`：遍历 `l.Tools()` 找第一个 `write_file`，用 `modelPath` 把 memory 绝对路径换成模型可读表示。
-- `eval/jail.go:410` `sandboxLink{Name:"tools"}` 与 run.go:278 grant `NameTools`：评测用同名伪 link 注入沙箱工具集，不产 ToolsLink 本体。
+- `eval/run.go:410` `sandboxLink{Name:"tools"}` 与 run.go:278 grant `NameTools`：评测用同名伪 link 注入沙箱工具集，不产 ToolsLink 本体。
 
 其余盘点中的「base 集」实际**不在 ToolsLink 后**：`send_message_to_user`/`ask_user`/`generate_image`/`listen`/`tts`/`todo`/`agent_*`（spawn/dispatch+steer/queue/interrupt/cancel 或 dispatch+agent_message+agent_stop）已是 `registry.go:113-135` 的 `always`/`k.todoToolOn()`/`k.Dispatch` kernel 行；`desktop_*` 走 `NameDesktop` organ（`mountGrantLocked:482`→`desktop.Open`），`browser_*` 走 `NameBrowser` store grant（`mountGrantLocked:484`→`browser.Open`），`code_*` 走 `NameCoding` organ（`mountGrantLocked:486-514`→`code.Open`+`UseProvider`/`UseRunner`/`UseTranscript`），`telegram_send`/`lark_send` 走 connector store grant（`mountGrantLocked:478-480`），`mcp_*` 模型工具已在批 2 全退（`Session` 不再实现 `Tools()`，只走 `xbot mcp` CLI）。`hasLink`/`namedLink` 现存仅剩 `NameMemory`（kernel.go:630 rules 判据）与 `NameAgents`（dispatch.go:40 `dispatching()`）两个消费点，与 tools 无关。
 
@@ -97,3 +97,5 @@ ToolsLink 退役连带面：
 ## 决策边界
 
 不把「ToolsLink 去掉后哪些工具还走 Link」误读为「六件里有必须留 Link 的」——六件零外部依赖，留 Link 没有对象；不把「整体退役」误扩到 desktop/browser/code/connector（它们各依赖自己的 node/grant 链路，与 tools organ 无关）；不把六件误迁 CLI（kernel 态绑定：Jobs/session/cwd/IO/freshness/selfEditGuard/vision 全在 kernel 进程内，CLI 化是第二份真源且失去 turn 语义）；不把 `mcp_*` 写成「需 mcp link 保留」（批 2 已全退成 `xbot mcp` CLI，无 model 注册面）。Root4USERdocs/OwnerSSE/guard/main/push 日用不动。
+
+本文经 SINGLE ACTUAL CONCRETE SHAPE PASS（24 shape 项）后 Accepted；PASS 附强约束：kernel 行工厂须直接持这批工具句柄供 `attachShell`/`shown()` 绑定，不得回扫 link 集合。两处笔误已核并修正：shell 解释器数为按平台至多 3（darwin `zsh`/`bash`/`sh`、windows `powershell`/`cmd`/`git-bash`，原误写 6）；`sandboxLink` 注入点在 `eval/run.go:410`（原误写 `jail.go:410`，`jail.go` 仅含 `sandboxLink` 型定义）。
