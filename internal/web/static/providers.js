@@ -158,8 +158,17 @@
       const tools = node("div", "provider-tools"), search = node("label", "provider-search"); search.append(lineIcon("search"));
       const input = node("input"); input.type = "search"; input.placeholder = "查找供应商…"; input.setAttribute("aria-label", "查找供应商"); input.value = query; search.append(input); tools.append(search); host.append(tools);
       const subscription = section("订阅", "登录即可，无需密钥"), subgrid = node("div", "provider-grid");
+      const local = {};
+      for (const kind of ["chatgpt", "xai"]) {
+        api(`/api/providers/oauth/${kind}/local`).then(async r => {
+          if (!alive()) return;
+          if (r && r.imported) { data = await api("/api/providers"); paint(); return; }
+          if (r && r.available) { local[kind] = r; paint(); }
+        }).catch(() => {});
+      }
       const subscriptions = ["chatgpt", "xai"].map(kind => {
         const subnote = node("span", "provider-login-note"); subnote.setAttribute("role", "status");
+        const wrap = node("div", "provider-subscription-wrap");
         function paintSubscription(state, message) {
           card.disabled = state === "starting";
           if (state === "starting") subnote.textContent = "正在登录…";
@@ -176,16 +185,22 @@
           card.replaceChildren(kind === "chatgpt" ? node("span", "provider-glyph provider-chatgpt-glyph") : glyph("xai"), node("strong", "", p.title));
           if (p.key_configured) {
             const dot = node("span", "sdot ok"); dot.setAttribute("role", "img"); dot.setAttribute("aria-label", "已登录"); card.append(dot);
-          } else { subnote.textContent = "登录"; card.append(subnote); }
+          } else {
+            subnote.textContent = "登录"; card.append(subnote);
+            const found = local[kind];
+            if (found) {
+              wrap.append(node("p", "provider-import-note", `本机已登录 ${found.source}${found.account ? "（" + found.account + "）" : ""}`));
+            }
+          }
         }
-        updateSubscription(); subgrid.append(card);
-        return { kind, card };
+        updateSubscription(); wrap.append(card); subgrid.append(wrap);
+        return { kind, card, wrap };
       });
       subscription.append(subgrid);
       const vendors = section("供应商", "模型厂商的 API"), grid = node("div", "provider-grid"); vendors.append(grid); host.append(subscription, vendors);
       function filter() {
         const term = query.trim().toLowerCase();
-        for (const {kind, card} of subscriptions) card.hidden = !subscriptionEntry(kind).title.toLowerCase().includes(term);
+        for (const {kind, card, wrap} of subscriptions) { const hide = !subscriptionEntry(kind).title.toLowerCase().includes(term); card.hidden = hide; wrap.hidden = hide; }
         subscription.hidden = subscriptions.every(({card}) => card.hidden); grid.replaceChildren();
         for (const p of entries().filter(p => p.title.toLowerCase().includes(term))) {
           const card = button("", "provider-card", () => { selected = key(p); return p.custom ? customDetail(p) : capability(p); }); card.setAttribute("aria-current", String(selected === key(p))); card.append(glyph(p.custom ? "" : p.brand), node("strong", "", p.title));

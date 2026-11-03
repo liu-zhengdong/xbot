@@ -58,6 +58,30 @@ func (s *Server) oauthCancel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"status": "cancelled"})
 }
 
+// oauthLocal reports whether this machine holds a CLI sign-in. On the very
+// first call for a kind it also imports that login straight away — the
+// subscription then works without any click. Later calls only report what
+// is still on disk, so a login the user removed is not pushed back.
+func (s *Server) oauthLocal(w http.ResponseWriter, r *http.Request) {
+	if !s.require(w, r) {
+		return
+	}
+	if !oauthKinds[r.PathValue("kind")] {
+		http.NotFound(w, r)
+		return
+	}
+	found, imported, err := s.oauthManager().ScanOrImportLocal(r.Context(), r.PathValue("kind"))
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	if found.Source == "" {
+		writeJSON(w, 200, map[string]any{"available": false})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"available": true, "imported": imported, "source": found.Source, "account": found.Account})
+}
+
 // oauthLogout forgets the account for kind: the vault credential and the
 // OAuth binding go away and the provider reads as not logged in again.
 func (s *Server) oauthLogout(w http.ResponseWriter, r *http.Request) {
