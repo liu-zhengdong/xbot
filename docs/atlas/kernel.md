@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/kernel/, internal/inbox/, internal/link/, internal/inbound/, internal/cliops/]
-verified: 2026-11-02 @ 71216e72 (original transcript typed callbacks, source IO leases, artifacts and retained compact wiring)
+verified: 2026-11-02 @ dcbf05fd (compact prepared-source callback, original cancellation/usage/current persistence and Context retirement)
 ---
 # 内核：Link、Event、收件箱
 
@@ -80,7 +80,7 @@ Created 仅 Create nil 或 typed CreateCommitError.Applied 的 config ACK，Crea
 
 callback 持原 operations lease，不外套 currentIO 再调已持 route 的原方法。记录只映射原返回 Entry 的 ID/range 与 nil ACK：nil 才 `recorded:true`，任意 error 为 `recorded:null`，保实际返回值，不以错误推断 SQLite 未建库或未插入。搜索仍为原 `presentHistory` 脱敏/6 KiB 文本，不换 raw rows 或 Web Page。准确共享 formatter 同时核 JSONNL/human 各 32 KiB；转义导致超限时沿原 work.WriteResult 保存完整该 Text JSON，预检 metadata 两格式后才短持 currentIO，以当前名/root 和重基后的原 WorkDir（空时当前 Bot 默认工作区）写 0600 产物，不复活旧目录。HTTP 64 KiB、结果 20 MiB，错误沿原 redactor/held secrets/Resources 脱敏，CLI 保事实先输出再非 0。
 
-下一自然 experience 环境采样及读错保旧值沿原差异流；SQLite/Web 提纲消费者与 raw seq/experience+0 基 offset 的 Detail 原语义上限保持，现由下文 transcript detail CLI 读取，见 [记忆](memory.md#怎么运转)。两旧 record/search wrapper、Known、schema、index 与执行指引已退，旧 native 历史保持；可见记忆文件检索沿下文独立 CLI，已空的 memory 工具注册组已退，context 工具组保 compact，三读已迁下文 transcript CLI，原 Link.Tools 空壳保留。不另发 Inbox/waker、MemoryOwnReceipt、假 ToolCall 或普通事实账。命令、DTO、nullable ACK 与产物协议集中见 [API](../API.md#经历记录与检索运行时-cli)。
+下一自然 experience 环境采样及读错保旧值沿原差异流；SQLite/Web 提纲消费者与 raw seq/experience+0 基 offset 的 Detail 原语义上限保持，现由下文 transcript detail CLI 读取，见 [记忆](memory.md#怎么运转)。两旧 record/search wrapper、Known、schema、index 与执行指引已退，旧 native 历史保持；可见记忆文件检索沿下文独立 CLI，已空的 memory 工具注册组已退，空 context 工具注册组已退，compact 与三读均沿 source CLI，原 Link.Tools 空壳保留。不另发 Inbox/waker、MemoryOwnReceipt、假 ToolCall 或普通事实账。命令、DTO、nullable ACK 与产物协议集中见 [API](../API.md#经历记录与检索运行时-cli)。
 
 ## 可见记忆文件检索实例入口
 
@@ -90,7 +90,7 @@ callback 持原 operations lease，不外套 currentIO 再调已持 route 的原
 
 原扫描器的完整二十命中文本先经 source redactor/held secrets/Resources scrub，再用准确共享 formatter 核 JSONNL 与 human 各 32 KiB，HTTP 硬限 64 KiB；没有经历检索 6 KiB cap。溢出时先预检 32hex 文件引用两格式，再短持 currentIO 沿当前 source 工作区保存完整该 Text JSON，复用原 0600/20 MiB WriteResult；不导出全部扫描文件、不反解析 rows/count，失败非 0 且无假 file。原 operations lease 与 source Shell lease 保生命周期，不加 Kernel/Memory 服务或调用登记表。
 
-唯一 recall wrapper/Known/schema/index 和确已空的 memory 工具注册组已退；`link.Memory`、Link/Event 导线、文件写守卫及 context 的 compact 保留，三读沿下文 transcript CLI，旧 native 历史字面不改。熔断在旧 looseShell 截首命令前，经 `DirectXBotArgs` 和本 parser 识别规范 literal `"$XBOT_BIN" memory-recall` 的 self/help，仅承接检索循环阈值，不改变许可或扩大其它平台命令限额。原 manual/NameMemory/MemoryWriteRule 已指向 CLI，没有新 Env/Inbox/waker/MemoryOwnReceipt 或假工具记录。协议见 [API](../API.md#可见记忆文件检索运行时-cli)，决定见 [ADR0059](../adr/0059-memory-recall-runtime-cli.md)。
+唯一 recall wrapper/Known/schema/index 和确已空的 memory 工具注册组已退；`link.Memory`、Link/Event 导线、文件写守卫保留，空 context 工具注册组已退，三读沿下文 transcript CLI，旧 native 历史字面不改。熔断在旧 looseShell 截首命令前，经 `DirectXBotArgs` 和本 parser 识别规范 literal `"$XBOT_BIN" memory-recall` 的 self/help，仅承接检索循环阈值，不改变许可或扩大其它平台命令限额。原 manual/NameMemory/MemoryWriteRule 已指向 CLI，没有新 Env/Inbox/waker/MemoryOwnReceipt 或假工具记录。协议见 [API](../API.md#可见记忆文件检索运行时-cli)，决定见 [ADR0059](../adr/0059-memory-recall-runtime-cli.md)。
 
 ## 对话原文三读实例入口
 
@@ -100,7 +100,17 @@ callback 只持原 operations lease，原方法自行选择 currentIO。self 的
 
 原 presentHistory 已完成 redactor/语义 cap/foreign 围栏；边界仅补 held secrets 与 Resources scrub。整 JSONNL 与准确 human 两格式分别计预算，溢出时先预检引用 metadata，再在实际写点短持 currentIO，以当前 Root/Name、重基后的原 WorkDir（空时 work.BotDir）沿原 WriteResult 保存完整该语义 Text JSON；不在 target 工作区写文件，也不补回原 cap 外 blob。segStore.ensure 仍有建目录/锁、迁移与索引维护，逻辑只读不等物理零写。协议字段和容量集中见 [API](../API.md#对话原文三读运行时-cli)，领域内容见 [上下文](context.md#对话原文三读)。
 
-三旧 wrapper/Known/schema/index 已退，无暗执行 shim；context 工具组保 compact 的模型/State 写，Link.Context 器官与 Event、4 KiB 记忆文件写守卫保持。fit 的 seq→expand、无 seq→search→expand、自定义 noSeq 和 turnSummary 范围不变，仍提示不要重执行；ReplyRule、ExperienceRule、SearchExperiences detail 提示、manual 与 live Context 指引均用 CLI。research 同窄 lexer/纯 parser 允许合法三读 self/help；熔断只让规范 literal transcript search 承接原历史检索宽阈值，expand/detail/noun help 不额外放宽。旧 native 字面/工具配对历史仍读，不加 Env/Inbox/waker/MemoryReceipt 或假工具配对。现有 mock/eval 无三读 producer，MemoryRecall 的限定评测桥保持。决定见 [ADR0060](../adr/0060-transcript-read-runtime-cli.md)。
+三旧 wrapper/Known/schema/index 已退，无暗执行 shim；compact 的模型/State 写沿下文 CLI，空 context 工具注册组已退，Link.Context 器官与 Event、4 KiB 记忆文件写守卫保持。fit 的 seq→expand、无 seq→search→expand、自定义 noSeq 和 turnSummary 范围不变，仍提示不要重执行；ReplyRule、ExperienceRule、SearchExperiences detail 提示、manual 与 live Context 指引均用 CLI。research 同窄 lexer/纯 parser 允许合法三读 self/help；熔断只让规范 literal transcript search 承接原历史检索宽阈值，expand/detail/noun help 不额外放宽。旧 native 字面/工具配对历史仍读，不加 Env/Inbox/waker/MemoryReceipt 或假工具配对。现有 mock/eval 无三读 producer，MemoryRecall 的限定评测桥保持。决定见 [ADR0060](../adr/0060-transcript-read-runtime-cli.md)。
+
+## 主动范围压缩实例入口
+
+原 listener 的单个 `Handlers.Compact` callback 经 CallCompact 接到同 K 的原 CompactRange。callback 持 operations lease，用未改的 runtimeSourceCall 找同 listener 实际 Local/running/未 finished Shell prepared ctx，再直调原方法；必须带原 XBOT_CALL_ID/header。它沿原 helper 保模型取消和 turnSeqOf 用量归属，不用 runtimeApprovalSource/审批 owner 重绑、审批 intent、确认卡或 approver 函数，不加 primary/person/project 资格及 Recall 专用的非 nil 冻结 turn 门。turnSeqOf 只看 prepared ctx 显式 seq/turn，否则 0，不借 latestTurn。source endpoint/规范 root/ref 为权威，早入口不离线 Load/new K，Shell gate 独立；协议集中见 [API](../API.md#主动范围压缩运行时-cli)。
+
+原 CompactRange 的范围/尾巴/工具对/整块覆盖与 summarize 保持，LLM 在本路径自有短 currentIO/envMu 外，callback 不能外套 route 跨模型调用或嵌 currentName helper。compact.LLM 的原 usageProvider 只在 Chat nil error 后记录 compact/原 turn 用量；之后空摘要或刷新/State 错误不抹用量，provider error/cancel 不由该 wrapper 记成功 usage，trace 写错仍原样忽略。自定义 Compactor 的行为、原模型预算和超时不变。
+
+模型后原 addBlock→refreshMemSnap→saveCurrentState；refresh 在 envMu 内读当前 State/visibleEnvironment，以空 personID 沿原 TryRecall/fallback 刷 Bot MemSnap，busy 且已有 snapshot 保旧，人物沿最新已公布 source 重采。完整环境先 append 再保存覆盖 State，不把旧 caller 人物盖回后来人的环境。current_store 的 Count/Slice/State/trace 保当前 ref，模型等待期间改名后 State/trace 跟新路径；memory currentName→Recall 与 profile k.Bot 的原分步接缝保持，无全链改名原子性承诺。只有全 nil 才原 ACK；后期错误可能已有 usage/环境或保存效果，实际错误照传，不增回滚、ctx.Err 提交屏障、阶段表/CAS/事务/Inbox/waker/Receipt。
+
+最后 compact wrapper/Normal Known/schema/index 和空 context 工具注册行已退，Link.Context 器官/Tools 空壳、Event 与记忆写守卫保持，旧四 native 历史可读无执行 shim。live Context 提示主动 CLI 与原自动压缩；autoCompact/foldBlocks、后台 finishJob/applyReady、idle/bindingPrecheck 不经 native 门，原规划/队列/直接方法保持。research 同窄 lexer/纯 parser 只放合法 help，self 是 Normal 写且无 loose 熔断加成；manual 无主动 compact 脚本、mock/eval 无 producer，不扩 MemoryRecall 桥。领域投影见 [上下文](context.md#主动范围压缩)，决定见 [ADR0061](../adr/0061-compact-runtime-cli.md)。
 
 ## MCP 与每 Bot 进程资源
 

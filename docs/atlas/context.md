@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/bot/transcript.go, internal/compact/, internal/bm25/]
-verified: 2026-11-02 @ 71216e72 (original transcript search/expand/detail semantics, current-source IO and CLI fit consumers)
+verified: 2026-11-02 @ dcbf05fd (original compact range projection, environment-before-State refresh and complete native Context retirement)
 ---
 # 上下文与 transcript
 
@@ -31,7 +31,17 @@ Agent 在原 source Shell 用 `"$XBOT_BIN" transcript search --self --query TEXT
 
 self 已在原 currentIO 读 Search/Slice、Count/Slice/Hydrate；Detail 多次短 IO 沿 source ref，不扩成一致快照。foreign 一次 Load 后核保留的 source `k.Bot.Config().Owners` 与加载目标 Owners 非空交集，不显式刷新 Resources.current 的 source 配置；missing/load error、不同 owner/orphan 或仅同群/可消息统一 not found，授权后真实读盘错误保留。目标无稳定 ref，不保证跟随其改名。runtime 不外套 route 再调 currentName/line-note，以免 writer 等待时递归 RLock；产物实际写入才短持 currentIO 取当前 source 工作区。segStore.ensure 仍可能建目录/锁、迁移和修索引，逻辑只读不承诺物理零写。
 
-fit 的真实 seq 占位与 turnSummary 范围指向 CLI expand，无 seq 默认先 search 再 expand，自定义 noSeq 提示保持，继续要求不要重跑。ReplyRule、ExperienceRule、SearchExperiences 末尾 detail 提示、机制手册与 live Link.Context 均使用 CLI。旧 `recall_history`、`expand`、`detail` 的 wrapper/Known/schema/index 已退，旧 native 字面/工具配对历史保持可读；context 工具组仍有 compact 的模型/State 写，Link.Context 器官与 Event、记忆文件写守卫保留。运行装配见 [内核](kernel.md#对话原文三读实例入口)。
+fit 的真实 seq 占位与 turnSummary 范围指向 CLI expand，无 seq 默认先 search 再 expand，自定义 noSeq 提示保持，继续要求不要重跑。ReplyRule、ExperienceRule、SearchExperiences 末尾 detail 提示、机制手册与 live Link.Context 均使用 CLI。旧 `recall_history`、`expand`、`detail` 的 wrapper/Known/schema/index 已退，旧 native 字面/工具配对历史保持可读；compact 的模型/State 写沿下文 CLI，空 context 工具注册组已退，Link.Context 器官与 Event、记忆文件写守卫保留。运行装配见 [内核](kernel.md#对话原文三读实例入口)。
+
+## 主动范围压缩
+
+Bot 在原 source Shell 用 `"$XBOT_BIN" compact --self --from N --to N` 主动压缩已结束的范围，可选 focus 或 focus-file；help 离线。入口直用原 CompactRange，保 inclusive Count、raw 尾巴和工具对边界；可扩大范围严格包含整块旧摘要，部分重叠与同范围再压仍拒绝。focus 只沿原 trim/default，不新加领域 cap。完整命令、字段、容量与短 ACK 见 [API](../API.md#主动范围压缩运行时-cli)，决定见 [ADR0061](../adr/0061-compact-runtime-cli.md)。
+
+范围输入沿 currentSlice 的 stored preview，不 hydrate blob；summarize 跳卡/fork marker，保范围内整块 prior summary、focus+summaryFacts、source 图片/音频路径。模型仍由原 Compactor 完成，摘要加入 Blocks 后沿原范围投影消费，原文始终保留。compact.LLM 的两消息/无 tools、拒空和输出上限保持，自定义 Compactor 不新增该上限；CLI 只返回原短 `compacted f-t`，不导出 summary 或新增摘要产物读取接口。
+
+原 addBlock→refreshMemSnap→saveCurrentState 保持：刷新 Bot MemSnap 时在 envMu 内回放当前有效环境并按最新已公布 source 重采人物，完整环境 snapshot 先追加，覆盖 State 后保存；旧 caller 不把新人物改回去。压缩只更新摘要/快照投影，不写 memory.md、log 或 experience 正文。模型调用在本路径短 currentIO/envMu 外，原 Count/Slice/State/trace 各随 source ref；原记忆/profile 分步接缝不扩大成全流程原子事务。晚期错误可能已有用量或环境效果，不新增回滚或取消永不提交保证。
+
+主动 compact 已与三读一起移出 native wrapper/Known/schema/index，空 context 工具注册组已退；Link.Context 器官/Tools 空壳、Event、记忆写守卫与旧四工具历史仍读。live Context 说明使用 source CLI 并保自动压缩提示；autoCompact、foldBlocks、后台 finishJob/applyReady、idle 与换绑预检仍直接走原方法/队列，不重建自动压缩链。原调用 context 和用量归属见 [内核](kernel.md#主动范围压缩实例入口)。
 
 ## 边界
 负责：组装上下文、transcript 分段存储和索引、压缩、找回、导出、引用回复。不负责：分叉的分支规则（见 [插话时分叉](fork.md)）。
@@ -62,7 +72,7 @@ fit 的真实 seq 占位与 turnSummary 范围指向 CLI expand，无 seq 默认
 - **压缩是按段往后推，不是整份重来**：摘要块首尾相接，每次只从「已经被覆盖到哪儿」再往后压到尾巴之前，往后只会追加新块，不回写旧块。这样一次压缩的成本只跟新增内容有关，不随 transcript 变长而变贵。旧块不动，模型已经看过的字节就不变，压缩点之前的缓存仍然命中。被新块整个盖住的旧块直接从 `state.json` 里去掉，不留在存储里越攒越多。
 - **摘要块和原文按序号归并后发给模型**：组装时摘要块和未覆盖的原文按起始序号排成一条时间线，摘要块占住它覆盖的那段位置。旧摘要块可能在中间留下空隙，所以组装仍支持非前缀覆盖；先发全部摘要再发全部原文会让空隙里的原文排到后面那个摘要之后，模型读到的时间顺序就错了。空隙在自动压缩下不会产生——它停在空隙之前，下一轮从空隙接着压。
 - **合并只在块攒多了的时候做**：首尾相接的活跃块到 3 个以上、总估算超过软目标的三分之一，才把除最新一块以外的旧块合并成一块（`focus: folded`）。合并会重写这些块，缓存从第一块起失效，所以留着最新那块不动，最近的细节还是详细的。块之间有空隙时不跨过去合并——空隙里是还没被摘要的原文，跨过去合并会把它们标成已摘要，从此不再进上下文。
-- **压缩**：内核按 T/H 自动触发；Bot 也可以调 `compact(from,to,focus)` 自己压一段已结束的范围（`Kernel.CompactRange`，拒绝切开工具对、碰到尾巴原文、与已有块部分重叠），网页不提供手动按钮（[ADR 0021](../adr/0021-env-stream.md) 决定 6，2026-10-27 修订）；压缩只读范围、写摘要块并按需刷新记忆快照投影，不写记忆文件；原文仍由 `transcript search/expand --self` 读取。跨轮摘要和轮内 `turn_progress` 都保留每项任务的身份、结论、关键数字、原文序号或结果文件路径、未完成事项、用户决定及已经转告的事实。轮内摘要读取原始结果，不把先前的省略占位当事实。估算约 4 字节一个 token，图片也计入；历史包在数据标记里，不能当新指令。
+- **压缩**：内核按 T/H 自动触发；Bot 也可以在 source Shell 用 `"$XBOT_BIN" compact --self --from N --to N [--focus TEXT]` 自己压一段已结束的范围（`Kernel.CompactRange`，拒绝切开工具对、碰到尾巴原文、与已有块部分重叠），网页不提供手动按钮（[ADR 0021](../adr/0021-env-stream.md) 决定 6，2026-10-27 修订）；压缩只读范围、写摘要块并按需刷新记忆快照投影，不写记忆文件；原文仍由 `transcript search/expand --self` 读取。跨轮摘要和轮内 `turn_progress` 都保留每项任务的身份、结论、关键数字、原文序号或结果文件路径、未完成事项、用户决定及已经转告的事实。轮内摘要读取原始结果，不把先前的省略占位当事实。估算约 4 字节一个 token，图片也计入；历史包在数据标记里，不能当新指令。
 - **后台异步压缩**：消息总量到软目标 T 就在后台压缩，压完后在两轮对话之间换上新摘要，这一轮照常发出；只有逼近硬上限 H，才在轮内同步压缩。自动路径按估算大小从最近几轮往前退，最多到 T 的八分之一。长程 e2e（假模型、按 128K 推出 T 64320、H 107200）跑 459 轮压 3 次全在后台，峰值 64655；当时摘要加事实抽取花掉总消耗的 1.766%（只算摘要是 0.89%）；2026-10-27 起压缩不再抽事实，只剩摘要这一份。
 - **空闲压缩**（`idlecompact.go` / `serve.Pass`）：沿既有巡检，Bot 工作锁空闲且无执行器/工具任务时，最后一条 transcript 已闲置达标、估算达到门槛就入原后台队列；默认 16000 token、50m，`XBOT_IDLE_COMPACT_MIN_TOKENS` / `XBOT_IDLE_COMPACT_AFTER` 可配置，false/off/0/关可关闭，非法值回默认。闲置范围的尾部预算取 T/8 与门槛/8 的较小值，仍保留既有最小尾巴和工具配对。running/ready 文件跨进程去重，失败按原队列重试；摘要不持工作锁，ready 仍等下一轮边界应用。50m 是一小时部署预算下预留十分钟的策略，不检测或保证供应商缓存 TTL；短 TTL 需调小，单独长期占工作锁的 CLI 聊天不由 serve 空闲巡检接管。
 - **换小窗口预检**（`binding.go`）：网页换绑在工作锁内按新窗口 T/H 检查，计入工具定义、新 overlay 及全量环境快照，超过新 T 时用已有范围规划与 CompactRange 摘要，再复测。没有可压范围但总量低于新 H 可以切换；摘要后仍高于 H、缺压缩器或摘要失败，明确拒绝并保留旧绑定。成功后才写绑定、清内核缓存；预检不修改共享 Budget，已提交摘要在换绑失败时仍有效。无缓存内核也做预检。

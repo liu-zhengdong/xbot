@@ -121,9 +121,6 @@ var kernelTools = []struct {
 	// The owner sees only what the bot sends, so every bot can send.
 	{"chat", always, func(k *Kernel) []tools.Tool { return []tools.Tool{sendMessageTool{k}} }, nil},
 	{"chat", always, func(k *Kernel) []tools.Tool { return []tools.Tool{askTool{k}} }, nil},
-	{"context", always, func(k *Kernel) []tools.Tool {
-		return []tools.Tool{compactTool{k}}
-	}, nil},
 	{"links", always, func(k *Kernel) []tools.Tool { return []tools.Tool{linksTool{k}, kernelManualTool{}} }, nil},
 	{"system", func(k *Kernel, _ []link.Link) bool { return k.Restart != nil }, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{restartTool{k}}

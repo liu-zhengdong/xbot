@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"testing"
 )
 
@@ -122,5 +123,61 @@ func TestResearchMCPDirectCommandsUseBoundSource(t *testing.T) {
 	}
 	if interpreter.calls != 4 {
 		t.Fatal("rejected command reached interpreter")
+	}
+}
+
+func TestResearchCompactHelpOnlyUsesBoundSource(t *testing.T) {
+	k, _, _ := freshBot(t)
+	if err := k.StartOperations(); err != nil {
+		t.Fatal(err)
+	}
+	defer k.CloseOperations()
+	k.operations.mu.Lock()
+	binary, root := k.operations.binary, k.operations.root
+	k.operations.mu.Unlock()
+	interpreter := &boundReadOnlyInterpreter{}
+	shell := readOnlyShell{Tool: interpreter, k: k}
+	for _, test := range []struct {
+		name, command string
+		allowed       bool
+	}{
+		{"help", `"$XBOT_BIN" compact --help`, true},
+		{"self_help", `"$XBOT_BIN" compact --self --help`, true},
+		{"range_help", `"$XBOT_BIN" compact --self --from 1 --to 2 --help`, true},
+		{"canonical_binary", strconv.Quote(binary) + ` compact --help`, true},
+		{"bound_root", `"$XBOT_BIN" --root ` + strconv.Quote(root) + ` compact --help`, true},
+		{"bound_root_equals", `"$XBOT_BIN" ` + strconv.Quote("--root="+root) + ` compact --help`, true},
+		{"self", `"$XBOT_BIN" compact --self --from 1 --to 2`, false},
+		{"focus_help_data", `"$XBOT_BIN" compact --self --from 1 --to 2 --focus --help`, false},
+		{"focus_file_help_data", `"$XBOT_BIN" compact --self --from 1 --to 2 --focus-file --help`, false},
+		{"focus_equals_help_data", `"$XBOT_BIN" compact --self --from 1 --to 2 --focus=--help`, false},
+		{"wrong_root", `"$XBOT_BIN" --root /other compact --help`, false},
+		{"wrong_binary", `/other/xbot compact --help`, false},
+		{"bare_binary", `xbot compact --help`, false},
+		{"chaining", `"$XBOT_BIN" compact --help; echo injected`, false},
+		{"substitution", `"$XBOT_BIN" compact --focus "$(echo --help)"`, false},
+		{"repeated_help", `"$XBOT_BIN" compact --help --help`, false},
+		{"unknown_flag", `"$XBOT_BIN" compact --help --query text`, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			before := interpreter.calls
+			raw, _ := json.Marshal(map[string]string{"command": test.command})
+			_, err := shell.Run(context.Background(), raw)
+			if (err == nil) != test.allowed {
+				t.Fatalf("allowed=%v command=%s: %v", test.allowed, test.command, err)
+			}
+			wantCalls := before
+			if test.allowed {
+				wantCalls++
+			}
+			if interpreter.calls != wantCalls {
+				t.Fatalf("interpreter calls=%d, want %d", interpreter.calls, wantCalls)
+			}
+		})
+	}
+	k.CloseOperations()
+	before := interpreter.calls
+	if _, err := shell.Run(context.Background(), json.RawMessage(`{"command":"\"$XBOT_BIN\" compact --help"}`)); err == nil || interpreter.calls != before {
+		t.Fatal("unbound compact help reached interpreter")
 	}
 }
