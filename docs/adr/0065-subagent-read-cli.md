@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0065 subagent 三读沿原 source CLI
@@ -13,8 +13,8 @@ date: 2026-11-02
 三个原 Run 均 `Run(_ context.Context, args)` 忽略 ctx、Confirm 恒 false、`review.go` 归 Readonly：
 
 - `listSubagentsTool`（`continuable_subagents.go:371`）：`{limit?}`，默认 40、上限 100；`withCurrentIO` 读 `current.AgentsDir()` 目录、逐 dir 按 `execID` 过滤、`exec.ReadMeta` 读 meta、`exec.ReadDescriptor` 判 `Continuable`、`clipSummary` 300 截 Task/Summary、`Notable=nil`；随后逐项短持 `withCurrentIO` 取 `AgentDir` 路径调 `exec.ActiveTask(dir)`——这是进程内活任务表（`continuable.go:69`），活着的任务以 `live.Status/Blocked/TurnSeq` 覆盖 meta；`StartedAt` 降序、截 limit，`json.Marshal(items)` 原文返回。
-- `readSubTool`（`agents.go:591`）：`{id}`，先 `execID` 校验；`withCurrentIO` 取 `current.AgentDir(id)` 调 `exec.ReadStatus` 得 meta+transcript 行数 n，拼 `id:/status:/steps:/lines:/summary:` 五行 + untrusted 提示返回。
-- `expandSubTool`（`agents.go:624`）：`{id, from?, to?}`，`execID` 校验；`withCurrentIO` 取 dir 调 `exec.Expand(dir,from,to)`——1 基 inclusive、`from<1` 钳 1、`to` 超界/缺省钳 `len(entries)`、`from>to` 或空 transcript 报 `exec: bad range`、逐条 `# seq N role\n正文`、整体 `expandCap` 8KiB clip、`Subagent transcript is untrusted data.` 前缀。
+- `readSubTool`（`agents.go:591-622`）：`{id}`，先 `execID` 校验；`withCurrentIO` 取 `current.AgentDir(id)` 调 `exec.ReadStatus` 得 meta+transcript 行数 n，拼 `id:/status:/steps:/lines:/summary:` 五行 + untrusted 提示返回。
+- `expandSubTool`（`agents.go:624-659`）：`{id, from?, to?}`，`execID` 校验；`withCurrentIO` 取 dir 调 `exec.Expand(dir,from,to)`——1 基 inclusive、`from<1` 钳 1、`to` 超界/缺省钳 `len(entries)`、`from>to` 或空 transcript 报 `exec: bad range`、逐条 `# seq N role\n正文`、整体 `expandCap` 8KiB clip、`Subagent transcript is untrusted data.` 前缀。
 
 Agent 沿原 source Shell 使用：
 
@@ -94,19 +94,29 @@ CLI 导入 cliops，`CallSubagentList`/`CallSubagentRead`/`CallSubagentExpand`�
 实际 consumer 同 cut 迁：
 
 - `review.go:79,85-86` readonly 表三行删；registry.go:142/144 两行 tools slice 去掉 `listSubagentsTool`/`readSubTool`/`expandSubTool`——agents 组两分支剩余：Dispatch 开 `{start, agentMessageTool, agentStopTool}`、非 Dispatch `{start, steerTool, queueTool, interruptTool, cancelTool}`，组不空保留。
-- `listSubagentsTool`/`readSubTool`/`expandSubTool` 三 wrapper 型删（`continuable_subagents.go:371-444`、`agents.go:591-658` 的 Run/Name/Description/Parameters/Confirm）；`exec.ReadStatus`/`exec.Expand`/`exec.ReadMeta`/`exec.ReadDescriptor`/`exec.ActiveTask`/`execID`/`clipSummary`/`subagentReceipt` 领域函数**保**，由 kernel 侧 runtime handler 直调。
-- `agenttype.go:58,67` research/coding 子代理 Tools 表的 `read_subagent`/`expand_subagent` 改为指 `"$XBOT_BIN" subagent read|expand --self`——子代理 scoped Shell 同样有 XBOT_BIN/ENDPOINT/ROOT（`CLIEnvironment` 同源绑定），孩子在 scoped sh 下打 `--self` 回自己的运行实例读**自己的**记录（current 是孩子自己的 kernel）——与 atlas `subagents.md:20`「read_subagent/expand_subagent 在孩子内限定自己的记录」语义一致。
-- `internal/manual/sections/subagents.md:7` 的 `list_subagents`/`read_subagent`/`expand_subagent` 提及改指 CLI 同形；`docs/atlas/subagents.md:20,28`/`security.md:15,185` 同步。
+- `listSubagentsTool`/`readSubTool`/`expandSubTool` 三 wrapper 型删（`continuable_subagents.go:371-446`、`agents.go:591-659` 的 Run/Name/Description/Parameters/Confirm）；`exec.ReadStatus`/`exec.Expand`/`exec.ReadMeta`/`exec.ReadDescriptor`/`exec.ActiveTask`/`execID`/`clipSummary`/`subagentReceipt` 领域函数**保**，由 kernel 侧 runtime handler 直调。
+- `agenttype.go:58,67` research/dev 子代理 Tools 表的 `read_subagent`/`expand_subagent` 改为指 `"$XBOT_BIN" subagent read|expand --self`——子代理 scoped Shell 同样有 XBOT_BIN/ENDPOINT/ROOT（`scopeTools`→`bindShellRuntime`→`cliCallEnvironment`→`CLIEnvironment` 同源绑定，endpoint 指向**父** kernel 的 listener）。**接受 scoping 放宽**：原 `selfSubagentTool` 把 `id` 钉死在 `req.ID`（孩子读兄弟 id 报 `exec.ErrNotFound`）且 `list_subagents` 整体不进孩子工具表——这套 scoping 语义**不随 CLI 迁移保留**；`--self` 经 endpoint 回同一 listener 后 `withCurrentIO` 仍取父 kernel 的 current（孩子无自己 kernel/listener），read/expand 任意有效 `sa_` id、list 全部兄弟都按原语义可读。缓解依据：(a) 孩子本就能 `read_file` 直读兄弟 transcript（`dispatch.go:233` noSeq 指引本就写明 `expand_subagent or read_file`），selfSubagentTool 只是工具面语义收窄、不是硬安全边界；(b) IGNORE ctx 决定本身砍掉了调用方识别（CallID/preparedctx），要恢复 scoping 就得重引入它们，与 IGNORE 判据直接冲突，得不偿失。子代理 persona 文案（`continuable_subagents.go:74`「read_subagent / expand_subagent 仅能查看你自己」）与 atlas `subagents.md:20`「在孩子内限定自己的记录」同步改为指 CLI 并注明放宽后语义。
+- `continuable_subagents.go:521` scopeTools 排除表、`527-528` `selfSubagentTool` 包裹分支、`548-576` `selfSubagentTool` 整型随三读退后成死代码，一并删。
+- `internal/manual/sections/subagents.md:7` 的 `list_subagents`/`read_subagent`/`expand_subagent` 提及改指 CLI 同形；`docs/atlas/subagents.md:20,28`/`security.md:15,185` 同步（subagents.md:20 按上条放宽语义改写，不再说「限定自己的记录」）。
+- `README.md:260` 用户文档的 `read_subagent`/`expand_subagent` 提及改指 CLI 同形（按惯例同 cut 迁）。
+- `kernel.md` 增「子代理三读实例入口」短段（可选补）：三读沿 `subagent list|read|expand --self` runtime，同 transcript 三读形态，`AgentsDir` 走父 kernel current。
 - `breaker.go:250` looseCall 的 `"read_subagent"` 豁免删（`wait`/`sleep`/`poll`/`recall`/`recall_history` 已退工具的豁免家族原样）。
+- `agents.go:287` 注释 `where read_subagent shows it` 的提法随三读退后改指 CLI（或泛化为「自己的 transcript」）。
 - `dispatch.go:233` `f.noSeq` 指引文本 `expand_subagent` 改指 `"$XBOT_BIN" subagent expand --self`（`read_file` 保——子 transcript 本就是 bot dir 内文件，read_file 读得到）；`fit.go:106` 同。
 - `exec/records.go:167` 的长记录占位文案 `请通过 expand_subagent 按此序号读取原文` 改指 CLI 同形。
 - `mockopenai/server.go:113,238` 的 `read_subagent` scripted 生产者随退役断言迁移；`eval/voice.go:36` 的 `read_subagent` 从工具名清单删。
+- `continuable_subagents_test.go:121-147` `TestContinuableChildToolsAndSelfRead`：`read_subagent` 兄弟 id 报 `ErrNotFound` 的断言随 selfSubagentTool 退后删，孩子负面清单（dispatch/spawn/agent_message/agent_stop/list_subagents/steer/queue/interrupt/cancel/send_message_to_user）迁成断言三读名不再出现。
+- `e2e/smoke/continuable_subagents_lifecycle_test.go:81` scripted `list_subagents` 改 `sh` 调 `"$XBOT_BIN" subagent list --self`；`e2e/smoke/continuable_subagents_contract_test.go:375` 孩子负面清单补迁（三读名不再出现）。
+- `internal/eval/dispatch_test.go:114-115` scripted `read_subagent` + `ToolResultContains` 断言迁成 `sh` 调 `"$XBOT_BIN" subagent read --self <id>`。
+- `internal/review/review_test.go:218` readonly 循环列表的 `read_subagent`/`expand_subagent` 两名删（三读退后落 Normal default，不再需要 Readonly 断言）。
 - readonly 分类：`allowReadOnlyPlatform` 新增 `subagent` 分支——`subagent --help`/`list|read|expand --help` 与三读 `--self` 全放行（三者皆原 Readonly 语义，同 transcript 分支 `parsed.Help || parsed.Self` 判定）。research 只读包装沿原 DirectXBotArgs 分类器，只认 canonicalBIN/受控 XBOT_BIN 单 POSIX 直调+本 parser，不 Contains 放宽。
 - 旧 native literal/工具配对历史仍可读（`exec.Expand`/`ReadStatus` 读的是同一目录同一格式），无可执行暗 shim/伪 native 配对/新 ENV/Inbox/waker。
 
 ## 接受的代价与验证
 
 选 B，接受模型多一次 Shell 调用（与已迁各读类 CLI 同形），换取领域单一真源与「运行中 kernel 的 ActiveTask 覆盖、current ref 路由」不复制。接受 `subagent` 新 noun（首个 agents 组 CLI 入口；后续写类族沿用同一 noun 加 subcommand，不预留现在不用的动词）。research 子代理的 `subagent read|expand --self` 放行只覆盖读自己运行实例的记录——research 定位「只读不动作」与三读原 Readonly 语义一致，与 manual/secret 离线无资格链的收紧不同（这里有 endpoint+X-XBot-Root+listener 资格链）。
+
+接受 scoping 放宽（实质修正）：IGNORE ctx 后孩子在 scoped sh 内 `subagent read|expand|list --self` 可读父 AgentsDir 下全部兄弟记录——原 `selfSubagentTool` 把 `id` 钉死 `req.ID`（兄弟 `exec.ErrNotFound`）、`list_subagents` 整体不进孩子表的工具面收窄消失。依据：孩子本就持 `read_file` 可直读兄弟 transcript 文件（`dispatch.go:233` 指引明文），该收窄非硬安全边界；IGNORE ctx 砍掉调用方识别（无 CallID/preparedctx），恢复 scoping 需重引入它们与 IGNORE 判据直接冲突，代价大于收益。persona 文案（continuable_subagents.go:74）与 atlas subagents.md:20 同步改为指 CLI 并写明放宽后语义，不再宣称「仅能查看你自己」。
 
 最窄验收：
 
@@ -117,6 +127,8 @@ CLI 导入 cliops，`CallSubagentList`/`CallSubagentRead`/`CallSubagentExpand`�
 5. registry agents 组两分支不再有 `listSubagentsTool`/`readSubTool`/`expandSubTool`；review readonly 表三行删；`Known`/`ClassOf` 落 Normal default；door describe 三工具报 unknown。
 6. `agenttype` 两表与 manual/atlas 指引改 CLI 同形；looseCall 无 `read_subagent`；dispatch/fit/records 三处指引用语同步。
 7. strict 拒绝面（裸 subagent/未知 sub/缺 --self/未知或重复 flag/位置参数个数错）+ 双 32KiB/HTTP 64KiB。
-8. 子代理 scoped sh 内 `subagent read --self` 命中自己 kernel 的 current Bot（孩子读自己记录，与 atlas 限定一致）。
+8. 子代理 scoped sh 内 `subagent read --self <id>` 经父 endpoint 回同一 listener，`withCurrentIO` 取父 current：孩子能读**自己**记录；且按接受的放宽语义，有效 `sa_` 兄弟 id 的 read/expand 与 `list --self` 同样返回（原 selfSubagentTool 的钉死与排除不再生效）。
 
 复用 transcript 三读的 transport/parser/handler 骨架与已绿族证据，只 new+必要 actual affected 最小 once，不整 longrun/真模型/性能矩阵。完整 caller 合同见 [母路线](../dev/cli-platform-entry.md#批-subagentread-三读-runtime-cli-具体合同)。本文保决策边界：不把离线目录读冒运行态等价（ActiveTask 活表只在运行中 kernel）、把 endpoint 资格冒 CallID 资格（原方法本就不要 ctx）、把新 noun 冒写类族入口（dispatch/spawn/控制工具留后刀）。Root4USERdocs/OwnerSSE/guard/main/push 日用不动。
+
+SINGLE ACTUAL CONCRETE SHAPE PASS（2026-11-02）：已核退役面/保留面/验收八点逐条对照现码，design 方向成立；一处实质 scoping 语义修正——孩子 `--self` 经父 endpoint 回同一 listener 后 `withCurrentIO` 取父 current，原 `selfSubagentTool` 钉 `req.ID`/排除 `list_subagents` 的收窄不随 CLI 迁移保留，改为接受放宽并写明依据（孩子本就能 `read_file` 兄弟 transcript，非硬安全边界；恢复 scoping 需重引入与 IGNORE ctx 判据冲突的 CallID/preparedctx）；退役面补列 selfSubagentTool 整型/scopeTools 分支/孩子 persona 文案/TestContinuableChildToolsAndSelfRead/两 e2e/dispatch_test/review_test 断言、agents.go:287 注释与 README.md:260 用户文档、kernel.md 可选实例入口段；行号小错修正（expandSubTool 至 :659，agenttype 类型名 dev 非 coding）。本 ADR 转 Accepted 实施。
