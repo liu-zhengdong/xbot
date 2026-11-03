@@ -1,10 +1,12 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0073 tools 代理门最终去留：门是渐进披露机制，全保
+
+> **Accepted 记（2026-11-02）**：按 24 shape 复核——①`toolDoor.Forward`（`registry.go:264`）`call`→`toolRegistry().find(id)`→返回 `reviewedTool` 交 agent `execTool`（`agent.go:467` 经 `tools.Forwarder` 转发，确认/审核/后台化全按被调工具走）；②`hotTools`+`IsShellTool`→`exposeHot` 直接声明进 `tools[]`，listed 集（`ask_user`/`generate_image`/`listen`/`tts`/`web_search`/`view_image`/`agents` 行/`code_*`/各 link 工具）经 `tools action=call` 到达模型，是唯一通道；③`modelTools()`（`tools.go:23-29`）注册表全量包 `reviewedTool` 交 agent，`byName` 可直调属容错旁路非主路径。零删减判保成立。
 
 ## 原能力与调用方
 

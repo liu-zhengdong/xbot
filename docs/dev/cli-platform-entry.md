@@ -99,7 +99,7 @@ Agent → Shell → xbot CLI ─┐
 | 2 · MCP 纵向打通 | 全局/局部配置、list/tools/describe/call、现有 stdio 与 HTTP、运行状态、配置变更生效；依赖 1 的运行通路 | 同一会话连续两次调用保留状态；主线和子代理都能发现/调用；失败非 0 且脱敏；通知仍进原 Inbox；慢调用/插话/取消不重跑 | 撤掉 MCP 到模型工具注册表的适配、`links load` 的 MCP 分支及相关 schema 降级；原 MCP 传输实现优先复用 |
 | 3 · 平台管理逐族切换 | 技能、例程、Bot/群管理与通信、配置、连接器出站等；有现成 CLI 的先补齐，有运行态依赖的后迁 | 主 Agent、相关子代理和外置编码 Agent 都能走同一命令；技能的 Bot 启停、例程触发、Bot 往来等既有结果不退化 | 每族 CLI 达到等价能力后删除该族旧模型工具；更新跟版规则、手册、环境索引、评测脚本与夹具 |
 | 4 · 出入站解耦 | MCP、Telegram/飞书、定时器、Webhook、文件监听等分别按自身生命周期运行；Event 类型/投递从 Link 包中独立出来 | 原来源、身份、信任包裹、路由、去重、唤醒与取消保留；入站启动不再要求实现 `Tools()` | 删除 Link/Emitter/Messenger 接口、Organs/grant 装配及 `links` 工具/命令；仍有职责的目录和安装信息换为相应领域配置 |
-| 5 · 收口工具与文档 | 盘点剩余基础模型工具；依赖全部迁移完成 | 模型请求里没有 MCP 和已迁移平台管理 schema/索引；相关旅程及脚本可用；旧记录能读，新记录只走新入口 | 若已无冷工具消费者，删除 `tools` 代理门；否则只保留明确仍需的基础交互消费者。删除空注册组、旧提示、失效断言及无人使用的兼容路径 |
+| 5 · 收口工具与文档 | 盘点剩余基础模型工具；依赖全部迁移完成 | 模型请求里没有 MCP 和已迁移平台管理 schema/索引；相关旅程及脚本可用；旧记录能读，新记录只走新入口 | tools 代理门已按 ADR0073 判保（零删减，门是 listed 集到模型唯一通道）。删除空注册组、旧提示、失效断言及无人使用的兼容路径 |
 
 第一刀建议：**普通 profile 简介/时区的 CLI 自操作 + 流中 UI 刷新**。它同时验证身份、实例、锁和回执，范围小于一上来搬完 MCP。随后补齐头像、改名等 profile 行为，再退役相应旧工具。
 
@@ -839,7 +839,7 @@ A 离线读 `shell-jobs/` 目录（`bot.Load`+`NewJobs(dir).Load()`）：落选�
 
 ## 批 linkslim：link 包瘦身 + Event 上移 + 装配合一（已实施，已合 main 7bba5737）
 
-合同 5e2b7388 [ADR0072](../adr/0072-link-package-slimming-event-relocation.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS（12 项核心检查全对：Event 上移、装配合一、代理门、razor 退役面、grep 清零）→0ea6c7ba Accepted。本刀是「去 links」母路线收尾项「事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口」与「代理门的最终去留」两条的实施——退役 Link 抽象的最终块，不新增/不退役任何模型工具，与批 4/5 冻的模型工具面正交。
+合同 5e2b7388 [ADR0072](../adr/0072-link-package-slimming-event-relocation.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS（12 项核心检查全对：Event 上移、装配合一、代理门、razor 退役面、grep 清零）→0ea6c7ba Accepted。本刀是「去 links」母路线收尾项「事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口」的实施——退役 Link 抽象的最终块，不新增/不退役任何模型工具，与批 4/5 冻的模型工具面正交。「代理门的最终去留」已按 [ADR0073](../adr/0073-tools-proxy-gate-fate.md) Accepted 决保（全保零删减）。
 
 impl 7bba5737（258 文件 +1503/-1577，impl 含 test 迁移一体）：Event 整组上移 `internal/inbox/event.go`（151 行：`Event`/`NewEvent`/`TerminalEvent`/`WebEvent`/`RemoteOwnerEvent`/`Validate`/`OwnerTrusted`/`Render`/`Wrap`/`UntrustedEventPrefix`/`newID` + `TypeMessage`/`TypeTimer`/`Kind*`/`SourceSubagent` + Event source 名常量 terminal/timer/web/remote-owner/approval/coding），237 个文件 `link.Event`→`inbox.Event`/`link.NewEvent`→`inbox.NewEvent` 机械换，类型字段与 JSON tag 逐字不变，link 侧不留别名/不 shim；依赖方向成 link→inbox 单向（inbox 不 import link），`Event.Wrap` 的 `tools.NeutralizeUntrusted` 给 inbox 新增 `import tools`，单向无环。`link.go` 瘦到 51 行——只剩 `Link`/`Emitter` 两 interface 与 13 个挂载名常量（telegram/lark/desktop/browser/memory/persona/context/agents/skills/runner/webhook/watch/peers）。
 

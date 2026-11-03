@@ -1,5 +1,12 @@
 # XBot 里程碑与进度
 
+## 2026-11-02 tools代理门去留决（最终收口，去links战役全部完成）
+
+- 合同 5002ee53 [ADR0073](adr/0073-tools-proxy-gate-fate.md) Proposed→按 24 shape 复核通过（`toolDoor.Forward` `call`→`toolRegistry().find`→`reviewedTool` 交 `execTool` 经 `tools.Forwarder` 转发；`hotTools`+`IsShellTool`→`exposeHot` 直接声明；`modelTools()` 全量包 `reviewedTool` 交 agent，`byName` 直调为容错旁路）→Accepted。
+- 决策：**tools 代理门全保零删减**。门是 ADR0035 渐进披露机制的承载体，不是可选代理层——listed 集（`ask_user`/`generate_image`/`listen`/`tts`/`web_search`/`view_image`/`agents` 行全部/`code_*`/desktop/browser/connector 各 link 工具）的 schema 不进 `tools[]`，经 `tools action=search→describe→call` 是到模型的唯一通道；删门等价于击穿 `tools[]` 字节稳定或 listed 失联。
+- `cli-platform-entry.md:102` 批 5 收口表最后一行标完——「若无冷工具消费者删门」前提不成立：冷工具消费者是主线模型本体，tool_index 每个 listed id 都是经门消费者。「去 links」战役全部收口完成。
+- docs only、零产品/test 改动。Not run：产品测试/真模型/p95/主人日用/push。
+
 ## 2026-11-02 link包瘦身+Event上移+装配合一（退役Link抽象最终块，已合main）
 
 - 合同 5e2b7388 [ADR0072](adr/0072-link-package-slimming-event-relocation.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS（12 项核心检查全对：Event 上移、装配合一、代理门、razor 退役面、grep 清零）→0ea6c7ba Accepted。
