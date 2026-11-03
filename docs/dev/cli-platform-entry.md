@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall三项所测独立端到端按精确phase通过并已合main1053d0a9；transcript三读三项所测独立端到端按精确phase通过并已合mainc4b368bf；compact具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结dcbf05fd待集成main；links search/load两无审批子集具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结fe6952b5待集成main；links install/remove整门退具体合同已SINGLE PASS按Accepted ADR0063实施完毕、所测独立端到端分阶段通过并已合main9277f5c2（links/connectors家族完成，linksTool全退四动作走CLI）；kernel_manual+list_secrets两读类离线等价退注册合同已起草为Proposed ADR0064待PASS；剩余目录管理、Event/Link解耦与基础工具去留继续按路线推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall三项所测独立端到端按精确phase通过并已合main1053d0a9；transcript三读三项所测独立端到端按精确phase通过并已合mainc4b368bf；compact具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结dcbf05fd待集成main；links search/load两无审批子集具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结fe6952b5待集成main；links install/remove整门退具体合同已SINGLE PASS按Accepted ADR0063实施完毕、所测独立端到端分阶段通过并已合main9277f5c2（links/connectors家族完成，linksTool全退四动作走CLI）；kernel_manual+list_secrets两读类离线等价退注册具体合同已SINGLE PASS按Accepted ADR0064可实施（research措辞修正为readOnlyShell解释器前硬拒）；剩余目录管理、Event/Link解耦与基础工具去留继续按路线推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -726,7 +726,7 @@ A离线Load+新Kernel：install/remove要owner卡+卡填secrets stage+live Recon
 
 **本刀定位**：批 5 收口前最窄一刀——`kernel_manual` + `list_secrets` 两个 Readonly/零卡/零 ctx 工具退注册，离线等价 CLI 已在（`xbot manual`/`xbot secret list`），**不需要** runtimeSourceCall/prepared ctx/`/v1/*` endpoint/`--self`/XBOT_CALL_ID——与 6a/6b 的「同 K prepared ctx」形态不同，本刀就是「退注册 + 模型经 sh 走离线 CLI」。
 
-基线 main `1cede475`（links/connectors 家族已合 `9277f5c2`）。盘点依据 remaining-inventory §1.1 kernel 行 + §1.3 读类速分 + §3 下一刀建议首两条。[Proposed ADR0064](../adr/0064-manual-secrets-retire.md)。
+基线 main `1cede475`（links/connectors 家族已合 `9277f5c2`）。盘点依据 remaining-inventory §1.1 kernel 行 + §1.3 读类速分 + §3 下一刀建议首两条。[Accepted ADR0064](../adr/0064-manual-secrets-retire.md)；两doc经 SINGLE ACTUAL CONCRETE SHAPE PASS（research 下 `xbot manual`/`xbot secret` 实为 `readOnlyShell` 解释器前硬拒、不弹卡不执行，措辞已钉准），已可按合同实施。
 
 调用方：
 
@@ -741,7 +741,7 @@ xbot secret list <bot>         # 离线读 global vault，secret.go:90-106
 
 **保**：`internal/manual` 包（`xbot manual` CLI 与 `KernelRules` 注入同消费）、`internal/vault` 全链（`xbot secret` 同消费）、`http_request`、`xbot manual`/`xbot secret` CLI 本体、`KernelRules` 手册指引要求（只改入口词）、`secretValues`/`scrubSecrets`/`redactor`/`scrubEntry` 脱敏链。
 
-**模型侧行为变化**：`kernel_manual`/`list_secrets` 从 tool_index 消失，door search/describe/call 报 unknown；模型被问机制经 `sh` 跑 `xbot manual <section>`（`KernelRules` 指引词同步），列 secrets 名经 `sh` 跑 `xbot secret list <bot>`；trusted turn 下 `sh` 无写/发送词不弹卡与原 Readonly 等效，**research 平台下走正常 Shell 审批**——离线命令无运行实例资格链，不享受 `--self` runtime 调用的只读豁免（与 transcript/memory-recall 的 research 放行不同，有意收紧）。`looseCall` 的 `list_secrets` 豁免随退（原豁免本就是死代码）。
+**模型侧行为变化**：`kernel_manual`/`list_secrets` 从 tool_index 消失，door search/describe/call 报 unknown；模型被问机制经 `sh` 跑 `xbot manual <section>`（`KernelRules` 指引词同步），列 secrets 名经 `sh` 跑 `xbot secret list <bot>`；trusted turn 下 `sh` 无写/发送词不弹卡与原 Readonly 等效；**research 平台下被 `readOnlyShell` 解释器前拒绝、不弹卡不执行**（dispatch.go:160-161,169-183；`ShellIsReadOnly` 白名单 review.go:573-576 无 `xbot`、`allowReadOnlyPlatform` 无 manual/secret 分支）——research 子代理完全无手册读取路径，离线命令无运行实例资格链，不享受 `--self` runtime 调用的只读豁免（与 transcript/memory-recall 的 research 放行不同，有意收紧，比弹卡更强）。`looseCall` 的 `list_secrets` 豁免随退（原豁免本就是死代码）。
 
 **不碰**：`http_request`（HTTP 卡留后刀）、secrets 组的 `HTTPRequest`、Event/Link、`ToolsLink` 基础集、`internal/manual` embed 正文、`internal/vault`、真模型。
 
