@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"xbot/internal/agenttype"
 	"xbot/internal/bot"
 	"xbot/internal/browser"
+	"xbot/internal/cliops"
 	"xbot/internal/code"
 	"xbot/internal/compact"
 	"xbot/internal/desktop"
@@ -529,9 +531,11 @@ func TestWriteResource(t *testing.T) {
 	}
 }
 
-// A subagent that loads a lazy link mid-task then calls it: the executor
-// rebuilds the tool set every step, so the tool the subagent just unlocked is
-// really in its next request, not only in the returned name list.
+// A subagent that loads a lazy link mid-task through its bound shell: the
+// tool now points at the owner-side CLI, and the prepared-source call ID the
+// child shell carries lets the routine path reach the original loadContext.
+// The executor rebuilds the tool set every step, so the tool the subagent
+// just unlocked is really in its next request, not only in the name list.
 func TestSubagentCallsWhatItLoadsMidTask(t *testing.T) {
 	m := &roleModel{
 		fore: []provider.Message{
@@ -539,7 +543,7 @@ func TestSubagentCallsWhatItLoadsMidTask(t *testing.T) {
 			{Role: provider.RoleAssistant, Content: provider.TextContent("好。")},
 		},
 		sub: []provider.Message{
-			assistantCall("s1", "", "links", `{"action":"load","id":"telegram"}`),
+			assistantCall("s1", "", "sh", `{"command":"\"$XBOT_BIN\" links load --self telegram"}`),
 			assistantCall("s2", "", "telegram_send", `{"to":"u1","body":"the build passed"}`),
 			{Role: provider.RoleAssistant, Content: provider.TextContent("Done\nnone")},
 		},
@@ -561,6 +565,47 @@ func TestSubagentCallsWhatItLoadsMidTask(t *testing.T) {
 			link.NewConnector(dir, b.SecretPath(), link.NameTelegram),
 		},
 	}
+	// The runtime CLI listener owns the prepared-source links transport.
+	if err := k.StartOperations(); err != nil {
+		t.Fatal(err)
+	}
+	defer k.CloseOperations()
+	// The real sh would exec "$XBOT_BIN" links load --self against the same
+	// endpoint; inside a test the binary is the test binary, so the child's
+	// bound shell performs the identical typed transport call with the call
+	// ID the job machinery prepared for it.
+	_ = k.ensureExec()
+	local, ok := k.execSnapshot().(*exec.Local)
+	if !ok {
+		t.Fatalf("actual executor %T", k.execSnapshot())
+	}
+	originalTools := local.ToolsFor
+	local.ToolsFor = func(req exec.StartRequest) []tools.Tool {
+		list := originalTools(req)
+		for i, tool := range list {
+			if tool.Name() != "sh" {
+				continue
+			}
+			list[i] = routineSourceShell{run: func(ctx context.Context, raw json.RawMessage) (string, error) {
+				var in struct {
+					Command string `json:"command"`
+				}
+				if err := json.Unmarshal(raw, &in); err != nil {
+					return "", err
+				}
+				if !strings.Contains(in.Command, "links load --self ") {
+					return "", fmt.Errorf("unexpected child shell command %q", in.Command)
+				}
+				reply, err := cliops.CallLinksLoad(ctx, operationEndpoint(k), b.Root, tools.CallID(ctx), cliops.LinksLoad{ID: "telegram"})
+				if err != nil {
+					return "", err
+				}
+				return reply.Text, nil
+			}}
+		}
+		return list
+	}
+	defer func() { local.ToolsFor = originalTools }()
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "让子代理通知我构建过了", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
@@ -617,15 +662,26 @@ func TestSubagentCallsWhatItLoadsMidTask(t *testing.T) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if len(m.subReq) < 2 {
-		t.Fatalf("subagent made %d requests, want the load step and the send step", len(m.subReq))
+	if len(m.subReq) < 3 {
+		t.Fatalf("subagent made %d requests, want the load step, the send step and the final step", len(m.subReq))
 	}
 	first := toolNamesOf(m.subReq[0].Tools)
 	if contains(first, "telegram_send") {
 		t.Fatalf("the lazy link was mounted before the subagent loaded it: %v", first)
 	}
+	// The shell step ran the prepared-source links load through the real
+	// runtime transport; the next step must actually carry the new tool.
+	loadResult := ""
+	for _, msg := range m.subReq[1].Messages {
+		if msg.Role == provider.RoleTool {
+			loadResult = msg.Text()
+		}
+	}
+	if !strings.Contains(loadResult, "loaded telegram") {
+		t.Fatalf("child shell load result=%q", loadResult)
+	}
 	second := toolNamesOf(m.subReq[1].Tools)
 	if !contains(second, "telegram_send") {
-		t.Fatalf("after links(load telegram) the next step still cannot call telegram_send: %v", second)
+		t.Fatalf("after links load via the prepared source, the next step still cannot call telegram_send: %v", second)
 	}
 }
