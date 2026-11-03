@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0062 links search/load 沿原 source CLI
@@ -72,11 +72,12 @@ CLI 导入 cliops，`CallLinksSearch(ctx,endpoint,root,originalCallID,input)`、
 
 - **linksTool 保留**，继续注册在 registry `{"links", always, …linksTool{k}, kernelManualTool{}}`（registry.go:124），review 表 `"links": ExternalSend`（review.go:99）与 `NeedsOwner` 的 install/remove 例外（review.go:222-228）不动；permissive 下唯一保留卡片的语义（review.go:222-224 注释 "Keep links for connector key input"）原样。`approvalSecretNames` 只认 tool=="links"（approvals.go:184-233），install/remove 的 StageSecrets→takeSecrets→storeSecrets/dropSecrets→GrantLink/RevokeLink→EnableConnector/RemoveMCP→`Reconcile(ctx)` 整链不变。
 - **linksTool.Run 的 search/load 分支改成指路错误**，文本指向本 CLI：`links: search/load use the CLI: "$XBOT_BIN" links search|load --self …`。选择"分支指路"而非"保留原行为"或"整个退门"：install/remove 仍需工具存在（Confirm 卡片、review 归类、secrets stage 都以它为锚），不能整门退；若 search/load 在工具里继续返回原结果，模型侧会出现 CLI 与工具两套等价入口，与母路线"模型侧 links 管理入口退役"方向相悖。指路错误保留工具名与 install/remove 卡链路，把本刀范围锁在最小。Confirm 对 search/load 本就返回 ""，无变化。
+- **linksTool 的 Description/Parameters 同刀同步**，不再广告 search/load：Description（links.go:31-33）改为只表述"安装、移除连接器；搜索目录和加载已装连接器走 `"$XBOT_BIN" links search|load --self`"，Parameters 的 action prop（links.go:36）由 "search, install, remove, or load" 改为 "install or remove"，query prop 随 search 退役不再出现在 schema，并加注释说明 search/load 已移 CLI。否则模型仍会先试工具 search/load 吃指路错误才学到 CLI 入口；install/remove 所需 id prop 保留，Confirm 对 search/load 本就返回 "" 不变。
 - search/load 走 CLI 后，模型经 `"$XBOT_BIN" links search/load --self` 获得与原工具逐字节同语的输出——同一 helper 产出，不是重写。
 
 ## 输入、输出与原消费者
 
-纯 `ParseLinksRuntime` 与早入口在 root/default/legacy 初始化前分流。help 离线；其余必须 self；`links` 裸命令、无位置参数子命令/别名拒，拒未知/重复 flag，按 arity 消费，query 中的字面 --help/-- 不冒 help。search 的 query 可省略/空（空串列全目录，同原工具），query 与 query-file 至多一、query-file 路径不可空、`-` 读 stdin；load 的位置参数恰好一个 id/name，原 TrimSpace+`id is required` 语义交领域。raw 文本/文件/stdin max+1 与最终 escaped typed 请求各 1MiB，无截断后 trim。HTTP 严格单 object/unknown 字段/非 object/null/尾随内容/URL query 拒绝，整数无；复用 loopback/Host/browser/canonical-root guard，HTTP 回包 64KiB，请求/回包 DTO 仅 `{query?}`、`{id}` 与 `{text?,error?}`。
+纯 `ParseLinksRuntime` 与早入口在 root/default/legacy 初始化前分流。这是首个 noun+subcommand 双层 parser，边界钉死：noun 层只认 `search`/`load` 两个 subcommand——`links --help`、`links search --help`、`links load --help` 三种 help 形式离线退 0，裸 `links`（无 subcommand）拒、未知 subcommand 拒；subcommand 层同 ParseCompactRuntime 的 strict——`links search|load` 缺 --self 拒、无别名、拒未知/重复 flag、按 arity 字面消费、help 离线、query 中的字面 --help/-- 不冒 help。search 的 query 可省略/空（空串列全目录，同原工具），query 与 query-file 至多一、query-file 路径不可空、`-` 读 stdin；load 的位置参数恰好一个 id/name，原 TrimSpace+`id is required` 语义交领域。raw 文本/文件/stdin max+1 与最终 escaped typed 请求各 1MiB，无截断后 trim。HTTP 严格单 object/unknown 字段/非 object/null/尾随内容/URL query 拒绝，整数无；复用 loopback/Host/browser/canonical-root guard，HTTP 回包 64KiB，请求/回包 DTO 仅 `{query?}`、`{id}` 与 `{text?,error?}`。
 
 成功人读原 text+newline，JSON `{text:…}`；错误沿原动态 redactor＋`secretValues()` scrub，仅显示 error 可缩；共享准确 `FormatLinks` 与整 JSONNL 各 ≤32KiB，CLI 先输出收到事实再非0，不自动 retry/proxy/redirect。search 的完整目录 TSV 与 load 的短 ACK 都不挂 20MiB 结果 artifact 框架——search 原文已由 1024B prompt cap 之外的全目录构成但仍是单一 text 语义，无 File/bytes 字段。
 
@@ -94,4 +95,4 @@ CLI 导入 cliops，`CallLinksSearch(ctx,endpoint,root,originalCallID,input)`、
 4. XBOT_CALL_ID 缺失/失效报 "requires XBOT_CALL_ID from an active XBot shell"（compact_runtime.go:73 同款）；HTTP 端 strict object/unknown/null/query 拒绝。
 5. 人读/JSONNL 各 ≤32KiB、HTTP ≤64KiB，CLI 先打印收到事实再非0。
 
-复用未改 catalog/state/secrets-hiding 原有效证据与源 resolver/前序已绿族，只 new＋必要 actual affected 最小 once，不整 longrun/真模型/性能矩阵。完整 caller 合同见 [母路线](../dev/cli-platform-entry.md#批-linkssearchload-两无审批子集具体合同)。本文保决策边界，不把离线 TSV 冒运行态等价、把指路错误冒领域失败或把 loaded 进程态冒持久状态。
+复用未改 catalog/state/secrets-hiding 原有效证据与源 resolver/前序已绿族，只 new＋必要 actual affected 最小 once，不整 longrun/真模型/性能矩阵。完整 caller 合同见 [母路线](../dev/cli-platform-entry.md#批-linkssearchload-两无审批子集具体合同pass已实施)。本文保决策边界，不把离线 TSV 冒运行态等价、把指路错误冒领域失败或把 loaded 进程态冒持久状态。两 docs 经 SINGLE ACTUAL CONCRETE SHAPE PASS，本 ADR Accepted，按上述原结构实施；实际入口红与业务证据分别收，不以未知命令冒领域红。Root4USERdocs/OwnerSSE/guard/main/push 日用不动。
