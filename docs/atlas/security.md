@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
-verified: 2026-11-02 @ dcbf05fd (compact Normal source-call binding, help-only research classification and late-error semantics)
+verified: 2026-11-02 @ fe6952b5 (links search readonly admission, load runtime-state rejection and retained install/remove card chain)
 ---
 # 安全：保险箱与权限表
 
@@ -63,6 +63,14 @@ research 经原 DirectXBotArgs 单 POSIX lexer 与同 ParseTranscriptRuntime，�
 research 只准当前 canonical BIN/精确受控 XBOT_BIN 经原 DirectXBotArgs 单 POSIX lexer 与同 ParseCompactRuntime 解析成功且 Help=true 的离线帮助，合法 self+help 同样只读帮助；focus 中字面 --help 仍是值。self 压缩为 Normal 写，在解释器前拒绝，操作符/替换/错 root 保原拒绝，不增加 loose 熔断阈值。最后 native compact 的 wrapper/Normal Known/schema/index 与空 context 工具组已退，无执行 shim；Link.Context 器官/Event、4 KiB 记忆写守卫和旧四 native 字面/工具配对历史保留。
 
 成功仅原短 ACK；错误沿动态 source redactor、held/Resources scrub，仅显示 error 可缩短，先输出实际回执再非 0，不自动重试。晚期错误前可能已有模型用量、环境或 State 效果，不伪造 Applied=false、成功回滚、零副作用或取消永不提交承诺。回执不含 summary/产物，不新增摘要读 API、权限表、阶段账或 Receipt/Inbox/wake；压缩不写记忆正文，既有读维护也不等物理零 IO。完整输入、DTO、容量见 [API](../API.md#主动范围压缩运行时-cli)，原 ctx/锁/保存链见 [内核](kernel.md#主动范围压缩实例入口)，决定见 [ADR0061](../adr/0061-compact-runtime-cli.md)。
+
+## links 目录搜索与加载 CLI
+
+`links search --self` 为只读，`links load --self` 把目录项标进运行中 kernel 的进程内 loaded 状态（deferred 解除、stableLinkNames 排除 lazy），不算只读。两动作都需原 Shell CallID/header 经未改的 runtimeSourceCall 关联同 listener 实际 live Local/running/未 finished Shell prepared ctx——search 的 `mcpSpecs`/`EffectiveLinks`/`secretValues` 与 load 的 `snapshotLinks`/`markLoaded` 都要求同一运行中 kernel；缺失/完成/foreign/nonShell/cancel 沿原 helper 拒绝，不假造 ctx。这不调用 runtimeApprovalSource/owner 重绑、审批 intent、确认卡或 approver 函数，不加 primary/person/project 资格或 Recall 的非 nil 冻结 turn 门；承载 Shell 机器 gate/policy 独立。
+
+research 经原 DirectXBotArgs 单 POSIX lexer 与首个 noun+subcommand 双层 `ParseLinksRuntime`，只放当前 canonical BIN/精确受控 `"$XBOT_BIN"` 的合法 help 与 `search --self`；`load --self` 在解释器前拒绝（进程态改变非只读，与 compact self 同档），裸 `links`/未知 subcommand/缺 `--self`/query 值中字面 `--help` 不放行。linksTool 保注册与 review 表 ExternalSend 归类，但工具只对 install/remove 有实际动作：search/load 分支是指 CLI 的指路错误，不出许可卡；install/remove 的 NeedsOwner 例外、permissive 唯一保卡与 `approvalSecretNames`（只认 tool=="links"）的 StageSecrets→takeSecrets→storeSecrets/dropSecrets→GrantLink/RevokeLink→EnableConnector/RemoveMCP→Reconcile 整链不变。旧 native literal/工具配对历史仍读，无执行 shim。
+
+search 返回原 TSV（`id\tstate\tsummary\tsecrets:…`，三态 listed/available/installed，空集 "no links"），收尾仍 `scrubSecrets(text, k.secretValues())`——密钥名出现、值不出现；错误沿原动态 redactor+secretValues scrub，仅显示 error 可缩短。human/JSONNL 各≤32 KiB、HTTP≤64 KiB，CLI 先输出事实再非 0，不自动重试。完整输入、DTO 与容量见 [API](../API.md#links-目录搜索与加载运行时-cli)，决定见 [ADR0062](../adr/0062-links-runtime-cli.md)。
 
 ## 共享慢调用的脱敏
 
@@ -172,7 +180,7 @@ WantedBy=multi-user.target
 
 | 类别 | 工具 | 确认条件 |
 |---|---|---|
-| `readonly` | `tools`（代理门的 search/describe）、`kernel_manual`、`read_file`、`web_fetch`、`web_search`、`view_image`、`shell_output`、`shell_status`、`list_secrets`、chat-group list/history CLI、memory-recall self CLI、transcript search/expand/detail self CLI、`read_subagent`、`expand_subagent`、`code_show`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不（`read_file` 或 `view_image` 触及保险箱/密钥路径时确认） |
+| `readonly` | `tools`（代理门的 search/describe）、`kernel_manual`、`read_file`、`web_fetch`、`web_search`、`view_image`、`shell_output`、`shell_status`、`list_secrets`、chat-group list/history CLI、memory-recall self CLI、transcript search/expand/detail self CLI、links search self CLI、`read_subagent`、`expand_subagent`、`code_show`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不（`read_file` 或 `view_image` 触及保险箱/密钥路径时确认） |
 | `normal` | `generate_image`（复用全局 OAuth 的生图代理）、`send_message_to_user`、compact self CLI、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`shell_cancel`、`ask_user`、`todo`、chat-group create/post CLI、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
 | `delete` | strict Bot CLI delete、`delete_file`、`remove_file`、`secret_rm`、`delete_link`、`remove_mcp` 等名称明确的删除工具 | 总是 |
 | `external_send` | `telegram_send`、`lark_send`、`send_email`、`send_webhook`、其余 `mcp_*`（按前缀规则，没标 `readOnlyHint` 的），以及 `links` 的 `install`/`remove` | 总是（`links` 只在 install/remove） |

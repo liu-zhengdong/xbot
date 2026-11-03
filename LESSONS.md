@@ -116,6 +116,8 @@
 
 - **CLI 夹具的 XBOT_CALL_ID 要填 Native SH 的 job id（`sh_*`，tools.newJobID），不是 provider tool_call 的 `cue_0`；lateState 故障要用目录权限造真 EACCES，不能用 EISDIR 冒充晚阶段写失败。** 原因：runtimeSourceCall 按 `sh_*` 解析原 Shell prepared ctx，夹具填 `cue_0` 会被原 helper 当 foreign/finished 拒掉，根本到不了 compact 领域；同理把 BotDir 整目录置 0500 产生的 EISDIR 会先卡 refreshMemSnap 里 currentState.Read 的早读，而不是在环境 publish 之后的 saveCurrentState 晚写，阶段归因就错了。正确做法：CallContext 一律用真实 Shell job 的 `sh_*`；要命中 Chat 成功后的晚写错，用 BotDir 0500 + CreateTemp 报物理 EACCES，使 usage+fullenv 已 publish 后再拿实错。守护：独立 failures phase（d87c7e24，dcbf05fd/merge00f35f61）与 cancel/current phase 的 compact CLI 夹具。Seen 1×（2026-11-02），范围为本项目 runtime CLI 独立夹具。
 
+- **mcpRuntimeModel 的 cue 匹配是 `strings.Contains(lastUser, candidate)` 子串选择且 map 遍历无顺序，共享前缀的 cue 名（如 `X` 和 `X_AGAIN`）会 misroute 请求、夹具 hang 住；cue 名必须互不包含。cliSkillSend 的 SSE "done" 可能先于 tool-result 的 provider request 落到 `script.results`，读 results 要包 WaitFor 不能直接断言。** 原因：handle 遍历 scripts map 取首个 `Contains(lastUser)` 命中的 cue，后发的 `X_AGAIN` 请求也会被先注册的 `X` 脚本截获，步骤错位后等待超时；done 事件只表示 SSE 流收尾，模型最后一轮 tool-result 请求可能还没打到 stub，`model.results(cue)` 读到空。守护：links 独立 chain/failures phase（eb7e3356）夹具使用互不重叠 cue 名并对结果读取加等待。Seen 1×（2026-11-02），范围为本项目 e2e runtime CLI 夹具。
+
 ## 界面交互
 
 - **滚动回归要比较可见文字的屏幕位置，并真正结束 SSE。** 只检查 scrollTop 或文本存在，会漏掉控件增高与临时回复收工后补头像／名字的位移；本次长回复逐字 Range 坐标在旧布局实测下移 34px。守护：`TestChatStickSettlementBrowser`、`TestChatStickHistoryNoticeBrowser`、`TestChatStickQuoteBrowser`，分别验证持久历史／临时正文收工保位、轮询控件／失败提示保锚和引用解除跟随，均有命中缺陷的先红证据。Seen 1×（2026-11-01）。

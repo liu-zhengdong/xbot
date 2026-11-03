@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall三项所测独立端到端按精确phase通过并已合main1053d0a9；transcript三读三项所测独立端到端按精确phase通过并已合mainc4b368bf；compact具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结dcbf05fd待集成main，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall三项所测独立端到端按精确phase通过并已合main1053d0a9；transcript三读三项所测独立端到端按精确phase通过并已合mainc4b368bf；compact具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结dcbf05fd待集成main；links search/load两无审批子集具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结fe6952b5待集成main，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -662,7 +662,9 @@ autoCompact/foldBlocks/bgcompact.finishJob/applyReady/idle及bindingPrecheck原�
 
 ## 批 linkssearchload：两无审批子集具体合同PASS已实施
 
-基线TRUE compact worktree `828d9340`（compact产品冻结dcbf05fd待集成，前序各组分期证据封存不重跑）。本刀只迁linksTool的`search`+`load`（connectors-inventory-20261102候选A，完整行号/secrets-stage洞/最窄验收已盘点）；`install`/`remove`留owner卡+secrets-stage原链路下刀再议，linksTool不删。[Accepted ADR0062](../adr/0062-links-runtime-cli.md)；两doc经 SINGLE ACTUAL CONCRETE SHAPE PASS，现沿原结构实施；首compiled早交，不等alltests/首反馈。源证据：search links.go:110（Catalog+Connectors+mcpSpecs→TSV `id\tstate\tsummary\tsecrets:…`，state三态listed/available/installed，"no links"兜底，scrubSecrets收尾）、loadContext links.go:312（ResolveApp→storeConnector归一`mcp:`→指路`mcp tools`→organ loadedNames→catalog grant校验→markLoaded→loadedNames）；markLoaded/isLoaded/loadMu links.go:616-641、deferred registry.go:162、stableLinkNames links.go:737。
+**本刀完成状态（2026-11-02）**：impl fe6952b5（13 prod +525/-11）实现 Handlers.Links typed Search/Load→`POST /v1/links/search|load`+mandatory X-XBot-Call-ID→holdOperations→原runtimeSourceCall preparedctx→同K原`search`/`loadContext`，首个noun+subcommand双层parser，linksTool schema收窄install/remove+search/load指路，readonly search放行/load拒；TEST-ONLY 70428445（7 testfiles +1003/-7，nonTestGo vs fe6952b5 EMPTY）作者first-once+race全过。STATIC PASS 6d53..fe69 13prod，install/remove卡链0触。当前级别：所测独立端到端分阶段通过，产品13冻结fe6952b5，**待集成main**，未日用；精确phase数据见 MILESTONES 2026-11-02 links条目。
+
+基线TRUE compact worktree `828d9340`（compact产品冻结dcbf05fd待集成，前序各组分期证据封存不重跑）。本刀只迁linksTool的`search`+`load`（connectors-inventory-20261102候选A，完整行号/secrets-stage洞/最窄验收已盘点）；`install`/`remove`留owner卡+secrets-stage原链路下刀再议，linksTool不删。[Accepted ADR0062](../adr/0062-links-runtime-cli.md)；两doc经 SINGLE ACTUAL CONCRETE SHAPE PASS，已按原结构实施完毕。源证据：search links.go:110（Catalog+Connectors+mcpSpecs→TSV `id\tstate\tsummary\tsecrets:…`，state三态listed/available/installed，"no links"兜底，scrubSecrets收尾）、loadContext links.go:312（ResolveApp→storeConnector归一`mcp:`→指路`mcp tools`→organ loadedNames→catalog grant校验→markLoaded→loadedNames）；markLoaded/isLoaded/loadMu links.go:616-641、deferred registry.go:162、stableLinkNames links.go:737。
 
 ### 实际caller与两结构
 
@@ -698,7 +700,7 @@ linksTool保留注册（Normal ExternalSend卡保），review.go:99归类、Need
 - 批 0 的后续实际操作及入站依赖清单、尚未迁族的 research 业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已提炼 atlas，固定五项独立所测端到端按各自精确版本通过，证据见 MILESTONES；原 chat loop 下一输入/Timer handle 及其 recover、回放、通知实际消费者也已以局部红绿和 reviewer24 至 `63762ae5` 连续增量 PASS 收口，已合入本地 main，尚未日用；合并时与主线持久选择的交叠补单项真实浏览器红绿，不重跑固定五项。已通过的普通字段、avatar_seed、MCP 和本刀五项不重复整批验收，母路线其它族继续在本 dev 中推进。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
-- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search已合maind632e7a3；memory-recall已合main1053d0a9，transcript三读已合mainc4b368bf，compact模型与State写已按上方Accepted合同实施完毕（dcbf05fd产品冻结，待集成main）；连接器及剩余目录管理等平台能力继续逐族迁移。
+- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search已合maind632e7a3；memory-recall已合main1053d0a9，transcript三读已合mainc4b368bf，compact模型与State写已按上方Accepted合同实施完毕（dcbf05fd产品冻结，待集成main）；links search/load已按上方Accepted合同实施完毕（fe6952b5产品冻结，待集成main），install/remove卡链与secrets-stage留后续切刀；连接器及剩余目录管理等平台能力继续逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。
 - 各批独立冒烟、相关旅程回归、性能与上下文收益测量、主人日用验收。
