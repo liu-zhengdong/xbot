@@ -175,14 +175,14 @@ WantedBy=multi-user.target
 - **代理门**：`tools` 的 search、describe 归 `readonly`；call 在 agent 层转发成被调用的工具，确认卡、拒绝表和决定记录都用那个工具的名字和参数，跟直接调用一模一样，代理门本身不增加确认，也不能绕开确认（见 [内核](kernel.md#工具注册与代理门)、[ADR 0035](../adr/0035-unified-tool-registry.md)）。
 - **self_edit**：严格测试/评测内核对persona self CLI显式按SelfEdit审核职责修改；`write_file`/`edit_file` 只在解析后的路径正是本 Bot 的 `persona.md` 或 `config.json` 时按自改审核。资料更新已经由当前实例 CLI 领域入口承接，旧 profile 模型工具没有注册、Known 或专用审批卡入口；生产默认放行与现有 persona/group 规则保持。
 - **记忆文件夹**（记忆 v2 批 3）：不可信回合里 `write_file`/`edit_file` 写进任何 `bots/*/memory/` 或 `people/*/memory/` 都确认；可信回合不弹卡，但内核持目录锁校验（`memory.md` ≤ 4 KiB、日志只能在当月文件末尾按格式追加、索引和锁文件不许写、文件夹内不许符号链接），违规就恢复原文件并把原因告诉模型。`remember`/`forget` 工具已拿掉。
-- **只读不动**：`read_file`、列表、搜索、只看不发的检查、`list_secrets` 不弹确认卡。
+- **只读不动**：`read_file`、列表、搜索、只看不发的检查不弹确认卡。
 - **决定留痕**：每个 Bot 一份 `bots/<name>/decisions.jsonl`（0600），每次决定追加一条，写允许、拒绝或过期，以及工具、摘要和时间；时间写本地时间加时区偏移（RFC3339，例如 `2026-10-16T09:30:00+08:00`），不写 UTC；摘要先过脱敏，不落真值。
 
 策略表：
 
 | 类别 | 工具 | 确认条件 |
 |---|---|---|
-| `readonly` | `tools`（代理门的 search/describe）、`kernel_manual`、`read_file`、`web_fetch`、`web_search`、`view_image`、`shell_output`、`shell_status`、`list_secrets`、chat-group list/history CLI、memory-recall self CLI、transcript search/expand/detail self CLI、links search self CLI、`read_subagent`、`expand_subagent`、`code_show`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不（`read_file` 或 `view_image` 触及保险箱/密钥路径时确认） |
+| `readonly` | `tools`（代理门的 search/describe）、`read_file`、`web_fetch`、`web_search`、`view_image`、`shell_output`、`shell_status`、chat-group list/history CLI、memory-recall self CLI、transcript search/expand/detail self CLI、links search self CLI、`read_subagent`、`expand_subagent`、`code_show`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不（`read_file` 或 `view_image` 触及保险箱/密钥路径时确认） |
 | `normal` | `generate_image`（复用全局 OAuth 的生图代理）、`send_message_to_user`、compact self CLI、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`shell_cancel`、`ask_user`、`todo`、chat-group create/post CLI、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
 | `delete` | strict Bot CLI delete、`delete_file`、`remove_file`、`secret_rm`、`delete_link`、`remove_mcp` 等名称明确的删除工具 | 总是 |
 | `external_send` | `telegram_send`、`lark_send`、`send_email`、`send_webhook`、其余 `mcp_*`（按前缀规则，没标 `readOnlyHint` 的） | 总是 |
@@ -193,7 +193,7 @@ WantedBy=multi-user.target
 完成标准：
 1. 执行前在内核里审查动作本身（工具加参数），不依赖模型的说明，也不依赖工具自己的 `Confirm`；工具自己的 `Confirm` 只给出摘要。
 2. permissions on 时，只有对外发送、删除、注入密钥或非 `GET`/`HEAD` 的 HTTP、persona/profile 自改需要用户确认卡；其余动作按表放行。Bot之间的消息、写计划/技能、编码任务按normal；routine纯排期不额外加审批，原Shell gate与分类仍有效。
-3. 只读动作（`read_file`、列表、搜索、只看不发的检查、`list_secrets`）不问。
+3. 只读动作（`read_file`、列表、搜索、只看不发的检查）不问。
 4. 每次决定（allowed/declined/expired、工具、摘要、时间）追加进每个 Bot 的 `bots/<name>/decisions.jsonl`（0600），时间带本地时区偏移，真值脱敏。
 
 

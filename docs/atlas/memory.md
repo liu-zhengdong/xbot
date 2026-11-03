@@ -8,7 +8,7 @@ verified: 2026-11-02 @ dcbf05fd (compact Bot snapshot-only refresh, latest publi
 
 > **30 秒版**：人是跨 Bot 的全局身份；记忆分人和 Bot 两层，以 Markdown 加索引存放。
 
-机制说明由 `xbot manual memory` 与模型的 `kernel_manual(memory)` 共用同一 embed 正文，固定称 `memory.md` / `log/YYYY-MM.md`。职责与工作档案的字段边界见 [多 Bot](multibot.md#人设组成与提示词边界)。
+机制说明由 `xbot manual memory` 与模型经 `xbot manual memory` 共用同一 embed 正文，固定称 `memory.md` / `log/YYYY-MM.md`。职责与工作档案的字段边界见 [多 Bot](multibot.md#人设组成与提示词边界)。
 
 ## 可见记忆文件检索
 

@@ -33,13 +33,13 @@ func Index() string {
 	for _, s := range sections {
 		fmt.Fprintf(&out, "- %s: %s\n", s.ID, s.Title)
 	}
-	out.WriteString("读取：kernel_manual(section)；用户在终端运行 xbot manual <section>。\n")
+	out.WriteString("读取：xbot manual <section>。\n")
 	return out.String()
 }
 
 // Prompt is deliberately just a reading instruction and the small directory.
 func Prompt() string {
-	return "被问到你如何运作、去哪里查看时，先读 kernel_manual 里相关的章节。手册讲的是机制，不是实时状态；当前的能力和路径要另外核实。\n" + strings.TrimSpace(Index())
+	return "被问到你如何运作、去哪里查看时，先用 sh 运行 xbot manual <section> 读相关章节。手册讲的是机制，不是实时状态；当前的能力和路径要另外核实。\n" + strings.TrimSpace(Index())
 }
 
 // Read accepts only known identifiers, not caller-supplied filesystem paths.

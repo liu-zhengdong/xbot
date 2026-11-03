@@ -58,7 +58,6 @@ var Table = map[string]Class{
 	"web_search":   Readonly,
 	"view_image":   Readonly,
 	"http_request": HTTP,
-	"list_secrets": Readonly,
 
 	// The tool door's search and describe only read the registry; a call
 	// through it is reviewed as the tool it names (ADR 0035).
@@ -71,9 +70,6 @@ var Table = map[string]Class{
 	"generate_image":       Normal,
 	"listen":               Readonly,
 	"tts":                  Normal,
-
-	// Built-in mechanism manual.
-	"kernel_manual": Readonly,
 
 	// Subagents.
 	"spawn":                  Normal,

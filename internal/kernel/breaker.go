@@ -246,7 +246,7 @@ func callThreshold(key string) int {
 
 func looseCall(name, args string) bool {
 	switch name {
-	case "read_file", "list_secrets",
+	case "read_file",
 		"recall", "recall_history", "read_subagent", "wait", "sleep", "poll":
 		return true
 	case "shell", "bash", "sh", "zsh", "powershell", "cmd", "git-bash":

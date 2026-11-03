@@ -209,7 +209,7 @@ MCP已移出主/legacy子/continuable子模型schema，原MCP重试/冷却退役
 
 ## 机制手册
 
-`internal/manual/sections/*.md` 通过 go:embed 跟版，包含[记忆](../../internal/manual/sections/memory.md)、[上下文与压缩](../../internal/manual/sections/context.md)、[例程与唤醒](../../internal/manual/sections/routines.md)、[子代理](../../internal/manual/sections/subagents.md)、[插话与排队](../../internal/manual/sections/interjections.md)、[连接器](../../internal/manual/sections/connectors.md)、[文件与工作区](../../internal/manual/sections/workspace.md)。`KernelRules` 只注入短目录和先读要求；`kernel_manual(section)` 始终挂载且属于 readonly，读取已知 section 或 index，未知值报错，不读任意路径或实时状态。用户用 `xbot manual [section]` 读取同一正文。
+`internal/manual/sections/*.md` 通过 go:embed 跟版，包含[记忆](../../internal/manual/sections/memory.md)、[上下文与压缩](../../internal/manual/sections/context.md)、[例程与唤醒](../../internal/manual/sections/routines.md)、[子代理](../../internal/manual/sections/subagents.md)、[插话与排队](../../internal/manual/sections/interjections.md)、[连接器](../../internal/manual/sections/connectors.md)、[文件与工作区](../../internal/manual/sections/workspace.md)。`KernelRules` 只注入短目录和先读要求；模型经 `sh` 运行 `xbot manual <section>` 读取同一正文，读取已知 section 或 index，未知值报错，不读任意路径或实时状态。用户在终端同样用 `xbot manual [section]`。
 
 ## 共享规则
 
