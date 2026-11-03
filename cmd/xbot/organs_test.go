@@ -11,7 +11,7 @@ func TestMountIncludesEveryOrganWithoutGrants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mounted, err := mount(b, runnerSpec{})
+	mounted, err := mount(b, runnerSpec{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

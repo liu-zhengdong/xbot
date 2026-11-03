@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
@@ -23,7 +23,7 @@ func TestOutputContinuationPublishesOnlyCompleteReply(t *testing.T) {
 		for _, streaming := range []bool{true, false} {
 			for _, prefix := range []string{"前半", ""} {
 				t.Run(fmt.Sprintf("%s/stream=%t/empty=%t", protocol, streaming, prefix == ""), func(t *testing.T) {
-					b := testBot(t, link.NameTerminal)
+					b := testBot(t, inbox.NameTerminal)
 					if err := b.SetOwners([]string{"u1"}); err != nil {
 						t.Fatal(err)
 					}
@@ -111,7 +111,7 @@ func TestOutputContinuationPublishesOnlyCompleteReply(t *testing.T) {
 						p = &provider.Responses{Client: client}
 					}
 					k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 1, OnDelta: func(s string) { mu.Lock(); defer mu.Unlock(); visible = append(visible, s) }}
-					if err := k.Handle(context.Background(), link.TerminalEvent("u1", "answer", time.Now())); err != nil {
+					if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "answer", time.Now())); err != nil {
 						t.Fatal(err)
 					}
 					if calls != 2 {
@@ -157,7 +157,7 @@ func TestOutputContinuationFinalReplyGuards(t *testing.T) {
 		{"protocol", "<｜DS", "ML｜invoke name=\"shell\">bad</｜DSML｜invoke>", "", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			b := testBot(t, link.NameTerminal)
+			b := testBot(t, inbox.NameTerminal)
 			if err := b.SetOwners([]string{"u1"}); err != nil {
 				t.Fatal(err)
 			}
@@ -167,7 +167,7 @@ func TestOutputContinuationFinalReplyGuards(t *testing.T) {
 			}}
 			var visible strings.Builder
 			k := &Kernel{Bot: b, Provider: p, MaxSteps: 1, OnDelta: func(s string) { visible.WriteString(s) }}
-			err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Now()))
+			err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "hello", time.Now()))
 			if (err != nil) != tc.fail {
 				t.Fatalf("error=%v", err)
 			}
@@ -192,14 +192,14 @@ func TestOutputContinuationFinalReplyGuards(t *testing.T) {
 }
 
 func TestOutputContinuationFailureDoesNotCommitPrefix(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("PRIVATE_PARTIAL_PREFIX"), StopReason: "length"}}}
 	var visible strings.Builder
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 1, OnDelta: func(s string) { visible.WriteString(s) }}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Now())); err == nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "hello", time.Now())); err == nil {
 		t.Fatal("continuation failure accepted")
 	}
 	entries, err := b.Entries()

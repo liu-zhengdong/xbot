@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -91,7 +91,7 @@ func TestCancelledHandleDoesNotInventFailureReply(t *testing.T) {
 			k := &Kernel{Bot: b, MaxSteps: 2, Provider: providerFunc(func(context.Context, provider.Request, func(string)) (provider.Message, error) {
 				return provider.Message{}, tc.err
 			})}
-			ev := link.TerminalEvent("u1", "pending words", time.Now())
+			ev := inbox.TerminalEvent("u1", "pending words", time.Now())
 			err := k.Handle(context.Background(), ev)
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("error=%v, want %v", err, tc.err)
@@ -124,7 +124,7 @@ func TestLateInputDoesNotBorrowCompletedRequestsAnswer(t *testing.T) {
 		t.Fatal(err)
 	}
 	wanted := errors.New("second request failed")
-	late := link.TerminalEvent("u1", "B late input", time.Now())
+	late := inbox.TerminalEvent("u1", "B late input", time.Now())
 	calls := 0
 	k := &Kernel{Bot: b, MaxSteps: 3}
 	k.Provider = providerFunc(func(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
@@ -144,7 +144,7 @@ func TestLateInputDoesNotBorrowCompletedRequestsAnswer(t *testing.T) {
 		}
 		return provider.Message{}, wanted
 	})
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "A opening input", time.Now())); !errors.Is(err, wanted) {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "A opening input", time.Now())); !errors.Is(err, wanted) {
 		t.Fatalf("handle=%v", err)
 	}
 	rows, err := b.Entries()

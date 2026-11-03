@@ -13,6 +13,7 @@ import (
 	"xbot/internal/browser"
 	"xbot/internal/code"
 	"xbot/internal/desktop"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/review"
@@ -43,7 +44,7 @@ func (fakeLink) Name() string          { return "fakedanger" }
 func (l fakeLink) Tools() []tools.Tool { return []tools.Tool{l.tool} }
 
 func TestUntrustedShellMemoryWriteRequiresApproval(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	dir := filepath.Join(b.Root, "people", "owner", "memory")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
@@ -90,7 +91,7 @@ func TestReviewedToolForcesDangerousConfirm(t *testing.T) {
 }
 
 func TestKernelReviewForcesAndLogsAllowed(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	var ran bool
 	p := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
@@ -108,7 +109,7 @@ func TestKernelReviewForcesAndLogsAllowed(t *testing.T) {
 			return true, nil
 		},
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "delete", time.Unix(1, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "delete", time.Unix(1, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if !ran {
@@ -135,7 +136,7 @@ func TestKernelReviewForcesAndLogsAllowed(t *testing.T) {
 }
 
 func TestKernelReviewLogsDeclined(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	var ran bool
 	p := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
@@ -149,7 +150,7 @@ func TestKernelReviewLogsDeclined(t *testing.T) {
 		Links:   []link.Link{link.Terminal{}, fakeLink{fakeDangerTool{ran: &ran}}},
 		Approve: func(context.Context, string, string) (bool, error) { return false, nil },
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "delete", time.Unix(1, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "delete", time.Unix(1, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if ran {
@@ -167,7 +168,7 @@ func TestKernelReadOnlyDoesNotAsk(t *testing.T) {
 	if err := os.WriteFile(path, []byte("hello\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	p := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function",
@@ -181,7 +182,7 @@ func TestKernelReadOnlyDoesNotAsk(t *testing.T) {
 		Links:   []link.Link{link.Terminal{}},
 		Approve: func(context.Context, string, string) (bool, error) { asked++; return true, nil },
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "read", time.Unix(1, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "read", time.Unix(1, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if asked != 0 {
@@ -193,7 +194,7 @@ func TestKernelReadOnlyDoesNotAsk(t *testing.T) {
 }
 
 func TestRecordDecisionRedactsSecrets(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	const secret = "super-secret-value"
 	k := &Kernel{Bot: b, Redact: func(s string) string {
 		return strings.ReplaceAll(s, secret, "[secret]")
@@ -246,7 +247,7 @@ func TestReviewedToolDoesNotForceNormalTool(t *testing.T) {
 // still asks in allow mode, while an ordinary path does not. The tool only
 // reports the path; the kernel review path decides.
 func TestWriteEditSelfEditStillAsks(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{
 		Bot:     b,
 		Machine: func() (string, error) { return "allow", nil },
@@ -301,10 +302,10 @@ func (fakeMCPTool) Run(context.Context, json.RawMessage) (string, error) { retur
 // every link the product can mount, then fails if a registered tool has no
 // explicit policy-table entry or if that tool's own Confirm asks for the owner.
 func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTimer, link.NameMemory, link.NamePersona,
-		link.NameContext, link.NameAgents, link.NameSkills, link.NameWeb, link.NamePeers,
+	b := testBot(t, inbox.NameTerminal, inbox.NameTimer, link.NameMemory, link.NamePersona,
+		link.NameContext, link.NameAgents, link.NameSkills, inbox.NameWeb, link.NamePeers,
 		link.NameWebhook, link.NameWatch, link.NameTelegram, link.NameLark,
-		link.NameCoding, link.NameDesktop, link.NameBrowser)
+		inbox.NameCoding, link.NameDesktop, link.NameBrowser)
 	if err := bot.SetPrimary(b.Root, b.Name()); err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +327,7 @@ func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
 		browser.Open(b.Root),
 	)
 	for _, name := range []string{link.NameWebhook, link.NameWatch, link.NameSkills, link.NameTelegram,
-		link.NameLark, link.NameCoding, link.NameDesktop, link.NameBrowser} {
+		link.NameLark, inbox.NameCoding, link.NameDesktop, link.NameBrowser} {
 		k.markLoaded(name)
 	}
 	list, err := k.modelTools()

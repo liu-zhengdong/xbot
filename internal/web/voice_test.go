@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/work"
 )
 
@@ -165,7 +165,7 @@ func TestVoiceHTTPRejectsInvalidAttachments(t *testing.T) {
 		}
 	}
 	// A syntactically valid id from another Bot is not a cross-Bot attachment.
-	other, err := bot.Create(root, "private", "persona", []string{link.NameWeb})
+	other, err := bot.Create(root, "private", "persona", []string{inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}

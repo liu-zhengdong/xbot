@@ -50,7 +50,7 @@ func DeliverTimers(root string, now time.Time) error {
 
 func hasTimer(b *bot.Bot) bool {
 	for _, name := range b.Config().Links {
-		if name == link.NameTimer {
+		if name == inbox.NameTimer {
 			return true
 		}
 	}
@@ -64,7 +64,7 @@ func deliverBotTimers(b *bot.Bot, now time.Time) (err error) {
 	}
 	tm := &link.Timer{Dir: b.RoutineDir(), Sender: sender}
 	now = now.UTC()
-	noticeErr := proc.NoticeMissed(tm, func(ev link.Event) error {
+	noticeErr := proc.NoticeMissed(tm, func(ev inbox.Event) error {
 		in, err := inbox.Open(b.InboxPath())
 		if err != nil {
 			return err

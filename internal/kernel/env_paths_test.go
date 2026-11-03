@@ -8,19 +8,19 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
 func TestEnvironmentTracePathsReachModelAndReplay(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	p := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, Content: provider.TextContent("one")},
 		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 2}
 	for _, input := range []string{"where is your trace?", "again"} {
-		if err := k.Handle(context.Background(), link.TerminalEvent("owner", input, time.Now())); err != nil {
+		if err := k.Handle(context.Background(), inbox.TerminalEvent("owner", input, time.Now())); err != nil {
 			t.Fatal(err)
 		}
 	}

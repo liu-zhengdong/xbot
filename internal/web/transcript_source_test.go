@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -41,7 +41,7 @@ func TestTranscriptSourceFields(t *testing.T) {
 		}
 	}
 	wrapped := func(source, sender string) string {
-		return link.Wrap(link.NewEvent(source, link.TypeMessage, "hi", sender, now))
+		return inbox.Wrap(inbox.NewEvent(source, inbox.TypeMessage, "hi", sender, now))
 	}
 	user("rchat_"+macID+"_x", "typed on the mac")
 	user("ev_local", "typed here")

@@ -14,6 +14,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
 	"xbot/internal/config"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/person"
@@ -76,7 +77,7 @@ func cmdNew(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-	who, err := person.Identify(root, person.Account{Link: link.NameTerminal, ExternalID: ext}, display)
+	who, err := person.Identify(root, person.Account{Link: inbox.NameTerminal, ExternalID: ext}, display)
 	if err != nil {
 		return err
 	}
@@ -101,7 +102,7 @@ func ensureSeed(root string) error {
 	if err != nil {
 		return err
 	}
-	who, err := person.Identify(root, person.Account{Link: link.NameTerminal, ExternalID: ext}, display)
+	who, err := person.Identify(root, person.Account{Link: inbox.NameTerminal, ExternalID: ext}, display)
 	if err != nil {
 		return err
 	}
@@ -777,7 +778,7 @@ func cmdTemplateImport(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-	who, err := person.Identify(root, person.Account{Link: link.NameTerminal, ExternalID: ext}, display)
+	who, err := person.Identify(root, person.Account{Link: inbox.NameTerminal, ExternalID: ext}, display)
 	if err != nil {
 		return err
 	}

@@ -11,13 +11,13 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/compact"
 	"xbot/internal/config"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
 
 func TestBatchBEnvironmentCurrentValues(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	now := time.Unix(1200, 0).UTC()
 	p := &scripted{}
 	for i := 0; i < 5; i++ {
@@ -26,7 +26,7 @@ func TestBatchBEnvironmentCurrentValues(t *testing.T) {
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, Now: func() time.Time { return now }}
 	appendCard(t, b, "card", "shell", "echo hi", bot.ApprovalPending, now)
 	for i := 0; i < 3; i++ {
-		if err := k.Handle(context.Background(), link.TerminalEvent("u1", fmt.Sprint(i), now.Add(time.Duration(i)*time.Second))); err != nil {
+		if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", fmt.Sprint(i), now.Add(time.Duration(i)*time.Second))); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -51,7 +51,7 @@ func TestBatchBEnvironmentCurrentValues(t *testing.T) {
 	raw, _ := b.ConcatRaw()
 	appendCard(t, b, "card", "shell", "echo hi", bot.ApprovalApproved, now)
 	now = now.Add(time.Minute)
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "cleared", now)); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "cleared", now)); err != nil {
 		t.Fatal(err)
 	}
 	msgs = p.reqs[3].Messages
@@ -83,7 +83,7 @@ func TestBatchBEnvironmentCurrentValues(t *testing.T) {
 	if err := b.SaveState(st); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "after compact", now)); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "after compact", now)); err != nil {
 		t.Fatal(err)
 	}
 	msgs = p.reqs[4].Messages
@@ -199,7 +199,7 @@ func TestBatchBIdleCompactPolicy(t *testing.T) {
 func TestBatchBIdleCompactDoesNotBlock(t *testing.T) {
 	t.Setenv("XBOT_IDLE_COMPACT_MIN_TOKENS", "1000")
 	t.Setenv("XBOT_IDLE_COMPACT_AFTER", "50m")
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	now := time.Now().UTC()
 	for i := 0; i < 20; i++ {
 		if err := b.Append(bot.Entry{Time: now.Add(-time.Hour), Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(strings.Repeat("x", 3000))}}); err != nil {
@@ -234,7 +234,7 @@ func TestBatchBIdleCompactDoesNotBlock(t *testing.T) {
 	done := make(chan error, 1)
 	start := time.Now()
 	go func() {
-		done <- k.Handle(context.Background(), link.TerminalEvent("u1", "while idle compact runs", now))
+		done <- k.Handle(context.Background(), inbox.TerminalEvent("u1", "while idle compact runs", now))
 	}()
 	select {
 	case err := <-done:
@@ -255,7 +255,7 @@ func TestBatchBIdleCompactDoesNotBlock(t *testing.T) {
 func TestBatchBBindingCompactsOrRefuses(t *testing.T) {
 	for _, canCompact := range []bool{true, false} {
 		t.Run(fmt.Sprint(canCompact), func(t *testing.T) {
-			b := testBot(t, link.NameTerminal)
+			b := testBot(t, inbox.NameTerminal)
 			if err := config.Add(b.Root, config.Provider{Name: "p", BaseURL: "http://localhost/v1", APIKeyEnv: "XBOT_BATCH_B_TEST_KEY"}, config.ModelSpec{Name: "large", Context: 1000000}); err != nil {
 				t.Fatal(err)
 			}
@@ -348,7 +348,7 @@ func TestBatchBFitSummaryFailureFallsBackOnce(t *testing.T) {
 }
 
 func TestBatchBBindingRefusesAfterInsufficientCompaction(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	seedHistory(t, b, 30, 4000)
 	c := &recCompactor{}
 	k := &Kernel{Bot: b, Compactor: c, Memory: memory.NopStore{}}

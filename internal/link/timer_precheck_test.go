@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"xbot/internal/inbox"
 	"xbot/internal/machine"
 	"xbot/internal/permissions"
 	"xbot/internal/tools"
@@ -35,7 +36,7 @@ func TestTimerPrecheckHonorsChangedMachinePolicy(t *testing.T) {
 			}
 			now := time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC)
 			posted := 0
-			emit := func(Event) error { posted++; return nil }
+			emit := func(inbox.Event) error { posted++; return nil }
 			if err := tm.Fire(now, emit); err != nil {
 				t.Fatal(err)
 			}
@@ -99,8 +100,8 @@ func TestTimerPrecheck(t *testing.T) {
 				t.Fatal(err)
 			}
 			now := time.Date(2026, 10, 27, 8, 7, 0, 0, time.UTC)
-			var posted []Event
-			emit := func(ev Event) error { posted = append(posted, ev); return nil }
+			var posted []inbox.Event
+			emit := func(ev inbox.Event) error { posted = append(posted, ev); return nil }
 			start := time.Now()
 			if err := tm.Fire(now, emit); err != nil {
 				t.Fatal(err)
@@ -117,7 +118,7 @@ func TestTimerPrecheck(t *testing.T) {
 			}
 			if tc.want == 1 {
 				ev := posted[0]
-				if ev.ID != "rt_check_20261027T0807" || ev.Source != NameTimer || ev.Type != TypeTimer || ev.Sender != "owner" || !ev.Untrusted || ev.Content != RoutineBody("check", "Check", "inspect") || !ev.Time.Equal(now) {
+				if ev.ID != "rt_check_20261027T0807" || ev.Source != inbox.NameTimer || ev.Type != inbox.TypeTimer || ev.Sender != "owner" || !ev.Untrusted || ev.Content != RoutineBody("check", "Check", "inspect") || !ev.Time.Equal(now) {
 					t.Fatalf("event changed: %+v", ev)
 				}
 			}
@@ -140,7 +141,7 @@ func TestTimerPrecheckStartFailureCommits(t *testing.T) {
 	if err := tm.Save(Routine{ID: "once", Prompt: "p", At: now.Format(time.RFC3339), Precheck: "true", Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := tm.Fire(now, func(Event) error { t.Fatal("start failure emitted"); return nil }); err != nil {
+	if err := tm.Fire(now, func(inbox.Event) error { t.Fatal("start failure emitted"); return nil }); err != nil {
 		t.Fatal(err)
 	}
 	r, err := tm.Load("once")
@@ -156,7 +157,7 @@ func TestTimerPrecheckEmitFailureRetries(t *testing.T) {
 	}
 	now := time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC)
 	want := errors.New("inbox failed")
-	if err := tm.Fire(now, func(Event) error { return want }); !errors.Is(err, want) {
+	if err := tm.Fire(now, func(inbox.Event) error { return want }); !errors.Is(err, want) {
 		t.Fatalf("error %v", err)
 	}
 	r, err := tm.Load("check")
@@ -164,7 +165,7 @@ func TestTimerPrecheckEmitFailureRetries(t *testing.T) {
 		t.Fatalf("failed emit committed: %+v %v", r, err)
 	}
 	n := 0
-	if err := tm.Fire(now, func(Event) error { n++; return nil }); err != nil || n != 1 {
+	if err := tm.Fire(now, func(inbox.Event) error { n++; return nil }); err != nil || n != 1 {
 		t.Fatalf("retry %d %v", n, err)
 	}
 }
@@ -200,7 +201,7 @@ func BenchmarkTimerPrecheck(b *testing.B) {
 			now := time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if err := tm.Fire(now.Add(time.Duration(i)*time.Hour), func(Event) error { return nil }); err != nil {
+				if err := tm.Fire(now.Add(time.Duration(i)*time.Hour), func(inbox.Event) error { return nil }); err != nil {
 					b.Fatal(err)
 				}
 			}

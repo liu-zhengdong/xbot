@@ -12,6 +12,7 @@ import (
 
 	"xbot/internal/agent"
 	"xbot/internal/cliops"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/machine"
 	"xbot/internal/provider"
@@ -20,7 +21,7 @@ import (
 )
 
 func TestRoutinePrecheckUsesShellReview(t *testing.T) {
-	b := testBot(t, link.NameTimer)
+	b := testBot(t, inbox.NameTimer)
 	mode, on := machine.Allow, true
 	k := &Kernel{Bot: b, Machine: func() (string, error) { return mode, nil }, PermissionsOn: func() bool { return on }}
 	k.ensureTurn().turnTrusted = true
@@ -63,7 +64,7 @@ func TestRoutinePrecheckUsesShellReview(t *testing.T) {
 }
 
 func TestRoutinePrecheckReviewsProcessCWD(t *testing.T) {
-	b := testBot(t, link.NameTimer)
+	b := testBot(t, inbox.NameTimer)
 	t.Chdir(b.Root)
 	k := &Kernel{Bot: b, WorkDir: t.TempDir()}
 	need, summary, err := k.reviewPrecheck(context.Background(), "printf marker > env", "create routine")
@@ -91,7 +92,7 @@ func (s routineSourceShell) Run(ctx context.Context, raw json.RawMessage) (strin
 
 func routineApprovalFixture(t *testing.T) (*Kernel, *link.Timer, string) {
 	t.Helper()
-	b := testBot(t, link.NameTimer)
+	b := testBot(t, inbox.NameTimer)
 	tm := &link.Timer{Dir: b.RoutineDir()}
 	k := &Kernel{Bot: b, Links: []link.Link{tm}, WorkDir: t.TempDir()}
 	k.ensureTurn().turnTrusted = true
@@ -166,7 +167,7 @@ func TestRoutinePrecheckApprovalPreventsExecution(t *testing.T) {
 				} else if err != nil || r.Precheck != "" {
 					t.Fatalf("denied update changed: %+v %v", r, err)
 				}
-				if err := tm.Fire(time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC), func(link.Event) error { return nil }); err != nil {
+				if err := tm.Fire(time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC), func(inbox.Event) error { return nil }); err != nil {
 					t.Fatal(err)
 				}
 				_, err = os.Stat(marker)
@@ -229,7 +230,7 @@ func TestRoutineCreatePrecheckDuplicateNull(t *testing.T) {
 			emitted := 0
 			now := time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC)
 			for i := 0; i < 2; i++ {
-				if err := tm.Fire(now, func(link.Event) error { emitted++; return nil }); err != nil {
+				if err := tm.Fire(now, func(inbox.Event) error { emitted++; return nil }); err != nil {
 					t.Fatal(err)
 				}
 			}

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 )
 
@@ -18,14 +19,14 @@ func TestLinkCatalogInstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := bot.Create(root, "eve", "persona", []string{link.NameTerminal}); err != nil {
+	if _, err := bot.Create(root, "eve", "persona", []string{inbox.NameTerminal}); err != nil {
 		t.Fatal(err)
 	}
 	eve, err := bot.Load(root, "eve")

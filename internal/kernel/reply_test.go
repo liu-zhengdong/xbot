@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
 
 func TestQuoteRoundTripAndTruncation(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestQuoteRoundTripAndTruncation(t *testing.T) {
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4, OnDelta: func(s string) {
 		seen = append(seen, s)
 	}}
-	ev := link.TerminalEvent("u1", "and this", time.Unix(2, 0).UTC())
+	ev := inbox.TerminalEvent("u1", "and this", time.Unix(2, 0).UTC())
 	ev.ReplyTo = 1
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
@@ -87,7 +87,7 @@ func TestQuoteRoundTripAndTruncation(t *testing.T) {
 }
 
 func TestReplyToIgnoresNonUserSeq(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestReplyToIgnoresNonUserSeq(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: provider.TextContent("reply_to: 2\nstill here")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 2}
-	ev := link.TerminalEvent("u1", "hello", time.Unix(2, 0).UTC())
+	ev := inbox.TerminalEvent("u1", "hello", time.Unix(2, 0).UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}

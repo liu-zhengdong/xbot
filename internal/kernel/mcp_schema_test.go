@@ -6,13 +6,14 @@ import (
 	"testing"
 
 	"xbot/internal/config"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/mcp"
 	"xbot/internal/provider"
 )
 
 func TestMainLineNeverDeclaresMCPSchemas(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := mcp.AddMCP(b.MCPPath(), mcp.Spec{Name: "external", Command: "does-not-exist-mcp-fixture"}, mcp.Options{IsProviderKey: config.ProviderKey}); err != nil {
 		t.Fatal(err)
 	}

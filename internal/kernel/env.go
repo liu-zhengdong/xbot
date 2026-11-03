@@ -255,7 +255,7 @@ func multisetDiff(a, b []string) (added, removed []string) {
 
 // taskEnvironment reads status from its existing owner, the executor. Terminal
 // changes are kept for one comparison; the full report remains in the dialogue.
-func (k *Kernel) taskEnvironment(prev []bot.TaskEnv, ev link.Event) ([]bot.TaskEnv, error) {
+func (k *Kernel) taskEnvironment(prev []bot.TaskEnv, ev inbox.Event) ([]bot.TaskEnv, error) {
 	var out []bot.TaskEnv
 	seen := map[string]bool{}
 	if e := k.execSnapshot(); e != nil {
@@ -326,7 +326,7 @@ func (k *Kernel) taskEnvironment(prev []bot.TaskEnv, ev link.Event) ([]bot.TaskE
 		out = append(out, old)
 		seen[old.ID] = true
 	}
-	if ev.Source == link.SourceSubagent && !seen[ev.Sender] && (ev.Type == exec.EvDone || ev.Type == exec.EvFailed || ev.Type == exec.EvBlocked || ev.Type == "fork_end") {
+	if ev.Source == inbox.SourceSubagent && !seen[ev.Sender] && (ev.Type == exec.EvDone || ev.Type == exec.EvFailed || ev.Type == exec.EvBlocked || ev.Type == "fork_end") {
 		out = append(out, bot.TaskEnv{ID: ev.Sender, Status: ev.Type})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })

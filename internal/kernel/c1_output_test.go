@@ -15,7 +15,6 @@ import (
 
 	"xbot/internal/cliops"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 	"xbot/internal/work"
@@ -49,7 +48,7 @@ func TestC1BackgroundOutputImagesAndEffectsUseActualCompletion(t *testing.T) {
 	var once sync.Once
 	defer func() { once.Do(func() { close(slow.release) }); _ = k.Close() }()
 	p.resps = []provider.Message{toolCall("rich", slow.Name(), "{}"), {Role: provider.RoleAssistant, Content: provider.TextContent("已转到后台")}}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "rich", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "rich", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(slow.path); !os.IsNotExist(err) {

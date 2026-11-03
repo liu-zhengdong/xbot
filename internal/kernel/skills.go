@@ -6,7 +6,6 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/skill"
 )
@@ -76,8 +75,8 @@ func oneSkillLine(s string) string { return strings.Join(strings.Fields(s), " ")
 // projectRoutineSkills is the one body-assembly seam for both a fresh timer
 // turn and a timer event absorbed by a busy turn. Only this request's message
 // changes; receive already stored the original event without skill bodies.
-func (k *Kernel) projectRoutineSkills(m provider.Message, ev link.Event) provider.Message {
-	if ev.Source != link.NameTimer || len(ev.RoutineSkills) == 0 {
+func (k *Kernel) projectRoutineSkills(m provider.Message, ev inbox.Event) provider.Message {
+	if ev.Source != inbox.NameTimer || len(ev.RoutineSkills) == 0 {
 		return m
 	}
 	var text strings.Builder

@@ -14,6 +14,7 @@ import (
 
 	"xbot/internal/cron"
 	"xbot/internal/fsutil"
+	"xbot/internal/inbox"
 	"xbot/internal/tools"
 )
 
@@ -69,7 +70,7 @@ type Timer struct {
 	Loc *time.Location
 }
 
-func (t *Timer) Name() string        { return NameTimer }
+func (t *Timer) Name() string        { return inbox.NameTimer }
 func (t *Timer) Tools() []tools.Tool { return nil }
 
 func (t *Timer) every() time.Duration {
@@ -97,7 +98,7 @@ func (t *Timer) sender() string {
 }
 
 // Run polls until ctx is cancelled. A repeated slot is one event id, so a second poster does not double-wake.
-func (t *Timer) Run(ctx context.Context, emit func(Event) error) error {
+func (t *Timer) Run(ctx context.Context, emit func(inbox.Event) error) error {
 	tick := time.NewTicker(t.every())
 	defer tick.Stop()
 	for {
@@ -113,14 +114,14 @@ func (t *Timer) Run(ctx context.Context, emit func(Event) error) error {
 }
 
 // Due lists routines whose cron matches now and whose slot has not been committed.
-func (t *Timer) Due(now time.Time) ([]Event, error) {
+func (t *Timer) Due(now time.Time) ([]inbox.Event, error) {
 	list, err := t.List()
 	if err != nil {
 		return nil, err
 	}
 	now = now.UTC()
 	slot := now.Format("20060102T1504")
-	var out []Event
+	var out []inbox.Event
 	for _, r := range list {
 		if !r.Enabled {
 			continue
@@ -172,18 +173,18 @@ func repeatedWall(now time.Time, loc *time.Location) bool {
 	return false
 }
 
-func dueOnce(r Routine, now time.Time, sender string) (Event, bool) {
+func dueOnce(r Routine, now time.Time, sender string) (inbox.Event, bool) {
 	at, err := time.Parse(time.RFC3339, r.At)
 	if err != nil {
-		return Event{}, false
+		return inbox.Event{}, false
 	}
 	at = at.UTC()
 	if now.Before(at) || now.Sub(at) > OneShotWindow {
-		return Event{}, false
+		return inbox.Event{}, false
 	}
 	slot := at.Format("20060102T1504")
 	if r.LastSlot == slot {
-		return Event{}, false
+		return inbox.Event{}, false
 	}
 	ev := routineEvent(r, sender, now)
 	ev.ID = "rt_" + r.ID + "_" + slot
@@ -191,11 +192,11 @@ func dueOnce(r Routine, now time.Time, sender string) (Event, bool) {
 }
 
 // Fire posts due events and commits their slots.
-func (t *Timer) Fire(now time.Time, emit func(Event) error) error {
+func (t *Timer) Fire(now time.Time, emit func(inbox.Event) error) error {
 	return t.fire(context.Background(), now, emit)
 }
 
-func (t *Timer) fire(ctx context.Context, now time.Time, emit func(Event) error) error {
+func (t *Timer) fire(ctx context.Context, now time.Time, emit func(inbox.Event) error) error {
 	evs, err := t.Due(now)
 	if err != nil {
 		return err
@@ -211,7 +212,7 @@ func (t *Timer) fire(ctx context.Context, now time.Time, emit func(Event) error)
 // Deliver checks a due event before posting it, then commits even a skipped
 // slot. All timer pollers share this path. Failed delivery still leaves the
 // slot uncommitted for retry, with the original stable event ID.
-func (t *Timer) Deliver(ctx context.Context, ev Event, emit func(Event) error) error {
+func (t *Timer) Deliver(ctx context.Context, ev inbox.Event, emit func(inbox.Event) error) error {
 	id, slot, err := splitRoutineID(ev.ID)
 	if err != nil {
 		return err
@@ -268,7 +269,7 @@ func (t *Timer) Expire(now time.Time) error {
 }
 
 // Commit records the slot so the same minute does not fire again after a restart.
-func (t *Timer) Commit(ev Event) error {
+func (t *Timer) Commit(ev inbox.Event) error {
 	id, slot, err := splitRoutineID(ev.ID)
 	if err != nil {
 		return err
@@ -292,8 +293,8 @@ func splitRoutineID(eventID string) (string, string, error) {
 }
 
 // routineEvent carries references only; the kernel reads bodies for this wake.
-func routineEvent(r Routine, sender string, now time.Time) Event {
-	ev := NewEvent(NameTimer, TypeTimer, routineBody(r), sender, now)
+func routineEvent(r Routine, sender string, now time.Time) inbox.Event {
+	ev := inbox.NewEvent(inbox.NameTimer, inbox.TypeTimer, routineBody(r), sender, now)
 	ev.RoutineSkills = r.Skills
 	return ev
 }

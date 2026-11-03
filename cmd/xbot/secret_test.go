@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/vault"
 )
 
@@ -35,7 +35,7 @@ func TestSecretCLISetListRm(t *testing.T) {
 	// Keep an exported XBOT_VAULT_SOCKET from changing what this test exercises.
 	t.Setenv("XBOT_VAULT_SOCKET", "")
 	root := t.TempDir()
-	if _, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal}); err != nil {
+	if _, err := bot.Create(root, "ada", "persona", []string{inbox.NameTerminal}); err != nil {
 		t.Fatal(err)
 	}
 	const value = "super-secret-value-42"
@@ -55,7 +55,7 @@ func TestSecretCLISetListRm(t *testing.T) {
 		t.Fatal("plaintext value on disk")
 	}
 
-	if _, err := bot.Create(root, "bob", "persona", []string{link.NameTerminal}); err != nil {
+	if _, err := bot.Create(root, "bob", "persona", []string{inbox.NameTerminal}); err != nil {
 		t.Fatal(err)
 	}
 	out := captureStdout(t, func() error { return cmdSecret(root, []string{"list", "bob"}) })

@@ -26,7 +26,7 @@ func TestProfileCachedUseBotKeepsWorkspaceAndScopedProcessDirectory(t *testing.T
 	if err := os.Mkdir(project, 0700); err != nil {
 		t.Fatal(err)
 	}
-	k.Links = MountOrgans(original, nil)
+	k.Links = MountLinks(original, nil, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	manager := mcp.NewManager(ctx, mcp.Options{})

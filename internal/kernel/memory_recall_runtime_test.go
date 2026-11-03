@@ -15,7 +15,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
 	"xbot/internal/exec"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 	"xbot/internal/work"
@@ -103,10 +103,10 @@ func TestMemoryRecallRuntimeOriginalPersonKindAndSubagentPrecedence(t *testing.T
 		name, kind, source, sender, person string
 	}{
 		{"sender_untrusted", "", "", "u2", "u2"},
-		{"source_subagent", "", link.SourceSubagent, "u2", "u1"},
+		{"source_subagent", "", inbox.SourceSubagent, "u2", "u1"},
 		{"sender_subagent", "", "", "sa_original", "u1"},
-		{"bot_before_subagent", link.KindBot, link.SourceSubagent, "sa_original", ""},
-		{"group_before_subagent", link.KindGroup, link.SourceSubagent, "sa_original", ""},
+		{"bot_before_subagent", inbox.KindBot, inbox.SourceSubagent, "sa_original", ""},
+		{"group_before_subagent", inbox.KindGroup, inbox.SourceSubagent, "sa_original", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			k, endpoint := memoryRecallRuntimeFixture(t)

@@ -12,7 +12,6 @@ import (
 	"xbot/internal/agent"
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/provider"
 )
 
@@ -192,7 +191,7 @@ func deliverDecision(b *bot.Bot, sender, tool string, args json.RawMessage, summ
 	if oerr != nil {
 		return
 	}
-	ev := link.NewEvent(link.NameApproval, "decision", text, sender, now)
+	ev := inbox.NewEvent(inbox.NameApproval, "decision", text, sender, now)
 	ev.Untrusted = false
 	if box.Post(ev) != nil {
 		return

@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"xbot/internal/inbox"
 )
 
 func TestRoutineSkillsEvents(t *testing.T) {
@@ -33,7 +35,7 @@ func TestRoutineSkillsEvents(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var restored Event
+		var restored inbox.Event
 		if err := json.Unmarshal(raw, &restored); err != nil || strings.Join(restored.RoutineSkills, ",") != "atlas,ship" {
 			t.Fatalf("restored %+v %v", restored, err)
 		}

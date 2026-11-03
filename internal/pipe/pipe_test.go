@@ -15,7 +15,7 @@ import (
 
 	"xbot/internal/account"
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 	"xbot/internal/web"
 )
@@ -81,7 +81,7 @@ func newWorld(t *testing.T) *world {
 	if _, _, err := ui.EnsureToken(); err != nil { // serve does this at startup
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}

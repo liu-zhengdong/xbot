@@ -18,7 +18,6 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/fsutil"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 )
 
 const (
@@ -209,8 +208,8 @@ func (b *Bus) MessageWithResult(from, to, text, chain string, hops int, now time
 	if chain == "" {
 		chain = newID("ch_")
 	}
-	ev := link.NewEvent("bot:"+from, link.TypeMessage, text, from, now)
-	ev.SenderKind = link.KindBot
+	ev := inbox.NewEvent("bot:"+from, inbox.TypeMessage, text, from, now)
+	ev.SenderKind = inbox.KindBot
 	ev.Hops = hops
 	ev.Chain = chain
 	result.Stage = "recipient_open"
@@ -310,7 +309,7 @@ func (b *Bus) PostGroup(kind, sender, groupID, text, chain string, hops int, now
 // and stopping at the first failure. hops is stored on each delivered event.
 func (b *Bus) PostGroupWithResult(kind, sender, groupID, text, chain string, hops int, now time.Time) (GroupPostResult, error) {
 	result := GroupPostResult{GroupID: groupID, PostedMembers: []string{}, Stage: "validation"}
-	if kind != link.KindPerson && kind != link.KindBot {
+	if kind != inbox.KindPerson && kind != inbox.KindBot {
 		return result, errors.New("peer: bad sender kind")
 	}
 	if !groupIDRe.MatchString(groupID) {
@@ -330,10 +329,10 @@ func (b *Bus) PostGroupWithResult(kind, sender, groupID, text, chain string, hop
 	if err != nil {
 		return result, err
 	}
-	if kind == link.KindBot && !contains(g.Members, sender) {
+	if kind == inbox.KindBot && !contains(g.Members, sender) {
 		return result, errors.New("peer: bot is not in the group")
 	}
-	if kind == link.KindPerson {
+	if kind == inbox.KindPerson {
 		owned, err := OwnerBots(b.Root, sender)
 		if err != nil {
 			return result, err
@@ -367,7 +366,7 @@ func (b *Bus) PostGroupWithResult(kind, sender, groupID, text, chain string, hop
 	result.MessageID = line.ID
 	body := fmt.Sprintf("<group id=%q from=%q kind=%q>\n%s\n</group>", g.ID, sender, kind, text)
 	for _, member := range g.Members {
-		if kind == link.KindBot && member == sender {
+		if kind == inbox.KindBot && member == sender {
 			continue
 		}
 		result.Stage = "recipient_load"
@@ -376,7 +375,7 @@ func (b *Bus) PostGroupWithResult(kind, sender, groupID, text, chain string, hop
 			result.FailedMember = member
 			return result, err
 		}
-		ev := link.NewEvent("group:"+g.ID, link.TypeMessage, body, sender, now)
+		ev := inbox.NewEvent("group:"+g.ID, inbox.TypeMessage, body, sender, now)
 		ev.SenderKind = kind
 		ev.Hops = hops
 		ev.Chain = chain

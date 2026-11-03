@@ -12,6 +12,7 @@ import (
 
 	"xbot/internal/cron"
 	"xbot/internal/fsutil"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 )
 
@@ -21,7 +22,7 @@ const missedWindow = 7 * 24 * time.Hour
 const watermarkEvery = 15 * time.Second
 
 // NoticeMissed posts one summary of skipped slots and advances the shared watermark.
-func NoticeMissed(tm *link.Timer, post func(link.Event) error, now time.Time) error {
+func NoticeMissed(tm *link.Timer, post func(inbox.Event) error, now time.Time) error {
 	read := func() (wm time.Time, ok bool, err error) {
 		err = withWatermarkIO(tm, func(dir string) error {
 			wm, ok, err = readWatermark(filepath.Join(dir, "timer-watermark"))
@@ -96,7 +97,7 @@ func routineName(name string) string {
 	return string(runes)
 }
 
-func missedNotice(tm *link.Timer, wm, now time.Time, sender string) (*link.Event, error) {
+func missedNotice(tm *link.Timer, wm, now time.Time, sender string) (*inbox.Event, error) {
 	since := wm
 	truncated := now.Sub(wm) > missedWindow
 	if truncated {
@@ -109,7 +110,7 @@ func missedNotice(tm *link.Timer, wm, now time.Time, sender string) (*link.Event
 	if len(slots) == 0 {
 		return nil, nil
 	}
-	ev := link.NewEvent(link.NameTimer, link.TypeTimer, missedBody(slots, since, now, truncated, tm.Location()), sender, now)
+	ev := inbox.NewEvent(inbox.NameTimer, inbox.TypeTimer, missedBody(slots, since, now, truncated, tm.Location()), sender, now)
 	ev.ID = "missed_" + wm.UTC().Format("20060102T150405")
 	return &ev, nil
 }

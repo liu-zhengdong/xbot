@@ -214,7 +214,7 @@ func TestLongRunJourney(t *testing.T) {
 
 	model.setExpand(from, to)
 	fromCall := model.callCount()
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1",
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1",
 		"JOURNEY_RECALL State the key fact from the first turn, then expand the range a summary block covers and quote it.", time.Now())); err != nil {
 		t.Fatalf("recall turn: %v", err)
 	}
@@ -622,7 +622,7 @@ func newJourney(t *testing.T, compaction bool) (*kernel.Kernel, *bot.Bot, *journ
 	root := t.TempDir()
 	work := t.TempDir()
 	b, err := bot.Create(root, "longrun", "You are a long-run test bot.", []string{
-		link.NameTerminal, link.NameContext, link.NameMemory,
+		inbox.NameTerminal, link.NameContext, link.NameMemory,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -663,7 +663,7 @@ func newJourney(t *testing.T, compaction bool) (*kernel.Kernel, *bot.Bot, *journ
 func driveTurn(t *testing.T, k *kernel.Kernel, model *journeyModel, i int) {
 	t.Helper()
 	model.setTurn(i)
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", journeyTurnText(i), time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", journeyTurnText(i), time.Now())); err != nil {
 		t.Fatalf("turn %d: %v", i, err)
 	}
 }

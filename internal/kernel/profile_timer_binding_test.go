@@ -8,6 +8,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/mcp"
 )
@@ -17,7 +18,7 @@ func TestProfileMountedTimerBindsActualKernelBeforeRename(t *testing.T) {
 	original := k.Bot
 	// The real cmd.mount assembles organs with a temporary Kernel that has no
 	// Resources. StartOperations must bind the same Timer to the actual source.
-	k.Links = MountOrgans(original, nil)
+	k.Links = MountLinks(original, nil, nil)
 	timer, err := k.timer()
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +61,7 @@ func TestProfileMountedTimerBindsActualKernelBeforeRename(t *testing.T) {
 	if err != nil || len(events) != 1 {
 		t.Fatalf("current due events %+v %v", events, err)
 	}
-	if err := timer.Deliver(ctx, events[0], func(link.Event) error {
+	if err := timer.Deliver(ctx, events[0], func(inbox.Event) error {
 		if !resources.route.TryLock() {
 			t.Fatal("emit holds current route")
 		}

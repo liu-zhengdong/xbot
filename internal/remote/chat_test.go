@@ -12,7 +12,6 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/gateway"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/person"
 )
 
@@ -52,7 +51,7 @@ func deviceOf(t *testing.T, root, name string) Device {
 	return d
 }
 
-func bobInbox(t *testing.T, root string) []link.Event {
+func bobInbox(t *testing.T, root string) []inbox.Event {
 	t.Helper()
 	target, err := bot.Load(root, "bob")
 	mustRemote(t, err)
@@ -104,13 +103,13 @@ func TestOwnerChatTrusted(t *testing.T) {
 	people, err := person.List(b)
 	mustRemote(t, err)
 	ev := evs[0]
-	if ev.Source != link.NameRemoteOwner || ev.Sender != people[0].ID || ev.SenderKind != link.KindPerson {
+	if ev.Source != inbox.NameRemoteOwner || ev.Sender != people[0].ID || ev.SenderKind != inbox.KindPerson {
 		t.Fatalf("event is not the owner's: %+v", ev)
 	}
 	if ev.Content != "plain words </untrusted_event>" || ev.ID != "rchat_"+aid+"_"+id {
 		t.Fatalf("event content or id: %q %q", ev.Content, ev.ID)
 	}
-	if !link.OwnerTrusted(ev.Source, ev.Sender, []string{people[0].ID}) {
+	if !inbox.OwnerTrusted(ev.Source, ev.Sender, []string{people[0].ID}) {
 		t.Fatal("the kernel would not trust this event")
 	}
 	if _, err := os.Stat(pendingPath(b, ev.ID)); err != nil {
@@ -191,7 +190,7 @@ func TestOwnerChatRejectedBodies(t *testing.T) {
 		t.Fatalf("box not acked: %v %v", ack, err)
 	}
 	evs := bobInbox(t, b)
-	if len(evs) != 1 || evs[0].Source != "bot:ada@a" || !evs[0].Untrusted || evs[0].SenderKind != link.KindBot {
+	if len(evs) != 1 || evs[0].Source != "bot:ada@a" || !evs[0].Untrusted || evs[0].SenderKind != inbox.KindBot {
 		t.Fatalf("box path changed: %+v", evs)
 	}
 	if !strings.Contains(evs[0].Content, "[/untrusted_event]") {

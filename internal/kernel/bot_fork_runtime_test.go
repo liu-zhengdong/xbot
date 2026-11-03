@@ -44,7 +44,7 @@ func botForkRuntimeFixture(t *testing.T, routed bool) (*Kernel, string, string) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "source", "SOURCE-PERSONA ship the notes project", []string{link.NameTerminal, link.NameMemory})
+	b, err := bot.Create(root, "source", "SOURCE-PERSONA ship the notes project", []string{inbox.NameTerminal, link.NameMemory})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestBotForkRuntimeActualLLMNonprimaryAndNextWake(t *testing.T) {
 	}
 	consumer := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")}}}
 	ck := &Kernel{Bot: child, Memory: k.Memory, Provider: consumer, Now: k.Now}
-	if err := ck.Handle(context.Background(), link.NewEvent("timer", "tick", "Review the inherited project handoff.", "timer", k.now())); err != nil {
+	if err := ck.Handle(context.Background(), inbox.NewEvent("timer", "tick", "Review the inherited project handoff.", "timer", k.now())); err != nil {
 		t.Fatal(err)
 	}
 	if len(consumer.reqs) != 1 {

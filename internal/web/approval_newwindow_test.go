@@ -12,6 +12,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/compact"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/mockopenai"
@@ -32,7 +33,7 @@ func newApprovalHarness(t *testing.T, wait time.Duration) (*Server, *httptest.Se
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +212,7 @@ func TestWebApprovalExpiredCardIsGone(t *testing.T) {
 // while a card already decided is untouched.
 func TestResolveOrphanApprovalsRecordsRestart(t *testing.T) {
 	root := t.TempDir()
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}

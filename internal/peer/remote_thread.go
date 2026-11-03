@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -106,7 +106,7 @@ func remoteRows(self, addr string, seq int, e bot.Entry, results map[string]stri
 		if !ok {
 			return nil
 		}
-		if source == "bot:"+addr && typ == link.TypeMessage && sender == addr {
+		if source == "bot:"+addr && typ == inbox.TypeMessage && sender == addr {
 			return []Direct{{ID: e.EventID, Seq: seq, From: addr, To: self, Text: body, Time: at}}
 		}
 		// remote.Receive and the outbox post "message to <addr> ..." notices as plain events.

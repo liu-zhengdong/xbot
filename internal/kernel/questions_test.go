@@ -7,7 +7,6 @@ import (
 	"time"
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 )
 
 func TestAskUserRequiresRecommendedOption(t *testing.T) {
@@ -84,7 +83,7 @@ func TestQuestionChoicesDoNotAnswerOtherCards(t *testing.T) {
 		t.Fatal(err)
 	}
 	events := box.Pending()
-	if len(events) != 1 || events[0].Source != link.NameApproval || events[0].Content != "B" {
+	if len(events) != 1 || events[0].Source != inbox.NameApproval || events[0].Content != "B" {
 		t.Fatalf("late choice must keep card source through Handle: %+v", events)
 	}
 	if err := ChooseQuestion(b, first.id, "A"); err != nil {

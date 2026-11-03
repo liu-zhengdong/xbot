@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/notify"
 )
 
@@ -27,7 +27,7 @@ func TestPhonePushSkipsOpenTab(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}

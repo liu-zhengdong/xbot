@@ -8,7 +8,6 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 )
 
 // postCLIEvent reserves the existing handle before posting, so the event cannot
@@ -52,7 +51,7 @@ func (s *Server) postCLIEvent(w http.ResponseWriter, r *http.Request) {
 	gate.Lock()
 	defer gate.Unlock()
 	var box *inbox.Inbox
-	ev := link.NewEvent("cli", "event", in.Text, strings.TrimSpace(in.Sender), time.Now())
+	ev := inbox.NewEvent("cli", "event", in.Text, strings.TrimSpace(in.Sender), time.Now())
 	if err = withInboxIO(k.Resources, b, nil, func(_ *bot.Bot, currentBox *inbox.Inbox) error {
 		box = currentBox
 		return currentBox.Post(ev)
@@ -122,7 +121,7 @@ func (s *Server) queueCLIEvent(w http.ResponseWriter, b *bot.Bot, sender, text s
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	ev := link.NewEvent("cli", "event", text, strings.TrimSpace(sender), time.Now())
+	ev := inbox.NewEvent("cli", "event", text, strings.TrimSpace(sender), time.Now())
 	if err = withInboxIO(k.Resources, b, nil, func(current *bot.Bot, currentBox *inbox.Inbox) error {
 		b = current
 		return currentBox.Post(ev)

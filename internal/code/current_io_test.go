@@ -13,7 +13,6 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/work"
 )
@@ -26,7 +25,7 @@ type currentCodeFixture struct {
 
 func newCurrentCodeFixture(t *testing.T) *currentCodeFixture {
 	t.Helper()
-	b, err := bot.Create(t.TempDir(), "before", "persona", []string{link.NameCoding})
+	b, err := bot.Create(t.TempDir(), "before", "persona", []string{inbox.NameCoding})
 	if err != nil {
 		t.Fatal(err)
 	}

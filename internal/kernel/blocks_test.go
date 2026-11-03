@@ -8,7 +8,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/compact"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -169,7 +169,7 @@ func TestCompactFromSkipsCoveredPrefix(t *testing.T) {
 // whole history. Each pass must summarize only the stretch no block covers yet,
 // and an earlier block's bytes must never change.
 func TestAutoCompactIsIncremental(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	seedMarked(t, b, 6, 4000)
 	comp := &recCompactor{}
 	k := &Kernel{Bot: b, Compactor: comp, Budget: compact.Budget{Ceiling: 1, KeepTail: 1}}
@@ -277,7 +277,7 @@ func seedMarked(t *testing.T, b *bot.Bot, n, size int) {
 // its share of the soft target, everything but the newest block becomes one
 // coarser block, and the newest keeps its own range.
 func TestFoldBlocksKeepsNewestDetailed(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	st := bot.State{Blocks: []bot.SummaryBlock{
 		{From: 1, To: 10, Text: strings.Repeat("a", 800)},
 		{From: 11, To: 20, Text: strings.Repeat("b", 800)},
@@ -319,7 +319,7 @@ func TestFoldBlocksKeepsNewestDetailed(t *testing.T) {
 // folding across them would mark them summarized, so they would silently stop
 // reaching the model.
 func TestFoldBlocksStopsAtAGap(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	st := bot.State{Blocks: []bot.SummaryBlock{
 		{From: 1, To: 10, Text: strings.Repeat("a", 800)},
 		// 11-40 stay raw: a manual compact covered 41-50 but not this stretch.
@@ -355,7 +355,7 @@ func TestFoldBlocksStopsAtAGap(t *testing.T) {
 // TestFoldBlocksWaitsForEnoughBlocks checks the fold does not run on a short
 // block list, so an early session is never folded into one block.
 func TestFoldBlocksWaitsForEnoughBlocks(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	st := bot.State{Blocks: []bot.SummaryBlock{
 		{From: 1, To: 10, Text: strings.Repeat("a", 800)},
 		{From: 11, To: 20, Text: strings.Repeat("b", 800)},
@@ -381,7 +381,7 @@ func TestFoldBlocksWaitsForEnoughBlocks(t *testing.T) {
 // a message count. A long run of large tool results would otherwise pin the
 // whole context above the soft target and leave nothing compactable.
 func TestTailStartBoundsBySize(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	seedMarked(t, b, 40, 4000)
 	k := &Kernel{Bot: b, Budget: compact.Budget{Target: 100_000, Ceiling: 160_000, KeepTail: 1}}
 	start, err := k.tailStart(40)
@@ -407,7 +407,7 @@ func TestTailStartBoundsBySize(t *testing.T) {
 	}
 
 	// A short transcript stays whole even though it exceeds no budget.
-	small := testBot(t, link.NameTerminal)
+	small := testBot(t, inbox.NameTerminal)
 	seedMarked(t, small, 3, 100)
 	k2 := &Kernel{Bot: small, Budget: compact.Budget{Target: 100_000, Ceiling: 160_000, KeepTail: 1}}
 	start2, err := k2.tailStart(3)

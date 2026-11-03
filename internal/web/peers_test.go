@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/peer"
 	"xbot/internal/person"
 	"xbot/internal/provider"
@@ -35,7 +35,7 @@ func TestPeerMessages(t *testing.T) {
 	appendWebUser(t, ada, "ev_owner", "hello owner", t0.Add(-time.Minute))
 	appendWebDirect(t, ada, "ev_early", "bob", "early", t0)
 	appendWebDirect(t, ada, "ev_late", "bob", "<script>alert(1)</script>", t0.Add(3*time.Minute))
-	appendWebUser(t, ada, "ev_group", link.Wrap(link.NewEvent("group:g_abcd1234", link.TypeMessage, "group hi", "bob", t0)), t0)
+	appendWebUser(t, ada, "ev_group", inbox.Wrap(inbox.NewEvent("group:g_abcd1234", inbox.TypeMessage, "group hi", "bob", t0)), t0)
 	appendWebDirect(t, ada, "ev_erin", "erin", "from erin", t0)
 
 	appendWebDirect(t, bob, "ev_a1", "ada", "ada-1\nsecond", t0.Add(time.Minute))
@@ -332,9 +332,9 @@ func appendWebCall(t *testing.T, b *bot.Bot, id, addr, result string, at time.Ti
 
 func appendWebBounce(t *testing.T, b *bot.Bot, id, text string, at time.Time) {
 	t.Helper()
-	ev := link.NewEvent("remote", link.TypeMessage, text, "remote", at)
+	ev := inbox.NewEvent("remote", inbox.TypeMessage, text, "remote", at)
 	ev.ID = id
-	appendWebUser(t, b, id, link.Wrap(ev), at)
+	appendWebUser(t, b, id, inbox.Wrap(ev), at)
 }
 
 func decodePeer(t *testing.T, raw []byte) []peerRow {
@@ -350,7 +350,7 @@ func decodePeer(t *testing.T, raw []byte) []peerRow {
 
 func mustWebBot(t *testing.T, root, name, owner string) *bot.Bot {
 	t.Helper()
-	b, err := bot.Create(root, name, "persona", []string{link.NameTerminal, link.NameWeb})
+	b, err := bot.Create(root, name, "persona", []string{inbox.NameTerminal, inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,9 +362,9 @@ func mustWebBot(t *testing.T, root, name, owner string) *bot.Bot {
 
 func appendWebDirect(t *testing.T, b *bot.Bot, id, from, text string, at time.Time) {
 	t.Helper()
-	ev := link.NewEvent("bot:"+from, link.TypeMessage, text, from, at)
+	ev := inbox.NewEvent("bot:"+from, inbox.TypeMessage, text, from, at)
 	ev.ID = id
-	appendWebUser(t, b, id, link.Wrap(ev), at)
+	appendWebUser(t, b, id, inbox.Wrap(ev), at)
 }
 
 func appendWebUser(t *testing.T, b *bot.Bot, id, content string, at time.Time) {

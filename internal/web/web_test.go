@@ -17,6 +17,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/config"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -50,7 +51,7 @@ func TestTranscriptEscapesHTML(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal, link.NameWeb})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameTerminal, inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +120,7 @@ func TestForkBotAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NamePeers, link.NameWeb})
+	b, err := bot.Create(root, "ada", "persona", []string{link.NamePeers, inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +189,7 @@ func TestBotListPinsPrimaryFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"ada", "bob", "cleo"} {
-		b, err := bot.Create(root, name, "persona", []string{link.NameWeb})
+		b, err := bot.Create(root, name, "persona", []string{inbox.NameWeb})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -241,7 +242,7 @@ func TestProfileAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "Be brief.", []string{link.NameWeb})
+	b, err := bot.Create(root, "ada", "Be brief.", []string{inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -386,7 +387,7 @@ func TestSetPrimaryAndDeleteAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"ada", "bob"} {
-		b, err := bot.Create(root, name, "persona", []string{link.NameWeb})
+		b, err := bot.Create(root, name, "persona", []string{inbox.NameWeb})
 		if err != nil {
 			t.Fatal(err)
 		}

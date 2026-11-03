@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"xbot/internal/cliops"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/peer"
 )
 
@@ -30,7 +30,7 @@ func TestGroupHistoryMembersReadAndFilter(t *testing.T) {
 		if i%10 == 0 {
 			sender, text = "ada", fmt.Sprintf("ada RELEASE %d\nid\tfake\trow", i)
 		}
-		if err := bus.PostGroup(link.KindBot, sender, g.ID, text, "ch_t", 1, time.Unix(int64(i), 0)); err != nil {
+		if err := bus.PostGroup(inbox.KindBot, sender, g.ID, text, "ch_t", 1, time.Unix(int64(i), 0)); err != nil {
 			t.Fatal(err)
 		}
 	}

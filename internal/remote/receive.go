@@ -16,7 +16,6 @@ import (
 	"xbot/internal/fsutil"
 	"xbot/internal/gateway"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/peer"
 	"xbot/internal/tools"
 )
@@ -203,10 +202,10 @@ func deliver(root, self string, cfg Config, env gateway.Envelope, now time.Time,
 		return err
 	}
 	sender := m.From + "@" + d.Name
-	ev := link.NewEvent("bot:"+sender, link.TypeMessage, tools.NeutralizeUntrusted(m.Text), sender, now)
+	ev := inbox.NewEvent("bot:"+sender, inbox.TypeMessage, tools.NeutralizeUntrusted(m.Text), sender, now)
 	// A crash after Post but before persisting seen must not duplicate delivery.
 	ev.ID = "remote_" + env.From + "_" + env.ID
-	ev.SenderKind, ev.Hops, ev.Chain = link.KindBot, m.Hops, m.Chain
+	ev.SenderKind, ev.Hops, ev.Chain = inbox.KindBot, m.Hops, m.Chain
 	box, err := inbox.Open(target.InboxPath())
 	if err != nil {
 		return err

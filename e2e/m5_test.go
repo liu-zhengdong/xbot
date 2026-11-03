@@ -113,7 +113,7 @@ func TestWebAndTerminalShareTranscript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "FROM_TERMINAL", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "FROM_TERMINAL", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	transcript = getBody(t, webc, srv.URL+"/api/bots/ada/transcript")
@@ -206,7 +206,7 @@ func TestBotMessagesBotAndGetsReply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ka.Handle(context.Background(), link.TerminalEvent("u1", "MSG_BOB", time.Now())); err != nil {
+	if err := ka.Handle(context.Background(), inbox.TerminalEvent("u1", "MSG_BOB", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	kb, err := m5Kernel(bob, client)
@@ -292,7 +292,7 @@ func TestPeerLoopStops(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ka.Handle(context.Background(), link.TerminalEvent("u1", "LOOP", time.Now())); err != nil {
+	if err := ka.Handle(context.Background(), inbox.TerminalEvent("u1", "LOOP", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 8; i++ {
@@ -356,7 +356,7 @@ func m5Kernel(b *bot.Bot, client *provider.Client) (*kernel.Kernel, error) {
 
 func mustM5Bot(t *testing.T, root, name, persona string) *bot.Bot {
 	t.Helper()
-	b, err := bot.Create(root, name, persona, []string{link.NameTerminal, link.NameWeb, link.NamePeers})
+	b, err := bot.Create(root, name, persona, []string{inbox.NameTerminal, inbox.NameWeb, link.NamePeers})
 	if err != nil {
 		t.Fatal(err)
 	}

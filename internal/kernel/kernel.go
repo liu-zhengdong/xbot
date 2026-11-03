@@ -72,14 +72,13 @@ type Kernel struct {
 	// MaxSteps is a runaway guard, not a design limit: a turn ends when the
 	// model stops, when the breaker trips, or when the background budget is
 	// spent. Zero uses maxStepsGuard. Tests set it small to keep fixtures short.
-	MaxSteps   int
-	Budget     compact.Budget
-	SendPolicy link.SendPolicy
-	OnDelta    func(string)
-	OnPart     func(provider.ContentPart)
-	OnTool     func(name, summary string)
-	OnResult   func(name, output string)
-	OnFinding  func(string)
+	MaxSteps  int
+	Budget    compact.Budget
+	OnDelta   func(string)
+	OnPart    func(provider.ContentPart)
+	OnTool    func(name, summary string)
+	OnResult  func(name, output string)
+	OnFinding func(string)
 	// OnProfile reports a saved profile through the current turn's output.
 	OnProfile func(ProfileNotice)
 	// Permissive permanently disables tool permission cards (ADR 0019).
@@ -219,7 +218,7 @@ func (k *Kernel) stepGuard() int {
 
 // Handle runs one event to a final assistant message, or returns the agent error.
 // A repeated event whose turn is already complete does not call the model again.
-func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
+func (k *Kernel) Handle(ctx context.Context, ev inbox.Event) (handleErr error) {
 	if k.Resources != nil {
 		if !k.Resources.AdmissionOpen() {
 			return errors.New("bot resources unavailable")
@@ -250,7 +249,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 		turnChain:   ev.Chain,
 		turnSource:  ev.Source,
 		turnEvent:   ev.ID,
-		turnTrusted: link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners),
+		turnTrusted: inbox.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners),
 	}
 	t.fromSeq = seq
 	defer func() {
@@ -270,7 +269,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	// that call before it leaves. Setup failures leave the original words and
 	// a normal failure reply, even when their old stream has handed off.
 	first := &Sink{OnPart: k.OnPart, OnDelta: k.OnDelta, OnTool: k.OnTool, OnResult: k.OnResult, OnProfile: k.OnProfile, OnHandoff: k.OnHandoff}
-	if ev.Source == link.NameTimer {
+	if ev.Source == inbox.NameTimer {
 		first.OnDelta = nil
 	}
 	k.openInterject(t, first)
@@ -308,7 +307,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 	if err != nil {
 		return err
 	}
-	if existing == 0 && ev.Source != link.NameApproval && link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners) {
+	if existing == 0 && ev.Source != inbox.NameApproval && inbox.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners) {
 		AnswerQuestions(k.Bot, ev.Content)
 	}
 	if existing > 0 {
@@ -318,7 +317,7 @@ func (k *Kernel) Handle(ctx context.Context, ev link.Event) (handleErr error) {
 		}
 		if turnDone(span, 0) {
 			t.replyTo = lastReplyTo(span, 0)
-			if k.OnDelta != nil && ev.Source != link.NameTimer {
+			if k.OnDelta != nil && ev.Source != inbox.NameTimer {
 				if text := lastAssistant(span, 0); text != "" {
 					k.OnDelta(text)
 				}
@@ -687,10 +686,10 @@ func (k *Kernel) memoryPersonOf(t *turn) string {
 	if t == nil {
 		return ""
 	}
-	if t.turnKind == link.KindBot || t.turnKind == link.KindGroup {
+	if t.turnKind == inbox.KindBot || t.turnKind == inbox.KindGroup {
 		return ""
 	}
-	if t.turnSource == link.SourceSubagent || strings.HasPrefix(t.turnSender, "sa_") {
+	if t.turnSource == inbox.SourceSubagent || strings.HasPrefix(t.turnSender, "sa_") {
 		return k.ownerPerson()
 	}
 	return t.turnSender
@@ -819,7 +818,7 @@ func (k *Kernel) StartEmitters(ctx context.Context) {
 				continue
 			}
 			go func(em link.Emitter) {
-				_ = em.Run(ctx, func(ev link.Event) error {
+				_ = em.Run(ctx, func(ev inbox.Event) error {
 					ev.Untrusted = true
 					if ev.Time.IsZero() {
 						ev.Time = time.Now().UTC()
@@ -856,28 +855,6 @@ func (k *Kernel) Close() error {
 		}
 	}
 	return first
-}
-
-// Deliver is the outbound hook for messages on the user's behalf.
-// The default policy drafts first and sends only after Approve returns true.
-func (k *Kernel) Deliver(ctx context.Context, m link.Messenger, to, body string) error {
-	preview, err := m.Draft(ctx, to, body)
-	if err != nil {
-		return err
-	}
-	approved := false
-	if !k.SendPolicy.AutoSend {
-		if k.Approve != nil {
-			approved, err = k.trackApprove(k.Approve)(ctx, m.Name(), preview)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	if !k.SendPolicy.Allowed(approved) {
-		return link.ErrNotSent
-	}
-	return m.SendDraft(ctx, to, body)
 }
 
 // BudgetFor is the budget a bot starts with. Both lines are left at zero, so

@@ -24,7 +24,7 @@ import (
 // pictures on the fresh path, so an absorbed message lost them — the model
 // never saw the picture and the transcript line never named it.
 func TestAbsorbedMessageKeepsItsPictures(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	dir, _, err := work.Open(b.Root, b.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func TestAbsorbedMessageKeepsItsPictures(t *testing.T) {
 	// posts one that arrived while this turn was running.
 	k.Links = append(k.Links, pasteLink{k: k, id: id})
 
-	ev := link.TerminalEvent("u1", "先做点事", time.Unix(10, 0).UTC())
+	ev := inbox.TerminalEvent("u1", "先做点事", time.Unix(10, 0).UTC())
 	if err := box.Post(ev); err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func (pasteTool) Confirm(json.RawMessage) (bool, string, error) {
 }
 
 func (t pasteTool) Run(context.Context, json.RawMessage) (string, error) {
-	ev := link.WebEvent("u1", "", time.Unix(20, 0).UTC())
+	ev := inbox.WebEvent("u1", "", time.Unix(20, 0).UTC())
 	ev.Images = []string{t.id}
 	if err := t.k.Inbox.Post(ev); err != nil {
 		return "", err
@@ -152,7 +152,7 @@ func TestAbsorbedPicturesRespectVisionAndTheTurnCap(t *testing.T) {
 		{"a model with vision gets it", "deepseek-flash", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			b := testBot(t, link.NameTerminal)
+			b := testBot(t, inbox.NameTerminal)
 			if err := b.SetBinding("p", tc.model); err != nil {
 				t.Fatal(err)
 			}
@@ -182,7 +182,7 @@ func TestAbsorbedPicturesRespectVisionAndTheTurnCap(t *testing.T) {
 				WorkDir: dir, Links: []link.Link{link.Terminal{}, pasteLink{k: nil, id: id}},
 			}
 			k.Links[1] = pasteLink{k: k, id: id}
-			ev := link.TerminalEvent("u1", "先做点事", time.Unix(10, 0).UTC())
+			ev := inbox.TerminalEvent("u1", "先做点事", time.Unix(10, 0).UTC())
 			if err := box.Post(ev); err != nil {
 				t.Fatal(err)
 			}
@@ -210,7 +210,7 @@ func TestAbsorbedPicturesRespectVisionAndTheTurnCap(t *testing.T) {
 // expand of a raw line. Both read the transcript, which stores the words only,
 // so a line about a picture would otherwise lose which file it meant.
 func TestPastedPictureSurvivesSummaryAndExpand(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	dir, _, err := work.Open(b.Root, b.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -279,7 +279,7 @@ func (c *recordingCompactor) Compact(_ context.Context, prior string, turns []pr
 // then also stored, so the next assembly appended it a second time and the
 // owner's own words were no longer the line's text.
 func TestAbsorbedNoteIsNotStored(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	dir, _, err := work.Open(b.Root, b.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -319,7 +319,7 @@ func TestAbsorbedNoteIsNotStored(t *testing.T) {
 // absorbed one cannot be attached. The model must still get the path, because
 // the message really did arrive with a picture.
 func TestAbsorbedPictureOverTheCapStillNamesItsPath(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetBinding("p", "deepseek-flash"); err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +339,7 @@ func TestAbsorbedPictureOverTheCapStillNamesItsPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The picture message is waiting while the tool spends the allowance.
-	shot := link.WebEvent("u1", "", time.Unix(20, 0).UTC())
+	shot := inbox.WebEvent("u1", "", time.Unix(20, 0).UTC())
 	shot.Images = []string{id}
 	if err := box.Post(shot); err != nil {
 		t.Fatal(err)
@@ -352,7 +352,7 @@ func TestAbsorbedPictureOverTheCapStillNamesItsPath(t *testing.T) {
 	}}
 	k := &Kernel{Bot: b, Provider: p, Inbox: box, Memory: memory.NopStore{}, MaxSteps: 4, WorkDir: dir,
 		Links: []link.Link{link.Terminal{}, imageSpendLink{}}}
-	ev := link.TerminalEvent("u1", "先看看那四张", time.Unix(10, 0).UTC())
+	ev := inbox.TerminalEvent("u1", "先看看那四张", time.Unix(10, 0).UTC())
 	if err := box.Post(ev); err != nil {
 		t.Fatal(err)
 	}
@@ -398,7 +398,7 @@ func (spendTool) Run(ctx context.Context, _ json.RawMessage) (string, error) {
 // current shell directory. A bot that cd-ed elsewhere must still be able to
 // open a picture from an earlier message.
 func TestPastedPathSurvivesACd(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	dir, _, err := work.Open(b.Root, b.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -434,11 +434,11 @@ func TestPastedPathSurvivesACd(t *testing.T) {
 // the reader's. Both pictures would otherwise point at the wrong directory.
 func TestCrossBotExpandNamesThatBotsPictures(t *testing.T) {
 	root := t.TempDir()
-	a, err := bot.Create(root, "ada", "Be brief.", []string{link.NameTerminal})
+	a, err := bot.Create(root, "ada", "Be brief.", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
-	bb, err := bot.Create(root, "bob", "Be brief.", []string{link.NameTerminal})
+	bb, err := bot.Create(root, "bob", "Be brief.", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,7 +10,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// wrapUntrusted marks external text as data, in the same form as link.Wrap.
+// wrapUntrusted marks external text as data, in the same form as inbox.Wrap.
 // A page that contains the closer cannot end the block early.
 func wrapUntrusted(source, typ, sender string, at time.Time, body string) string {
 	body = NeutralizeUntrusted(body)

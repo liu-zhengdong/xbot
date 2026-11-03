@@ -11,7 +11,7 @@ import (
 	"unicode/utf8"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 )
 
 func TestTaskDetails(t *testing.T) {
@@ -21,7 +21,7 @@ func TestTaskDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestTaskDetails(t *testing.T) {
 
 func TestTaskNotableAndUnstartedTime(t *testing.T) {
 	root := t.TempDir()
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}

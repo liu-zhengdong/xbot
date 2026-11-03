@@ -11,7 +11,7 @@ import (
 
 	"xbot/internal/agent"
 	"xbot/internal/exec"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/notable"
 	"xbot/internal/provider"
@@ -32,7 +32,7 @@ func TestDispatchReportsRealScopedOutsideWrite(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(k.WorkDir, "sub", "out")); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "整理目录", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "整理目录", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	close(hold)
@@ -105,7 +105,7 @@ func TestReadonlyMCPIsNotNotableThroughReview(t *testing.T) {
 }
 
 func TestRolledBackMemoryWriteIsNotNotable(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Memory: memory.Open(b.Root), WorkDir: t.TempDir()}
 	path := filepath.Join(b.Root, "bots", b.Name(), "memory", "memory.md")
 	old := "- (2026-10-18) old\n"

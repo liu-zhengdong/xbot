@@ -22,7 +22,7 @@ import (
 )
 
 func TestRuntimeRoutineTypedCRUD(t *testing.T) {
-	b := testBot(t, link.NameTimer)
+	b := testBot(t, inbox.NameTimer)
 	tm := &link.Timer{Dir: b.RoutineDir(), Loc: time.FixedZone("source", 8*3600)}
 	k := &Kernel{Bot: b, Links: []link.Link{tm}}
 	h := k.RoutineHandlers()
@@ -83,7 +83,7 @@ func TestRuntimeRoutineTypedCRUD(t *testing.T) {
 }
 
 func TestRuntimeRoutineOnceBoundaryAndFreshValidation(t *testing.T) {
-	b := testBot(t, link.NameTimer)
+	b := testBot(t, inbox.NameTimer)
 	tm := &link.Timer{Dir: b.RoutineDir()}
 	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
 	k := &Kernel{Bot: b, Links: []link.Link{tm}, Now: func() time.Time { return now }}
@@ -121,7 +121,7 @@ func TestRuntimeRoutineOnceBoundaryAndFreshValidation(t *testing.T) {
 }
 
 func TestRuntimeRoutineSourceCaptureAndArtifact(t *testing.T) {
-	b := testBot(t, link.NameTimer)
+	b := testBot(t, inbox.NameTimer)
 	r := &BotResources{current: b, ctx: context.Background()}
 	tm := &link.Timer{WithDirectoryIO: func(fn func(string) error) error {
 		return r.WithCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error { return fn(current.RoutineDir()) })
@@ -182,7 +182,7 @@ func TestRuntimeRoutineSourceCaptureAndArtifact(t *testing.T) {
 }
 
 func TestRuntimeRoutinePartialAndUnavailable(t *testing.T) {
-	b := testBot(t, link.NameTimer)
+	b := testBot(t, inbox.NameTimer)
 	tm := &link.Timer{Dir: b.RoutineDir()}
 	k := &Kernel{Bot: b, Links: []link.Link{tm}}
 	h := k.RoutineHandlers()
@@ -232,7 +232,7 @@ func TestRuntimeRoutinePartialAndUnavailable(t *testing.T) {
 }
 
 func TestRuntimeRoutineHumanListBudgetArtifact(t *testing.T) {
-	b := testBot(t, link.NameTimer)
+	b := testBot(t, inbox.NameTimer)
 	tm := &link.Timer{Dir: b.RoutineDir()}
 	k := &Kernel{Bot: b, Links: []link.Link{tm}}
 	const count = 300
@@ -285,7 +285,7 @@ func TestRuntimeRoutineHumanListBudgetArtifact(t *testing.T) {
 }
 
 func TestRuntimeRoutinePrecheckNeedsOriginalSource(t *testing.T) {
-	b := testBot(t, link.NameTimer)
+	b := testBot(t, inbox.NameTimer)
 	tm := &link.Timer{Dir: b.RoutineDir()}
 	k := &Kernel{Bot: b, Links: []link.Link{tm}}
 	h := k.RoutineHandlers()

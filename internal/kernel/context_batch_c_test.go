@@ -13,6 +13,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
 	"xbot/internal/exec"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/manual"
 	"xbot/internal/provider"
@@ -33,7 +34,7 @@ func batchReply(text string) provider.Message {
 func TestBatchCManualReadBeforeAnswer(t *testing.T) {
 	for _, section := range manual.Sections() {
 		t.Run(section.ID, func(t *testing.T) {
-			b, _, err := bot.EnsurePrimary(t.TempDir(), bot.Seed{Links: []string{link.NameTerminal}, Owner: "u1"})
+			b, _, err := bot.EnsurePrimary(t.TempDir(), bot.Seed{Links: []string{inbox.NameTerminal}, Owner: "u1"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -54,7 +55,7 @@ func TestBatchCManualReadBeforeAnswer(t *testing.T) {
 				}
 				return manual.Read(argv[1])
 			}}}}}
-			if err := k.Handle(context.Background(), link.TerminalEvent("u1", "你怎么做到"+section.Title+"，我在哪看？", time.Now())); err != nil {
+			if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "你怎么做到"+section.Title+"，我在哪看？", time.Now())); err != nil {
 				t.Fatal(err)
 			}
 			if len(p.reqs) != 2 {
@@ -131,7 +132,7 @@ func TestBatchCCreateBotPurposeScripts(t *testing.T) {
 		{"delegated-name", "现在建一个汇总邮件的 Bot，你定名字", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			b, _, err := bot.EnsurePrimary(t.TempDir(), bot.Seed{Links: []string{link.NameWeb}, Owner: "u1"})
+			b, _, err := bot.EnsurePrimary(t.TempDir(), bot.Seed{Links: []string{inbox.NameWeb}, Owner: "u1"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -154,7 +155,7 @@ func TestBatchCCreateBotPurposeScripts(t *testing.T) {
 					}
 				}
 			})
-			if err := k.Handle(context.Background(), link.TerminalEvent("u1", tc.input, time.Now())); err != nil {
+			if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", tc.input, time.Now())); err != nil {
 				t.Fatal(err)
 			}
 			if tc.ask {
@@ -164,7 +165,7 @@ func TestBatchCCreateBotPurposeScripts(t *testing.T) {
 				if p.i != 2 {
 					t.Fatalf("did not pause after clarification: %d", p.i)
 				}
-				if err := k.Handle(context.Background(), link.TerminalEvent("u1", "叫日报助手，汇总邮件，现在建。", time.Now())); err != nil {
+				if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "叫日报助手，汇总邮件，现在建。", time.Now())); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -229,7 +230,7 @@ func TestBatchCPartnerScenarios(t *testing.T) {
 		candidate := filepath.Join(dir, "candidates.md")
 		p := &scripted{resps: []provider.Message{batchCall("save", "write_file", `{"path":"candidates.md","content":"候选：新增主题换肤；当前先完成导出验收。"}`), batchReply("换肤会延后导出验收，已记入候选，先把导出走通。")}}
 		k := &Kernel{Bot: b, Provider: p, WorkDir: dir, Links: []link.Link{c1Link{tool: &tools.WriteFile{Root: dir}}}, Permissive: true, MaxSteps: 4}
-		if err := k.Handle(context.Background(), link.TerminalEvent("u1", "当前目标是导出验收，顺便再来个换肤吧？新想法记 candidates.md。", time.Now())); err != nil {
+		if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "当前目标是导出验收，顺便再来个换肤吧？新想法记 candidates.md。", time.Now())); err != nil {
 			t.Fatal(err)
 		}
 		raw, err := os.ReadFile(candidate)
@@ -249,7 +250,7 @@ func TestBatchCPartnerScenarios(t *testing.T) {
 		}
 		p := &scripted{resps: []provider.Message{batchCall("evidence", "read_file", `{"path":"test.log"}`), batchReply("核对日志后发现测试失败，尚未通过验收。")}}
 		k := &Kernel{Bot: b, Provider: p, WorkDir: dir, Links: []link.Link{c1Link{tool: &tools.ReadFile{Root: dir}}}, Permissive: true, MaxSteps: 4}
-		if err := k.Handle(context.Background(), link.TerminalEvent("u1", "下游说测通了；按约定核对 test.log 的验收证据。", time.Now())); err != nil {
+		if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "下游说测通了；按约定核对 test.log 的验收证据。", time.Now())); err != nil {
 			t.Fatal(err)
 		}
 		if !strings.Contains(messagesText(p.reqs[1].Messages), "exit status: 1") {
@@ -265,7 +266,7 @@ func TestBatchCPartnerScenarios(t *testing.T) {
 		dir := t.TempDir()
 		p := &scripted{resps: []provider.Message{batchReply("你说的优化，怎样才算做好：响应更快还是操作更少？")}}
 		k := &Kernel{Bot: b, Provider: p, WorkDir: dir, MaxSteps: 2}
-		if err := k.Handle(context.Background(), link.TerminalEvent("u1", "把它优化一下，直接开始。", time.Now())); err != nil {
+		if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "把它优化一下，直接开始。", time.Now())); err != nil {
 			t.Fatal(err)
 		}
 		files, err := os.ReadDir(dir)
@@ -292,7 +293,7 @@ func TestBatchCEvidenceFiveTasksUsesEnvironment(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "现在总共几项，各是什么状态？", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "现在总共几项，各是什么状态？", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if p.total != 5 || p.running != 3 || p.queued != 2 {
@@ -342,10 +343,10 @@ func (p *batchTaskCounter) Chat(_ context.Context, req provider.Request, _ func(
 }
 
 func TestBatchCEvidenceValueIsNotTestProof(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	p := &scripted{resps: []provider.Message{batchReply("收到验收值 731010；没有测试命令、输出和退出状态，测试是否通过尚未验证。")}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 2}
-	if err := k.Handle(context.Background(), link.NewEvent(link.SourceSubagent, "done", "验收值731010；已完成。", "sa_value", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.NewEvent(inbox.SourceSubagent, "done", "验收值731010；已完成。", "sa_value", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	req := p.reqs[0]

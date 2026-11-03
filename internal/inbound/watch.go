@@ -16,7 +16,6 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/fsutil"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 )
 
 // Watch is one glob. Events carry path metadata, never file contents.
@@ -182,7 +181,7 @@ func DeliverFeeds(b *bot.Bot, now time.Time, debounce time.Duration) error {
 			return err
 		}
 		next := st.clone()
-		var events []link.Event
+		var events []inbox.Event
 		dirty := false
 		for _, id := range b.Config().Watches {
 			w, err := LoadWatch(b, id)
@@ -527,7 +526,7 @@ type change struct {
 	Since time.Time
 }
 
-func watchEvent(id string, due []change, now time.Time) link.Event {
+func watchEvent(id string, due []change, now time.Time) inbox.Event {
 	kind := due[0].Kind
 	for _, c := range due[1:] {
 		if c.Kind != kind {
@@ -535,7 +534,7 @@ func watchEvent(id string, due []change, now time.Time) link.Event {
 			break
 		}
 	}
-	ev := link.NewEvent("watch:"+id, kind, renderWatch(id, kind, due), "watch:"+id, now)
+	ev := inbox.NewEvent("watch:"+id, kind, renderWatch(id, kind, due), "watch:"+id, now)
 	ev.ID = watchEventID(id, due)
 	return ev
 }

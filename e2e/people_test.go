@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -30,7 +31,7 @@ func TestSpawnRememberDoesNotCreateSubagentPerson(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "You are Ada.", []string{link.NameTerminal, link.NameAgents, link.NameMemory})
+	b, err := bot.Create(root, "ada", "You are Ada.", []string{inbox.NameTerminal, link.NameAgents, link.NameMemory})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +108,7 @@ func TestServeStartsWithIncompletePeopleDir(t *testing.T) {
 	if _, _, err := s.EnsureToken(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := bot.Create(root, "ada", "You are Ada.", []string{link.NameTerminal}); err != nil {
+	if _, err := bot.Create(root, "ada", "You are Ada.", []string{inbox.NameTerminal}); err != nil {
 		t.Fatal(err)
 	}
 	if err := serve.Pass(context.Background(), root, time.Now(), func(b *bot.Bot) (*kernel.Kernel, error) {

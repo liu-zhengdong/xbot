@@ -8,7 +8,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -87,7 +87,7 @@ func TestRuntimeProfileGuideAppearsInModelRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer k.Close()
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "hi", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.reqs) == 0 || !strings.Contains(p.reqs[0].Messages[0].Text(), cliProfileGuide) {

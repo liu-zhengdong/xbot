@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"sort"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"xbot/internal/code"
 	"xbot/internal/config"
 	"xbot/internal/desktop"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/mcp"
 	"xbot/internal/provider"
@@ -386,10 +388,18 @@ func (k *Kernel) syncGrantsLocked() {
 	k.Links = kept
 }
 
-// MountOrgans assembles the same always-on capabilities used by the registry.
-// The caller opens the workspace first and can pass already mounted external links.
-func MountOrgans(b *bot.Bot, links []link.Link) []link.Link {
-	k := &Kernel{Bot: b, Links: links}
+// MountLinks is the single link assembly entry. It mounts the runner link the
+// caller built (nil mounts none), syncs catalog grants, and mounts the
+// always-on organs through the one mountGrantLocked dispatch. The backend is
+// handed to each connector on creation, so the first-access credential
+// migration runs here — a failed migration leaves the legacy file in place and
+// retries on the next mount.
+func MountLinks(b *bot.Bot, runner *link.Runner, backend vault.Backend) []link.Link {
+	var links []link.Link
+	if runner != nil {
+		links = append(links, *runner)
+	}
+	k := &Kernel{Bot: b, Links: links, Vault: backend}
 	return k.snapshotLinks()
 }
 
@@ -436,7 +446,9 @@ func (k *Kernel) connector(dir, kind string) *link.Connector {
 		return c
 	}
 	if err := c.UseVault(k.Vault); err != nil {
-		_ = err // a failed migration retries on the next mount; the file stays
+		// The legacy plaintext stays in place and the migration retries on the
+		// next mount. The error carries no value.
+		log.Printf("connector %s: credential migration into the vault failed, retrying next mount: %v", c.Kind, err)
 	}
 	return c
 }
@@ -444,9 +456,9 @@ func (k *Kernel) connector(dir, kind string) *link.Connector {
 func (k *Kernel) mountGrantLocked(name string) link.Link {
 	dir := bot.Dir(k.Bot.Root, k.currentName())
 	switch name {
-	case link.NameTerminal:
+	case inbox.NameTerminal:
 		return link.Terminal{}
-	case link.NameTimer:
+	case inbox.NameTimer:
 		sender := "timer"
 		if owners := k.Bot.Config().Owners; len(owners) > 0 {
 			sender = owners[0]
@@ -462,7 +474,7 @@ func (k *Kernel) mountGrantLocked(name string) link.Link {
 		return link.Context{}
 	case link.NameAgents:
 		return link.Agents{}
-	case link.NameWeb:
+	case inbox.NameWeb:
 		return link.Web{}
 	case link.NamePeers:
 		return link.Peers{}
@@ -480,7 +492,7 @@ func (k *Kernel) mountGrantLocked(name string) link.Link {
 		return desktop.Open(k.Bot.Root)
 	case link.NameBrowser:
 		return browser.Open(k.Bot.Root)
-	case link.NameCoding:
+	case inbox.NameCoding:
 		l := code.Open(dir, k.Bot.InboxPath())
 		k.bindCurrentPaths(l)
 		if k.Provider != nil {

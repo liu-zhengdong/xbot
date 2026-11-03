@@ -13,6 +13,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/compact"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/personacard"
@@ -59,7 +60,7 @@ func longTurn(steps, talk int) []provider.Message {
 
 func fitKernel(t *testing.T, p provider.Provider, comp compact.Compactor, b compact.Budget, size int) (*Kernel, *bot.Bot) {
 	t.Helper()
-	bt := testBot(t, link.NameTerminal, "big")
+	bt := testBot(t, inbox.NameTerminal, "big")
 	if err := bt.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +115,7 @@ func TestLongTurnStaysUnderTheCeiling(t *testing.T) {
 	ceiling := 12_000 + compact.EstimateMessages(prefix) + 2*compact.Estimate(`"paths":`+string(pathJSON)+",")
 	k.Budget.Ceiling = ceiling
 	k.Budget.Target = 7_200 + compact.EstimateMessages(prefix) + 2*compact.Estimate(`"paths":`+string(pathJSON)+",")
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.reqs) != steps+1 {
@@ -161,7 +162,7 @@ func TestLeftOutResultsStayOut(t *testing.T) {
 	// No compactor: only the first step runs, which is the one that must be
 	// stable across requests.
 	k, _ := fitKernel(t, p, nil, compact.Budget{Ceiling: 12_000, KeepTail: 1}, 4000)
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	shown := map[string]bool{}
@@ -207,7 +208,7 @@ func TestOverflowIsCutAndSentAgain(t *testing.T) {
 	// Keep the workload's original headroom: every bot's prefix now carries the default card.
 	p := &overflowProvider{scripted: scripted{resps: longTurn(4, 0)}, limit: 6000 + compact.Estimate(personacard.PartnerPersona)}
 	k, b := fitKernel(t, p, &recCompactor{}, compact.Budget{Ceiling: 100_000, KeepTail: 1}, 8000)
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if p.rejected == 0 {
@@ -253,7 +254,7 @@ func TestOtherErrorsAreNotRetriedAsOverflow(t *testing.T) {
 // Reported usage calibrates the estimate. Mostly Chinese text is counted near
 // 0.75 tokens a character by the estimate and about one by the model.
 func TestReportedUsageCalibratesTheEstimate(t *testing.T) {
-	k := &Kernel{Bot: testBot(t, link.NameTerminal)}
+	k := &Kernel{Bot: testBot(t, inbox.NameTerminal)}
 	text := strings.Repeat("上下文", 1000)
 	req := provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: provider.TextContent(text)}}}
 	est := compact.EstimateMessages(req.Messages)
@@ -341,7 +342,7 @@ func (m *readerModel) Chat(_ context.Context, req provider.Request, _ func(strin
 func TestLeftOutResultIsReadBackWithExpand(t *testing.T) {
 	m := &readerModel{steps: 6}
 	ct := countTool{bigTool: bigTool{size: 8000}, runs: map[string]int{}}
-	bt := testBot(t, link.NameTerminal, link.NameContext, "big")
+	bt := testBot(t, inbox.NameTerminal, link.NameContext, "big")
 	if err := bt.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +352,7 @@ func TestLeftOutResultIsReadBackWithExpand(t *testing.T) {
 		Links: []link.Link{link.Terminal{}, link.Context{}, countLink{t: ct}},
 	}
 	m.readRange = func(from, to int) (string, error) { return k.ExpandBot("", from, to) }
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(m.expanded, "result 0 result 0") {
@@ -367,7 +368,7 @@ func TestLeftOutResultIsReadBackWithExpand(t *testing.T) {
 func TestTurnSummaryNamesItsRange(t *testing.T) {
 	p := &scripted{resps: longTurn(40, 2000)}
 	k, b := fitKernel(t, p, &recCompactor{}, compact.Budget{Ceiling: 12_000, KeepTail: 1}, 8000)
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	re := regexp.MustCompile(`<turn_progress from="(\d+)" to="(\d+)">`)

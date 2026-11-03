@@ -9,7 +9,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
@@ -28,7 +28,7 @@ func (p *blockProvider) Chat(context.Context, provider.Request, func(string)) (p
 }
 
 func TestBotStatusTransitions(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestBotStatusTransitions(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		done <- k.Handle(context.Background(), link.TerminalEvent("u1", "hi", time.Unix(10, 0).UTC()))
+		done <- k.Handle(context.Background(), inbox.TerminalEvent("u1", "hi", time.Unix(10, 0).UTC()))
 	}()
 	<-p.started
 	if got := k.Status().State; got != StateRunning {
@@ -59,7 +59,7 @@ func TestBotStatusTransitions(t *testing.T) {
 }
 
 func TestStepsRingCapAndRedaction(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Memory: memory.NopStore{}, Redact: func(s string) string {
 		return strings.ReplaceAll(s, "SECRET", "[secret]")
 	}}
@@ -108,7 +108,7 @@ func TestStepErrorState(t *testing.T) {
 }
 
 func TestAwaitingState(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Memory: memory.NopStore{}}
 	turnObj := &turn{started: time.Now().UTC()}
 	k.beginStep(turnObj, "shell-call", "shell", "rm -rf x")
@@ -132,7 +132,7 @@ func TestAwaitingState(t *testing.T) {
 
 func TestIdleStatusTailPreviewRedacted(t *testing.T) {
 	root := t.TempDir()
-	b, err := bot.Create(root, "ada", "p", []string{link.NameTerminal})
+	b, err := bot.Create(root, "ada", "p", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,14 +162,14 @@ func TestIdleStatusTailPreviewRedacted(t *testing.T) {
 
 func TestBotInfoHandlersSameOwner(t *testing.T) {
 	root := t.TempDir()
-	ada, err := bot.Create(root, "ada", "p", []string{link.NameTerminal})
+	ada, err := bot.Create(root, "ada", "p", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := ada.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	bob, err := bot.Create(root, "bob", "p", []string{link.NameTerminal})
+	bob, err := bot.Create(root, "bob", "p", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestBotInfoHandlersSameOwner(t *testing.T) {
 	if _, err := handlers.Info(context.Background(), cliops.BotInfoQuery{Bot: "ghost"}); err == nil {
 		t.Fatal("unknown bot accepted")
 	}
-	other, err := bot.Create(root, "zed", "p", []string{link.NameTerminal})
+	other, err := bot.Create(root, "zed", "p", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func (s *botInfoStatusSource) BotSteps(name string, n int) []Step {
 }
 
 func TestBotInfoHandlersUseLateStatusSourceAndNamedSteps(t *testing.T) {
-	k := &Kernel{Bot: testBot(t, link.NameTerminal)}
+	k := &Kernel{Bot: testBot(t, inbox.NameTerminal)}
 	handlers := k.BotHandlers()
 	// The host attaches its status source after publishing the listener. Its
 	// owner view can contain a bot outside the source's fallback owner view.
@@ -253,7 +253,7 @@ func TestBotInfoHandlersUseLateStatusSourceAndNamedSteps(t *testing.T) {
 }
 
 func TestToolSummaryUsesOnlyTheRunningRedactedStep(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Memory: memory.NopStore{}, Redact: func(s string) string { return strings.ReplaceAll(s, "SECRET", "[secret]") }}
 	tr := &turn{started: time.Now()}
 	k.turn = tr
@@ -268,7 +268,7 @@ func TestToolSummaryUsesOnlyTheRunningRedactedStep(t *testing.T) {
 }
 
 func TestSlowToolSurvivesParallelCompletions(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Memory: memory.NopStore{}}
 	tr := &turn{started: time.Now().Add(-time.Minute)}
 	k.turn = tr
@@ -281,7 +281,7 @@ func TestSlowToolSurvivesParallelCompletions(t *testing.T) {
 }
 
 func TestSameNameCallsFinishByIDAndKeepTheirStartTime(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	now := time.Now().Truncate(time.Second)
 	k := &Kernel{Bot: b, Memory: memory.NopStore{}, Now: func() time.Time { return now }}
 	tr := &turn{started: now.Add(-time.Minute)}
@@ -306,7 +306,7 @@ func TestSameNameCallsFinishByIDAndKeepTheirStartTime(t *testing.T) {
 }
 
 func TestLiveCallsSurviveTheStepHistoryLimit(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Memory: memory.NopStore{}}
 	tr := &turn{started: time.Now()}
 	k.turn = tr
@@ -332,7 +332,7 @@ func TestLiveCallsSurviveTheStepHistoryLimit(t *testing.T) {
 }
 
 func TestStatusDuringExecutorPublication(t *testing.T) {
-	k := &Kernel{Bot: testBot(t, link.NameTerminal), Memory: memory.NopStore{}}
+	k := &Kernel{Bot: testBot(t, inbox.NameTerminal), Memory: memory.NopStore{}}
 	done := make(chan struct{})
 	go func() { defer close(done); k.ensureExec() }()
 	for i := 0; i < 50; i++ {
@@ -345,7 +345,7 @@ func TestStatusDuringExecutorPublication(t *testing.T) {
 }
 
 func TestToolSummaryKeepsOnlyTheDescriptionLine(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Memory: memory.NopStore{}}
 	tr := &turn{started: time.Now()}
 	k.turn = tr
@@ -356,7 +356,7 @@ func TestToolSummaryKeepsOnlyTheDescriptionLine(t *testing.T) {
 }
 
 func TestToolDisplayKeepsConfirmSummaryOutOfStatus(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Memory: memory.NopStore{}}
 	tr := &turn{started: time.Now()}
 	k.turn = tr

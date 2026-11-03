@@ -24,7 +24,7 @@ func TestPersonFactCrossesBots(t *testing.T) {
 	srv := httptest.NewServer(mockopenai.NewMux(work))
 	defer srv.Close()
 	root := t.TempDir()
-	ada, err := bot.Create(root, "ada", "You are Ada.", []string{link.NameTerminal, link.NameMemory})
+	ada, err := bot.Create(root, "ada", "You are Ada.", []string{inbox.NameTerminal, link.NameMemory})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestPersonFactCrossesBots(t *testing.T) {
 		Approve: func(context.Context, string, string) (bool, error) { return true, nil },
 		Budget:  compact.DefaultBudget(),
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "REMEMBER_PERSON", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "REMEMBER_PERSON", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	entries, err := ada.Entries()
@@ -63,7 +63,7 @@ func TestPersonFactCrossesBots(t *testing.T) {
 	if err != nil || len(own) != 1 || own[0].Text != "secret handshake" {
 		t.Fatalf("ada bot %+v %v", own, err)
 	}
-	bea, err := bot.Create(root, "bea", "You are Bea.", []string{link.NameTerminal, link.NameMemory})
+	bea, err := bot.Create(root, "bea", "You are Bea.", []string{inbox.NameTerminal, link.NameMemory})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestPersonFactCrossesBots(t *testing.T) {
 		Approve: func(context.Context, string, string) (bool, error) { return true, nil },
 		Budget:  compact.DefaultBudget(),
 	}
-	if err := kb.Handle(context.Background(), link.TerminalEvent("u1", "RECALL_PERSON", time.Now())); err != nil {
+	if err := kb.Handle(context.Background(), inbox.TerminalEvent("u1", "RECALL_PERSON", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	bent, err := bea.Entries()
@@ -148,7 +148,7 @@ func TestServeRoutineNotifyAndSilence(t *testing.T) {
 
 func mustBot(t *testing.T, root, name string) *bot.Bot {
 	t.Helper()
-	b, err := bot.Create(root, name, "You are a test bot.", []string{link.NameTerminal, link.NameTimer, link.NameMemory})
+	b, err := bot.Create(root, name, "You are a test bot.", []string{inbox.NameTerminal, inbox.NameTimer, link.NameMemory})
 	if err != nil {
 		t.Fatal(err)
 	}

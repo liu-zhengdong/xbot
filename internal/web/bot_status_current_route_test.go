@@ -8,7 +8,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -17,7 +17,7 @@ func TestColdCompletionReadHasNoInboxDependency(t *testing.T) {
 	b := bots[0]
 	appendDone := func() {
 		t.Helper()
-		if err := b.Append(bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(link.Render(link.Event{Source: link.SourceSubagent, Sender: "sa_cold", Type: "done", Content: "completed", Untrusted: true}, false))}}); err != nil {
+		if err := b.Append(bot.Entry{Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(inbox.Render(inbox.Event{Source: inbox.SourceSubagent, Sender: "sa_cold", Type: "done", Content: "completed", Untrusted: true}, false))}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -49,7 +49,7 @@ func TestBotInfoCompletionReadUsesRetainedSourceCurrentRoute(t *testing.T) {
 	if err := f.target.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	completion := bot.Entry{Time: time.Now(), Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(link.Render(link.Event{Source: link.SourceSubagent, Sender: "sa_done", Type: "done", Content: "completed", Untrusted: true}, false))}}
+	completion := bot.Entry{Time: time.Now(), Origin: bot.OriginOwner, Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(inbox.Render(inbox.Event{Source: inbox.SourceSubagent, Sender: "sa_done", Type: "done", Content: "completed", Untrusted: true}, false))}}
 	if err := f.target.Append(completion); err != nil {
 		t.Fatal(err)
 	}

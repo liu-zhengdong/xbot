@@ -6,11 +6,11 @@ import (
 	"reflect"
 	"testing"
 
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 )
 
 func busyReportEvent(seq int, task string) Row {
-	return Row{Seq: seq, Role: "user", Content: link.Wrap(link.Event{Source: "subagent", Type: "done", Sender: "sa_0123456789abcdef", Content: busyResult(task)})}
+	return Row{Seq: seq, Role: "user", Content: inbox.Wrap(inbox.Event{Source: "subagent", Type: "done", Sender: "sa_0123456789abcdef", Content: busyResult(task)})}
 }
 
 func TestBusyReportFacts(t *testing.T) {
@@ -81,11 +81,11 @@ func TestBusyReportReviewKeepsContextWithoutSemanticGuess(t *testing.T) {
 
 func TestBusyReportRequiresActualResultEvent(t *testing.T) {
 	const task = "BUSY_s1_A"
-	for _, ev := range []link.Event{
+	for _, ev := range []inbox.Event{
 		{Source: "web", Type: "done", Sender: "u1", Content: busyResult(task)},
 		{Source: "subagent", Type: "progress", Sender: "sa_0123456789abcdef", Content: busyResult(task)},
 	} {
-		rows := []Row{{Seq: 1, Role: "user", Content: link.Wrap(ev)}, {Seq: 2, Role: "assistant", Content: busyCode(task)}}
+		rows := []Row{{Seq: 1, Role: "user", Content: inbox.Wrap(ev)}, {Seq: 2, Role: "assistant", Content: busyCode(task)}}
 		if e := busyReports(rows, []string{task})[0]; e.Status != "FAIL" || len(e.Results) != 0 {
 			t.Fatalf("not a result: %+v", e)
 		}

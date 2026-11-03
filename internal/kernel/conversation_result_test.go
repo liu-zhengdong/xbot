@@ -30,9 +30,9 @@ func TestSimultaneousResultsStayInNormalConversation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := link.NewEvent(link.SourceSubagent, exec.EvDone, "A结论731，限制数字42", "sa_a", time.Now())
-	c := link.NewEvent(link.SourceSubagent, exec.EvDone, "B结论951，限制数字63", "sa_b", time.Now())
-	for _, ev := range []link.Event{a, c} {
+	a := inbox.NewEvent(inbox.SourceSubagent, exec.EvDone, "A结论731，限制数字42", "sa_a", time.Now())
+	c := inbox.NewEvent(inbox.SourceSubagent, exec.EvDone, "B结论951，限制数字63", "sa_b", time.Now())
+	for _, ev := range []inbox.Event{a, c} {
 		if err := in.Post(ev); err != nil {
 			t.Fatal(err)
 		}
@@ -48,7 +48,7 @@ func TestSimultaneousResultsStayInNormalConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := len(p.reqs)
-	for _, ev := range []link.Event{a, c} {
+	for _, ev := range []inbox.Event{a, c} {
 		if err := k.Handle(context.Background(), ev); err != nil {
 			t.Fatal(err)
 		}
@@ -56,7 +56,7 @@ func TestSimultaneousResultsStayInNormalConversation(t *testing.T) {
 	if len(p.reqs) != calls {
 		t.Fatal("replayed absorbed result started another generation")
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "限制是什么？", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "限制是什么？", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	req := p.reqs[len(p.reqs)-1]
@@ -94,7 +94,7 @@ func TestSimultaneousResultsStayInNormalConversation(t *testing.T) {
 	if toolResults != 1 {
 		t.Fatalf("ordinary parsed tool did not run exactly once: %d", toolResults)
 	}
-	for _, ev := range []link.Event{a, c} {
+	for _, ev := range []inbox.Event{a, c} {
 		n := 0
 		for _, row := range rows {
 			if row.EventID == ev.ID {
@@ -120,7 +120,7 @@ func TestToolProtocolTextIsAnErrorNotAReply(t *testing.T) {
 			p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent(body)}}}
 			var stream strings.Builder
 			k := &Kernel{Bot: b, Provider: p, MaxSteps: 2, OnDelta: func(s string) { stream.WriteString(s) }}
-			ev := link.NewEvent(link.SourceSubagent, exec.EvDone, "A的完整结果123", "sa_a", time.Now())
+			ev := inbox.NewEvent(inbox.SourceSubagent, exec.EvDone, "A的完整结果123", "sa_a", time.Now())
 			if err := k.Handle(context.Background(), ev); err == nil {
 				t.Fatal("tool protocol accepted as a normal answer")
 			}
@@ -215,13 +215,13 @@ func TestDSMLExplanationIsOrdinaryText(t *testing.T) {
 	}
 }
 func TestLaterResultStillNotifiesAfterAnEarlierExplicitNotification(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTimer)
+	b := testBot(t, inbox.NameTerminal, inbox.NameTimer)
 	in, err := inbox.Open(b.InboxPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := link.NewEvent(link.SourceSubagent, exec.EvDone, "A结论731", "sa_a", time.Now())
-	c := link.NewEvent(link.SourceSubagent, exec.EvDone, "B结论951", "sa_b", time.Now())
+	a := inbox.NewEvent(inbox.SourceSubagent, exec.EvDone, "A结论731", "sa_a", time.Now())
+	c := inbox.NewEvent(inbox.SourceSubagent, exec.EvDone, "B结论951", "sa_b", time.Now())
 	p := &scripted{resps: []provider.Message{toolCall("notify", "send_message_to_user", `{"text":"A结论731"}`), {Role: provider.RoleAssistant, Content: provider.TextContent("B结论951。")}}}
 	posted := false
 	k := &Kernel{Bot: b, Links: []link.Link{&link.Timer{Dir: b.RoutineDir(), Sender: "u1"}}, Inbox: in, Provider: p, MaxSteps: 3, Desktop: func(context.Context, string, string) error {
@@ -248,7 +248,7 @@ func TestLaterResultStillNotifiesAfterAnEarlierExplicitNotification(t *testing.T
 func TestReceivedInputKeepsItsReminderSequence(t *testing.T) {
 	b := testBot(t)
 	k := &Kernel{Bot: b}
-	ev := link.TerminalEvent("u1", "先收到的原话", time.Now())
+	ev := inbox.TerminalEvent("u1", "先收到的原话", time.Now())
 	seq, err := k.receive(ev)
 	if err != nil {
 		t.Fatal(err)

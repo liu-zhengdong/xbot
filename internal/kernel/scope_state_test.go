@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"xbot/internal/exec"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -13,7 +13,7 @@ import (
 // the foreground's latest prompt count, which the 50/75/90% reminder and the
 // status line read (#20).
 func TestBackgroundUsageKeepsForegroundCount(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Now: func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }}
 	call := func(tr *turn, prompt int) {
 		k.noteUsage(tr, provider.Request{}, provider.Message{Role: provider.RoleAssistant, Usage: provider.TokenUsage{PromptTokens: prompt, CompletionTokens: 10, Reported: true}})
@@ -32,7 +32,7 @@ func TestBackgroundUsageKeepsForegroundCount(t *testing.T) {
 // Each subagent has its own cwd entry; it is dropped
 // when that subagent ends (#22).
 func TestEndedScopesDropTheirCwd(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Now: func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }}
 	dir := t.TempDir()
 	for _, scope := range []string{"sa_1", "sa_2"} {

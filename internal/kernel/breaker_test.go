@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -138,7 +139,7 @@ func (echoLink) Name() string        { return "echo" }
 func (echoLink) Tools() []tools.Tool { return []tools.Tool{echoTool{}} }
 
 func TestBreakerStopWritesTrace(t *testing.T) {
-	b := testBot(t, link.NameTerminal, "echo")
+	b := testBot(t, inbox.NameTerminal, "echo")
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +153,7 @@ func TestBreakerStopWritesTrace(t *testing.T) {
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 8,
 		Links: []link.Link{link.Terminal{}, echoLink{}},
 	}
-	ev := link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())
+	ev := inbox.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}

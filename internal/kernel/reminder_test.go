@@ -9,13 +9,14 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
 
 func TestReminderCooldownAndReplay(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -31,11 +32,11 @@ func TestReminderCooldownAndReplay(t *testing.T) {
 		Links: []link.Link{link.Terminal{}},
 		Now:   func() time.Time { return now },
 	}
-	ev1 := link.TerminalEvent("u1", "hello", t0.Add(time.Second))
+	ev1 := inbox.TerminalEvent("u1", "hello", t0.Add(time.Second))
 	if err := k.Handle(context.Background(), ev1); err != nil {
 		t.Fatal(err)
 	}
-	ev2 := link.TerminalEvent("u1", "again", t0.Add(2*time.Second))
+	ev2 := inbox.TerminalEvent("u1", "again", t0.Add(2*time.Second))
 	if err := k.Handle(context.Background(), ev2); err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +74,7 @@ func TestReminderCooldownAndReplay(t *testing.T) {
 	// Past the cooldown the same open card may fire again, on the newest message only.
 	now = t0.Add(pendingCooldown + time.Second)
 	p.resps = append(p.resps, provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("third")})
-	ev3 := link.TerminalEvent("u1", "later", now)
+	ev3 := inbox.TerminalEvent("u1", "later", now)
 	if err := k.Handle(context.Background(), ev3); err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +145,7 @@ func TestRetryLimitAndPollingStopAgree(t *testing.T) {
 
 func TestPendingReminderRedactsSecrets(t *testing.T) {
 	const secret = "sk-live-reminder-secret"
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +160,7 @@ func TestPendingReminderRedactsSecrets(t *testing.T) {
 			return strings.ReplaceAll(s, secret, "[secret]")
 		},
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", now)); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "hello", now)); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(filepath.Join(bot.Dir(b.Root, b.Name()), "reminders.jsonl"))

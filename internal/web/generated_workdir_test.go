@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/version"
 	"xbot/internal/work"
 )
@@ -21,7 +21,7 @@ func TestGeneratedWorkdir(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, owner := range []string{"u1", "u2"} {
-		b, err := bot.Create(s.Root, owner, "p", []string{link.NameWeb})
+		b, err := bot.Create(s.Root, owner, "p", []string{inbox.NameWeb})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 	_ "time/tzdata"
+
+	"xbot/internal/inbox"
 )
 
 func TestMissedOneShotIsDisabled(t *testing.T) {
@@ -15,8 +17,8 @@ func TestMissedOneShotIsDisabled(t *testing.T) {
 	if err := tm.Save(Routine{ID: "missed", Name: "m", Prompt: "p", At: missedAt, Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	var posted []Event
-	if err := tm.Fire(at.Add(time.Hour), func(ev Event) error {
+	var posted []inbox.Event
+	if err := tm.Fire(at.Add(time.Hour), func(ev inbox.Event) error {
 		posted = append(posted, ev)
 		return nil
 	}); err != nil {
@@ -36,7 +38,7 @@ func TestMissedOneShotIsDisabled(t *testing.T) {
 	if err := tm.Save(Routine{ID: "future", Name: "f", Prompt: "p", At: future.Format(time.RFC3339), Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := tm.Fire(at.Add(time.Hour), func(Event) error { return nil }); err != nil {
+	if err := tm.Fire(at.Add(time.Hour), func(inbox.Event) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := tm.Load("future"); err != nil || !got.Enabled {
@@ -47,7 +49,7 @@ func TestMissedOneShotIsDisabled(t *testing.T) {
 		t.Fatal(err)
 	}
 	posted = nil
-	if err := tm.Fire(inside.Add(10*time.Second), func(ev Event) error {
+	if err := tm.Fire(inside.Add(10*time.Second), func(ev inbox.Event) error {
 		posted = append(posted, ev)
 		return nil
 	}); err != nil {
@@ -62,7 +64,7 @@ func TestMissedOneShotIsDisabled(t *testing.T) {
 		t.Fatal(err)
 	}
 	posted = nil
-	if err := tm.Fire(late.Add(90*time.Second), func(ev Event) error {
+	if err := tm.Fire(late.Add(90*time.Second), func(ev inbox.Event) error {
 		posted = append(posted, ev)
 		return nil
 	}); err != nil {

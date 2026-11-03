@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/notify"
 	"xbot/internal/peer"
@@ -29,7 +30,7 @@ func TestEmptyProfileLeavesPrefix(t *testing.T) {
 	if err != nil || composed != file {
 		t.Fatalf("composed %q file %q", composed, file)
 	}
-	msgs, _ := Assemble(Input{Persona: composed, Rules: "Stay useful.", Links: []string{link.NameTerminal}})
+	msgs, _ := Assemble(Input{Persona: composed, Rules: "Stay useful.", Links: []string{inbox.NameTerminal}})
 	if strings.Contains(msgs[0].Text(), "About:") || strings.Contains(msgs[0].Text(), "Proactivity:") {
 		t.Fatal(msgs[0].Text())
 	}
@@ -41,14 +42,14 @@ func TestEmptyProfileLeavesPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	msgs, _ = Assemble(Input{Persona: composed, Rules: "Stay useful.", Links: []string{link.NameTerminal}})
+	msgs, _ = Assemble(Input{Persona: composed, Rules: "Stay useful.", Links: []string{inbox.NameTerminal}})
 	if strings.Contains(msgs[0].Text(), "项目笔记") || !strings.HasPrefix(msgs[0].Text(), "### 职责\n这段写你是谁、负责什么、边界在哪；下面是正文，照着做，不要复述本说明。\n"+file) {
 		t.Fatal(msgs[0].Text())
 	}
 }
 
 func TestProfileEditSurfacesAsEnvUpdate(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	t0 := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
 	now := t0
 	p := &scripted{resps: []provider.Message{
@@ -56,7 +57,7 @@ func TestProfileEditSurfacesAsEnvUpdate(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 2, Now: func() time.Time { return now }}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", t0)); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "hi", t0)); err != nil {
 		t.Fatal(err)
 	}
 	desc := "项目笔记"
@@ -64,7 +65,7 @@ func TestProfileEditSurfacesAsEnvUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	now = t0.Add(5 * time.Minute)
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", t0.Add(time.Minute))); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "again", t0.Add(time.Minute))); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(p.reqs[1].Messages[0].Text(), "项目笔记") {
@@ -103,7 +104,7 @@ func TestNotifyAlwaysDeliversAndFlushesLegacyHeld(t *testing.T) {
 	b := testBot(t)
 	var desks []string
 	now := time.Date(2026, 10, 15, 23, 0, 0, 0, time.UTC)
-	k := &Kernel{Bot: b, Now: func() time.Time { return now }, turn: &turn{turnSource: link.NameTimer}, Desktop: func(_ context.Context, _, body string) error {
+	k := &Kernel{Bot: b, Now: func() time.Time { return now }, turn: &turn{turnSource: inbox.NameTimer}, Desktop: func(_ context.Context, _, body string) error {
 		desks = append(desks, body)
 		return nil
 	}}
@@ -268,7 +269,7 @@ func transcriptHas(entries []bot.Entry, text string) bool {
 func TestProfileDomainAvatarKeepsOtherBotAndRepeat(t *testing.T) {
 	for _, mode := range []string{"avatar", "description", "rename"} {
 		t.Run(mode, func(t *testing.T) {
-			b := testBot(t, link.NameTerminal, link.NamePersona)
+			b := testBot(t, inbox.NameTerminal, link.NamePersona)
 			if err := b.SetAvatar([]byte("\x89PNG\r\n\x1a\nold"), "image/png"); err != nil {
 				t.Fatal(err)
 			}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"xbot/internal/config"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -34,7 +35,7 @@ func (bindingSearchLink) Tools() []tools.Tool {
 }
 
 func TestBindingSearchExclusionReplayEnvironmentAndJobs(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	var requests []struct {
 		Model string `json:"model"`
 		Tools []struct {
@@ -98,7 +99,7 @@ func TestBindingSearchExclusionReplayEnvironmentAndJobs(t *testing.T) {
 	}
 	run := func() {
 		t.Helper()
-		if err := k.Handle(context.Background(), link.TerminalEvent("owner", "search", time.Unix(1000, 0))); err != nil {
+		if err := k.Handle(context.Background(), inbox.TerminalEvent("owner", "search", time.Unix(1000, 0))); err != nil {
 			t.Fatal(err)
 		}
 	}

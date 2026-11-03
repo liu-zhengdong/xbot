@@ -15,7 +15,6 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/provider"
 )
 
@@ -253,7 +252,7 @@ func (b *blockProvider) Chat(ctx context.Context, _ provider.Request, _ func(str
 func testLink(t *testing.T) (*Link, string) {
 	t.Helper()
 	root := t.TempDir()
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameCoding})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameCoding})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +282,7 @@ func toolNamed(l *Link, name string) interface {
 	return nil
 }
 
-func waitCode(t *testing.T, l *Link, n int) []link.Event {
+func waitCode(t *testing.T, l *Link, n int) []inbox.Event {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {

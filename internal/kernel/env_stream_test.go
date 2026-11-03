@@ -22,7 +22,7 @@ import (
 )
 
 func TestEnvStreamBotPrefixAndPersonData(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1", "u2"}); err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestEnvStreamBotPrefixAndPersonData(t *testing.T) {
 	}
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("one")}, {Role: provider.RoleAssistant, Content: provider.TextContent("two")}, {Role: provider.RoleAssistant, Content: provider.TextContent("report")}, {Role: provider.RoleAssistant, Content: provider.TextContent("back")}}}
 	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2}
-	events := []link.Event{link.TerminalEvent("u1", "hello1", time.Now()), link.TerminalEvent("u2", "hello2", time.Now()), link.NewEvent(link.SourceSubagent, exec.EvDone, "RESULT_77", "sa_0123456789abcdef", time.Now()), link.TerminalEvent("u1", "hello3", time.Now())}
+	events := []inbox.Event{inbox.TerminalEvent("u1", "hello1", time.Now()), inbox.TerminalEvent("u2", "hello2", time.Now()), inbox.NewEvent(inbox.SourceSubagent, exec.EvDone, "RESULT_77", "sa_0123456789abcdef", time.Now()), inbox.TerminalEvent("u1", "hello3", time.Now())}
 	for _, e := range events {
 		if err := k.Handle(ctx, e); err != nil {
 			t.Fatal(err)
@@ -71,7 +71,7 @@ func TestEnvStreamBotPrefixAndPersonData(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldSnap := st.MemSnap
-	_, err = k.receive(link.TerminalEvent("u1", "another", time.Now()))
+	_, err = k.receive(inbox.TerminalEvent("u1", "another", time.Now()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestEnvStreamBotPrefixAndPersonData(t *testing.T) {
 	}
 	after := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("after restart")}}}
 	restarted := &Kernel{Bot: reopened, Memory: store, Provider: after, MaxSteps: 2}
-	if err := restarted.Handle(ctx, link.TerminalEvent("u2", "restart and switch", time.Now())); err != nil {
+	if err := restarted.Handle(ctx, inbox.TerminalEvent("u2", "restart and switch", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if after.reqs[0].Messages[1].Text() != prefix || !strings.Contains(messagesText(after.reqs[0].Messages), "PERSON_TWO") {
@@ -105,14 +105,14 @@ func TestEnvStreamBotPrefixAndPersonData(t *testing.T) {
 }
 
 func TestEnvStreamInboxAfterNormalReply(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameCoding)
+	b := testBot(t, inbox.NameTerminal, inbox.NameCoding)
 	box, err := inbox.Open(b.InboxPath())
 	if err != nil {
 		t.Fatal(err)
 	}
 	calls := 0
 	k := &Kernel{Bot: b, Inbox: box, MaxSteps: 3}
-	ev := link.NewEvent(link.SourceSubagent, exec.EvDone, "RESULT_LAST_89", "sa_0123456789abcdef", time.Now())
+	ev := inbox.NewEvent(inbox.SourceSubagent, exec.EvDone, "RESULT_LAST_89", "sa_0123456789abcdef", time.Now())
 	k.Provider = providerFunc(func(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
 		calls++
 		if calls == 1 {
@@ -130,7 +130,7 @@ func TestEnvStreamInboxAfterNormalReply(t *testing.T) {
 		}
 		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("result is 89")}, nil
 	})
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "hello", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if calls != 2 || len(box.Pending()) != 0 {
@@ -139,22 +139,22 @@ func TestEnvStreamInboxAfterNormalReply(t *testing.T) {
 }
 
 func TestEnvStreamSilenceRules(t *testing.T) {
-	for _, source := range []string{link.NameTerminal, link.SourceSubagent, link.NameTimer} {
+	for _, source := range []string{inbox.NameTerminal, inbox.SourceSubagent, inbox.NameTimer} {
 		t.Run(source, func(t *testing.T) {
-			b := testBot(t, link.NameTerminal)
+			b := testBot(t, inbox.NameTerminal)
 			if err := b.SetOwners([]string{"u1"}); err != nil {
 				t.Fatal(err)
 			}
-			ev := link.NewEvent(source, exec.EvDone, "input", "u1", time.Now())
-			if source == link.NameTerminal {
-				ev = link.TerminalEvent("u1", "do something", time.Now())
+			ev := inbox.NewEvent(source, exec.EvDone, "input", "u1", time.Now())
+			if source == inbox.NameTerminal {
+				ev = inbox.TerminalEvent("u1", "do something", time.Now())
 			}
 			k := &Kernel{Bot: b, MaxSteps: 2, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")}}}}
 			err := k.Handle(context.Background(), ev)
-			if source == link.NameTimer && err != nil {
+			if source == inbox.NameTimer && err != nil {
 				t.Fatal(err)
 			}
-			if source != link.NameTimer && err == nil {
+			if source != inbox.NameTimer && err == nil {
 				t.Fatal("SILENT swallowed required input")
 			}
 		})
@@ -178,11 +178,11 @@ func TestEnvStreamContextNativeToolsRetired(t *testing.T) {
 }
 
 func TestEnvStreamCancelledCallIsCounted(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, MaxSteps: 2, Provider: providerFunc(func(context.Context, provider.Request, func(string)) (provider.Message, error) {
 		return provider.Message{}, context.Canceled
 	})}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", time.Now())); !errors.Is(err, context.Canceled) {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "hi", time.Now())); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	snap := k.ContextSnapshot()
@@ -224,12 +224,12 @@ func (streamLink) Name() string          { return "fixture" }
 func (l streamLink) Tools() []tools.Tool { return []tools.Tool{l.tool} }
 
 func TestEnvStreamLiveAndReassembledToolOrder(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
 	k := &Kernel{Bot: b, MaxSteps: 4, Now: func() time.Time { return time.Unix(10, 0).UTC() }}
-	later := link.TerminalEvent("u1", "B_DURING_TOOL", time.Unix(10, 0))
+	later := inbox.TerminalEvent("u1", "B_DURING_TOOL", time.Unix(10, 0))
 	k.Links = []link.Link{link.Terminal{}, streamLink{streamTool{run: func() {
 		if !Interject(b, later, &Sink{Done: make(chan Outcome, 1)}) {
 			t.Fatal("interject not accepted")
@@ -282,7 +282,7 @@ func TestEnvStreamLiveAndReassembledToolOrder(t *testing.T) {
 		}
 		return provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("both handled")}, nil
 	})
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "A", time.Unix(10, 0))); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "A", time.Unix(10, 0))); err != nil {
 		t.Fatal(err)
 	}
 	if calls != 2 {
@@ -291,7 +291,7 @@ func TestEnvStreamLiveAndReassembledToolOrder(t *testing.T) {
 }
 
 func TestEnvStreamTaskRecoveryAndCodingState(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameCoding)
+	b := testBot(t, inbox.NameTerminal, inbox.NameCoding)
 	box, err := inbox.Open(b.InboxPath())
 	if err != nil {
 		t.Fatal(err)
@@ -311,7 +311,7 @@ func TestEnvStreamTaskRecoveryAndCodingState(t *testing.T) {
 		t.Fatal(err)
 	}
 	k := &Kernel{Bot: b, Inbox: box, Links: []link.Link{coding}}
-	state, err := k.taskEnvironment(nil, link.Event{})
+	state, err := k.taskEnvironment(nil, inbox.Event{})
 	if err != nil {
 		t.Fatal(err)
 	}

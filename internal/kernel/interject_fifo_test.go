@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
@@ -84,7 +84,7 @@ func runFiveInterjections(t *testing.T, fail bool) []bot.Entry {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- k.Handle(ctx, link.TerminalEvent("u1", "opening", time.Now())) }()
+	go func() { done <- k.Handle(ctx, inbox.TerminalEvent("u1", "opening", time.Now())) }()
 	waitStarted := func(want string) {
 		t.Helper()
 		select {
@@ -98,7 +98,7 @@ func runFiveInterjections(t *testing.T, fail bool) []bot.Entry {
 	}
 	waitStarted("opening")
 	for i := 1; i <= 5; i++ {
-		if !Interject(b, link.TerminalEvent("u1", fmt.Sprintf("request-%d", i), time.Now()), &Sink{Done: make(chan Outcome, 1)}) {
+		if !Interject(b, inbox.TerminalEvent("u1", fmt.Sprintf("request-%d", i), time.Now()), &Sink{Done: make(chan Outcome, 1)}) {
 			t.Fatalf("request-%d was not accepted", i)
 		}
 		if i == 1 {

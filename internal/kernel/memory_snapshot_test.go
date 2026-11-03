@@ -11,6 +11,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/compact"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -19,7 +20,7 @@ import (
 // TestMemorySnapshotPrefixStable freezes the memory message: a fact written by
 // another process after the first wake must not change msgs[0] or msgs[1].
 func TestMemorySnapshotPrefixStable(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +40,7 @@ func TestMemorySnapshotPrefixStable(t *testing.T) {
 		Bot: b, Provider: p, Memory: store, MaxSteps: 2,
 		Now: func() time.Time { return t0 },
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", t0)); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "hello", t0)); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Remember(context.Background(), memory.Fact{
@@ -48,7 +49,7 @@ func TestMemorySnapshotPrefixStable(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", t0.Add(time.Minute))); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "again", t0.Add(time.Minute))); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.reqs) != 2 {
@@ -71,7 +72,7 @@ func TestMemorySnapshotPrefixStable(t *testing.T) {
 // TestMemorySnapshotRefreshesOnCompaction checks that a compaction re-snapshots
 // standing memory, so the next request sees a fact written before it.
 func TestMemorySnapshotRefreshesOnCompaction(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +87,7 @@ func TestMemorySnapshotRefreshesOnCompaction(t *testing.T) {
 		Compactor: &recCompactor{}, Budget: compact.Budget{KeepTail: 1, Ceiling: 100000},
 		MaxSteps: 2, Now: func() time.Time { return t0 },
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "first", t0)); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "first", t0)); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Remember(context.Background(), memory.Fact{
@@ -105,7 +106,7 @@ func TestMemorySnapshotRefreshesOnCompaction(t *testing.T) {
 	if !st.MemSnapSet || !strings.Contains(st.MemSnap, "fact before compaction") {
 		t.Fatalf("snapshot not refreshed after compaction: %q", st.MemSnap)
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "second", t0.Add(time.Minute))); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "second", t0.Add(time.Minute))); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.reqs) != 2 || len(p.reqs[1].Messages) < 2 {
@@ -119,7 +120,7 @@ func TestMemorySnapshotRefreshesOnCompaction(t *testing.T) {
 // TestMemorySnapshotRecentLog checks the snapshot shows the newest 8 bot log
 // facts, newest first, and never a person-scope log fact.
 func TestMemorySnapshotRecentLog(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	store := memory.Open(b.Root)
 	ctx := context.Background()
 	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
@@ -174,7 +175,7 @@ func memDiffRun(t *testing.T, k *Kernel, wakes int, between func(int)) []provide
 	t0 := time.Date(2026, 10, 17, 3, 0, 0, 0, time.UTC)
 	var reqs []provider.Request
 	for i := 0; i < wakes; i++ {
-		if err := k.Handle(context.Background(), link.TerminalEvent("u1", fmt.Sprintf("wake %d", i), t0.Add(time.Duration(i)*time.Minute))); err != nil {
+		if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", fmt.Sprintf("wake %d", i), t0.Add(time.Duration(i)*time.Minute))); err != nil {
 			t.Fatal(err)
 		}
 		if between != nil {
@@ -199,7 +200,7 @@ func lastEnvUpdate(t *testing.T, k *Kernel) string {
 // TestMemoryDiffAppendedForOutsideWrite: an outside write reaches the bot as a
 // diff in the environment update while msgs[1] stays byte-identical.
 func TestMemoryDiffAppendedForOutsideWrite(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +246,7 @@ func TestMemoryDiffAppendedForOutsideWrite(t *testing.T) {
 
 // TestMemoryDiffSkipsOwnWrite: the bot's own file write is not reported back.
 func TestMemoryDiffSkipsOwnWrite(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameMemory)
+	b := testBot(t, inbox.NameTerminal, link.NameMemory)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +283,7 @@ func TestMemoryDiffSkipsOwnWrite(t *testing.T) {
 
 // TestMemoryDiffShowsPersonWriteByOtherBot: another bot's person-scope write shows.
 func TestMemoryDiffShowsPersonWriteByOtherBot(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +338,7 @@ func TestMemoryDiffCap(t *testing.T) {
 
 // TestMemoryDiffQuietWithoutChange: no change, no memory text in the update.
 func TestMemoryDiffQuietWithoutChange(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +370,7 @@ func TestMemoryDiffQuietWithoutChange(t *testing.T) {
 // TestMemoryViewPerPerson: a turn from another person never sees the owner's
 // person facts, in msgs[1] or in a diff, and the owner's view comes back intact.
 func TestMemoryViewPerPerson(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +389,7 @@ func TestMemoryViewPerPerson(t *testing.T) {
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2, Now: func() time.Time { return t0 }}
 	for i, who := range []string{"u1", "u2", "u1"} {
-		if err := k.Handle(context.Background(), link.TerminalEvent(who, fmt.Sprintf("hi %d", i), t0.Add(time.Duration(i)*time.Minute))); err != nil {
+		if err := k.Handle(context.Background(), inbox.TerminalEvent(who, fmt.Sprintf("hi %d", i), t0.Add(time.Duration(i)*time.Minute))); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -430,7 +431,7 @@ func (h *hookProvider) Chat(ctx context.Context, req provider.Request, onDelta f
 // TestMemoryDiffKeepsOutsideEditDuringOwnWrite: an outside edit landing in the
 // same turn as the bot's own file edit is still reported; only the own line is skipped.
 func TestMemoryDiffKeepsOutsideEditDuringOwnWrite(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameMemory)
+	b := testBot(t, inbox.NameTerminal, link.NameMemory)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -490,7 +491,7 @@ func TestMemoryDiffRecentLogOnlyNewEntries(t *testing.T) {
 
 // A legacy branch's canonical file receipt still supplies the memory baseline.
 func TestBranchMemoryReceiptReplaysFromConversation(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -504,7 +505,7 @@ func TestBranchMemoryReceiptReplaysFromConversation(t *testing.T) {
 		Bot: b, Provider: p, Memory: store, MaxSteps: 4,
 		Links: []link.Link{link.Terminal{}, link.Memory{}},
 	}
-	ev := link.TerminalEvent("u1", "做个长任务", time.Unix(10, 0).UTC())
+	ev := inbox.TerminalEvent("u1", "做个长任务", time.Unix(10, 0).UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
@@ -544,7 +545,7 @@ func TestBranchMemoryReceiptReplaysFromConversation(t *testing.T) {
 	if !sawReceipt {
 		t.Fatal("legacy fixture contains no file receipt")
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "and now", time.Unix(30, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "and now", time.Unix(30, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	assertMemoryFileWrites(t, b, 1)
@@ -565,7 +566,7 @@ func TestBranchMemoryReceiptReplaysFromConversation(t *testing.T) {
 // TestMemoryTimerWakeKeepsView: a timer wake keeps the owner's view, so msgs[1]
 // does not flip between the owner's turn and the bot's own follow-up wake.
 func TestMemoryTimerWakeKeepsView(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -582,10 +583,10 @@ func TestMemoryTimerWakeKeepsView(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2, Now: func() time.Time { return t0 }}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", t0)); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "hi", t0)); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Handle(context.Background(), link.NewEvent(link.NameTimer, link.TypeTimer, "tick", "timer", t0.Add(time.Minute))); err != nil {
+	if err := k.Handle(context.Background(), inbox.NewEvent(inbox.NameTimer, inbox.TypeTimer, "tick", "timer", t0.Add(time.Minute))); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.reqs) != 2 || p.reqs[0].Messages[1].Text() != p.reqs[1].Messages[1].Text() {
@@ -596,7 +597,7 @@ func TestMemoryTimerWakeKeepsView(t *testing.T) {
 // TestMemoryOwnWriteAcrossViews: the owner's bot-scope write is not reported to
 // the shared view, and the owner's person-scope write never reaches it at all.
 func TestMemoryOwnWriteAcrossViews(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameMemory)
+	b := testBot(t, inbox.NameTerminal, link.NameMemory)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -619,7 +620,7 @@ func TestMemoryOwnWriteAcrossViews(t *testing.T) {
 	}
 	// u1 speaks twice, so the own writes are drained into the parked u2 view.
 	for i, who := range []string{"u2", "u1", "u1", "u2"} {
-		if err := k.Handle(context.Background(), link.TerminalEvent(who, fmt.Sprintf("hi %d", i), t0.Add(time.Duration(i)*time.Minute))); err != nil {
+		if err := k.Handle(context.Background(), inbox.TerminalEvent(who, fmt.Sprintf("hi %d", i), t0.Add(time.Duration(i)*time.Minute))); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -666,7 +667,7 @@ func TestMemSnapForPicksTurnView(t *testing.T) {
 
 // Compaction refreshes Bot memory without putting person facts into the prefix.
 func TestRefreshMemSnapKeepsActiveKey(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	store := memory.Open(b.Root)
 	if err := store.Remember(context.Background(), memory.Fact{
 		Key: "home", Scope: memory.ScopePerson, Tier: memory.TierProfile,
@@ -674,7 +675,7 @@ func TestRefreshMemSnapKeepsActiveKey(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	k := &Kernel{Bot: b, Memory: store, turn: &turn{turnSender: "u2", turnKind: link.KindPerson}}
+	k := &Kernel{Bot: b, Memory: store, turn: &turn{turnSender: "u2", turnKind: inbox.KindPerson}}
 	st := bot.State{MemSnapSet: true, MemSnap: "old"}
 	k.refreshMemSnap(context.Background(), &st)
 	if strings.Contains(st.MemSnap, "owner lives in Hangzhou") {
@@ -685,7 +686,7 @@ func TestRefreshMemSnapKeepsActiveKey(t *testing.T) {
 // TestMemorySubagentWakeKeepsView: a subagent or fork_end wake after a guest's
 // turn keeps the guest's view; the owner's person facts do not appear.
 func TestMemorySubagentWakeKeepsView(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -702,10 +703,10 @@ func TestMemorySubagentWakeKeepsView(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2, Now: func() time.Time { return t0 }}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u2", "hi", t0)); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u2", "hi", t0)); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Handle(context.Background(), link.NewEvent(link.SourceSubagent, "fork_end", "done", "bg_1", t0.Add(time.Minute))); err != nil {
+	if err := k.Handle(context.Background(), inbox.NewEvent(inbox.SourceSubagent, "fork_end", "done", "bg_1", t0.Add(time.Minute))); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.reqs) != 2 || p.reqs[0].Messages[1].Text() != p.reqs[1].Messages[1].Text() {
@@ -719,7 +720,7 @@ func TestMemorySubagentWakeKeepsView(t *testing.T) {
 // TestMemoryDiffReportsUndoneOwnWrite: the bot remembers X, someone removes X
 // before the next wake; live equals what was seen, but the removal is reported.
 func TestMemoryDiffReportsUndoneOwnWrite(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameMemory)
+	b := testBot(t, inbox.NameTerminal, link.NameMemory)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -752,7 +753,7 @@ func TestMemoryDiffReportsUndoneOwnWrite(t *testing.T) {
 
 // A refreshed prefix needs no repeated Bot memory in its full environment.
 func TestRefreshMemSnapNoRepeatedMemory(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Memory: memory.Open(b.Root)}
 	st := bot.State{MemSnapSet: true}
 	if err := k.refreshMemSnap(context.Background(), &st); err != nil {
@@ -767,7 +768,7 @@ func TestRefreshMemSnapNoRepeatedMemory(t *testing.T) {
 
 // TestMemoryViewCapKeepsTarget: switching to a parked view at the cap keeps it.
 func TestMemoryAcceptedProfilesDoNotClip(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	store := memory.Open(b.Root)
 	ctx := context.Background()
 	for _, scope := range []memory.Scope{memory.ScopeBot, memory.ScopePerson} {
@@ -792,7 +793,7 @@ func TestMemoryAcceptedProfilesDoNotClip(t *testing.T) {
 }
 
 func TestMemoryRenderUpgradeResnapshots(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	store := memory.Open(b.Root)
 	ctx := context.Background()
 	if err := store.Remember(ctx, memory.Fact{Scope: memory.ScopeBot, BotName: b.Name(), Tier: memory.TierProfile, Key: "rule", Text: "keep it small", WrittenBy: "dev"}); err != nil {
@@ -808,7 +809,7 @@ func TestMemoryRenderUpgradeResnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Handle(ctx, link.TerminalEvent("u1", "hello", time.Now())); err != nil {
+	if err := k.Handle(ctx, inbox.TerminalEvent("u1", "hello", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.reqs) != 1 || len(p.reqs[0].Messages) < 2 {

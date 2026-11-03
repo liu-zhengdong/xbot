@@ -51,7 +51,7 @@ func TestProfileAbsorbedReplyUsesCurrentInboxAndTranscript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	event := link.WebEvent("u1", "accepted before the wait", time.Now())
+	event := inbox.WebEvent("u1", "accepted before the wait", time.Now())
 	if err := box.Post(event); err != nil {
 		t.Fatal(err)
 	}

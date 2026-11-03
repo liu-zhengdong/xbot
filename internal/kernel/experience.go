@@ -10,7 +10,6 @@ import (
 	"xbot/internal/clip"
 	"xbot/internal/experience"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/provider"
 )
 
@@ -87,7 +86,7 @@ func (k *Kernel) segmentDigest(from, to int) (string, error) {
 		}
 		text := e.Message.Text()
 		// An owner line is stored inside its event fence; the outline keeps the words.
-		if strings.HasPrefix(text, link.UntrustedEventPrefix) {
+		if strings.HasPrefix(text, inbox.UntrustedEventPrefix) {
 			if _, body, ok := strings.Cut(text, ">\n"); ok {
 				text = strings.TrimSuffix(body, "\n</untrusted_event>")
 			}

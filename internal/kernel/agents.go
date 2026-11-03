@@ -296,7 +296,7 @@ func (k *Kernel) forwardExec(ch <-chan exec.Event) {
 			if box == nil {
 				return nil
 			}
-			err := box.Post(link.Event{ID: ev.ID, Source: link.SourceSubagent, Type: ev.Kind, Content: ev.Text, Sender: ev.AgentID, Time: at, Untrusted: true})
+			err := box.Post(inbox.Event{ID: ev.ID, Source: inbox.SourceSubagent, Type: ev.Kind, Content: ev.Text, Sender: ev.AgentID, Time: at, Untrusted: true})
 			if err == nil {
 				wake = current
 			}

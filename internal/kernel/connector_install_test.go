@@ -8,6 +8,7 @@ import (
 
 	"xbot/internal/cliops"
 	"xbot/internal/config"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/mcp"
 	"xbot/internal/tools"
@@ -19,7 +20,7 @@ import (
 // and remove takes the entry and the key away.
 func TestLinksInstallStoreConnectorWithKey(t *testing.T) {
 	const secret = "ctx7sk-test-value-123"
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	t.Setenv("CONTEXT7_API_KEY", "")
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}
 	tool := linksTool{k}
@@ -132,7 +133,7 @@ func TestLinksInstallStoreConnectorHidesKey(t *testing.T) {
 // start, so search must not call it installed.
 func TestLinksSearchBlankStoreMasksEnvironment(t *testing.T) {
 	t.Setenv("CONTEXT7_API_KEY", "ctx7sk-env")
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	tool := linksTool{&Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}}
 	if err := link.EnableConnector(b.GlobalMCPPath(), "context7"); err != nil {
 		t.Fatal(err)

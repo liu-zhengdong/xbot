@@ -54,7 +54,7 @@ func (s *scripted) Chat(_ context.Context, req provider.Request, onDelta func(st
 func testBot(t *testing.T, links ...string) *bot.Bot {
 	t.Helper()
 	if len(links) == 0 {
-		links = []string{link.NameTerminal}
+		links = []string{inbox.NameTerminal}
 	}
 	b, err := bot.Create(t.TempDir(), "ada", "Be brief.", links)
 	if err != nil {
@@ -64,17 +64,17 @@ func testBot(t *testing.T, links ...string) *bot.Bot {
 }
 
 func TestHandleContinuesOneTranscript(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	p := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, Content: provider.TextContent("one")},
 		{Role: provider.RoleAssistant, Content: provider.TextContent("two")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4}
-	ev1 := link.TerminalEvent("u1", "hello", time.Unix(10, 0).UTC())
+	ev1 := inbox.TerminalEvent("u1", "hello", time.Unix(10, 0).UTC())
 	if err := k.Handle(context.Background(), ev1); err != nil {
 		t.Fatal(err)
 	}
-	ev2 := link.TerminalEvent("u1", "again", time.Unix(11, 0).UTC())
+	ev2 := inbox.TerminalEvent("u1", "again", time.Unix(11, 0).UTC())
 	if err := k.Handle(context.Background(), ev2); err != nil {
 		t.Fatal(err)
 	}
@@ -108,10 +108,10 @@ func TestHandleContinuesOneTranscript(t *testing.T) {
 }
 
 func TestHandleReplayIsIdempotent(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("hello")}}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4}
-	ev := link.TerminalEvent("u1", "hi", time.Unix(10, 0).UTC())
+	ev := inbox.TerminalEvent("u1", "hi", time.Unix(10, 0).UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
@@ -142,11 +142,11 @@ func TestHandleReplayIsIdempotent(t *testing.T) {
 }
 
 func TestHandleRepairsInterruptedTool(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
-	ev := link.TerminalEvent("u1", "do it", time.Unix(10, 0).UTC())
+	b := testBot(t, inbox.NameTerminal)
+	ev := inbox.TerminalEvent("u1", "do it", time.Unix(10, 0).UTC())
 	if err := b.Append(bot.Entry{
 		Time: ev.Time, EventID: ev.ID,
-		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(link.Wrap(ev))},
+		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(inbox.Wrap(ev))},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestHandleRepairsInterruptedTool(t *testing.T) {
 
 func TestHandleCompactsWithoutNewSession(t *testing.T) {
 	root := t.TempDir()
-	b, err := bot.Create(root, "ada", "Be brief.", []string{link.NameTerminal})
+	b, err := bot.Create(root, "ada", "Be brief.", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestHandleCompactsWithoutNewSession(t *testing.T) {
 		Budget:   compact.Budget{Ceiling: 30, KeepTail: 1},
 		MaxSteps: 4,
 	}
-	ev := link.TerminalEvent("u1", "now", time.Unix(20, 0).UTC())
+	ev := inbox.TerminalEvent("u1", "now", time.Unix(20, 0).UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestHandleCompactsWithoutNewSession(t *testing.T) {
 }
 
 func TestMemorySeam(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	store := &memStore{facts: []memory.Fact{
 		{Key: "city", Kind: memory.KindAttribute, Scope: memory.ScopePerson, PersonID: "u1", Text: "old", Time: t0, WrittenBy: "other"},
@@ -256,7 +256,7 @@ func TestMemorySeam(t *testing.T) {
 	}}
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2}
-	ev := link.TerminalEvent("u1", "hi", time.Unix(1, 0).UTC())
+	ev := inbox.TerminalEvent("u1", "hi", time.Unix(1, 0).UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
@@ -299,12 +299,12 @@ func TestToolsComeFromGrantedLink(t *testing.T) {
 		}})},
 		{Role: provider.RoleAssistant, Content: provider.TextContent("wrote it")},
 	}}
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{
 		Bot: b, Provider: p, Links: []link.Link{link.Terminal{}},
 		Approve: func(context.Context, string, string) (bool, error) { return true, nil },
 	}
-	ev := link.TerminalEvent("u1", "write", time.Unix(1, 0).UTC())
+	ev := inbox.TerminalEvent("u1", "write", time.Unix(1, 0).UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
@@ -322,8 +322,8 @@ func TestToolsComeFromGrantedLink(t *testing.T) {
 	}
 
 	p2 := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("no tools")}}}
-	k2 := &Kernel{Bot: testBot(t, link.NameTerminal), Provider: p2, Links: []link.Link{link.Terminal{}}}
-	if err := k2.Handle(context.Background(), link.TerminalEvent("u1", "hi", time.Unix(2, 0).UTC())); err != nil {
+	k2 := &Kernel{Bot: testBot(t, inbox.NameTerminal), Provider: p2, Links: []link.Link{link.Terminal{}}}
+	if err := k2.Handle(context.Background(), inbox.TerminalEvent("u1", "hi", time.Unix(2, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if !hasDef(p2.reqs[0].Tools, "read_file") || !hasDef(p2.reqs[0].Tools, "web_fetch") {
@@ -349,38 +349,11 @@ func TestDeniedWrite(t *testing.T) {
 		Machine: func() (string, error) { return "ask", nil },
 		Approve: func(context.Context, string, string) (bool, error) { return false, nil },
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "write", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "write", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("file exists: %v", err)
-	}
-}
-
-func TestDeliverDraftConfirm(t *testing.T) {
-	k := &Kernel{}
-	m := &msgLink{}
-	err := k.Deliver(context.Background(), m, "chan", "hello")
-	if !errors.Is(err, link.ErrNotSent) || m.drafted != 1 || m.sent != 0 {
-		t.Fatalf("err=%v drafted=%d sent=%d", err, m.drafted, m.sent)
-	}
-	k.Approve = func(context.Context, string, string) (bool, error) { return true, nil }
-	if err := k.Deliver(context.Background(), m, "chan", "hello"); err != nil {
-		t.Fatal(err)
-	}
-	if m.sent != 1 {
-		t.Fatalf("sent %d", m.sent)
-	}
-	k.SendPolicy.AutoSend = true
-	k.Approve = func(context.Context, string, string) (bool, error) {
-		t.Fatal("approve should not be called")
-		return false, nil
-	}
-	if err := k.Deliver(context.Background(), m, "chan", "hello"); err != nil {
-		t.Fatal(err)
-	}
-	if m.sent != 2 {
-		t.Fatalf("sent %d", m.sent)
 	}
 }
 
@@ -509,26 +482,13 @@ func (m *memStore) Recall(_ context.Context, q memory.Query) ([]memory.Fact, err
 	return out, nil
 }
 
-type msgLink struct{ drafted, sent int }
-
-func (m *msgLink) Name() string        { return "slack" }
-func (m *msgLink) Tools() []tools.Tool { return nil }
-func (m *msgLink) Draft(context.Context, string, string) (string, error) {
-	m.drafted++
-	return "draft body", nil
-}
-func (m *msgLink) SendDraft(context.Context, string, string) error {
-	m.sent++
-	return nil
-}
-
 type tick struct{ n *int }
 
-func (t tick) Name() string        { return link.NameTimer }
+func (t tick) Name() string        { return inbox.NameTimer }
 func (t tick) Tools() []tools.Tool { return nil }
-func (t tick) Run(_ context.Context, emit func(link.Event) error) error {
+func (t tick) Run(_ context.Context, emit func(inbox.Event) error) error {
 	*t.n++
-	return emit(link.NewEvent(link.NameTimer, link.TypeTimer, "tick", "u1", time.Now()))
+	return emit(inbox.NewEvent(inbox.NameTimer, inbox.TypeTimer, "tick", "u1", time.Now()))
 }
 
 func TestDefaultRulesDropIgnoredOffers(t *testing.T) {

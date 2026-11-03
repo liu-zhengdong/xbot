@@ -21,7 +21,7 @@ import (
 // Exercise the actual trigger, disk queue and model-request assembly, rather
 // than calling the projection helper directly.
 func TestRoutineSkillsWake(t *testing.T) {
-	b := testBot(t, link.NameTimer)
+	b := testBot(t, inbox.NameTimer)
 	k := skillKernel(b)
 	tm := &link.Timer{Dir: b.RoutineDir(), Sender: "u1"}
 	k.Links = append(k.Links, tm)
@@ -112,7 +112,7 @@ func TestRoutineSkillsWake(t *testing.T) {
 }
 
 func TestRoutineSkillsRuntimeUpdates(t *testing.T) {
-	b := testBot(t, link.NameTimer)
+	b := testBot(t, inbox.NameTimer)
 	k := skillKernel(b)
 	tm := &link.Timer{Dir: b.RoutineDir()}
 	k.Links = append(k.Links, tm)
@@ -167,7 +167,7 @@ func (p *routinePostingProvider) Chat(ctx context.Context, req provider.Request,
 }
 
 func TestRoutineSkillsAbsorbedWhileBusy(t *testing.T) {
-	b := testBot(t, link.NameTimer, link.NameTerminal)
+	b := testBot(t, inbox.NameTimer, inbox.NameTerminal)
 	k := skillKernel(b)
 	tm := &link.Timer{Dir: b.RoutineDir(), Sender: "u1"}
 	k.Links = append(k.Links, tm)
@@ -189,7 +189,7 @@ func TestRoutineSkillsAbsorbedWhileBusy(t *testing.T) {
 	}
 	p := &routinePostingProvider{scripted: scripted{resps: []provider.Message{assistantCall("read", "", "read_file", `{"path":"busy.txt"}`), {Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")}}}, post: func() error { return tm.Fire(now, box.Post) }}
 	k.Provider = p
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "first work", now)); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "first work", now)); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.reqs) != 2 || !strings.Contains(messagesText(p.reqs[1].Messages), "BUSY_SKILL_BODY") {
@@ -212,7 +212,7 @@ func TestRoutineSkillsAbsorbedWhileBusy(t *testing.T) {
 	}
 	next := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("done")}}}
 	k.Provider = next
-	nextEvent := link.TerminalEvent("u1", "next", now.Add(time.Minute))
+	nextEvent := inbox.TerminalEvent("u1", "next", now.Add(time.Minute))
 	nextEvent.RoutineSkills = []string{"atlas"} // Other sources cannot opt into timer skill loading.
 	if err := k.Handle(context.Background(), nextEvent); err != nil {
 		t.Fatal(err)
@@ -234,7 +234,7 @@ func BenchmarkRoutineSkillProjection(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	ev := link.Event{Source: link.NameTimer, RoutineSkills: []string{"atlas", "ship"}}
+	ev := inbox.Event{Source: inbox.NameTimer, RoutineSkills: []string{"atlas", "ship"}}
 	m := provider.Message{Role: provider.RoleUser, Content: provider.TextContent("scheduled wake")}
 	samples := make([]time.Duration, b.N)
 	b.ResetTimer()

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
@@ -19,7 +19,7 @@ func TestRegisteredMemoryCapacity(t *testing.T) {
 	for _, scope := range []string{"bot", "person"} {
 		for _, size := range []int{100, memory.ProfileBytes * 85 / 100, memory.ProfileBytes*85/100 + 1, memory.ProfileBytes, memory.ProfileBytes + 100} {
 			t.Run(fmt.Sprintf("%s/%d", scope, size), func(t *testing.T) {
-				b := testBot(t, link.NameTerminal)
+				b := testBot(t, inbox.NameTerminal)
 				k := &Kernel{Bot: b, Memory: memory.Open(b.Root)}
 				dir := filepath.Join(b.Root, "bots", b.Name(), "memory")
 				if scope == "person" {
@@ -33,7 +33,7 @@ func TestRegisteredMemoryCapacity(t *testing.T) {
 					t.Fatal(err)
 				}
 				now := time.Unix(5000, 0)
-				ev := link.TerminalEvent("u1", "hello", now)
+				ev := inbox.TerminalEvent("u1", "hello", now)
 				bind := func(at time.Time) string {
 					t.Helper()
 					msgs, err := k.reminderKinds(ev).Bind([]provider.Message{{Role: provider.RoleUser, Content: provider.TextContent("hello")}}, 1, at)
@@ -77,12 +77,12 @@ func TestRegisteredMemoryCapacity(t *testing.T) {
 }
 
 func TestRegisteredMemoryReflection(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Memory: memory.Open(b.Root)}
 	now := time.Unix(5000, 0)
-	ev := link.TerminalEvent("u1", "hello", now)
+	ev := inbox.TerminalEvent("u1", "hello", now)
 	const note = "本轮有值得沉淀的就记进记忆，没有就跳过。"
-	bind := func(ev link.Event, at time.Time) string {
+	bind := func(ev inbox.Event, at time.Time) string {
 		t.Helper()
 		msgs, err := k.reminderKinds(ev).Bind([]provider.Message{{Role: provider.RoleUser, Content: provider.TextContent("hello")}}, 1, at)
 		if err != nil {
@@ -105,8 +105,8 @@ func TestRegisteredMemoryReflection(t *testing.T) {
 		t.Fatal("reflection did not return")
 	}
 	timer := ev
-	timer.Source = link.NameTimer
-	timer.SenderKind = link.KindBot
+	timer.Source = inbox.NameTimer
+	timer.SenderKind = inbox.KindBot
 	if strings.Contains(bind(timer, now.Add(2*memoryReminderCooldown)), note) {
 		t.Fatal("timer reflection")
 	}
@@ -117,7 +117,7 @@ func TestRegisteredMemoryReflection(t *testing.T) {
 }
 
 func TestMemoryReminderPreservesProfileFull(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	store := memory.Open(b.Root)
 	path := filepath.Join(b.Root, "bots", b.Name(), "memory", "memory.md")
 	ctx := context.Background()
@@ -141,7 +141,7 @@ func TestMemoryReminderPreservesProfileFull(t *testing.T) {
 			t.Fatal("rejected write changed/truncated profile")
 		}
 		k := &Kernel{Bot: b, Memory: store}
-		msgs, err := k.reminderKinds(link.TerminalEvent("u1", "hello", time.Now())).Bind([]provider.Message{{Role: provider.RoleUser, Content: provider.TextContent("hello")}}, 1, time.Now())
+		msgs, err := k.reminderKinds(inbox.TerminalEvent("u1", "hello", time.Now())).Bind([]provider.Message{{Role: provider.RoleUser, Content: provider.TextContent("hello")}}, 1, time.Now())
 		if err != nil {
 			t.Fatal(err)
 		}

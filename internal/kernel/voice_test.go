@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"xbot/internal/exec"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
 func TestVoiceAppliesToExistingCustomBot(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.WritePersona("A custom expert."); err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestVoiceAppliesToExistingCustomBot(t *testing.T) {
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("好。")}, {Role: provider.RoleAssistant, Content: provider.TextContent("好。")}}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 2}
 	for _, text := range []string{"hi", "again"} {
-		if err := k.Handle(context.Background(), link.TerminalEvent("u1", text, time.Now())); err != nil {
+		if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", text, time.Now())); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -70,14 +70,14 @@ func TestDeepSeekBindingUsesItsOverlay(t *testing.T) {
 }
 
 func TestSubagentReportsUseNormalConversation(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("结果到了。")}, {Role: provider.RoleAssistant, Content: provider.TextContent("记得这个结果。")}}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 2}
-	ev := link.NewEvent(link.SourceSubagent, exec.EvDone, "A完成，验收值731010", "sa_a", time.Now())
+	ev := inbox.NewEvent(inbox.SourceSubagent, exec.EvDone, "A完成，验收值731010", "sa_a", time.Now())
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "继续", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "继续", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	for i, req := range p.reqs {

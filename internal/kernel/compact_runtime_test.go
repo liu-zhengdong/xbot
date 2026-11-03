@@ -20,7 +20,7 @@ import (
 	"xbot/internal/clip"
 	"xbot/internal/compact"
 	"xbot/internal/envprompt"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -100,7 +100,7 @@ func TestCompactRuntimePreparedSourceLLMUsageAndPublication(t *testing.T) {
 		t.Fatalf("stored preview/default raw tail fixture: records=%d err=%v", len(before), err)
 	}
 	owner := k.ensureTurn()
-	owner.fromSeq, owner.turnKind = 1, link.KindBot
+	owner.fromSeq, owner.turnKind = 1, inbox.KindBot
 	type modelObservation struct {
 		request    provider.Request
 		turn       int
@@ -135,7 +135,7 @@ func TestCompactRuntimePreparedSourceLLMUsageAndPublication(t *testing.T) {
 		owner.fromSeq = 991
 		owner.mu.Unlock()
 		k.turnMu.Lock()
-		k.turn = &turn{fromSeq: 992, turnKind: link.KindGroup}
+		k.turn = &turn{fromSeq: 992, turnKind: inbox.KindGroup}
 		k.turnMu.Unlock()
 		reply, callErr = cliops.CallCompact(context.Background(), endpoint, k.Bot.Root, tools.CallID(ctx), cliops.Compact{From: 1, To: 4, Focus: " \n shipping focus \t"})
 		return "completed", nil

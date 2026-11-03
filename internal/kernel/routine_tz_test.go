@@ -10,6 +10,7 @@ import (
 	_ "time/tzdata"
 
 	"xbot/internal/cliops"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 )
 
@@ -32,7 +33,7 @@ func TestRoutineCreateUsesLocalZone(t *testing.T) {
 		return
 	}
 
-	b := testBot(t, link.NameTimer)
+	b := testBot(t, inbox.NameTimer)
 	tm := &link.Timer{Dir: b.RoutineDir(), Sender: "u1"}
 	k := &Kernel{Bot: b, Links: []link.Link{tm}, Now: func() time.Time { return time.Now().UTC() }}
 	out, err := k.RoutineHandlers().Create(context.Background(), cliops.RoutineCreate{
@@ -41,10 +42,10 @@ func TestRoutineCreateUsesLocalZone(t *testing.T) {
 	if err != nil || !out.Applied || out.ID != "r1" || out.Stage != "complete" || out.Error != "" {
 		t.Fatalf("create %+v: %v", out, err)
 	}
-	fire := func(when time.Time) []link.Event {
+	fire := func(when time.Time) []inbox.Event {
 		t.Helper()
-		var posted []link.Event
-		if err := tm.Fire(when, func(ev link.Event) error {
+		var posted []inbox.Event
+		if err := tm.Fire(when, func(ev inbox.Event) error {
 			posted = append(posted, ev)
 			return nil
 		}); err != nil {

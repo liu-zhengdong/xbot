@@ -13,7 +13,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/fsutil"
 	"xbot/internal/gateway"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 )
 
 // TestPumpChatReplies delivers the bot's answer once its turn is done and drops
@@ -35,7 +35,7 @@ func TestPumpChatReplies(t *testing.T) {
 		t.Fatal("pending file removed before the turn finished")
 	}
 	// B's bot finishes the turn (serve wires kernel.ReplyAfter; its own test covers that).
-	TurnReply = func(_ *bot.Bot, e link.Event) (string, bool, error) { return "all green", e.ID == ev.ID, nil }
+	TurnReply = func(_ *bot.Bot, e inbox.Event) (string, bool, error) { return "all green", e.ID == ev.ID, nil }
 	t.Cleanup(func() { TurnReply = nil })
 	mustRemote(t, pumpChatReplies(context.Background(), b, clientB, now))
 	if _, err := os.Stat(pendingPath(b, ev.ID)); !os.IsNotExist(err) {
@@ -51,7 +51,7 @@ func TestPumpChatReplies(t *testing.T) {
 	// A pending reply past 24 hours is deleted without sending.
 	oldID := strings.Repeat("f", 16)
 	old := chatPending{Device: aid, Bot: "bob", ID: oldID, At: now.Add(-25 * time.Hour)}
-	old.Event = link.RemoteOwnerEvent("u1", "stale", now)
+	old.Event = inbox.RemoteOwnerEvent("u1", "stale", now)
 	old.Event.ID = "rchat_" + aid + "_" + oldID
 	raw, err := json.Marshal(old)
 	mustRemote(t, err)

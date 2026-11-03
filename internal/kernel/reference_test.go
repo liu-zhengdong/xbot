@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -20,7 +21,7 @@ func TestReferenceEnvironmentPerBotAndSharedWorkspace(t *testing.T) {
 	root := t.TempDir()
 	var ks []*Kernel
 	for _, name := range []string{"one", "two"} {
-		b, err := bot.Create(root, name, "brief", []string{link.NameTerminal})
+		b, err := bot.Create(root, name, "brief", []string{inbox.NameTerminal})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -140,11 +141,11 @@ func TestReferenceBudgetsArePerSource(t *testing.T) {
 
 func TestReferenceWrittenByOneBotAppearsForAnother(t *testing.T) {
 	root := t.TempDir()
-	first, err := bot.Create(root, "first", "brief", []string{link.NameTerminal})
+	first, err := bot.Create(root, "first", "brief", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := bot.Create(root, "second", "brief", []string{link.NameTerminal})
+	second, err := bot.Create(root, "second", "brief", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +156,7 @@ func TestReferenceWrittenByOneBotAppearsForAnother(t *testing.T) {
 	}
 	p := &scripted{resps: []provider.Message{toolCall("write", "write_file", string(args)), {Role: provider.RoleAssistant, Content: provider.TextContent("saved")}}}
 	k := &Kernel{Bot: first, Provider: p, Memory: memory.Open(root), WorkDir: root, Permissive: true, MaxSteps: 4}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "save the agreement", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "save the agreement", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(path); err != nil {
@@ -163,7 +164,7 @@ func TestReferenceWrittenByOneBotAppearsForAnother(t *testing.T) {
 	}
 	p2 := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k2 := &Kernel{Bot: second, Provider: p2, Memory: memory.Open(root), WorkDir: root, Permissive: true, MaxSteps: 4}
-	if err := k2.Handle(context.Background(), link.TerminalEvent("u1", "what agreements?", time.Now())); err != nil {
+	if err := k2.Handle(context.Background(), inbox.TerminalEvent("u1", "what agreements?", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	got := messagesText(p2.reqs[0].Messages)
@@ -174,7 +175,7 @@ func TestReferenceWrittenByOneBotAppearsForAnother(t *testing.T) {
 
 func BenchmarkReferenceIndex(b *testing.B) {
 	root := b.TempDir()
-	botInstance, err := bot.Create(root, "benchmark", "brief", []string{link.NameTerminal})
+	botInstance, err := bot.Create(root, "benchmark", "brief", []string{inbox.NameTerminal})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -219,7 +220,7 @@ func TestReferenceOverBudgetOmitsWholeIndex(t *testing.T) {
 }
 
 func TestReferenceRemindersThroughTurn(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	dir := filepath.Join(bot.Dir(b.Root, b.Name()), "memory")
 	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0700); err != nil {
 		t.Fatal(err)
@@ -238,7 +239,7 @@ func TestReferenceRemindersThroughTurn(t *testing.T) {
 	first.SetText("I will check LATER")
 	p := &scripted{resps: []provider.Message{first, toolCall("c2", "read_file", `{"path":"/no-such-file"}`), {Role: provider.RoleAssistant, Content: provider.TextContent("done")}}}
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.Open(b.Root), WorkDir: b.Root, Permissive: true, MaxSteps: 5}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "ALPHA 中文", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "ALPHA 中文", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.reqs) < 3 {
@@ -270,7 +271,7 @@ func TestReferenceRemindersThroughTurn(t *testing.T) {
 		}
 	}
 	p.resps = append(p.resps, provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("again")})
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "second turn", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "second turn", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	replay := messagesText(p.reqs[len(p.reqs)-1].Messages)
@@ -299,7 +300,7 @@ func TestReferenceKeywordOnRootWhenIndexOmitted(t *testing.T) {
 
 func BenchmarkReferenceKeywords(b *testing.B) {
 	root := b.TempDir()
-	botInstance, err := bot.Create(root, "benchmark", "brief", []string{link.NameTerminal})
+	botInstance, err := bot.Create(root, "benchmark", "brief", []string{inbox.NameTerminal})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -341,7 +342,7 @@ func TestReferenceReminderOverflowRetry(t *testing.T) {
 	}
 	p := &referenceRetryModel{}
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, Links: []link.Link{link.Terminal{}}, MaxSteps: 2}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "needle", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "needle", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.requests) != 2 {
@@ -395,7 +396,7 @@ func TestReferenceKeywordsAcrossPrivateAndShared(t *testing.T) {
 
 func TestReferencePrivateWrittenByBot(t *testing.T) {
 	root := t.TempDir()
-	b, err := bot.Create(root, "private", "brief", []string{link.NameTerminal})
+	b, err := bot.Create(root, "private", "brief", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,7 +404,7 @@ func TestReferencePrivateWrittenByBot(t *testing.T) {
 	args, _ := json.Marshal(map[string]string{"path": path, "content": "---\ndescription: private agreement\n---\nprivate details"})
 	p := &scripted{resps: []provider.Message{toolCall("write", "write_file", string(args)), {Role: provider.RoleAssistant, Content: provider.TextContent("saved")}}}
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.Open(root), WorkDir: root, Permissive: true, MaxSteps: 4}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "save this", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "save this", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(path); err != nil {

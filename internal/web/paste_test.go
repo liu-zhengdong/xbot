@@ -19,6 +19,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/compact"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -182,7 +183,7 @@ func pasteTestServer(t *testing.T, vision bool) (string, *httptest.Server, *http
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}

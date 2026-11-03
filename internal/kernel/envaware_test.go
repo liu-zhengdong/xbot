@@ -12,6 +12,7 @@ import (
 	"xbot/internal/cliops"
 	"xbot/internal/compact"
 	"xbot/internal/config"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -19,7 +20,7 @@ import (
 
 func workBot(t *testing.T, dir string) (*Kernel, *scripted, *time.Time) {
 	t.Helper()
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	p := &scripted{}
 	now := time.Unix(1_700_000_000, 0).UTC()
 	k := &Kernel{
@@ -775,7 +776,7 @@ func BenchmarkProjectText(b *testing.B) {
 		b.Fatal(err)
 	}
 	botDir := b.TempDir()
-	bt, err := bot.Create(botDir, "ada", "Be brief.", []string{link.NameTerminal})
+	bt, err := bot.Create(botDir, "ada", "Be brief.", []string{inbox.NameTerminal})
 	if err != nil {
 		b.Fatal(err)
 	}

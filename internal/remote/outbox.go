@@ -14,7 +14,6 @@ import (
 	"xbot/internal/fsutil"
 	"xbot/internal/gateway"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/tools"
 )
 
@@ -192,7 +191,7 @@ func postRemote(root, to, id, text string, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	ev := link.NewEvent("remote", link.TypeMessage, tools.NeutralizeUntrusted(text), "remote", now)
+	ev := inbox.NewEvent("remote", inbox.TypeMessage, tools.NeutralizeUntrusted(text), "remote", now)
 	ev.ID = id
 	return box.Post(ev)
 }

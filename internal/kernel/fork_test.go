@@ -21,7 +21,7 @@ import (
 func TestForkHandoffIsNotACopy(t *testing.T) {
 	root := t.TempDir()
 	mem := memory.Open(root)
-	src, err := bot.Create(root, "ada", "Ship the notes app.", []string{link.NameTerminal, link.NameMemory, link.NamePeers})
+	src, err := bot.Create(root, "ada", "Ship the notes app.", []string{inbox.NameTerminal, link.NameMemory, link.NamePeers})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestForkHandoffIsNotACopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	ev, ok := box.Head()
-	if !ok || ev.ID != sent.EventID || ev.Content != "what was the decision?" || ev.Sender != "reviewer" || ev.Source != "bot:reviewer" || ev.SenderKind != link.KindBot || !ev.Untrusted || ev.Chain != "ch_fork" || ev.Hops != 2 {
+	if !ok || ev.ID != sent.EventID || ev.Content != "what was the decision?" || ev.Sender != "reviewer" || ev.Source != "bot:reviewer" || ev.SenderKind != inbox.KindBot || !ev.Untrusted || ev.Chain != "ch_fork" || ev.Hops != 2 {
 		t.Fatalf("inbox %+v ok %v", ev, ok)
 	}
 	if err := (&peer.Bus{Root: root}).Message("ada", "reviewer", "friday", "ch_fork", 1, time.Now()); err != nil {

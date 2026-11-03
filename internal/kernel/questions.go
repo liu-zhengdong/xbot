@@ -10,7 +10,6 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/provider"
 )
 
@@ -221,8 +220,8 @@ func deliverQuestion(q *ownerQuestion, text string, fresh bool) {
 		return
 	}
 	// Card choices, including late ones, answer only their own card.
-	ev := link.NewEvent(link.NameApproval, link.TypeMessage, text, q.sender, time.Now())
-	ev.SenderKind = link.KindPerson
+	ev := inbox.NewEvent(inbox.NameApproval, inbox.TypeMessage, text, q.sender, time.Now())
+	ev.SenderKind = inbox.KindPerson
 	ev.Untrusted = false
 	box, err := inbox.Open(q.b.InboxPath())
 	if err != nil || box.Post(ev) != nil {

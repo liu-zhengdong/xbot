@@ -14,6 +14,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/config"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -275,7 +276,7 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 		}
 		seeded[f.Path] = f.Text
 	}
-	grants := []string{link.NameTerminal}
+	grants := []string{inbox.NameTerminal}
 	if c.Memory {
 		grants = append(grants, link.NameMemory)
 	}
@@ -590,16 +591,16 @@ func renderTask(text string, files []FileSeed) string {
 	return strings.ReplaceAll(text, "{{files}}", b.String())
 }
 
-func wakeEvent(c Case, when time.Time) link.Event {
+func wakeEvent(c Case, when time.Time) inbox.Event {
 	text := renderTask(c.Wake.Text, c.Setup.Files)
 	switch c.Wake.Kind {
 	case "subagent":
-		return link.NewEvent(link.SourceSubagent, "done", text, "sa_eval", when)
+		return inbox.NewEvent(inbox.SourceSubagent, "done", text, "sa_eval", when)
 	case "user":
-		return link.TerminalEvent("owner", text, when)
+		return inbox.TerminalEvent("owner", text, when)
 	default:
 		body := link.RoutineBody("eval", c.Name, text)
-		return link.NewEvent(link.NameTimer, link.TypeTimer, body, "owner", when)
+		return inbox.NewEvent(inbox.NameTimer, inbox.TypeTimer, body, "owner", when)
 	}
 }
 

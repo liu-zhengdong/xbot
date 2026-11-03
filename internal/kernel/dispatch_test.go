@@ -67,7 +67,7 @@ func (m *roleModel) Chat(_ context.Context, req provider.Request, _ func(string)
 
 func dispatchKernel(t *testing.T, p provider.Provider) (*Kernel, *bot.Bot, *inbox.Inbox) {
 	t.Helper()
-	b := testBot(t, link.NameTerminal, link.NameAgents)
+	b := testBot(t, inbox.NameTerminal, link.NameAgents)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -84,20 +84,20 @@ func dispatchKernel(t *testing.T, p provider.Provider) (*Kernel, *bot.Bot, *inbo
 	return k, b, box
 }
 
-func waitEvent(t *testing.T, box *inbox.Inbox, typ string) link.Event {
+func waitEvent(t *testing.T, box *inbox.Inbox, typ string) inbox.Event {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		_ = box.Reload()
 		for _, ev := range box.Pending() {
-			if ev.Source == link.SourceSubagent && ev.Type == typ {
+			if ev.Source == inbox.SourceSubagent && ev.Type == typ {
 				return ev
 			}
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("no %s event from the subagent; pending %+v", typ, box.Pending())
-	return link.Event{}
+	return inbox.Event{}
 }
 
 // The foreground hands a task to a research subagent. The subagent gets the
@@ -113,7 +113,7 @@ func TestDispatchStartsATypedSubagent(t *testing.T) {
 		hold: make(chan struct{}),
 	}
 	k, b, box := dispatchKernel(t, m)
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "Go 1.30 什么时候发布？", time.Unix(9, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "Go 1.30 什么时候发布？", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	close(m.hold)
@@ -233,7 +233,7 @@ func TestReadOnlyShellRefusesWrites(t *testing.T) {
 // A subagent can run for hours, so its requests are kept under the lines the
 // same way a turn's are.
 func TestSubagentRequestsAreFit(t *testing.T) {
-	k := &Kernel{Bot: testBot(t, link.NameTerminal), Budget: compact.Budget{Ceiling: 6000, KeepTail: 1}}
+	k := &Kernel{Bot: testBot(t, inbox.NameTerminal), Budget: compact.Budget{Ceiling: 6000, KeepTail: 1}}
 	inner := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	p := k.wrapSub(exec.StartRequest{}, inner, 2)
 	msgs := []provider.Message{{Role: provider.RoleSystem, Content: provider.TextContent("sys")}, {Role: provider.RoleUser, Content: provider.TextContent("task")}}
@@ -270,7 +270,7 @@ func TestMainLineDoesTheWork(t *testing.T) {
 		read("r1"), read("r2"), read("r3"), read("r4"),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "go", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	got := bodies(t, k)
@@ -334,7 +334,7 @@ func TestNoDispatchRuleWithoutDispatch(t *testing.T) {
 	m := &roleModel{fore: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 	k, _, _ := dispatchKernel(t, m)
 	k.Dispatch = false
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", time.Unix(9, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "hi", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	m.mu.Lock()
@@ -362,8 +362,8 @@ func (workLink) Tools() []tools.Tool {
 // the tools that hand work out; a narrower type still narrows it, and no
 // subagent can hand work out again.
 func TestMainLineAndSubagentsReachTheMountedTools(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameAgents,
-		link.NameCoding, link.NameDesktop, link.NameBrowser)
+	b := testBot(t, inbox.NameTerminal, link.NameAgents,
+		inbox.NameCoding, link.NameDesktop, link.NameBrowser)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -494,7 +494,7 @@ func TestDevSubagentsOnOneDirectoryQueue(t *testing.T) {
 		_ = box.Reload()
 		done := 0
 		for _, ev := range box.Pending() {
-			if ev.Source == link.SourceSubagent && ev.Type == exec.EvDone {
+			if ev.Source == inbox.SourceSubagent && ev.Type == exec.EvDone {
 				done++
 			}
 		}
@@ -548,7 +548,7 @@ func TestSubagentCallsWhatItLoadsMidTask(t *testing.T) {
 			{Role: provider.RoleAssistant, Content: provider.TextContent("Done\nnone")},
 		},
 	}
-	b := testBot(t, link.NameTerminal, link.NameAgents, link.NameTelegram)
+	b := testBot(t, inbox.NameTerminal, link.NameAgents, link.NameTelegram)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -606,7 +606,7 @@ func TestSubagentCallsWhatItLoadsMidTask(t *testing.T) {
 		return list
 	}
 	defer func() { local.ToolsFor = originalTools }()
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "让子代理通知我构建过了", time.Unix(9, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "让子代理通知我构建过了", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	// The subagent runs on its own goroutine and writes meta.json only once it
@@ -647,7 +647,7 @@ func TestSubagentCallsWhatItLoadsMidTask(t *testing.T) {
 	for {
 		done := false
 		for _, event := range inboxPosts(t, b.InboxPath(), "") {
-			done = done || event.Source == link.SourceSubagent && event.Type == exec.EvDone
+			done = done || event.Source == inbox.SourceSubagent && event.Type == exec.EvDone
 		}
 		if done {
 			if err := box.Reload(); err != nil {

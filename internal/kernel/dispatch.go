@@ -15,7 +15,6 @@ import (
 	"xbot/internal/compact"
 	"xbot/internal/config"
 	"xbot/internal/exec"
-	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/review"
 	"xbot/internal/tools"
@@ -34,10 +33,9 @@ const DispatchRule = "先回应用户，再干活：调用要花点时间的工�
 // bot rules file that still carries it drops it on migration.
 const legacyDispatchRule = "You are the foreground: you talk with the owner, work out what they want, plan, hand work out, report results, and keep memory. You do not do the work yourself."
 
-// dispatching reports whether dispatch is offered. It needs the agents link:
-// without it the work would have nowhere to go.
+// dispatching reports whether dispatch is offered.
 func (k *Kernel) dispatching() bool {
-	return k != nil && k.Dispatch && k.hasLink(link.NameAgents)
+	return k != nil && k.Dispatch
 }
 
 // agentTypes is the built-in types overlaid by the bot's own type files.

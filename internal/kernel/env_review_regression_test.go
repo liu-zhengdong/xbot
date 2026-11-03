@@ -10,7 +10,7 @@ import (
 
 	"xbot/internal/agent"
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -70,7 +70,7 @@ func TestEnvironmentReceiptSurvivesBlobAndExternalUndo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := k.syncEnv(st, link.Event{}, ""); err != nil {
+	if _, err := k.syncEnv(st, inbox.Event{}, ""); err != nil {
 		t.Fatal(err)
 	}
 	p, ok := decodeEnvironment(lastEnvUpdate(t, k))
@@ -115,7 +115,7 @@ func TestEnvironmentOlderFitCannotOverwriteNewSender(t *testing.T) {
 	}
 	raw := provider.Request{Messages: rawMessages}
 	// New sender arrives after prepare, before the old generation finishes fit.
-	if _, err := k.receive(link.TerminalEvent("u2", "bob speaks during fit", time.Unix(1001, 0))); err != nil {
+	if _, err := k.receive(inbox.TerminalEvent("u2", "bob speaks during fit", time.Unix(1001, 0))); err != nil {
 		t.Fatal(err)
 	}
 	folded := provider.Request{Messages: []provider.Message{turnSummary("old A context", 1, 2)}}

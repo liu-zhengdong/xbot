@@ -8,14 +8,14 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/fsutil"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 	"xbot/internal/web"
 )
 
 func TestRunServeRootLockedPreservesApproval(t *testing.T) {
 	root := t.TempDir()
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}

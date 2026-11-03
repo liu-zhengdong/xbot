@@ -11,7 +11,6 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 )
 
 func TestChatGroupRuntimeResultComplete(t *testing.T) {
@@ -25,12 +24,12 @@ func TestChatGroupRuntimeResultComplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := bus.PostGroupWithResult(link.KindBot, "ada", g.ID, "  hello\n", "ch_frozen", MaxHops, time.Time{})
+	result, err := bus.PostGroupWithResult(inbox.KindBot, "ada", g.ID, "  hello\n", "ch_frozen", MaxHops, time.Time{})
 	if err != nil || !result.Appended || result.Stage != "complete" || result.GroupID != g.ID || result.MessageID == "" || result.FailedMember != "" || !reflect.DeepEqual(result.PostedMembers, []string{"bob", "cara"}) {
 		t.Fatalf("complete result %+v: %v", result, err)
 	}
 	lines, err := bus.Transcript(g.ID)
-	if err != nil || len(lines) != 1 || lines[0].ID != result.MessageID || lines[0].Text != "hello" || lines[0].Kind != link.KindBot || lines[0].Sender != "ada" || !lines[0].Time.Equal(now) || lines[0].Time.Location() != time.UTC {
+	if err != nil || len(lines) != 1 || lines[0].ID != result.MessageID || lines[0].Text != "hello" || lines[0].Kind != inbox.KindBot || lines[0].Sender != "ada" || !lines[0].Time.Equal(now) || lines[0].Time.Location() != time.UTC {
 		t.Fatalf("actual transcript %+v: %v", lines, err)
 	}
 	if posts := readPosts(t, ada.InboxPath()); len(posts) != 0 {
@@ -42,7 +41,7 @@ func TestChatGroupRuntimeResultComplete(t *testing.T) {
 			t.Fatal(err)
 		}
 		posts := box.Pending()
-		if len(posts) != 1 || posts[0].Source != "group:"+g.ID || posts[0].Sender != "ada" || posts[0].SenderKind != link.KindBot || posts[0].Hops != MaxHops || posts[0].Chain != "ch_frozen" || !posts[0].Time.Equal(now) || !strings.Contains(posts[0].Content, "\nhello\n") {
+		if len(posts) != 1 || posts[0].Source != "group:"+g.ID || posts[0].Sender != "ada" || posts[0].SenderKind != inbox.KindBot || posts[0].Hops != MaxHops || posts[0].Chain != "ch_frozen" || !posts[0].Time.Equal(now) || !strings.Contains(posts[0].Content, "\nhello\n") {
 			t.Fatalf("%s inbox %+v", target.Name(), posts)
 		}
 	}
@@ -70,7 +69,7 @@ func TestChatGroupRuntimeResultFirstFailure(t *testing.T) {
 				t.Fatal(err)
 			}
 			now := time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)
-			result, err := bus.PostGroupWithResult(link.KindBot, "ada", g.ID, "partial", "ch_partial", 1, now)
+			result, err := bus.PostGroupWithResult(inbox.KindBot, "ada", g.ID, "partial", "ch_partial", 1, now)
 			if err == nil || !result.Appended || result.MessageID == "" || result.GroupID != g.ID || result.Stage != stage || result.FailedMember != "cara" || !reflect.DeepEqual(result.PostedMembers, []string{"bob"}) {
 				t.Fatalf("partial result %+v: %v", result, err)
 			}
@@ -81,7 +80,7 @@ func TestChatGroupRuntimeResultFirstFailure(t *testing.T) {
 			if len(readPosts(t, bob.InboxPath())) != 1 || len(readPosts(t, ada.InboxPath())) != 0 || len(readPosts(t, dan.InboxPath())) != 0 {
 				t.Fatal("fanout did not stop immediately after cara failed")
 			}
-			limited, err := bus.PostGroupWithResult(link.KindBot, "ada", g.ID, "no automatic rate refund", "", 1, now)
+			limited, err := bus.PostGroupWithResult(inbox.KindBot, "ada", g.ID, "no automatic rate refund", "", 1, now)
 			if !errors.Is(err, ErrRateLimit) || limited.Stage != "rate" || limited.Appended || limited.MessageID != "" || limited.PostedMembers == nil || len(limited.PostedMembers) != 0 || limited.FailedMember != "" {
 				t.Fatalf("partial post rate was refunded: %+v %v", limited, err)
 			}
@@ -101,7 +100,7 @@ func TestChatGroupRuntimeResultAppendFailure(t *testing.T) {
 	if err := os.Mkdir(bus.transcript(g.ID), 0700); err != nil {
 		t.Fatal(err)
 	}
-	result, err := bus.PostGroupWithResult(link.KindBot, "ada", g.ID, "must fail append", "", 1, time.Time{})
+	result, err := bus.PostGroupWithResult(inbox.KindBot, "ada", g.ID, "must fail append", "", 1, time.Time{})
 	var pathErr *os.PathError
 	if !errors.As(err, &pathErr) || result.Stage != "transcript" || result.Appended || result.MessageID != "" || result.FailedMember != "" || result.PostedMembers == nil || len(result.PostedMembers) != 0 {
 		t.Fatalf("append failure %+v: %v", result, err)
@@ -114,7 +113,7 @@ func TestChatGroupRuntimeResultAppendFailure(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "peer-rate.json")); err != nil {
 		t.Fatalf("original rate write missing: %v", err)
 	}
-	if err := bus.PostGroup(link.KindBot, "ada", g.ID, "legacy append failure", "", 1, time.Time{}); !errors.As(err, &pathErr) {
+	if err := bus.PostGroup(inbox.KindBot, "ada", g.ID, "legacy append failure", "", 1, time.Time{}); !errors.As(err, &pathErr) {
 		t.Fatalf("legacy adapter lost storage cause: %v", err)
 	}
 }
@@ -133,12 +132,12 @@ func TestChatGroupRuntimeResultValidationAndRate(t *testing.T) {
 		hops                   int
 	}{
 		{"unknown", "ada", g.ID, "hello", 1},
-		{link.KindBot, "ada", "invalid", "hello", 1},
-		{link.KindBot, "ada", g.ID, " \n", 1},
-		{link.KindBot, "ada", g.ID, strings.Repeat("x", MaxText+1), 1},
-		{link.KindBot, "ada", g.ID, "hello", 0},
-		{link.KindBot, "ada", g.ID, "hello", MaxHops + 1},
-		{link.KindBot, "outsider", g.ID, "hello", 1},
+		{inbox.KindBot, "ada", "invalid", "hello", 1},
+		{inbox.KindBot, "ada", g.ID, " \n", 1},
+		{inbox.KindBot, "ada", g.ID, strings.Repeat("x", MaxText+1), 1},
+		{inbox.KindBot, "ada", g.ID, "hello", 0},
+		{inbox.KindBot, "ada", g.ID, "hello", MaxHops + 1},
+		{inbox.KindBot, "outsider", g.ID, "hello", 1},
 	} {
 		result, err := bus.PostGroupWithResult(tc.kind, tc.sender, tc.id, tc.text, "", tc.hops, time.Time{})
 		if err == nil || result.Stage != "validation" || result.GroupID != tc.id || result.Appended || result.MessageID != "" || result.PostedMembers == nil || len(result.PostedMembers) != 0 || result.FailedMember != "" {
@@ -151,16 +150,16 @@ func TestChatGroupRuntimeResultValidationAndRate(t *testing.T) {
 	}
 	now := time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)
 	for i := 0; i < RatePerMinute; i++ {
-		result, err := bus.PostGroupWithResult(link.KindBot, "ada", g.ID, "within original rate", "", 1, now)
+		result, err := bus.PostGroupWithResult(inbox.KindBot, "ada", g.ID, "within original rate", "", 1, now)
 		if err != nil || result.Stage != "complete" {
 			t.Fatalf("post %d %+v: %v", i, result, err)
 		}
 	}
-	result, err := bus.PostGroupWithResult(link.KindBot, "ada", g.ID, "over original rate", "", 1, now)
+	result, err := bus.PostGroupWithResult(inbox.KindBot, "ada", g.ID, "over original rate", "", 1, now)
 	if !errors.Is(err, ErrRateLimit) || result.Stage != "rate" || result.Appended || result.MessageID != "" || result.PostedMembers == nil || len(result.PostedMembers) != 0 {
 		t.Fatalf("rate result %+v: %v", result, err)
 	}
-	if err := bus.PostGroup(link.KindBot, "ada", g.ID, "legacy rate", "", 1, now); !errors.Is(err, ErrRateLimit) {
+	if err := bus.PostGroup(inbox.KindBot, "ada", g.ID, "legacy rate", "", 1, now); !errors.Is(err, ErrRateLimit) {
 		t.Fatalf("legacy adapter lost rate cause: %v", err)
 	}
 	if lines, err := bus.Transcript(g.ID); err != nil || len(lines) != RatePerMinute {
@@ -177,20 +176,20 @@ func TestChatGroupRuntimeLegacyPersonAdapter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := bus.PostGroup(link.KindPerson, "u2", g.ID, "foreign owner", "", 1, time.Time{}); err == nil || err.Error() != "peer: group is not yours" {
+	if err := bus.PostGroup(inbox.KindPerson, "u2", g.ID, "foreign owner", "", 1, time.Time{}); err == nil || err.Error() != "peer: group is not yours" {
 		t.Fatalf("foreign owner accepted: %v", err)
 	}
-	if err := bus.PostGroup(link.KindPerson, "u1", g.ID, "  owner message  ", "", 1, time.Time{}); err != nil {
+	if err := bus.PostGroup(inbox.KindPerson, "u1", g.ID, "  owner message  ", "", 1, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	lines, err := bus.Transcript(g.ID)
-	if err != nil || len(lines) != 1 || lines[0].Kind != link.KindPerson || lines[0].Sender != "u1" || lines[0].Text != "owner message" {
+	if err != nil || len(lines) != 1 || lines[0].Kind != inbox.KindPerson || lines[0].Sender != "u1" || lines[0].Text != "owner message" {
 		t.Fatalf("legacy person transcript %+v: %v", lines, err)
 	}
 	var chain string
 	for _, target := range []*bot.Bot{ada, bob} {
 		posts := readPosts(t, target.InboxPath())
-		if len(posts) != 1 || posts[0].SenderKind != link.KindPerson || posts[0].Sender != "u1" || posts[0].Hops != 1 || !strings.HasPrefix(posts[0].Chain, "ch_") {
+		if len(posts) != 1 || posts[0].SenderKind != inbox.KindPerson || posts[0].Sender != "u1" || posts[0].Hops != 1 || !strings.HasPrefix(posts[0].Chain, "ch_") {
 			t.Fatalf("person inbox %+v", posts)
 		}
 		if chain != "" && posts[0].Chain != chain {

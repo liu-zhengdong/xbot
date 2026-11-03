@@ -5,18 +5,16 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"xbot/internal/link"
 )
 
 func TestPostAckReload(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "inbox.jsonl")
+	path := filepath.Join(t.TempDir(), "jsonl")
 	in, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := link.NewEvent(link.NameTerminal, link.TypeMessage, "one", "u1", time.Now())
-	b := link.NewEvent(link.NameTerminal, link.TypeMessage, "two", "u1", time.Now())
+	a := NewEvent(NameTerminal, TypeMessage, "one", "u1", time.Now())
+	b := NewEvent(NameTerminal, TypeMessage, "two", "u1", time.Now())
 	a.Untrusted = false
 	if err := in.Post(a); err != nil {
 		t.Fatal(err)
@@ -62,12 +60,12 @@ func TestPostAckReload(t *testing.T) {
 }
 
 func TestAckedIDIsNotReposted(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "inbox.jsonl")
+	path := filepath.Join(t.TempDir(), "jsonl")
 	in, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ev := link.NewEvent(link.NameTerminal, link.TypeMessage, "one", "u1", time.Now())
+	ev := NewEvent(NameTerminal, TypeMessage, "one", "u1", time.Now())
 	if err := in.Post(ev); err != nil {
 		t.Fatal(err)
 	}
@@ -91,23 +89,23 @@ func TestAckedIDIsNotReposted(t *testing.T) {
 }
 
 func TestPostRejectsIncomplete(t *testing.T) {
-	in, err := Open(filepath.Join(t.TempDir(), "inbox.jsonl"))
+	in, err := Open(filepath.Join(t.TempDir(), "jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := in.Post(link.Event{ID: "x", Untrusted: true}); err == nil {
+	if err := in.Post(Event{ID: "x", Untrusted: true}); err == nil {
 		t.Fatal("expected validation error")
 	}
 }
 
 func TestPostWakes(t *testing.T) {
-	in, err := Open(filepath.Join(t.TempDir(), "inbox.jsonl"))
+	in, err := Open(filepath.Join(t.TempDir(), "jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	go func() {
 		time.Sleep(20 * time.Millisecond)
-		_ = in.Post(link.NewEvent(link.NameTimer, link.TypeTimer, "tick", "u1", time.Now()))
+		_ = in.Post(NewEvent(NameTimer, TypeTimer, "tick", "u1", time.Now()))
 	}()
 	select {
 	case <-in.Wait():
@@ -120,7 +118,7 @@ func TestPostWakes(t *testing.T) {
 }
 
 func TestConcurrentPost(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "inbox.jsonl")
+	path := filepath.Join(t.TempDir(), "jsonl")
 	in, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -130,7 +128,7 @@ func TestConcurrentPost(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ev := link.NewEvent(link.NameTerminal, link.TypeMessage, "x", "u1", time.Now())
+			ev := NewEvent(NameTerminal, TypeMessage, "x", "u1", time.Now())
 			if err := in.Post(ev); err != nil {
 				t.Error(err)
 			}

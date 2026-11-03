@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"xbot/internal/exec"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 )
 
 func TestEnsureExecQueuesAndReportsPosition(t *testing.T) {
@@ -38,7 +38,7 @@ func TestEnsureExecQueuesAndReportsPosition(t *testing.T) {
 	if len(tasks) != 11 {
 		t.Fatalf("tasks %d", len(tasks))
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "status", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "status", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	entries, err := b.Entries()
@@ -93,7 +93,7 @@ func TestInterjectedTaskGetsLiveBackgroundSnapshot(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if !Interject(k.Bot, link.TerminalEvent("u1", "another task", time.Now()), &Sink{}) {
+	if !Interject(k.Bot, inbox.TerminalEvent("u1", "another task", time.Now()), &Sink{}) {
 		t.Fatal("not interjected")
 	}
 	q := t0.takeInterjected()
@@ -104,7 +104,7 @@ func TestInterjectedTaskGetsLiveBackgroundSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, err = k.syncEnv(st, link.TerminalEvent("u1", "another task", time.Now()), "")
+	st, err = k.syncEnv(st, inbox.TerminalEvent("u1", "another task", time.Now()), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func finishAdmissionJobs(t *testing.T, k *Kernel, hold chan struct{}) {
 		// masquerading as a completion barrier.
 		_ = k.Inbox.Reload()
 		for _, ev := range k.Inbox.Pending() {
-			if ev.Source == link.SourceSubagent && (ev.Type == exec.EvDone || ev.Type == exec.EvFailed) {
+			if ev.Source == inbox.SourceSubagent && (ev.Type == exec.EvDone || ev.Type == exec.EvFailed) {
 				delete(want, ev.Sender)
 			}
 		}

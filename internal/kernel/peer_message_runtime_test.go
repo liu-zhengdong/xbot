@@ -12,7 +12,6 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/peer"
 	"xbot/internal/provider"
@@ -84,7 +83,7 @@ func TestPeerMessageRuntimeLocalFrozenSharedNonprimary(t *testing.T) {
 		t.Fatalf("actual recipient events=%d", len(pending))
 	}
 	ev := pending[0]
-	if ev.ID != posted.EventID || ev.Content != body || ev.Source != "bot:"+b.Name() || ev.Sender != b.Name() || ev.SenderKind != link.KindBot || !ev.Untrusted || ev.Chain != "ch_original" || ev.Hops != 3 || !ev.Time.Equal(k.now()) {
+	if ev.ID != posted.EventID || ev.Content != body || ev.Source != "bot:"+b.Name() || ev.Sender != b.Name() || ev.SenderKind != inbox.KindBot || !ev.Untrusted || ev.Chain != "ch_original" || ev.Hops != 3 || !ev.Time.Equal(k.now()) {
 		t.Fatal("recipient event lost original sender/body/chain/hops/time metadata")
 	}
 	if rows, err := peer.Conversation(b, target); err != nil || len(rows) != 0 {

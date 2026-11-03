@@ -7,13 +7,13 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 )
 
 func TestMCPOfflineConfigDoesNotMountOrStart(t *testing.T) {
 	t.Setenv("API_TOKEN", "super-secret-value")
 	root := t.TempDir()
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestMCPOfflineConfigDoesNotMountOrStart(t *testing.T) {
 	if err := cmdMCP(root, []string{"offline", "list", "ada"}); err != nil {
 		t.Fatal(err)
 	}
-	links, err := mount(b, runnerSpec{})
+	links, err := mount(b, runnerSpec{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestMCPOfflineConfigDoesNotMountOrStart(t *testing.T) {
 	if err := cmdMCP(root, []string{"offline", "remove", "ada", "docs"}); err != nil {
 		t.Fatal(err)
 	}
-	links, err = mount(b, runnerSpec{})
+	links, err = mount(b, runnerSpec{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

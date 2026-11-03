@@ -28,7 +28,7 @@ import (
 
 func outImageKernel(t *testing.T, resps ...provider.Message) (*Kernel, string, *scripted) {
 	t.Helper()
-	b := testBot(t, link.NameTerminal, link.NameTimer)
+	b := testBot(t, inbox.NameTerminal, inbox.NameTimer)
 	dir, _, err := work.Open(b.Root, b.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +68,7 @@ func TestNotifyOwnerImagesLandOnTheReplyLine(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "chart.png"), pic, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "画个图", time.Unix(10, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "画个图", time.Unix(10, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	id, _ := work.PastedNameFor("image/png", pic)
@@ -541,7 +541,7 @@ func TestContinuationCanAttachImages(t *testing.T) {
 	}
 	calls := 0
 	var firstTurn *turn
-	late := link.TerminalEvent("u1", "再把图给我", time.Now())
+	late := inbox.TerminalEvent("u1", "再把图给我", time.Now())
 	k.Provider = providerFunc(func(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
 		calls++
 		switch calls {
@@ -571,7 +571,7 @@ func TestContinuationCanAttachImages(t *testing.T) {
 			return provider.Message{}, nil
 		}
 	})
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "先答一句", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "先答一句", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if calls != 3 {
@@ -707,7 +707,7 @@ func TestSendInOwnerChatSkipsTheBell(t *testing.T) {
 		toolCall("s2", "send_message_to_user", `{"text":"例程有新情况"}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("已告知")},
 	)
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "做吧", time.Unix(10, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "做吧", time.Unix(10, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if notes, err := notify.Open(k.Bot.OutboxPath()).Unread(); err != nil || len(notes) != 0 {
@@ -722,7 +722,7 @@ func TestSendInOwnerChatSkipsTheBell(t *testing.T) {
 	if said != "sent to the owner's chat" {
 		t.Fatalf("result = %q", said)
 	}
-	if err := k.Handle(context.Background(), link.NewEvent(link.SourceSubagent, exec.EvDone, "查完了", "sa_a", time.Unix(20, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.NewEvent(inbox.SourceSubagent, exec.EvDone, "查完了", "sa_a", time.Unix(20, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if notes, err := notify.Open(k.Bot.OutboxPath()).Unread(); err != nil || len(notes) != 1 || notes[0].Text != "例程有新情况" {
@@ -740,7 +740,7 @@ func TestSilentAfterChatSendIsAnAnswer(t *testing.T) {
 	if err := k.Bot.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "做吧", time.Unix(10, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "做吧", time.Unix(10, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 }

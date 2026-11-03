@@ -8,7 +8,7 @@ import (
 	"xbot/internal/agent"
 	"xbot/internal/bot"
 	"xbot/internal/exec"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/review"
 	"xbot/internal/tools"
 )
@@ -97,7 +97,7 @@ func (k *Kernel) onToolDone(job tools.Job) {
 		if text == "" {
 			text = "工具 " + job.Tool + "（" + job.ID + "）：" + job.Status + "，输出 " + job.Output
 		}
-		err := k.postCurrentEvent(link.Event{ID: "shelljob_" + job.ID, Source: "shell", Type: tools.JobEventType, Sender: job.ID, Content: text, Images: job.Images, Time: k.now(), Untrusted: true})
+		err := k.postCurrentEvent(inbox.Event{ID: "shelljob_" + job.ID, Source: "shell", Type: tools.JobEventType, Sender: job.ID, Content: text, Images: job.Images, Time: k.now(), Untrusted: true})
 		posted = err == nil
 		return err
 	})

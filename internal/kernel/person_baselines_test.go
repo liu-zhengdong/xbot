@@ -7,14 +7,14 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
 
 func personBaselineFixture(t *testing.T) (*Kernel, memory.Store) {
 	t.Helper()
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1", "u2"}); err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func personBaselineFixture(t *testing.T) (*Kernel, memory.Store) {
 }
 
 // Inspect only the new append-only rows, rather than finding old facts in history.
-func receivePersonUpdates(t *testing.T, k *Kernel, ev link.Event) string {
+func receivePersonUpdates(t *testing.T, k *Kernel, ev inbox.Event) string {
 	t.Helper()
 	n, err := k.Bot.Count()
 	if err != nil {
@@ -52,22 +52,22 @@ func receivePersonUpdates(t *testing.T, k *Kernel, ev link.Event) string {
 func TestPersonBaselinesAlternateWithoutReplayingProfiles(t *testing.T) {
 	k, store := personBaselineFixture(t)
 	now := time.Unix(1000, 0)
-	receivePersonUpdates(t, k, link.TerminalEvent("u1", "alice", now))
-	receivePersonUpdates(t, k, link.TerminalEvent("u2", "bob", now))
+	receivePersonUpdates(t, k, inbox.TerminalEvent("u1", "alice", now))
+	receivePersonUpdates(t, k, inbox.TerminalEvent("u2", "bob", now))
 	// A restart replays both baselines from the effective conversation.
 	reloaded, err := bot.Load(k.Bot.Root, k.Bot.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
 	k = &Kernel{Bot: reloaded, Memory: store}
-	text := receivePersonUpdates(t, k, link.TerminalEvent("u1", "alice again", now))
+	text := receivePersonUpdates(t, k, inbox.TerminalEvent("u1", "alice again", now))
 	if strings.Contains(text, "person_data") || strings.Contains(text, "BASELINE") || !strings.Contains(text, `"sender":"u1"`) {
 		t.Fatalf("return replayed an unchanged profile: %s", text)
 	}
 	if err := store.Remember(context.Background(), memory.Fact{Scope: memory.ScopePerson, PersonID: "u2", Tier: memory.TierProfile, Key: "extra", Text: "BOB_CHANGED_92", WrittenBy: "other"}); err != nil {
 		t.Fatal(err)
 	}
-	text = receivePersonUpdates(t, k, link.TerminalEvent("u2", "bob changed", now))
+	text = receivePersonUpdates(t, k, inbox.TerminalEvent("u2", "bob changed", now))
 	if !strings.Contains(text, `"person:u2"`) || !strings.Contains(text, "BOB_CHANGED_92") {
 		t.Fatalf("switch must diff against that person's prior version: %s", text)
 	}
@@ -76,7 +76,7 @@ func TestPersonBaselinesAlternateWithoutReplayingProfiles(t *testing.T) {
 func TestPersonBaselineOwnChangesSurviveOtherSender(t *testing.T) {
 	k, store := personBaselineFixture(t)
 	now := time.Unix(1000, 0)
-	alice := link.TerminalEvent("u1", "alice", now)
+	alice := inbox.TerminalEvent("u1", "alice", now)
 	receivePersonUpdates(t, k, alice)
 	done := k.beginOwnWrite(context.Background(), memory.ScopePerson, "u1")
 	if err := store.Remember(context.Background(), memory.Fact{Scope: memory.ScopePerson, PersonID: "u1", Tier: memory.TierProfile, Key: "own", Text: "OWN_EDIT_64", WrittenBy: k.Bot.Name()}); err != nil {
@@ -90,7 +90,7 @@ func TestPersonBaselineOwnChangesSurviveOtherSender(t *testing.T) {
 	if err := k.Bot.Append(bot.Entry{Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("own", "ok"+receipt)}}); err != nil {
 		t.Fatal(err)
 	}
-	receivePersonUpdates(t, k, link.TerminalEvent("u2", "bob", now))
+	receivePersonUpdates(t, k, inbox.TerminalEvent("u2", "bob", now))
 	text := receivePersonUpdates(t, k, alice)
 	if strings.Contains(text, "OWN_EDIT_64") || strings.Contains(text, "ALICE_BASELINE") {
 		t.Fatalf("own change was re-announced after switching people: %s", text)
@@ -100,18 +100,18 @@ func TestPersonBaselineOwnChangesSurviveOtherSender(t *testing.T) {
 func TestNonPersonSourceDoesNotMentionOrResetProfiles(t *testing.T) {
 	k, _ := personBaselineFixture(t)
 	now := time.Unix(1000, 0)
-	receivePersonUpdates(t, k, link.TerminalEvent("u1", "alice", now))
-	ev := link.NewEvent(link.NameTimer, "wake", "timer", "u1", now)
+	receivePersonUpdates(t, k, inbox.TerminalEvent("u1", "alice", now))
+	ev := inbox.NewEvent(inbox.NameTimer, "wake", "timer", "u1", now)
 	text := receivePersonUpdates(t, k, ev)
 	if !strings.Contains(text, `"source":{"name":"timer"`) || strings.Contains(text, "person:") {
 		t.Fatalf("non-person wake must mention only its source: %s", text)
 	}
-	ev = link.NewEvent(link.NameTimer, "wake", "another timer", "other-routing-id", now)
+	ev = inbox.NewEvent(inbox.NameTimer, "wake", "another timer", "other-routing-id", now)
 	text = receivePersonUpdates(t, k, ev)
 	if text != "" {
 		t.Fatalf("same source emitted an unchanged update: %s", text)
 	}
-	text = receivePersonUpdates(t, k, link.TerminalEvent("u1", "alice returns", now))
+	text = receivePersonUpdates(t, k, inbox.TerminalEvent("u1", "alice returns", now))
 	if strings.Contains(text, "person_data") || strings.Contains(text, "BASELINE") {
 		t.Fatalf("non-person wake invalidated the profile: %s", text)
 	}
@@ -120,8 +120,8 @@ func TestNonPersonSourceDoesNotMentionOrResetProfiles(t *testing.T) {
 func TestPersonBaselinesCompactionRestoresEachPerson(t *testing.T) {
 	k, _ := personBaselineFixture(t)
 	now := time.Unix(1000, 0)
-	receivePersonUpdates(t, k, link.TerminalEvent("u1", "alice", now))
-	receivePersonUpdates(t, k, link.TerminalEvent("u2", "bob", now))
+	receivePersonUpdates(t, k, inbox.TerminalEvent("u1", "alice", now))
+	receivePersonUpdates(t, k, inbox.TerminalEvent("u2", "bob", now))
 	st, err := k.Bot.LoadState()
 	if err != nil {
 		t.Fatal(err)
@@ -146,15 +146,15 @@ func TestPersonBaselinesCompactionRestoresEachPerson(t *testing.T) {
 	if !strings.Contains(snapshot, "BOB_BASELINE_47") || strings.Contains(snapshot, "ALICE_BASELINE_83") {
 		t.Fatalf("compaction did not restore only the current person: %s", snapshot)
 	}
-	text := receivePersonUpdates(t, k, link.TerminalEvent("u2", "bob again", now))
+	text := receivePersonUpdates(t, k, inbox.TerminalEvent("u2", "bob again", now))
 	if strings.Contains(text, "person_data") {
 		t.Fatalf("snapshot-restored profile was repeated: %s", text)
 	}
-	text = receivePersonUpdates(t, k, link.TerminalEvent("u1", "alice returns", now))
+	text = receivePersonUpdates(t, k, inbox.TerminalEvent("u1", "alice returns", now))
 	if !strings.Contains(text, "ALICE_BASELINE_83") || strings.Contains(text, "BOB_BASELINE_47") {
 		t.Fatalf("compacted other person's profile was not restored: %s", text)
 	}
-	text = receivePersonUpdates(t, k, link.TerminalEvent("u2", "bob returns", now))
+	text = receivePersonUpdates(t, k, inbox.TerminalEvent("u2", "bob returns", now))
 	if strings.Contains(text, "person_data") {
 		t.Fatalf("already restored profile repeated after another person: %s", text)
 	}

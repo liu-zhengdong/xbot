@@ -18,7 +18,6 @@ import (
 	"xbot/internal/code"
 	"xbot/internal/fsutil"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
@@ -596,13 +595,13 @@ func (k *Kernel) reminders() *Channel {
 
 // reminderKinds registers the live kinds for this wake. File changes fire
 // from the freshness scan. Todo fires from todoNote when the list is stale.
-func (k *Kernel) reminderKinds(ev link.Event) *Channel {
+func (k *Kernel) reminderKinds(ev inbox.Event) *Channel {
 	return k.reminderKindsFor(ev, nil)
 }
 
 // reminderKindsFor is reminderKinds for turn t, whose context decides whether
 // a project instruction set was already sent.
-func (k *Kernel) reminderKindsFor(ev link.Event, t *turn) *Channel {
+func (k *Kernel) reminderKindsFor(ev inbox.Event, t *turn) *Channel {
 	// A fresh channel per wake shares the sidecar. The background loop and the
 	// foreground wake both touch the log; they must not share the kind slice.
 	ch := &Channel{log: k.reminders().log}
@@ -632,7 +631,7 @@ func (k *Kernel) reminderKindsFor(ev link.Event, t *turn) *Channel {
 		Name:     KindMemoryReflect,
 		Cooldown: memoryReminderCooldown,
 		Trigger: func(time.Time, []Reminder) string {
-			if k.Memory == nil || !personEvent(ev) || (ev.Source != link.NameWeb && ev.Source != link.NameTerminal) {
+			if k.Memory == nil || !personEvent(ev) || (ev.Source != inbox.NameWeb && ev.Source != inbox.NameTerminal) {
 				return ""
 			}
 			return "<system-reminder>\n本轮有值得沉淀的就记进记忆，没有就跳过。\n</system-reminder>"
@@ -764,9 +763,9 @@ func (k *Kernel) todoPrev() []Reminder {
 	return prev
 }
 
-func (k *Kernel) pendingTrigger(ev link.Event) func(time.Time, []Reminder) string {
+func (k *Kernel) pendingTrigger(ev inbox.Event) func(time.Time, []Reminder) string {
 	return func(time.Time, []Reminder) string {
-		if ev.Source == link.NameTimer {
+		if ev.Source == inbox.NameTimer {
 			return ""
 		}
 		return pendingNote(k.openApprovals())
@@ -778,9 +777,9 @@ func (k *Kernel) pendingTrigger(ev link.Event) func(time.Time, []Reminder) strin
 // wake and later steps do not re-register it, so a turn carries it once.
 const replyFirstNote = "<system-reminder>\n用户正在聊天。先调用 send_message_to_user 用一两句回用户：你理解到了什么、接下来做什么。你的裸助手正文用户看不见；这条回复不是可选通知。然后再自己动手或 dispatch。\n</system-reminder>"
 
-func replyFirstTrigger(ev link.Event) func(time.Time, []Reminder) string {
+func replyFirstTrigger(ev inbox.Event) func(time.Time, []Reminder) string {
 	return func(time.Time, []Reminder) string {
-		if (ev.Source != link.NameWeb && ev.Source != link.NameTerminal) || !personEvent(ev) {
+		if (ev.Source != inbox.NameWeb && ev.Source != inbox.NameTerminal) || !personEvent(ev) {
 			return ""
 		}
 		return replyFirstNote
@@ -789,7 +788,7 @@ func replyFirstTrigger(ev link.Event) func(time.Time, []Reminder) string {
 
 // memoryCapacityTrigger checks the actual standing files, not the rendered
 // context (which may already be clipped). No profile contents enter the note.
-func (k *Kernel) memoryCapacityTrigger(ev link.Event) func(time.Time, []Reminder) string {
+func (k *Kernel) memoryCapacityTrigger(ev inbox.Event) func(time.Time, []Reminder) string {
 	return func(time.Time, []Reminder) string {
 		if k.Memory == nil || k.Bot == nil {
 			return ""

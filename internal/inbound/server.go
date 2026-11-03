@@ -14,7 +14,6 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/vault"
 )
 
@@ -354,7 +353,7 @@ func postWebhook(root string, b *batch) error {
 	if err != nil {
 		return err
 	}
-	ev := link.NewEvent("webhook:"+b.hook, batchType(b), renderBatch(b), b.items[0].sender, b.first)
+	ev := inbox.NewEvent("webhook:"+b.hook, batchType(b), renderBatch(b), b.items[0].sender, b.first)
 	ev.ID = b.eventID
 	return box.Post(ev)
 }

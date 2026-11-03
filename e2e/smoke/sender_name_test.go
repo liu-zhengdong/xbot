@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/person"
 )
@@ -35,7 +36,7 @@ func TestSenderNameBinary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	who, err := person.Identify(srv.Root, person.Account{Link: link.NameTerminal, ExternalID: ext}, "刘政东")
+	who, err := person.Identify(srv.Root, person.Account{Link: inbox.NameTerminal, ExternalID: ext}, "刘政东")
 	if err != nil {
 		t.Fatal(err)
 	}

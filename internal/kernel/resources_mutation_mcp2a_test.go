@@ -15,6 +15,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/code"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/mcp"
 	"xbot/internal/tools"
@@ -196,7 +197,7 @@ func TestMCP2aResourceDeleteFencesLateDelivery(t *testing.T) {
 	go func() {
 		metaDone <- r.Jobs.Deliver(receipt.Job.ID, func(job tools.Job, _ tools.CallResult) error {
 			r.route.RLock()
-			err := r.box.Post(link.NewEvent("shell", tools.JobEventType, job.Result, job.ID, time.Now()))
+			err := r.box.Post(inbox.NewEvent("shell", tools.JobEventType, job.Result, job.ID, time.Now()))
 			r.route.RUnlock()
 			close(entered)
 			<-release // actual send returned its route lock, ack write is still pending

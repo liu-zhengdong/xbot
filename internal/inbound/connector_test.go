@@ -107,7 +107,7 @@ func TestConnectorInbound(t *testing.T) {
 
 func TestConnectorUngranted(t *testing.T) {
 	root := t.TempDir()
-	if _, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal}); err != nil {
+	if _, err := bot.Create(root, "ada", "persona", []string{inbox.NameTerminal}); err != nil {
 		t.Fatal(err)
 	}
 	s := &Server{Root: root}

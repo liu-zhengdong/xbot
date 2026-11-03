@@ -15,7 +15,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
 	"xbot/internal/config"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 	"xbot/internal/work"
@@ -144,7 +144,7 @@ func TestTranscriptRuntimeEscapedJSONArtifactMovesBetweenOutputAndWrite(t *testi
 	// The transcript stores the complete existing foreign-event fence as data.
 	// Detail must retain that fence and both attachment notes in its semantic
 	// text; a result artifact is not a raw blob or attachment-byte export.
-	body := link.Wrap(link.Event{Source: "bot:remote", Type: "transcript", Sender: "remote", Time: k.now(), Content: "ESCAPED_BODY_BEGIN ORIGINAL_FIXTURE_SECRET " + heldSecret + " RESOURCE_FIXTURE_MARKER " + strings.Repeat("\x01", 10000) + " ESCAPED_BODY_END"})
+	body := inbox.Wrap(inbox.Event{Source: "bot:remote", Type: "transcript", Sender: "remote", Time: k.now(), Content: "ESCAPED_BODY_BEGIN ORIGINAL_FIXTURE_SECRET " + heldSecret + " RESOURCE_FIXTURE_MARKER " + strings.Repeat("\x01", 10000) + " ESCAPED_BODY_END"})
 	experienceRuntimeAppend(t, k.Bot, bot.Entry{Images: []string{"diagram.png"}, Audios: []string{"meeting.wav"}, Message: provider.Message{Role: provider.RoleTool, Content: provider.ToolResult("escaped", body)}})
 	original, err := k.Detail(1, 0)
 	if err != nil {

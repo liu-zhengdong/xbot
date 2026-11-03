@@ -12,7 +12,6 @@ import (
 	"xbot/internal/cliops"
 	"xbot/internal/config"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/peer"
 	"xbot/internal/tools"
 	"xbot/internal/work"
@@ -235,7 +234,7 @@ func (k *Kernel) ChatGroupHandlers() *cliops.ChatGroupHandlers {
 						if chain == "" {
 							chain = "ch_" + name
 						}
-						result, err = (&peer.Bus{Root: root, Now: k.now}).PostGroupWithResult(link.KindBot, name, id, text, chain, hops+1, k.now())
+						result, err = (&peer.Bus{Root: root, Now: k.now}).PostGroupWithResult(inbox.KindBot, name, id, text, chain, hops+1, k.now())
 					}
 				}
 			}

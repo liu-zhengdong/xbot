@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/peer"
 )
 
@@ -134,7 +134,7 @@ func (s *Server) postGroup(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "bad request")
 		return
 	}
-	err := (&peer.Bus{Root: s.Root, Now: time.Now}).PostGroup(link.KindPerson, s.owner, r.PathValue("id"), in.Text, "", 1, time.Now())
+	err := (&peer.Bus{Root: s.Root, Now: time.Now}).PostGroup(inbox.KindPerson, s.owner, r.PathValue("id"), in.Text, "", 1, time.Now())
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return

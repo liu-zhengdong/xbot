@@ -10,6 +10,7 @@ import (
 	"xbot/internal/agent"
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -154,7 +155,7 @@ func TestLinksRemoveRequiresApproval(t *testing.T) {
 }
 
 func TestInstalledPromptGrowsOneLine(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}, link.Skills{}}}
 	base := systemOf(t, k)
 	if strings.Contains(base, "## 连接器") {
@@ -192,7 +193,7 @@ func TestInstalledPromptGrowsOneLine(t *testing.T) {
 }
 
 func TestLinksSearchMatchesEnglish(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b}
 	tool := linksTool{k}
 	for _, tc := range []struct{ query, id string }{
@@ -206,7 +207,7 @@ func TestLinksSearchMatchesEnglish(t *testing.T) {
 }
 
 func TestBrowserLoadListsTools(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}
 	out, err := (linksTool{k}).install("browser")
 	if err != nil || out != "installed browser" {
@@ -227,7 +228,7 @@ func TestBrowserLoadListsTools(t *testing.T) {
 
 // The desktop is an organ: on from boot, not installable, and load only lists it.
 func TestDesktopLoadListsTools(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}
 	if _, err := (linksTool{k}).install("desktop"); err == nil {
 		t.Fatal("an organ installed like a Link")
@@ -258,7 +259,7 @@ func mustMounted(t *testing.T, k *Kernel) []tools.Tool {
 // config that still grants "node" must get no node tools and no error, and
 // loading it must fail rather than mount anything.
 func TestOldNodeGrantIsIgnored(t *testing.T) {
-	b := testBot(t, link.NameTerminal, "node")
+	b := testBot(t, inbox.NameTerminal, "node")
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}
 	k.snapshotLinks()
 	for _, l := range k.Links {
@@ -281,7 +282,7 @@ func TestOldNodeGrantIsIgnored(t *testing.T) {
 }
 
 func TestLinksInstallMountsToolsImmediately(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}
 	k.StageSecrets("telegram", map[string]string{"TELEGRAM_BOT_TOKEN": "tok"})
 	out, err := (linksTool{k}).install("telegram")

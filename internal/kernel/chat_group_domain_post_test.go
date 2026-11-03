@@ -14,7 +14,6 @@ import (
 	"xbot/internal/cliops"
 	"xbot/internal/exec"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/peer"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -78,7 +77,7 @@ func TestChatGroupRuntimePostPreparedFrozenContextNoApprover(t *testing.T) {
 		t.Fatalf("no-approver actual source: %+v %v", reply, postErr)
 	}
 	lines, err := (&peer.Bus{Root: k.Bot.Root}).Transcript(group.ID)
-	if err != nil || len(lines) != 1 || lines[0].ID != reply.MessageID || lines[0].Sender != k.Bot.Name() || lines[0].Kind != link.KindBot || lines[0].Text != "full agreed body" || !lines[0].Time.Equal(k.now()) {
+	if err != nil || len(lines) != 1 || lines[0].ID != reply.MessageID || lines[0].Sender != k.Bot.Name() || lines[0].Kind != inbox.KindBot || lines[0].Text != "full agreed body" || !lines[0].Time.Equal(k.now()) {
 		t.Fatalf("actual group append: %+v %v", lines, err)
 	}
 	b, err := bot.Load(k.Bot.Root, "B")
@@ -90,7 +89,7 @@ func TestChatGroupRuntimePostPreparedFrozenContextNoApprover(t *testing.T) {
 		t.Fatal(err)
 	}
 	events := box.Pending()
-	if len(events) != 1 || events[0].Chain != "ch_original" || events[0].Hops != 2 || events[0].SenderKind != link.KindBot || events[0].Sender != k.Bot.Name() || events[0].Source != "group:"+group.ID || !events[0].Untrusted || !strings.Contains(events[0].Content, "\nfull agreed body\n") {
+	if len(events) != 1 || events[0].Chain != "ch_original" || events[0].Hops != 2 || events[0].SenderKind != inbox.KindBot || events[0].Sender != k.Bot.Name() || events[0].Source != "group:"+group.ID || !events[0].Untrusted || !strings.Contains(events[0].Content, "\nfull agreed body\n") {
 		t.Fatalf("actual fanout event: %+v", events)
 	}
 	for _, callID := range []string{"", originalCall, "foreign-call-id"} {
@@ -297,7 +296,7 @@ func TestChatGroupRuntimeActualChildPreparedTuple(t *testing.T) {
 		if wantChain == "" {
 			wantChain = "ch_" + b.Name()
 		}
-		if len(events) != 1 || events[0].Chain != wantChain || events[0].Hops != got.hops+1 || events[0].Chain == "ch_other_current" || events[0].SenderKind != link.KindBot {
+		if len(events) != 1 || events[0].Chain != wantChain || events[0].Hops != got.hops+1 || events[0].Chain == "ch_other_current" || events[0].SenderKind != inbox.KindBot {
 			t.Fatalf("child borrowed current tuple: %+v", events)
 		}
 	default:

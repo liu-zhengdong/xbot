@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 )
@@ -115,7 +115,7 @@ func (k *Kernel) closeInterject(t *turn, force bool) []provider.Message {
 
 // receive appends a normal input once, before setup or model cancellation.
 // Queue entries carry its sequence; replaying a model request never appends it again.
-func (k *Kernel) receive(ev link.Event) (int, error) {
+func (k *Kernel) receive(ev inbox.Event) (int, error) {
 	k.envMu.Lock()
 	defer k.envMu.Unlock()
 	seq, err := k.findCurrentEvent(ev.ID)
@@ -124,11 +124,11 @@ func (k *Kernel) receive(ev link.Event) (int, error) {
 	}
 	if seq == 0 {
 		origin := bot.OriginOwner
-		if ev.Source == link.NameApproval {
+		if ev.Source == inbox.NameApproval {
 			origin = bot.OriginInternal
 		}
 		seq, err = k.appendCurrentSeq(bot.Entry{Time: ev.Time, EventID: ev.ID, ReplyTo: ev.ReplyTo, Origin: origin, Images: ev.Images, Audios: ev.Audios,
-			Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(link.Render(ev, link.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners)))}})
+			Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(inbox.Render(ev, inbox.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners)))}})
 		if err != nil {
 			return 0, err
 		}
@@ -139,13 +139,13 @@ func (k *Kernel) receive(ev link.Event) (int, error) {
 // Interject hands an owner message to the bot's running turn. It returns
 // false when no turn of this process is running for the bot; the caller then
 // starts a turn itself. On true, sink holds the turn's output from now on.
-func Interject(b *bot.Bot, ev link.Event, sink *Sink) bool {
+func Interject(b *bot.Bot, ev inbox.Event, sink *Sink) bool {
 	v, ok := liveTurns.Load(botKey(b))
 	if !ok {
 		return false
 	}
 	lt := v.(*liveTurn)
-	if link.OwnerTrusted(ev.Source, ev.Sender, b.Config().Owners) {
+	if inbox.OwnerTrusted(ev.Source, ev.Sender, b.Config().Owners) {
 		AnswerQuestions(b, ev.Content)
 	}
 	msg := lt.k.eventMessage(ev)
@@ -263,9 +263,9 @@ func (t *turn) finishSink(out Outcome) {
 
 // eventMessage renders one inbox or web event as the user message a running
 // turn takes in.
-func (k *Kernel) eventMessage(ev link.Event) provider.Message {
+func (k *Kernel) eventMessage(ev inbox.Event) provider.Message {
 	owners := k.Bot.Config().Owners
-	raw := link.Render(ev, link.OwnerTrusted(ev.Source, ev.Sender, owners))
+	raw := inbox.Render(ev, inbox.OwnerTrusted(ev.Source, ev.Sender, owners))
 	content := raw
 	if ev.ReplyTo > 0 {
 		if q := k.quotePrefix(ev.ReplyTo); q != "" {

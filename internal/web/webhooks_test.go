@@ -13,6 +13,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/inbound"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 )
 
@@ -28,7 +29,7 @@ func TestWebhookAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, owner := range map[string]string{"ada": "u1", "eve": "u2", "小助手": "u1"} {
-		b, err := bot.Create(root, name, "persona", []string{link.NameTerminal})
+		b, err := bot.Create(root, name, "persona", []string{inbox.NameTerminal})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -14,31 +14,32 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
 	"xbot/internal/exec"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/skill"
 )
 
 func TestSkillLocalLibraryAndDisable(t *testing.T) {
-	ada := testBot(t, link.NameTerminal, link.NameSkills)
+	ada := testBot(t, inbox.NameTerminal, link.NameSkills)
 	if err := ada.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	eve, err := bot.Create(ada.Root, "eve", "Be brief.", []string{link.NameTerminal, link.NameSkills})
+	eve, err := bot.Create(ada.Root, "eve", "Be brief.", []string{inbox.NameTerminal, link.NameSkills})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := eve.SetOwners([]string{"u2"}); err != nil {
 		t.Fatal(err)
 	}
-	mix, err := bot.Create(ada.Root, "mix", "Be brief.", []string{link.NameTerminal, link.NameSkills})
+	mix, err := bot.Create(ada.Root, "mix", "Be brief.", []string{inbox.NameTerminal, link.NameSkills})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := mix.SetOwners([]string{"u1", "u2"}); err != nil {
 		t.Fatal(err)
 	}
-	bob, err := bot.Create(ada.Root, "bob", "Be brief.", []string{link.NameTerminal, link.NameSkills})
+	bob, err := bot.Create(ada.Root, "bob", "Be brief.", []string{inbox.NameTerminal, link.NameSkills})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +140,7 @@ func TestLegacySkillReadHistoryRedaction(t *testing.T) {
 }
 
 func TestSkillWriteDoesNotNeedApproval(t *testing.T) {
-	ada := testBot(t, link.NameTerminal, link.NameSkills)
+	ada := testBot(t, inbox.NameTerminal, link.NameSkills)
 	if err := ada.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +178,7 @@ func TestSkillWriteDoesNotNeedApproval(t *testing.T) {
 }
 
 func TestSkillReadWithoutLinkLoad(t *testing.T) {
-	ada := testBot(t, link.NameTerminal, link.NameSkills)
+	ada := testBot(t, inbox.NameTerminal, link.NameSkills)
 	if err := skill.Write(ada.Root, "ship", "Pack a release", "SECRET_BODY"); err != nil {
 		t.Fatal(err)
 	}
@@ -282,14 +283,14 @@ func TestLegacySpawnRetiresSkillSchema(t *testing.T) {
 }
 
 func TestSkillHarvestProposalAndConfirmation(t *testing.T) {
-	ada := testBot(t, link.NameTerminal, link.NameSkills, link.NameAgents)
+	ada := testBot(t, inbox.NameTerminal, link.NameSkills, link.NameAgents)
 	k := skillKernel(ada)
 	k.Dispatch = true
 	k.Links = append(k.Links, link.Agents{})
 	k.MaxSteps = 6
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("Imported skills from three sources and resolved name conflicts. Save as a skill to invoke for future imports? Confirm, rename, or decline.")}}}
 	k.Provider = p
-	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "Import skills from three sources", time.Unix(1, 0))); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("owner", "Import skills from three sources", time.Unix(1, 0))); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(p.reqs[0].Messages[0].Text(), SkillHarvestRule) {
@@ -329,7 +330,7 @@ func TestSkillWriteTitleAndScope(t *testing.T) {
 		{"other-owner", "eve", "eve"}, {"no-owner", "orphan", "orphan"}, {"shared", "mix", "mix"}, {"real-global", "global", "global"}, {"self", "self", "ada"}, {"named", "BoB", "bob"}, {"current-name", "ADA", "ada"}, {"omitted", "", ""}, {"blank", "  ", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			ada := testBot(t, link.NameTerminal, link.NameSkills)
+			ada := testBot(t, inbox.NameTerminal, link.NameSkills)
 			if err := ada.SetOwners([]string{"u1"}); err != nil {
 				t.Fatal(err)
 			}

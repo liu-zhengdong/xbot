@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -93,9 +93,9 @@ func appendRemoteCall(t *testing.T, b *bot.Bot, id, addr, text, result string, a
 
 func appendBounce(t *testing.T, b *bot.Bot, id, text string, at time.Time) {
 	t.Helper()
-	ev := link.NewEvent("remote", link.TypeMessage, text, "remote", at)
+	ev := inbox.NewEvent("remote", inbox.TypeMessage, text, "remote", at)
 	ev.ID = id
-	appendUser(t, b, id, link.Wrap(ev), at)
+	appendUser(t, b, id, inbox.Wrap(ev), at)
 }
 
 // One assistant entry may call message_bot to the same address twice; both are rows.

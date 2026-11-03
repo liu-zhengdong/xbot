@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -51,7 +52,7 @@ func (h *cancelHold) Run(ctx context.Context, _ json.RawMessage) (string, error)
 // TestCancelSealsOpenCall cancels Handle while a tool call is in flight.
 // The transcript gets one cancel tombstone from DanglingResult, not a second copy.
 func TestCancelSealsOpenCall(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +70,7 @@ func TestCancelSealsOpenCall(t *testing.T) {
 		<-entered
 		cancel()
 	}()
-	err := k.Handle(ctx, link.TerminalEvent("u1", "do it", time.Unix(10, 0).UTC()))
+	err := k.Handle(ctx, inbox.TerminalEvent("u1", "do it", time.Unix(10, 0).UTC()))
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err=%v", err)
 	}
@@ -107,7 +108,7 @@ func TestCancelSealsOpenCall(t *testing.T) {
 }
 
 func TestModelSwitchSealsOpenCall(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetBinding("old", "model"); err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +120,7 @@ func TestModelSwitchSealsOpenCall(t *testing.T) {
 	if err := b.SaveState(st); err != nil {
 		t.Fatal(err)
 	}
-	ev := link.TerminalEvent("u1", "do it", time.Unix(10, 0).UTC())
+	ev := inbox.TerminalEvent("u1", "do it", time.Unix(10, 0).UTC())
 	if err := b.Append(bot.Entry{
 		Time: ev.Time, EventID: ev.ID,
 		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("do it")},
@@ -158,7 +159,7 @@ func TestModelSwitchSealsOpenCall(t *testing.T) {
 }
 
 func TestCancelledToolWithPersistedInterjectionCanResume(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -167,9 +168,9 @@ func TestCancelledToolWithPersistedInterjectionCanResume(t *testing.T) {
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 3, Memory: memory.NopStore{}, Links: []link.Link{link.Terminal{}, oneToolLink{&cancelHold{entered: entered}}}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	bmsg := link.TerminalEvent("u1", "B仍要处理", time.Now())
+	bmsg := inbox.TerminalEvent("u1", "B仍要处理", time.Now())
 	done := make(chan error, 1)
-	go func() { done <- k.Handle(ctx, link.TerminalEvent("u1", "A先做", time.Now())) }()
+	go func() { done <- k.Handle(ctx, inbox.TerminalEvent("u1", "A先做", time.Now())) }()
 	select {
 	case <-entered:
 	case <-time.After(3 * time.Second):
@@ -190,7 +191,7 @@ func TestCancelledToolWithPersistedInterjectionCanResume(t *testing.T) {
 	if open, err := b.OpenTools(); err != nil || len(open) != 0 {
 		t.Fatalf("open calls=%v err=%v", open, err)
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "继续", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "继续", time.Now())); err != nil {
 		t.Fatalf("next input blocked: %v", err)
 	}
 	if !strings.Contains(messagesText(p.reqs[len(p.reqs)-1].Messages), bmsg.Content) {

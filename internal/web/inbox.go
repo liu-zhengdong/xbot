@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"xbot/internal/fsutil"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 )
 
 type inboxItem struct {
@@ -48,14 +48,14 @@ func (s *Server) listInbox(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = n
 	}
-	events := map[string]link.Event{}
+	events := map[string]inbox.Event{}
 	acked := map[string]bool{}
 	err = fsutil.WithLock(b.InboxPath()+".lock", func() error {
 		return fsutil.ReadJSONL(b.InboxPath(), func(line []byte) error {
 			var rec struct {
-				Op    string      `json:"op"`
-				Event *link.Event `json:"event"`
-				ID    string      `json:"id"`
+				Op    string       `json:"op"`
+				Event *inbox.Event `json:"event"`
+				ID    string       `json:"id"`
 			}
 			if err := json.Unmarshal(line, &rec); err != nil {
 				return err
@@ -78,7 +78,7 @@ func (s *Server) listInbox(w http.ResponseWriter, r *http.Request) {
 	items := make([]inboxItem, 0, len(events))
 	pending := 0
 	for _, ev := range events {
-		if ev.Source == link.NameWeb || ev.Source == link.NameTerminal || ev.Source == link.NameRemoteOwner || ev.Source == link.NameApproval {
+		if ev.Source == inbox.NameWeb || ev.Source == inbox.NameTerminal || ev.Source == inbox.NameRemoteOwner || ev.Source == inbox.NameApproval {
 			continue
 		}
 		status := "acked"

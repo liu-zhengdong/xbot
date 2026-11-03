@@ -11,6 +11,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/compact"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -30,7 +31,7 @@ func TestMultiStepAgainstMock(t *testing.T) {
 	defer srv.Close()
 
 	root := t.TempDir()
-	b, err := bot.Create(root, "demo", "You are a test bot.", []string{link.NameTerminal})
+	b, err := bot.Create(root, "demo", "You are a test bot.", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +51,7 @@ func TestMultiStepAgainstMock(t *testing.T) {
 		MaxSteps:  6,
 		Budget:    compact.DefaultBudget(),
 	}
-	ev := link.TerminalEvent("u1", "List this directory and write a summary to summary.txt", time.Now())
+	ev := inbox.TerminalEvent("u1", "List this directory and write a summary to summary.txt", time.Now())
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}

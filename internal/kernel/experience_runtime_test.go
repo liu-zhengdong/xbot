@@ -17,6 +17,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
 	"xbot/internal/experience"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -26,7 +27,7 @@ import (
 
 func experienceRuntimeFixture(t *testing.T, routed bool) (*Kernel, string) {
 	t.Helper()
-	b, err := bot.Create(t.TempDir(), "source", "Keep the project decisions", []string{link.NameTerminal, link.NameMemory, link.NameContext})
+	b, err := bot.Create(t.TempDir(), "source", "Keep the project decisions", []string{inbox.NameTerminal, link.NameMemory, link.NameContext})
 	if err != nil {
 		t.Fatal(err)
 	}

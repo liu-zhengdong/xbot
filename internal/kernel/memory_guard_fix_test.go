@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/tools"
 )
 
 func memoryGuardFixture(t *testing.T) (*Kernel, string) {
 	t.Helper()
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	dir := filepath.Join(b.Root, "bots", b.Name(), "memory")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)

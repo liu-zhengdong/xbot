@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 	"xbot/internal/work"
 )
@@ -133,7 +133,7 @@ func TestAudioSendMessageAttachesOnlyThroughReply(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: provider.TextContent("SILENT")},
 		{Role: provider.RoleAssistant, Content: provider.TextContent("后续一句")},
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "请语音回复", time.Unix(10, 0))); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "请语音回复", time.Unix(10, 0))); err != nil {
 		t.Fatal(err)
 	}
 	id := work.VoiceID(data, ".wav")
@@ -150,7 +150,7 @@ func TestAudioSendMessageAttachesOnlyThroughReply(t *testing.T) {
 	if !found {
 		t.Fatal("pure audio send never reached reply attachment")
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "再说一句", time.Unix(11, 0))); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "再说一句", time.Unix(11, 0))); err != nil {
 		t.Fatal(err)
 	}
 	last := p.reqs[len(p.reqs)-1]
@@ -178,8 +178,8 @@ func TestAudioLateSendStaysWithOriginatingReply(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "late.wav"), audioWAV(), 0600); err != nil {
 		t.Fatal(err)
 	}
-	original := &turn{turnSource: link.NameWeb}
-	current := &turn{turnSource: link.NameWeb}
+	original := &turn{turnSource: inbox.NameWeb}
+	current := &turn{turnSource: inbox.NameWeb}
 	k.turn = current
 	ctx := context.WithValue(context.Background(), callTurnKey{}, original)
 	ctx = context.WithValue(ctx, callReplyGenKey{}, 0)
@@ -201,7 +201,7 @@ func TestAudioLateSendStaysWithOriginatingReply(t *testing.T) {
 
 func TestAudioBadMixedAttachmentQueuesNothing(t *testing.T) {
 	k, dir, _ := outImageKernel(t)
-	k.turn = &turn{turnSource: link.NameWeb}
+	k.turn = &turn{turnSource: inbox.NameWeb}
 	if err := os.WriteFile(filepath.Join(dir, "good.png"), onePixelPNG(t), 0600); err != nil {
 		t.Fatal(err)
 	}

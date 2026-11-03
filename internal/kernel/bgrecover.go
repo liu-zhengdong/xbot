@@ -10,7 +10,6 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 )
@@ -96,9 +95,9 @@ func (k *Kernel) recoverInterrupted() {
 			continue
 		}
 		text := fmt.Sprintf("后台任务 %s 因进程重启中断，做到第 %d 步。任务：%s。没有自动续跑，需要的话重新交代。", id, steps, task)
-		_ = k.postCurrentEvent(link.Event{
+		_ = k.postCurrentEvent(inbox.Event{
 			ID:        "ev_" + id + "_end",
-			Source:    link.SourceSubagent,
+			Source:    inbox.SourceSubagent,
 			Type:      "fork_end",
 			Content:   text,
 			Sender:    id,

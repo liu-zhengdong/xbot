@@ -71,7 +71,7 @@ func TestDispatchKeepsTheForegroundFree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb, link.NameAgents})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameWeb, link.NameAgents})
 	if err != nil {
 		t.Fatal(err)
 	}

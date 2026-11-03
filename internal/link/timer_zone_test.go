@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"xbot/internal/inbox"
 )
 
 func writeRoutine(t *testing.T, dir string, r Routine) {
@@ -19,10 +21,10 @@ func TestTimerZones(t *testing.T) {
 	writeRoutine(t, dir, Routine{ID: "legacy", Name: "legacy", Prompt: "p", Cron: "0 1 * * *", Enabled: true})
 	writeRoutine(t, dir, Routine{ID: "local", Name: "local", Prompt: "p", Cron: "0 1 * * *", Zone: "local", Enabled: true})
 	tm := &Timer{Dir: dir, Loc: loc}
-	fire := func(when time.Time) []Event {
+	fire := func(when time.Time) []inbox.Event {
 		t.Helper()
-		var posted []Event
-		if err := tm.Fire(when, func(ev Event) error {
+		var posted []inbox.Event
+		if err := tm.Fire(when, func(ev inbox.Event) error {
 			posted = append(posted, ev)
 			return nil
 		}); err != nil {

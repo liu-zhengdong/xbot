@@ -47,7 +47,7 @@ func TestProcRetainedInboxFollowsHandleRename(t *testing.T) {
 				t.Fatal(err)
 			}
 			at := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
-			seed := link.NewEvent(link.NameTimer, link.TypeTimer, "fixture wake", "u1", at)
+			seed := inbox.NewEvent(inbox.NameTimer, inbox.TypeTimer, "fixture wake", "u1", at)
 			if err := oldBox.Post(seed); err != nil {
 				t.Fatal(err)
 			}
@@ -82,7 +82,7 @@ func TestProcRetainedInboxFollowsHandleRename(t *testing.T) {
 				runCtx, stop := context.WithCancel(ctx)
 				defer stop()
 				handled := 0
-				err := Run(runCtx, Config{K: k, SkipDeliver: true, After: func(ev link.Event, err error) {
+				err := Run(runCtx, Config{K: k, SkipDeliver: true, After: func(ev inbox.Event, err error) {
 					if err != nil {
 						t.Error(err)
 					}
@@ -93,7 +93,7 @@ func TestProcRetainedInboxFollowsHandleRename(t *testing.T) {
 							stop()
 						}
 					} else {
-						if ev.ID == seed.ID || ev.Source != link.NameTimer {
+						if ev.ID == seed.ID || ev.Source != inbox.NameTimer {
 							t.Error("next timer event not handled", ev.ID)
 						}
 						stop()
@@ -141,7 +141,7 @@ func TestProcRetainedInboxFollowsHandleRename(t *testing.T) {
 				if len(pending) != 0 {
 					t.Fatal("handled timer was not acked", pending)
 				}
-			} else if len(pending) != 1 || pending[0].Source != link.NameTimer {
+			} else if len(pending) != 1 || pending[0].Source != inbox.NameTimer {
 				t.Fatal("timer post missed current Inbox", pending)
 			}
 			if _, err := os.Stat(bot.Dir(root, "before")); !os.IsNotExist(err) {

@@ -11,6 +11,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -38,7 +39,7 @@ func indexHas(e environment, name string) bool {
 
 func doorKernel(t *testing.T, p provider.Provider) (*Kernel, *bot.Bot) {
 	t.Helper()
-	b := testBot(t, link.NameTerminal, link.NamePersona, link.NameMemory, link.NameTimer, link.NameBrowser)
+	b := testBot(t, inbox.NameTerminal, link.NamePersona, link.NameMemory, inbox.NameTimer, link.NameBrowser)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +279,7 @@ func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 		approved = append(approved, name)
 		return true, nil
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(1, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "go", time.Unix(1, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.reqs) != len(p.resps) {
@@ -324,7 +325,7 @@ func TestDoorKeepsToolsBytesStableAndCalls(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: provider.TextContent("again")},
 	}}
 	k.Provider = p2
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "again", time.Unix(2, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "again", time.Unix(2, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	for id, name := range map[string]string{"c4": "tools", "c5": "read_file"} {

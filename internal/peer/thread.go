@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -84,21 +84,21 @@ func collectDirect(self *bot.Bot, peerName string, out *[]Direct) error {
 
 func directText(content, peerName string) (from, text string, ok bool) {
 	source, typ, sender, body, ok := unwrapEvent(content)
-	if !ok || source != "bot:"+peerName || typ != link.TypeMessage || sender != peerName {
+	if !ok || source != "bot:"+peerName || typ != inbox.TypeMessage || sender != peerName {
 		return "", "", false
 	}
 	return sender, body, true
 }
 
 // EventSource reports the origin of a wrapped untrusted event: its source
-// attribute and sender. ok is false for any content link.Wrap did not produce.
+// attribute and sender. ok is false for any content inbox.Wrap did not produce.
 func EventSource(content string) (source, sender string, ok bool) {
 	source, _, sender, _, ok = unwrapEvent(content)
 	return
 }
 
-// unwrapEvent reverses link.Wrap. The body is the event content as the model
-// saw it: fence tags inside it were neutralized by link.Wrap.
+// unwrapEvent reverses inbox.Wrap. The body is the event content as the model
+// saw it: fence tags inside it were neutralized by inbox.Wrap.
 func unwrapEvent(content string) (source, typ, sender, body string, ok bool) {
 	const prefix = "<untrusted_event "
 	const suffix = "\n</untrusted_event>"

@@ -84,7 +84,7 @@ func (s *Server) handleConnector(w http.ResponseWriter, r *http.Request) {
 		writeStatus(w, http.StatusInternalServerError, "error")
 		return
 	}
-	ev := link.NewEvent(kind, link.TypeMessage, msg.content, msg.sender, s.now())
+	ev := inbox.NewEvent(kind, inbox.TypeMessage, msg.content, msg.sender, s.now())
 	if err := box.Post(ev); err != nil {
 		writeStatus(w, http.StatusInternalServerError, "error")
 		return

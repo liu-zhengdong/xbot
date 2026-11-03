@@ -18,7 +18,7 @@ import (
 	"xbot/internal/clip"
 	"xbot/internal/config"
 	"xbot/internal/experience"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 	"xbot/internal/work"
@@ -77,7 +77,7 @@ func TestExperienceRuntimeNaturalEnvironmentSQLiteAndNoExtraEvents(t *testing.T)
 		{Role: provider.RoleAssistant, Content: provider.TextContent("still here")},
 	}}
 	k.Provider = model
-	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "next natural turn", k.now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("owner", "next natural turn", k.now())); err != nil {
 		t.Fatal(err)
 	}
 	if len(model.reqs) != 1 {
@@ -127,7 +127,7 @@ func TestExperienceRuntimeNaturalEnvironmentSQLiteAndNoExtraEvents(t *testing.T)
 	if err != nil || !bytes.Equal(previous.Fields["experience"], next.Fields["experience"]) {
 		t.Fatalf("DB read failure reset original environment prev=%s next=%s err=%v", previous.Fields["experience"], next.Fields["experience"], err)
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "natural next turn after DB error", k.now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("owner", "natural next turn after DB error", k.now())); err != nil {
 		t.Fatal(err)
 	}
 	if len(model.reqs) != 2 || wakes != 0 {

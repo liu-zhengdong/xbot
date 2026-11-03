@@ -4,14 +4,14 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/permissions"
 )
 
 func TestProductionKernelAlwaysAllowsTools(t *testing.T) {
 	t.Setenv("XBOT_API_KEY", "fake-test-key")
 	root := t.TempDir()
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}

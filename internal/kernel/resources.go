@@ -92,7 +92,7 @@ func (r *BotResources) postMCP(server, text string) error {
 		return errors.New("bot resources closed")
 	}
 	b := r.current
-	ev := link.NewEvent("mcp:"+server, link.TypeMessage, text, "mcp:"+server, time.Now())
+	ev := inbox.NewEvent("mcp:"+server, inbox.TypeMessage, text, "mcp:"+server, time.Now())
 	ev.Untrusted = true
 	err := r.box.Post(ev)
 	r.route.RUnlock()
@@ -148,7 +148,7 @@ func (r *BotResources) deliverToolDone(job tools.Job) {
 		if text == "" {
 			text = "工具 " + job.Tool + "（" + job.ID + "）：" + job.Status + "，输出 " + job.Output
 		}
-		err := r.box.Post(link.Event{ID: "shelljob_" + job.ID, Source: "shell", Type: tools.JobEventType, Sender: job.ID, Content: text, Images: job.Images, Time: r.now(), Untrusted: true})
+		err := r.box.Post(inbox.Event{ID: "shelljob_" + job.ID, Source: "shell", Type: tools.JobEventType, Sender: job.ID, Content: text, Images: job.Images, Time: r.now(), Untrusted: true})
 		posted = err == nil
 		return err
 	})

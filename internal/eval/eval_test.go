@@ -13,6 +13,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/config"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -692,7 +693,7 @@ func (p *toolListProvider) Chat(_ context.Context, req provider.Request, _ func(
 // The eval jail link is named tools, but its shell has no job table. The model
 // must not see background job controls; ordinary discovery remains available.
 func TestEvalToolListOmitsBackgroundShell(t *testing.T) {
-	b, err := bot.Create(t.TempDir(), "ada", "Be brief.", []string{link.NameTerminal})
+	b, err := bot.Create(t.TempDir(), "ada", "Be brief.", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -705,7 +706,7 @@ func TestEvalToolListOmitsBackgroundShell(t *testing.T) {
 		Links:         []link.Link{link.Terminal{}, sandboxLink{list: caseTools(work, false)}},
 		Now:           func() time.Time { return when },
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", when)); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "hi", when)); err != nil {
 		t.Fatal(err)
 	}
 	var names []string

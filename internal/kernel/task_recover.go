@@ -9,7 +9,6 @@ import (
 	"xbot/internal/code"
 	"xbot/internal/exec"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 )
 
 // RecoverTasks uses the existing owners' records. No task is rerun from an
@@ -96,7 +95,7 @@ func (k *Kernel) recoverTasks() error {
 				if box == nil {
 					return nil
 				}
-				return box.Post(link.Event{ID: eventID, Source: link.SourceSubagent, Type: exec.EvFailed, Sender: id, Content: m.Summary, Time: m.FinishedAt, Untrusted: true})
+				return box.Post(inbox.Event{ID: eventID, Source: inbox.SourceSubagent, Type: exec.EvFailed, Sender: id, Content: m.Summary, Time: m.FinishedAt, Untrusted: true})
 			}); err != nil {
 				return err
 			}

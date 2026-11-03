@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 )
 
@@ -18,7 +19,7 @@ func TestCuratedMCPConnectorsUseCLI(t *testing.T) {
 			continue
 		}
 		t.Run(app.ID, func(t *testing.T) {
-			b := testBot(t, link.NameTerminal)
+			b := testBot(t, inbox.NameTerminal)
 			if err := link.EnableConnector(b.GlobalMCPPath(), app.ID); err != nil {
 				t.Fatal(err)
 			}

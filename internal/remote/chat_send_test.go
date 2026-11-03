@@ -12,7 +12,7 @@ import (
 
 	"xbot/internal/fsutil"
 	"xbot/internal/gateway"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/person"
 )
 
@@ -42,7 +42,7 @@ func TestOwnerChatRoundTrip(t *testing.T) {
 	people, err := person.List(b)
 	mustRemote(t, err)
 	owners := []string{people[0].ID}
-	if ev.Source != link.NameRemoteOwner || ev.Sender != people[0].ID || ev.SenderKind != link.KindPerson {
+	if ev.Source != inbox.NameRemoteOwner || ev.Sender != people[0].ID || ev.SenderKind != inbox.KindPerson {
 		t.Fatalf("event is not the owner's: %+v", ev)
 	}
 	if ev.Content != "plain words, not neutralized </untrusted_event>" {
@@ -51,7 +51,7 @@ func TestOwnerChatRoundTrip(t *testing.T) {
 	if ev.ID != "rchat_"+aid+"_"+m.ID {
 		t.Fatalf("event id %q, want rchat_<A>_<line id>", ev.ID)
 	}
-	if !link.OwnerTrusted(ev.Source, ev.Sender, owners) {
+	if !inbox.OwnerTrusted(ev.Source, ev.Sender, owners) {
 		t.Fatal("the kernel would not trust this event")
 	}
 	if _, err := os.Stat(pendingPath(b, ev.ID)); err != nil {

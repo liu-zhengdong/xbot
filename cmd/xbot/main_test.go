@@ -138,7 +138,7 @@ func TestRelativeRootSpawn(t *testing.T) {
 	model := httptest.NewServer(mockopenai.NewMux(t.TempDir()))
 	defer model.Close()
 	client := &provider.Client{BaseURL: model.URL + "/v1", APIKey: "test", Model: "mock", HTTPClient: model.Client()}
-	b, err := bot.Create(root, "ada", "You are Ada.", []string{link.NameTerminal, link.NameAgents})
+	b, err := bot.Create(root, "ada", "You are Ada.", []string{inbox.NameTerminal, link.NameAgents})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestRelativeRootSpawn(t *testing.T) {
 		Inbox: box, Memory: memory.Open(root), MaxSteps: 4,
 		Approve: func(context.Context, string, string) (bool, error) { return true, nil },
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "SPAWN_BRIEF", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "SPAWN_BRIEF", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	entries, err := b.Entries()
@@ -194,13 +194,13 @@ func subagentEnded(t *testing.T, path string) bool {
 	}
 	for _, line := range bytes.Split(raw, []byte("\n")) {
 		var rec struct {
-			Op    string      `json:"op"`
-			Event *link.Event `json:"event"`
+			Op    string       `json:"op"`
+			Event *inbox.Event `json:"event"`
 		}
 		if json.Unmarshal(line, &rec) != nil || rec.Op != "post" || rec.Event == nil {
 			continue
 		}
-		if rec.Event.Source == link.SourceSubagent && (rec.Event.Type == exec.EvDone || rec.Event.Type == exec.EvFailed) {
+		if rec.Event.Source == inbox.SourceSubagent && (rec.Event.Type == exec.EvDone || rec.Event.Type == exec.EvFailed) {
 			return true
 		}
 	}
@@ -364,7 +364,7 @@ func TestMountGrants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	links, err := mount(b, runnerSpec{})
+	links, err := mount(b, runnerSpec{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,7 +434,7 @@ func TestWebhookAndWatchCLI(t *testing.T) {
 	if b.Grants("watch") || len(b.Config().Watches) != 1 {
 		t.Fatalf("%+v", b.Config())
 	}
-	links, err := mount(b, runnerSpec{})
+	links, err := mount(b, runnerSpec{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -583,7 +583,7 @@ func TestProfileSetExportImport(t *testing.T) {
 
 func TestLinkCLIGrantsAndRevokes(t *testing.T) {
 	root := t.TempDir()
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -600,7 +600,7 @@ func TestLinkCLIGrantsAndRevokes(t *testing.T) {
 	if err != nil || !b.Grants(link.NameBrowser) {
 		t.Fatalf("browser grant: %v", err)
 	}
-	if _, err := mount(b, runnerSpec{}); err != nil {
+	if _, err := mount(b, runnerSpec{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := cmdLink(root, []string{"remove", "ada", "browser"}); err != nil {
@@ -621,7 +621,7 @@ func TestGroupCLIKeepsBots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	who, err := person.Identify(root, person.Account{Link: link.NameTerminal, ExternalID: ext}, display)
+	who, err := person.Identify(root, person.Account{Link: inbox.NameTerminal, ExternalID: ext}, display)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -783,7 +783,7 @@ func TestMountEveryCatalogLinkTwice(t *testing.T) {
 			t.Fatalf("grant %s: %v", e.Grant, err)
 		}
 	}
-	first, err := mount(b, runnerSpec{})
+	first, err := mount(b, runnerSpec{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -797,7 +797,7 @@ func TestMountEveryCatalogLinkTwice(t *testing.T) {
 			t.Fatalf("missing %s", want)
 		}
 	}
-	if _, err := mount(b, runnerSpec{}); err != nil {
+	if _, err := mount(b, runnerSpec{}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -889,5 +889,5 @@ func mountBot(t *testing.T, links []string) ([]link.Link, error) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return mount(b, runnerSpec{})
+	return mount(b, runnerSpec{}, nil)
 }

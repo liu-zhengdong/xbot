@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -20,7 +20,7 @@ func TestTranscriptForkFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal, link.NameWeb})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameTerminal, inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}

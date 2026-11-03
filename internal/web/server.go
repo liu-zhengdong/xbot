@@ -1193,7 +1193,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		}
 		replyTo = *in.ReplyTo
 	}
-	ev := link.WebEvent(s.owner, text, time.Now())
+	ev := inbox.WebEvent(s.owner, text, time.Now())
 	ev.ReplyTo = replyTo
 	ev.Images = images
 	ev.Audios = audios
@@ -1330,7 +1330,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 // interject hands ev to the bot's running turn in this process and streams
 // that turn's answer back on this request. False means no live turn accepted
 // it. The kernel records each accepted request's failed outcome on errors.
-func (s *Server) interject(w http.ResponseWriter, r *http.Request, b *bot.Bot, ev link.Event) bool {
+func (s *Server) interject(w http.ResponseWriter, r *http.Request, b *bot.Bot, ev inbox.Event) bool {
 	rs := &replyStream{w: w}
 	handoff := make(chan struct{})
 	var once sync.Once

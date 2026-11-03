@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 )
 
 const (
@@ -49,14 +49,14 @@ func TestSyncExportCommandRemoved(t *testing.T) {
 
 func TestMountSkipsNodeGrant(t *testing.T) {
 	root := t.TempDir()
-	b, err := bot.Create(root, "ada", "Be brief.", []string{link.NameTerminal})
+	b, err := bot.Create(root, "ada", "Be brief.", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := b.GrantLink(legacyNodeGrant); err != nil {
 		t.Fatal(err)
 	}
-	got, err := mount(b, runnerSpec{})
+	got, err := mount(b, runnerSpec{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

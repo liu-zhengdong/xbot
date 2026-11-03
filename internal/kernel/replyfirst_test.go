@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -23,7 +24,7 @@ func countReplyFirst(msgs []provider.Message) int {
 // the owner's message on the turn's first request and is not added again on
 // the next tool step.
 func TestReplyFirstReminderOncePerOwnerTurn(t *testing.T) {
-	b := testBot(t, link.NameWeb)
+	b := testBot(t, inbox.NameWeb)
 	now := time.Unix(1000, 0).UTC()
 	p := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
@@ -36,7 +37,7 @@ func TestReplyFirstReminderOncePerOwnerTurn(t *testing.T) {
 		Links: []link.Link{link.Terminal{}},
 		Now:   func() time.Time { return now },
 	}
-	if err := k.Handle(context.Background(), link.WebEvent("u1", "hello", now.Add(time.Second))); err != nil {
+	if err := k.Handle(context.Background(), inbox.WebEvent("u1", "hello", now.Add(time.Second))); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.reqs) != 2 {
@@ -83,9 +84,9 @@ func TestReplyFirstReminderOncePerOwnerTurn(t *testing.T) {
 // messages do not get the reminder.
 func TestReplyFirstReminderOnlyOnOwnerChat(t *testing.T) {
 	now := time.Unix(3000, 0).UTC()
-	run := func(t *testing.T, ev link.Event) int {
+	run := func(t *testing.T, ev inbox.Event) int {
 		t.Helper()
-		b := testBot(t, link.NameTerminal)
+		b := testBot(t, inbox.NameTerminal)
 		p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 		k := &Kernel{
 			Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4,
@@ -101,14 +102,14 @@ func TestReplyFirstReminderOnlyOnOwnerChat(t *testing.T) {
 		}
 		return n
 	}
-	if run(t, link.TerminalEvent("u1", "hello", now.Add(time.Second))) != 1 {
+	if run(t, inbox.TerminalEvent("u1", "hello", now.Add(time.Second))) != 1 {
 		t.Fatal("terminal owner message did not carry the reminder")
 	}
-	if run(t, link.NewEvent(link.NameTimer, link.TypeTimer, "tick", "u1", now.Add(time.Second))) != 0 {
+	if run(t, inbox.NewEvent(inbox.NameTimer, inbox.TypeTimer, "tick", "u1", now.Add(time.Second))) != 0 {
 		t.Fatal("timer wake carried the reminder")
 	}
-	botEv := link.WebEvent("peer", "hi", now.Add(time.Second))
-	botEv.SenderKind = link.KindBot
+	botEv := inbox.WebEvent("peer", "hi", now.Add(time.Second))
+	botEv.SenderKind = inbox.KindBot
 	if run(t, botEv) != 0 {
 		t.Fatal("bot message carried the reminder")
 	}

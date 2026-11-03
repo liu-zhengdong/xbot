@@ -8,7 +8,6 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/clip"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/peer"
 	"xbot/internal/provider"
 )
@@ -159,15 +158,15 @@ func (k *Kernel) presentHistory(body, botName string, foreign bool, cap int) str
 		return out
 	}
 	at := time.Now().UTC()
-	ev := link.Event{Source: "bot:" + botName, Type: "transcript", Sender: botName, Time: at}
-	overhead := len(link.Wrap(ev))
+	ev := inbox.Event{Source: "bot:" + botName, Type: "transcript", Sender: botName, Time: at}
+	overhead := len(inbox.Wrap(ev))
 	budget := cap - overhead
 	if budget < 1 {
 		budget = 1
 	}
 	clipped, _ := clip.Bytes(body, budget)
 	ev.Content = clipped
-	out := link.Wrap(ev)
+	out := inbox.Wrap(ev)
 	// Neutralizing can grow the body. Shrink the body rather than cut the
 	// wrapped text, which would drop the closer.
 	for len(out) > cap && budget > 1 {
@@ -177,7 +176,7 @@ func (k *Kernel) presentHistory(body, botName string, foreign bool, cap int) str
 		}
 		clipped, _ = clip.Bytes(body, budget)
 		ev.Content = clipped
-		out = link.Wrap(ev)
+		out = inbox.Wrap(ev)
 	}
 	if len(out) > cap {
 		out, _ = clip.Bytes(out, cap)

@@ -10,7 +10,6 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 )
@@ -61,7 +60,7 @@ func (l *Link) Move(botDir, inboxPath string, transcript func(string) error, ren
 	return err
 }
 
-func (l *Link) Name() string { return link.NameCoding }
+func (l *Link) Name() string { return inbox.NameCoding }
 
 func (l *Link) Tools() []tools.Tool {
 	if l == nil || l.rec == nil {
@@ -87,7 +86,7 @@ func (l *Link) post(task Task) {
 	if text == "" {
 		text = task.Goal
 	}
-	ev := link.NewEvent(link.NameCoding, task.Status, task.ID+"\n"+text, task.ID, task.Updated)
+	ev := inbox.NewEvent(inbox.NameCoding, task.Status, task.ID+"\n"+text, task.ID, task.Updated)
 	if task.Status == StatusInterrupted {
 		ev.ID = "ev_" + task.ID + "_interrupted"
 	}

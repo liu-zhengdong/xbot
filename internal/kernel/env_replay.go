@@ -13,7 +13,6 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/person"
 	"xbot/internal/provider"
@@ -372,7 +371,7 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 		delete(next.Fields, "pending_approvals")
 	}
 	k.experienceEnv(&next)
-	tasks, err := k.taskEnvironment(environmentTasks(prev), link.Event{})
+	tasks, err := k.taskEnvironment(environmentTasks(prev), inbox.Event{})
 	if err != nil {
 		return next, err
 	}
@@ -389,7 +388,7 @@ func (k *Kernel) sampleEnvironment(prev environment) (environment, error) {
 	if id := source.personID(); id != "" {
 		source.refreshName(k.Bot.Root)
 		environmentSet(&next, "source", source)
-		text, err := k.personText(ctx, link.Event{Sender: id, SenderKind: link.KindPerson})
+		text, err := k.personText(ctx, inbox.Event{Sender: id, SenderKind: inbox.KindPerson})
 		if err != nil && !errors.Is(err, memory.ErrBusy) {
 			return next, err
 		}
@@ -426,7 +425,7 @@ func (k *Kernel) publishEnvironment(st bot.State, prev environment, full bool, b
 	}
 	return k.appendEnvironmentPrompts(context.Background(), environmentDelta(prev, next, basis, st.MemSnap), full)
 }
-func (k *Kernel) receiveEnvironment(ev link.Event, seq int) error {
+func (k *Kernel) receiveEnvironment(ev inbox.Event, seq int) error {
 	st, err := k.currentState()
 	if err != nil {
 		return err
@@ -465,7 +464,7 @@ func (k *Kernel) receiveEnvironment(ev link.Event, seq int) error {
 	_, err = k.appendEnvironment(environmentDelta(prev, next, "", st.MemSnap))
 	return err
 }
-func (k *Kernel) syncEnv(st bot.State, _ link.Event, _ string) (bot.State, error) {
+func (k *Kernel) syncEnv(st bot.State, _ inbox.Event, _ string) (bot.State, error) {
 	k.envMu.Lock()
 	defer k.envMu.Unlock()
 	prev, err := k.visibleEnvironment(st)
@@ -502,7 +501,7 @@ func (k *Kernel) beginOwnWrite(ctx context.Context, scope memory.Scope, personID
 	}
 	read := func() (string, error) {
 		if key != "" {
-			return k.personText(ctx, link.Event{Sender: key, SenderKind: link.KindPerson})
+			return k.personText(ctx, inbox.Event{Sender: key, SenderKind: inbox.KindPerson})
 		}
 		return k.memoryText(ctx, "")
 	}

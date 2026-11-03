@@ -30,7 +30,7 @@ func (pokeTool) Confirm(json.RawMessage) (bool, string, error) {
 	return false, "poke", nil
 }
 func (p pokeTool) Run(context.Context, json.RawMessage) (string, error) {
-	ev := link.NewEvent("webhook:peer", "push", "REPLY_LANDED", "bob", time.Unix(50, 0).UTC())
+	ev := inbox.NewEvent("webhook:peer", "push", "REPLY_LANDED", "bob", time.Unix(50, 0).UTC())
 	if err := p.k.Inbox.Post(ev); err != nil {
 		return "", err
 	}
@@ -38,7 +38,7 @@ func (p pokeTool) Run(context.Context, json.RawMessage) (string, error) {
 }
 
 func TestInboxEventArrivesBeforeTheNextStep(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	box, err := inbox.Open(b.InboxPath())
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +54,7 @@ func TestInboxEventArrivesBeforeTheNextStep(t *testing.T) {
 		Links: []link.Link{link.Terminal{}},
 	}
 	k.Links = append(k.Links, pokeLink{k})
-	ev := link.TerminalEvent("u1", "ask bob", time.Unix(10, 0).UTC())
+	ev := inbox.TerminalEvent("u1", "ask bob", time.Unix(10, 0).UTC())
 	if err := box.Post(ev); err != nil {
 		t.Fatal(err)
 	}

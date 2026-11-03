@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"xbot/internal/config"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/vault"
@@ -27,7 +28,7 @@ import (
 // picture. Switching it off removes the tool on the next request without
 // rebuilding the kernel; hosted search being off does not matter.
 func TestHostedImageGenerationLandsInWorkspace(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	png := sizedPNG(t, 16, 16)
 	b64 := base64.StdEncoding.EncodeToString(png)
 	var mu sync.Mutex
@@ -88,7 +89,7 @@ func TestHostedImageGenerationLandsInWorkspace(t *testing.T) {
 			progress = append(progress, p.Text)
 		}
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "画只猫", time.Unix(1000, 0))); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("owner", "画只猫", time.Unix(1000, 0))); err != nil {
 		t.Fatal(err)
 	}
 	gen := filepath.Join(work.BotDir(b.Root, b.Name()), work.GeneratedDir)
@@ -149,7 +150,7 @@ func TestHostedImageGenerationLandsInWorkspace(t *testing.T) {
 	if err := config.SetWebImageGen(b.Root, false, "openai", "auto"); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "再来", time.Unix(1001, 0))); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("owner", "再来", time.Unix(1001, 0))); err != nil {
 		t.Fatal(err)
 	}
 	mu.Lock()
@@ -175,7 +176,7 @@ func TestImageGenGlobalGate(t *testing.T) {
 		{"api key only", "openai", "", true, true, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			b := testBot(t, link.NameTerminal)
+			b := testBot(t, inbox.NameTerminal)
 			keyEnv := ""
 			if tc.oauth == "" {
 				keyEnv = "FAKE"

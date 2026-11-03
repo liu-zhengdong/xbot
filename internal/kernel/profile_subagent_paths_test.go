@@ -10,7 +10,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/exec"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/mcp"
 	"xbot/internal/work"
 )
@@ -45,7 +45,7 @@ func TestProfileSubagentParentEventUsesCurrentInboxAndUnlockedWake(t *testing.T)
 	})
 	defer SetWaker(root, nil)
 	events := make(chan exec.Event, 1)
-	events <- exec.Event{ID: "subagent:parent-note:1", AgentID: "sa_123456789abcdef0", Kind: link.TypeMessage, Text: "same child after move", TurnSeq: 1}
+	events <- exec.Event{ID: "subagent:parent-note:1", AgentID: "sa_123456789abcdef0", Kind: inbox.TypeMessage, Text: "same child after move", TurnSeq: 1}
 	close(events)
 	k.forwardExec(events)
 	if woken != "after" {

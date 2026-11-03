@@ -3,16 +3,15 @@ package kernel
 import (
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 )
 
-func (k *Kernel) postCurrentEvent(event link.Event) error {
+func (k *Kernel) postCurrentEvent(event inbox.Event) error {
 	return k.withCurrentIO(func(_ *bot.Bot, box *inbox.Inbox) error { return box.Post(event) })
 }
 func (k *Kernel) reloadCurrentInbox() error {
 	return k.withCurrentIO(func(_ *bot.Bot, box *inbox.Inbox) error { return box.Reload() })
 }
-func (k *Kernel) pendingCurrentEvents() (events []link.Event) {
+func (k *Kernel) pendingCurrentEvents() (events []inbox.Event) {
 	_ = k.withCurrentIO(func(_ *bot.Bot, box *inbox.Inbox) error { events = box.Pending(); return nil })
 	return
 }

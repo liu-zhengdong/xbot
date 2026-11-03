@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"xbot/internal/compact"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -34,7 +35,7 @@ func mustArgs(t *testing.T, v any) string {
 
 func freshBot(t *testing.T) (*Kernel, *scripted, *time.Time) {
 	t.Helper()
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	p := &scripted{}
 	now := time.Unix(1_700_000_000, 0).UTC()
 	k := &Kernel{
@@ -53,7 +54,7 @@ func runTurn(t *testing.T, k *Kernel, now *time.Time, text string, resps ...prov
 	t.Helper()
 	p := k.Provider.(*scripted)
 	p.resps = append(p.resps, resps...)
-	ev := link.TerminalEvent("u1", text, *now)
+	ev := inbox.TerminalEvent("u1", text, *now)
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}

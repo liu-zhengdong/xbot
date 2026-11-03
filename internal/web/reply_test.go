@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
-	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
@@ -43,7 +43,7 @@ func TestReplyToRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestEmptyTranscriptRejectsReplyTo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := bot.Create(root, "ada", "persona", []string{link.NameWeb}); err != nil {
+	if _, err := bot.Create(root, "ada", "persona", []string{inbox.NameWeb}); err != nil {
 		t.Fatal(err)
 	}
 	b, err := bot.Load(root, "ada")

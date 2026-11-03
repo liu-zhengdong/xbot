@@ -8,13 +8,13 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/envprompt"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
 
 func TestRegisteredTimeRequests(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	now := time.Date(2026, 10, 31, 8, 17, 0, 0, time.UTC)
 	p := &scripted{}
 	for i := 0; i < 5; i++ {
@@ -25,7 +25,7 @@ func TestRegisteredTimeRequests(t *testing.T) {
 	k.registeredEnvironment().Register(envprompt.Field{Key: "weather", Sample: func(context.Context) (envprompt.Value, error) { return "晴", nil }, Prompt: func(v envprompt.Value, _ envprompt.Change) string { return "天气：" + v.(string) }})
 	handle := func() {
 		t.Helper()
-		if err := k.Handle(context.Background(), link.TerminalEvent("u1", "几点了", now)); err != nil {
+		if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "几点了", now)); err != nil {
 			t.Fatal(err)
 		}
 	}

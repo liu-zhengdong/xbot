@@ -21,7 +21,6 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/gateway"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/peer"
 )
 
@@ -199,7 +198,7 @@ func TestPeerMessageRuntimeGatewayResults(t *testing.T) {
 				t.Fatal("real Receive duplicated or lost the message")
 			}
 			ev := box.Pending()[0]
-			if ev.ID != "remote_"+original.From+"_"+original.ID || ev.Source != "bot:ada@a" || ev.Sender != "ada@a" || ev.SenderKind != link.KindBot || !ev.Untrusted || ev.Content != "hello [redacted]" || ev.Chain != "original-chain" || ev.Hops != 2 || !ev.Time.Equal(receivedAt) {
+			if ev.ID != "remote_"+original.From+"_"+original.ID || ev.Source != "bot:ada@a" || ev.Sender != "ada@a" || ev.SenderKind != inbox.KindBot || !ev.Untrusted || ev.Content != "hello [redacted]" || ev.Chain != "original-chain" || ev.Hops != 2 || !ev.Time.Equal(receivedAt) {
 				t.Fatal("receiver event metadata, time, or stable identity changed")
 			}
 		})

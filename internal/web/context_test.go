@@ -75,7 +75,7 @@ func contextFixture(t *testing.T) (*Server, string, *bot.Bot, *kernel.Kernel) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "idlers", "You are a test bot.", []string{link.NameTerminal, link.NameWeb})
+	b, err := bot.Create(root, "idlers", "You are a test bot.", []string{inbox.NameTerminal, inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func contextFixture(t *testing.T) (*Server, string, *bot.Bot, *kernel.Kernel) {
 		Approve:   func(context.Context, string, string) (bool, error) { return true, nil },
 		Budget:    kernel.BudgetFor(b.Config()),
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "查一下上下文", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "查一下上下文", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	return s, tok, b, k
@@ -252,7 +252,7 @@ func TestContextAPIEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "fresh", "p", []string{link.NameTerminal, link.NameWeb})
+	b, err := bot.Create(root, "fresh", "p", []string{inbox.NameTerminal, inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}

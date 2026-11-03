@@ -9,6 +9,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/compact"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -24,7 +25,7 @@ func TestWebhookReplyBecomesNote(t *testing.T) {
 	client := &provider.Client{BaseURL: srv.URL + "/v1", APIKey: "test", Model: "mock", HTTPClient: srv.Client()}
 	b := mustBot(t, root, "ada")
 	k := findingKernel(b, client)
-	ev := link.NewEvent("webhook:orders", "push", "PEANUT_ORDER cake with peanut topping", "hook", time.Now().UTC())
+	ev := inbox.NewEvent("webhook:orders", "push", "PEANUT_ORDER cake with peanut topping", "hook", time.Now().UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +46,7 @@ func TestWebhookSilentProducesNoNote(t *testing.T) {
 	client := &provider.Client{BaseURL: srv.URL + "/v1", APIKey: "test", Model: "mock", HTTPClient: srv.Client()}
 	b := mustBot(t, root, "ada")
 	k := findingKernel(b, client)
-	ev := link.NewEvent("webhook:orders", "push", "WEBHOOK_SILENT nothing to say", "hook", time.Now().UTC())
+	ev := inbox.NewEvent("webhook:orders", "push", "WEBHOOK_SILENT nothing to say", "hook", time.Now().UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}

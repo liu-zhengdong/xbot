@@ -8,6 +8,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/code"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -16,7 +17,7 @@ import (
 // A Link's tools register as soon as it is mounted, but they are never
 // declared in tools[]: the model reaches them through the tools door.
 func TestConnectorToolsRegisterButStayUndeclared(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTelegram)
+	b := testBot(t, inbox.NameTerminal, link.NameTelegram)
 	k := &Kernel{Bot: b, Links: []link.Link{link.NewConnector(bot.Dir(b.Root, b.Name()), b.SecretPath(), link.NameTelegram)}}
 	for _, loaded := range []bool{false, true} {
 		if loaded {
@@ -33,7 +34,7 @@ func TestConnectorToolsRegisterButStayUndeclared(t *testing.T) {
 }
 
 func TestCodingToolsRegisterButStayUndeclared(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameCoding)
+	b := testBot(t, inbox.NameTerminal, inbox.NameCoding)
 	k := &Kernel{Bot: b, Links: []link.Link{code.Open(bot.Dir(b.Root, b.Name()), b.InboxPath())}}
 	list, err := k.modelTools()
 	if err != nil {
@@ -48,7 +49,7 @@ func TestCodingToolsRegisterButStayUndeclared(t *testing.T) {
 
 func TestConnectorDeniedSendDoesNotPost(t *testing.T) {
 	const secret = "token-value-1"
-	b := testBot(t, link.NameTerminal, link.NameTelegram)
+	b := testBot(t, inbox.NameTerminal, link.NameTelegram)
 	if err := link.WriteSecrets(b.SecretPath(), map[string]string{"TELEGRAM_BOT_TOKEN": secret}); err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +75,7 @@ func TestConnectorDeniedSendDoesNotPost(t *testing.T) {
 		Links:   []link.Link{conn},
 		Approve: func(context.Context, string, string) (bool, error) { return false, nil },
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "tell them", time.Unix(1, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "tell them", time.Unix(1, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if posted != 0 {

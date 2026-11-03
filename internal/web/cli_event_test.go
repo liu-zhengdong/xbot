@@ -13,7 +13,6 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
 	"xbot/internal/kernel"
-	"xbot/internal/link"
 	"xbot/internal/provider"
 )
 
@@ -60,11 +59,11 @@ func TestCLIEventWake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var posted link.Event
+	var posted inbox.Event
 	for _, line := range strings.Split(string(rawLog), "\n") {
 		var record struct {
-			Op    string      `json:"op"`
-			Event *link.Event `json:"event"`
+			Op    string       `json:"op"`
+			Event *inbox.Event `json:"event"`
 		}
 		if json.Unmarshal([]byte(line), &record) == nil && record.Op == "post" && record.Event != nil {
 			posted = *record.Event
@@ -126,7 +125,7 @@ func TestCLIEventWake(t *testing.T) {
 	if !found {
 		t.Fatal("model missed untrusted event")
 	}
-	if link.OwnerTrusted("cli", "u1", []string{"u1"}) {
+	if inbox.OwnerTrusted("cli", "u1", []string{"u1"}) {
 		t.Fatal("CLI is trusted")
 	}
 	req, _ = http.NewRequest("POST", ui.URL+"/api/bots/ada/events", strings.NewReader(`{"sender":"codex","text":"x"}`))

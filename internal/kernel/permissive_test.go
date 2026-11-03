@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"xbot/internal/cliops"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/machine"
 	"xbot/internal/permissions"
 	"xbot/internal/review"
@@ -39,7 +39,7 @@ func needsCard(t *testing.T, k *Kernel, tool, args string) bool {
 // reports whether the card still went out, which no short-circuit may skip.
 func linksIntentAsks(t *testing.T, action, id string) bool {
 	t.Helper()
-	k := &Kernel{Bot: testBot(t, link.NameTerminal), Permissive: true}
+	k := &Kernel{Bot: testBot(t, inbox.NameTerminal), Permissive: true}
 	k.ensureTurn().turnTrusted = true
 	if err := k.StartOperations(); err != nil {
 		t.Fatal(err)

@@ -8,6 +8,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/compact"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -25,7 +26,7 @@ func TestDoneTextSkipsPreamble(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb, link.NameMemory})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameWeb, link.NameMemory})
 	if err != nil {
 		t.Fatal(err)
 	}

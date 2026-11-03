@@ -12,7 +12,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/compact"
 	"xbot/internal/exec"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
@@ -24,7 +24,7 @@ func envBaselineKernel(t *testing.T) (*Kernel, *scripted) {
 	k, store := personBaselineFixture(t)
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("one")}, {Role: provider.RoleAssistant, Content: provider.TextContent("two")}}}
 	k.Memory, k.Provider, k.MaxSteps, k.Now = store, p, 2, func() time.Time { return time.Unix(1000, 0) }
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "first", time.Unix(1000, 0))); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "first", time.Unix(1000, 0))); err != nil {
 		t.Fatal(err)
 	}
 	return k, p
@@ -56,7 +56,7 @@ func rewriteEnvironmentState(t *testing.T, k *Kernel, value any) {
 func TestEnvironmentIgnoresContradictoryLegacyLedger(t *testing.T) {
 	k, _ := envBaselineKernel(t)
 	rewriteEnvironmentState(t, k, map[string]any{"sender": "u1", "source": "terminal", "person_active": true, "at": time.Unix(1000, 0), "people": map[string]any{"u1": map[string]any{"text": "WRONG_PERSON", "seen": true}}})
-	text := receivePersonUpdates(t, k, link.TerminalEvent("u1", "again", time.Unix(1000, 0)))
+	text := receivePersonUpdates(t, k, inbox.TerminalEvent("u1", "again", time.Unix(1000, 0)))
 	if text != "" {
 		t.Fatalf("shadow ledger changed replayed baseline: %s", text)
 	}
@@ -69,7 +69,7 @@ func TestEnvironmentRestartUsesConversationOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	restarted := &Kernel{Bot: reloaded, Memory: k.Memory}
-	text := receivePersonUpdates(t, restarted, link.TerminalEvent("u1", "again", time.Unix(1000, 0)))
+	text := receivePersonUpdates(t, restarted, inbox.TerminalEvent("u1", "again", time.Unix(1000, 0)))
 	if text != "" {
 		t.Fatalf("restart re-announced published person: %s", text)
 	}
@@ -103,7 +103,7 @@ func TestEnvironmentCompressionRestoresFullDespiteUnrelatedUpdate(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := k.syncEnv(st0, link.Event{}, ""); err != nil {
+	if _, err := k.syncEnv(st0, inbox.Event{}, ""); err != nil {
 		t.Fatal(err)
 	}
 	n, _ := k.Bot.Count()
@@ -154,7 +154,7 @@ func TestEnvironmentInlineFoldRestoresLiveSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	k.Exec = &environmentTasksExecutor{tasks: []exec.Task{{ID: "sa_0123456789abcdef", Task: "LIVE_AFTER_FOLD", Status: "running"}}}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(9, 0))); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "go", time.Unix(9, 0))); err != nil {
 		t.Fatal(err)
 	}
 	folded := 0
@@ -196,7 +196,7 @@ func TestEnvironmentLargeMemoryChangeRemainsReplayable(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Establish the first set in the stream, keeping the prefix fixed.
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "see old", time.Unix(1000, 0))); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "see old", time.Unix(1000, 0))); err != nil {
 		t.Fatal(err)
 	}
 	p.resps = append(p.resps, provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("three")})
@@ -207,7 +207,7 @@ func TestEnvironmentLargeMemoryChangeRemainsReplayable(t *testing.T) {
 	if err := os.WriteFile(path, []byte(after.String()), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "see new", time.Unix(1000, 0))); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "see new", time.Unix(1000, 0))); err != nil {
 		t.Fatal(err)
 	}
 	curText, err := k.memoryText(context.Background(), "")
@@ -228,7 +228,7 @@ func TestEnvironmentLargeMemoryChangeRemainsReplayable(t *testing.T) {
 func TestEnvironmentUnchangedWakeAppendsNoStateAndDropsLedger(t *testing.T) {
 	k, _ := envBaselineKernel(t)
 	before, _ := k.Bot.Count()
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "unchanged", time.Unix(1000, 0))); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "unchanged", time.Unix(1000, 0))); err != nil {
 		t.Fatal(err)
 	}
 	after, _ := k.Bot.Count()
@@ -269,7 +269,7 @@ func TestEnvironmentRestartDoesNotRepeatRunningOrQueuedTasks(t *testing.T) {
 	}
 	k.Now = func() time.Time { return time.Unix(1000, 0) }
 	k.Provider = &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("status ready")}}}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "status", time.Unix(1000, 0))); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "status", time.Unix(1000, 0))); err != nil {
 		t.Fatal(err)
 	}
 	rewriteEnvironmentState(t, k, nil)
@@ -279,14 +279,14 @@ func TestEnvironmentRestartDoesNotRepeatRunningOrQueuedTasks(t *testing.T) {
 	}
 	restarted := &Kernel{Bot: reloaded, Memory: k.Memory, Exec: k.execSnapshot(), Now: k.Now}
 	before, _ := b.Count()
-	if _, err := restarted.receive(link.TerminalEvent("u1", "still here", time.Unix(1000, 0))); err != nil {
+	if _, err := restarted.receive(inbox.TerminalEvent("u1", "still here", time.Unix(1000, 0))); err != nil {
 		t.Fatal(err)
 	}
 	st, err := b.LoadState()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := restarted.syncEnv(st, link.Event{}, ""); err != nil {
+	if _, err := restarted.syncEnv(st, inbox.Event{}, ""); err != nil {
 		t.Fatal(err)
 	}
 	end, err := b.Count()

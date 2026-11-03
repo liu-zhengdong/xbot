@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 )
 
 func TestSidebarFolders(t *testing.T) {
@@ -174,7 +174,7 @@ func decodeFolders(t *testing.T, raw []byte) folderPayload {
 
 func mustFolderWebBot(t *testing.T, root, name, owner string) {
 	t.Helper()
-	b, err := bot.Create(root, name, "persona", []string{link.NameWeb})
+	b, err := bot.Create(root, name, "persona", []string{inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}

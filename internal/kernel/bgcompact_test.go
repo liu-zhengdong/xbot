@@ -14,13 +14,13 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/compact"
 	"xbot/internal/fsutil"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
 
 func TestBackgroundCompactDoesNotBlockTurn(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	seedHistory(t, b, 8, 4000)
 	mem := &factMem{}
 	comp := &gateCompactor{release: make(chan struct{}), entered: make(chan struct{})}
@@ -34,7 +34,7 @@ func TestBackgroundCompactDoesNotBlockTurn(t *testing.T) {
 	done := make(chan error, 1)
 	start := time.Now()
 	go func() {
-		done <- k.Handle(context.Background(), link.TerminalEvent("u1", "LATE", time.Unix(30, 0).UTC()))
+		done <- k.Handle(context.Background(), inbox.TerminalEvent("u1", "LATE", time.Unix(30, 0).UTC()))
 	}()
 	select {
 	case err := <-done:
@@ -69,7 +69,7 @@ func TestBackgroundCompactDoesNotBlockTurn(t *testing.T) {
 	}
 	done2 := make(chan error, 1)
 	go func() {
-		done2 <- k2.Handle(context.Background(), link.TerminalEvent("u1", "DURING", time.Unix(31, 0).UTC()))
+		done2 <- k2.Handle(context.Background(), inbox.TerminalEvent("u1", "DURING", time.Unix(31, 0).UTC()))
 	}()
 	select {
 	case err := <-done2:
@@ -109,7 +109,7 @@ func TestBackgroundCompactDoesNotBlockTurn(t *testing.T) {
 		Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("next")}}},
 		Compactor: comp, Memory: mem, Budget: k.Budget, MaxSteps: 2,
 	}
-	if err := k3.Handle(context.Background(), link.TerminalEvent("u1", "AFTER", time.Unix(32, 0).UTC())); err != nil {
+	if err := k3.Handle(context.Background(), inbox.TerminalEvent("u1", "AFTER", time.Unix(32, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	st, err = b.LoadState()
@@ -140,7 +140,7 @@ func TestBackgroundCompactDoesNotBlockTurn(t *testing.T) {
 }
 
 func TestBackgroundSwapOnlyBetweenTurns(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	seedHistory(t, b, 8, 4000)
 	comp := &noteCompactor{}
 	chat := &holdChat{entered: make(chan struct{}), release: make(chan struct{})}
@@ -151,7 +151,7 @@ func TestBackgroundSwapOnlyBetweenTurns(t *testing.T) {
 	tuneSoftBudget(t, k)
 	done := make(chan error, 1)
 	go func() {
-		done <- k.Handle(context.Background(), link.TerminalEvent("u1", "ask", time.Unix(40, 0).UTC()))
+		done <- k.Handle(context.Background(), inbox.TerminalEvent("u1", "ask", time.Unix(40, 0).UTC()))
 	}()
 	select {
 	case <-chat.entered:
@@ -187,7 +187,7 @@ func TestBackgroundSwapOnlyBetweenTurns(t *testing.T) {
 }
 
 func TestBackgroundJobCrashIsIdempotent(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	for i := 0; i < 5; i++ {
 		if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("old line")}}); err != nil {
 			t.Fatal(err)
@@ -212,7 +212,7 @@ func TestBackgroundJobCrashIsIdempotent(t *testing.T) {
 		Compactor: comp, Memory: mem,
 		Budget: compact.Budget{Ceiling: 1_000_000, KeepTail: 1}, MaxSteps: 2,
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "first", time.Unix(50, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "first", time.Unix(50, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	waitCalls(t, comp, 1)
@@ -231,7 +231,7 @@ func TestBackgroundJobCrashIsIdempotent(t *testing.T) {
 		t.Fatalf("facts %d after a failed job", mem.count())
 	}
 
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "second", time.Unix(51, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "second", time.Unix(51, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	// The worker can finish after this turn returns. The swap is still only
@@ -261,7 +261,7 @@ func TestBackgroundJobCrashIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	k2 := &Kernel{Bot: b, Provider: k.Provider, Compactor: comp, Memory: mem, Budget: k.Budget, MaxSteps: 2}
-	if err := k2.Handle(context.Background(), link.TerminalEvent("u1", "third", time.Unix(52, 0).UTC())); err != nil {
+	if err := k2.Handle(context.Background(), inbox.TerminalEvent("u1", "third", time.Unix(52, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	st, err = b.LoadState()
@@ -280,7 +280,7 @@ func TestBackgroundJobCrashIsIdempotent(t *testing.T) {
 }
 
 func TestHardCompactStaysSynchronous(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	seedHistory(t, b, 3, 2000)
 	comp := &delayCompactor{d: 200 * time.Millisecond}
 	k := &Kernel{
@@ -288,7 +288,7 @@ func TestHardCompactStaysSynchronous(t *testing.T) {
 		Compactor: comp, Budget: compact.Budget{Ceiling: 40, KeepTail: 1}, MaxSteps: 2,
 	}
 	start := time.Now()
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "now", time.Unix(60, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "now", time.Unix(60, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if elapsed := time.Since(start); elapsed < 200*time.Millisecond {

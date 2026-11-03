@@ -10,7 +10,6 @@ import (
 
 	"xbot/internal/fsutil"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/vault"
 )
 
@@ -258,7 +257,7 @@ func RenameWithResult(root, from, to string) (current *Bot, moved bool, err erro
 }
 
 // PostUnaddressed delivers an event that named no bot into the primary inbox.
-func PostUnaddressed(root string, ev link.Event) error {
+func PostUnaddressed(root string, ev inbox.Event) error {
 	name, err := Primary(root)
 	if err != nil {
 		return err

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 )
 
 func TestInboxList(t *testing.T) {
@@ -26,12 +25,12 @@ func TestInboxList(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 10, 27, 0, 0, 0, 0, time.UTC)
-	old := link.NewEvent("timer", "timer", link.Wrap(link.NewEvent("timer", "timer", "<routine id=\"re863b44f\" name=\"每小时访问B站\">\n用 web_fetch 访问 https://www.bilibili.com/，确认页面能正常打开……\n</routine>\nThis is a scheduled wake. Use memory. ...", "timer", now)), "timer", now)
-	recent := link.NewEvent("webhook:foo", "message", "<webhook name=\"foo\" count=\"1\" dropped=\"0\">\ndelivery: 123\ntype: push\n<delivery id=\"123\">\nhello webhook\n</delivery>\n</webhook>\n", "hook", now.Add(time.Minute))
-	watch := link.NewEvent("watch:abc", "changed", "<watch id=\"abc\" kind=\"changed\" count=\"1\">\npath: /tmp/file\nkind: changed\n</watch>\n", "watch:abc", now.Add(-time.Minute))
-	otherRoutine := link.NewEvent("other", "message", "<routine id=\"r2\">\n"+strings.Repeat("鱼", 1001)+"\n</routine>\nThis is a scheduled wake.", "other", now.Add(-2*time.Minute))
-	owner := link.WebEvent("u1", "private chat", now.Add(2*time.Minute))
-	for _, ev := range []link.Event{old, recent, watch, otherRoutine, owner} {
+	old := inbox.NewEvent("timer", "timer", inbox.Wrap(inbox.NewEvent("timer", "timer", "<routine id=\"re863b44f\" name=\"每小时访问B站\">\n用 web_fetch 访问 https://www.bilibili.com/，确认页面能正常打开……\n</routine>\nThis is a scheduled wake. Use memory. ...", "timer", now)), "timer", now)
+	recent := inbox.NewEvent("webhook:foo", "message", "<webhook name=\"foo\" count=\"1\" dropped=\"0\">\ndelivery: 123\ntype: push\n<delivery id=\"123\">\nhello webhook\n</delivery>\n</webhook>\n", "hook", now.Add(time.Minute))
+	watch := inbox.NewEvent("watch:abc", "changed", "<watch id=\"abc\" kind=\"changed\" count=\"1\">\npath: /tmp/file\nkind: changed\n</watch>\n", "watch:abc", now.Add(-time.Minute))
+	otherRoutine := inbox.NewEvent("other", "message", "<routine id=\"r2\">\n"+strings.Repeat("鱼", 1001)+"\n</routine>\nThis is a scheduled wake.", "other", now.Add(-2*time.Minute))
+	owner := inbox.WebEvent("u1", "private chat", now.Add(2*time.Minute))
+	for _, ev := range []inbox.Event{old, recent, watch, otherRoutine, owner} {
 		if err := box.Post(ev); err != nil {
 			t.Fatal(err)
 		}

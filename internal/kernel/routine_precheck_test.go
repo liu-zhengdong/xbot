@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	"xbot/internal/cliops"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 )
 
 func TestRoutinePersistedPrecheck(t *testing.T) {
-	b := testBot(t, link.NameTimer)
+	b := testBot(t, inbox.NameTimer)
 	tm := &link.Timer{Dir: b.RoutineDir()}
 	k := &Kernel{Bot: b, Links: []link.Link{tm}}
 	// This unit checks persisted precheck values. Source approval is exercised

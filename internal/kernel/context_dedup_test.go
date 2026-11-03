@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 )
@@ -33,8 +34,8 @@ func TestTodoReceiptsAndRemindersOnlyCarryChanges(t *testing.T) {
 	items[1].Status = "done"
 	third := args()
 	p := &scripted{resps: []provider.Message{todoCall("create", first), todoCall("update", second), todoCall("update2", third), {Role: provider.RoleAssistant, Content: provider.TextContent("继续吗？")}}}
-	k := &Kernel{Bot: testBot(t, link.NameTerminal), Provider: p, MaxSteps: 5}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "work", time.Now())); err != nil {
+	k := &Kernel{Bot: testBot(t, inbox.NameTerminal), Provider: p, MaxSteps: 5}
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "work", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	var results []string
@@ -88,7 +89,7 @@ func TestCreateBotPersonaOccursOnlyInArgumentsAndOwnPrefix(t *testing.T) {
 	p := &scripted{resps: []provider.Message{toolCall("create", "sh", string(args)), {Role: provider.RoleAssistant, Content: provider.TextContent("已创建")}}}
 	k := &Kernel{Bot: primary, Provider: p, MaxSteps: 3, Links: []link.Link{link.Peers{}}}
 	mountBotCreateSourceShell(t, k)
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "create", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "create", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	n := 0
@@ -136,7 +137,7 @@ func TestCreateBotPersonaOccursOnlyInArgumentsAndOwnPrefix(t *testing.T) {
 	}
 	cp := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ready")}}}
 	ck := &Kernel{Bot: child, Provider: cp, MaxSteps: 2}
-	if err := ck.Handle(context.Background(), link.TerminalEvent("u1", "start", time.Now())); err != nil {
+	if err := ck.Handle(context.Background(), inbox.TerminalEvent("u1", "start", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Count(messagesText(cp.reqs[0].Messages), persona) != 1 || !strings.Contains(cp.reqs[0].Messages[0].Text(), persona) || !strings.HasPrefix(environmentGet[string](testPublished(t, ck), "persona"), "职责 "+shortHash(persona)) {

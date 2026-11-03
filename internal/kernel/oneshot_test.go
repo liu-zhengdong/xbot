@@ -8,12 +8,13 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 )
 
 func TestOneShotAndLocalTime(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTimer)
+	b := testBot(t, inbox.NameTerminal, inbox.NameTimer)
 	tz := "Asia/Shanghai"
 	if err := b.ApplyProfile(bot.ProfileUpdate{Timezone: &tz}); err != nil {
 		t.Fatal(err)
@@ -33,7 +34,7 @@ func TestOneShotAndLocalTime(t *testing.T) {
 		t.Fatalf("create %+v: %v", out, err)
 	}
 	id := out.ID
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", now)); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "hi", now)); err != nil {
 		t.Fatal(err)
 	}
 	entries, err := b.Entries()
@@ -53,11 +54,11 @@ func TestOneShotAndLocalTime(t *testing.T) {
 	if len(p.reqs) == 0 || strings.Contains(p.reqs[0].Messages[0].Text(), "Asia/Shanghai") {
 		t.Fatal("local time leaked into the stable prefix")
 	}
-	var posted []link.Event
+	var posted []inbox.Event
 	fire := func(when time.Time) {
 		t.Helper()
 		posted = nil
-		if err := tm.Fire(when, func(ev link.Event) error {
+		if err := tm.Fire(when, func(ev inbox.Event) error {
 			posted = append(posted, ev)
 			return nil
 		}); err != nil {

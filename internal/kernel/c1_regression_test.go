@@ -61,7 +61,7 @@ func (f c1Fetcher) Fetch(ctx context.Context, _ string) (tools.Page, error) {
 
 func c1Fixture(t *testing.T, tool tools.Tool) (*Kernel, *scripted) {
 	t.Helper()
-	b := testBot(t, link.NameTerminal, "c1-tools")
+	b := testBot(t, inbox.NameTerminal, "c1-tools")
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestC1AllSlowToolsYieldAndReport(t *testing.T) {
 			start := time.Now()
 			errc := make(chan error, 1)
 			handles.Add(1)
-			go func() { defer handles.Done(); errc <- k.Handle(ctx, link.TerminalEvent("u1", "lookup", time.Now())) }()
+			go func() { defer handles.Done(); errc <- k.Handle(ctx, inbox.TerminalEvent("u1", "lookup", time.Now())) }()
 			select {
 			case err := <-errc:
 				if err != nil {
@@ -173,7 +173,7 @@ func TestC1InterjectionYieldsRegisteredOrUpcomingCall(t *testing.T) {
 			handles.Add(1)
 			go func() {
 				defer handles.Done()
-				errC <- k.Handle(context.Background(), link.TerminalEvent("u1", "first", time.Now()))
+				errC <- k.Handle(context.Background(), inbox.TerminalEvent("u1", "first", time.Now()))
 			}()
 			if before {
 				<-toolStart
@@ -181,7 +181,7 @@ func TestC1InterjectionYieldsRegisteredOrUpcomingCall(t *testing.T) {
 				<-slow.entered
 			}
 			start := time.Now()
-			if !Interject(k.Bot, link.TerminalEvent("u1", "second", time.Now()), &Sink{Done: make(chan Outcome, 1)}) {
+			if !Interject(k.Bot, inbox.TerminalEvent("u1", "second", time.Now()), &Sink{Done: make(chan Outcome, 1)}) {
 				t.Fatal("no live turn")
 			}
 			reg.Do(func() { close(register) })
@@ -228,7 +228,7 @@ func (w c1MemoryWrite) Run(ctx context.Context, args json.RawMessage) (string, e
 	return w.WriteFile.Run(ctx, args)
 }
 func TestC1MemoryWriteDoesNotBlockNewInput(t *testing.T) {
-	b := testBot(t, link.NameTerminal, "c1-tools")
+	b := testBot(t, inbox.NameTerminal, "c1-tools")
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestC1MemoryWriteDoesNotBlockNewInput(t *testing.T) {
 	handles.Add(1)
 	go func() {
 		defer handles.Done()
-		done <- k.Handle(context.Background(), link.TerminalEvent("u1", "write", time.Now()))
+		done <- k.Handle(context.Background(), inbox.TerminalEvent("u1", "write", time.Now()))
 	}()
 	select {
 	case <-w.entered:
@@ -265,7 +265,7 @@ func TestC1MemoryWriteDoesNotBlockNewInput(t *testing.T) {
 	start := time.Now()
 	accepted := make(chan bool, 1)
 	go func() {
-		accepted <- Interject(b, link.TerminalEvent("u1", "new question", time.Now()), &Sink{Done: make(chan Outcome, 1)})
+		accepted <- Interject(b, inbox.TerminalEvent("u1", "new question", time.Now()), &Sink{Done: make(chan Outcome, 1)})
 	}()
 	select {
 	case ok := <-accepted:
@@ -303,7 +303,7 @@ func TestC1MemoryWriteDoesNotBlockNewInput(t *testing.T) {
 }
 
 func TestC1BackgroundMemoryWriteDoesNotBlockNextTurn(t *testing.T) {
-	b := testBot(t, link.NameTerminal, "c1-tools")
+	b := testBot(t, inbox.NameTerminal, "c1-tools")
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -330,14 +330,14 @@ func TestC1BackgroundMemoryWriteDoesNotBlockNextTurn(t *testing.T) {
 	var once sync.Once
 	var handles sync.WaitGroup
 	defer func() { once.Do(func() { close(w.release) }); handles.Wait(); _ = k.Close() }()
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "first", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "first", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
 	handles.Add(1)
 	go func() {
 		defer handles.Done()
-		done <- k.Handle(context.Background(), link.TerminalEvent("u1", "next", time.Now()))
+		done <- k.Handle(context.Background(), inbox.TerminalEvent("u1", "next", time.Now()))
 	}()
 	select {
 	case err := <-done:
@@ -393,11 +393,11 @@ func TestC1MixedBatchKeepsOneOrderedResultPerCall(t *testing.T) {
 	handles.Add(1)
 	go func() {
 		defer handles.Done()
-		done <- k.Handle(context.Background(), link.TerminalEvent("u1", "batch", time.Now()))
+		done <- k.Handle(context.Background(), inbox.TerminalEvent("u1", "batch", time.Now()))
 	}()
 	<-a.entered
 	<-b.entered
-	if !Interject(k.Bot, link.TerminalEvent("u1", "new", time.Now()), &Sink{Done: make(chan Outcome, 1)}) {
+	if !Interject(k.Bot, inbox.TerminalEvent("u1", "new", time.Now()), &Sink{Done: make(chan Outcome, 1)}) {
 		t.Fatal("not accepted")
 	}
 	select {

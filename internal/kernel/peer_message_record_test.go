@@ -20,7 +20,6 @@ import (
 	"xbot/internal/exec"
 	"xbot/internal/gateway"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/peer"
 	"xbot/internal/person"
 	"xbot/internal/provider"
@@ -240,7 +239,7 @@ func TestPeerMessageRuntimeRemoteFullFactActualOwnerAndReceive(t *testing.T) {
 		t.Fatalf("actual Receive event missing or duplicated: %v", err)
 	}
 	ev := box.Pending()[0]
-	if ev.ID != "remote_"+envs[0].From+"_"+reply.EnvelopeID || ev.Chain != "ch_frozen" || ev.Hops != 2 || ev.Content != body || ev.Sender != "ada@Sender" || !ev.Time.Equal(receivedAt) || !ev.Untrusted || ev.SenderKind != link.KindBot {
+	if ev.ID != "remote_"+envs[0].From+"_"+reply.EnvelopeID || ev.Chain != "ch_frozen" || ev.Hops != 2 || ev.Content != body || ev.Sender != "ada@Sender" || !ev.Time.Equal(receivedAt) || !ev.Untrusted || ev.SenderKind != inbox.KindBot {
 		t.Fatal("actual Receive metadata/body lost frozen sender tuple")
 	}
 }

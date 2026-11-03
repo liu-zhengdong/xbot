@@ -13,6 +13,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/config"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -20,7 +21,7 @@ import (
 )
 
 func TestWebSearchAndFetchStayOffTheNetwork(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	when := time.Date(2026, 10, 17, 3, 4, 5, 0, time.UTC)
 	p := &scripted{resps: []provider.Message{
 		toolCall("c1", "web_search", `{"query":"xbot","n":1}`),
@@ -40,7 +41,7 @@ func TestWebSearchAndFetchStayOffTheNetwork(t *testing.T) {
 	})
 	k.base.fetch.Now = func() time.Time { return when }
 	k.base.fetch.Fetcher = fetchPage{text: strings.Repeat("page ", 2000), url: "https://example.com/a", title: "A page"}
-	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "search then fetch", when)); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("owner", "search then fetch", when)); err != nil {
 		t.Fatal(err)
 	}
 	search := toolNamed(t, b, "web_search", false)
@@ -58,7 +59,7 @@ func TestViewImageErrorsWithoutVisionAndSendsPartsWithIt(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "a.png"), onePixelPNG(t), 0600); err != nil {
 		t.Fatal(err)
 	}
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetBinding("deepseek", "deepseek-v4-pro"); err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +73,7 @@ func TestViewImageErrorsWithoutVisionAndSendsPartsWithIt(t *testing.T) {
 		WorkDir: dir,
 		Now:     func() time.Time { return time.Unix(10, 0).UTC() },
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "look", time.Unix(10, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("owner", "look", time.Unix(10, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(toolNamed(t, b, "view_image", false), "deepseek-v4-pro does not support vision") {
@@ -86,7 +87,7 @@ func TestViewImageErrorsWithoutVisionAndSendsPartsWithIt(t *testing.T) {
 		}
 	}
 
-	flash := testBot(t, link.NameTerminal)
+	flash := testBot(t, inbox.NameTerminal)
 	if err := flash.SetBinding("deepseek", "deepseek-flash"); err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +101,7 @@ func TestViewImageErrorsWithoutVisionAndSendsPartsWithIt(t *testing.T) {
 		WorkDir: dir,
 		Now:     func() time.Time { return time.Unix(11, 0).UTC() },
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "look", time.Unix(11, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("owner", "look", time.Unix(11, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(toolNamed(t, flash, "view_image", false), "does not support vision") {
@@ -135,7 +136,7 @@ func TestViewImageErrorsWithoutVisionAndSendsPartsWithIt(t *testing.T) {
 		Links:   []link.Link{link.Terminal{}},
 		WorkDir: dir,
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "again", time.Unix(12, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("owner", "again", time.Unix(12, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(toolNamed(t, flash, "view_image", true), "does not support vision") {
@@ -148,7 +149,7 @@ type fetchPage struct {
 }
 
 func TestVisionFollowsTheBoundDeepSeekModel(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b}
 	if _, err := config.EnsureDefault(b.Root, "deepseek-v4-pro"); err != nil {
 		t.Fatal(err)
@@ -170,7 +171,7 @@ func TestVisionFollowsTheBoundDeepSeekModel(t *testing.T) {
 }
 
 func TestLegacyTrustedCIDRStillConfiguresFetch(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := os.WriteFile(config.WebPath(b.Root), []byte(`{"trusted_egress_cidrs":["198.18.0.0/15"]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +181,7 @@ func TestLegacyTrustedCIDRStillConfiguresFetch(t *testing.T) {
 		Links: []link.Link{link.Terminal{}},
 		Now:   func() time.Time { return time.Unix(10, 0).UTC() },
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "hi", time.Unix(10, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("owner", "hi", time.Unix(10, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	f := k.baseTools().fetch
@@ -193,7 +194,7 @@ func TestLegacyTrustedCIDRStillConfiguresFetch(t *testing.T) {
 }
 
 func TestConfigureWebHoldsSearchKeyAddedLater(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	const secret = "sekret-later-search"
 	t.Setenv("SEARCH_KEY", secret)
 	t.Cleanup(config.ForgetKeys)
@@ -208,7 +209,7 @@ func TestConfigureWebHoldsSearchKeyAddedLater(t *testing.T) {
 		Links: []link.Link{link.Terminal{}},
 		Now:   func() time.Time { return time.Unix(10, 0).UTC() },
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "hi", time.Unix(10, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("owner", "hi", time.Unix(10, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if os.Getenv("SEARCH_KEY") != "" {
@@ -220,7 +221,7 @@ func TestConfigureWebHoldsSearchKeyAddedLater(t *testing.T) {
 }
 
 func TestProviderSearchKeyRejectsOtherHost(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	t.Setenv("DEEPSEEK_API_KEY", "sekret-deep-value")
 	t.Cleanup(config.ForgetKeys)
 	if err := config.SaveWeb(b.Root, config.WebFile{Search: config.WebBackend{
@@ -237,7 +238,7 @@ func TestProviderSearchKeyRejectsOtherHost(t *testing.T) {
 		Links: []link.Link{link.Terminal{}},
 		Now:   func() time.Time { return time.Unix(10, 0).UTC() },
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "search", time.Unix(10, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("owner", "search", time.Unix(10, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	got := toolNamed(t, b, "web_search", false)
@@ -247,7 +248,7 @@ func TestProviderSearchKeyRejectsOtherHost(t *testing.T) {
 }
 
 func TestHeldSearchKeyIsRedactedInResults(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	const secret = "sekret-search-value"
 	t.Setenv("SEARCH_ONLY", secret)
 	t.Cleanup(config.ForgetKeys)
@@ -265,7 +266,7 @@ func TestHeldSearchKeyIsRedactedInResults(t *testing.T) {
 	k.base.search.Backend = tools.FuncSearch(func(context.Context, string, int) ([]tools.Hit, error) {
 		return []tools.Hit{{Title: "T", URL: "https://example.com/a", Snippet: "see " + secret}}, nil
 	})
-	if err := k.Handle(context.Background(), link.TerminalEvent("owner", "search", time.Unix(10, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("owner", "search", time.Unix(10, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	got := toolNamed(t, b, "web_search", false)

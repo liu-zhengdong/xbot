@@ -152,7 +152,7 @@ func (t sendMessageTool) Run(ctx context.Context, args json.RawMessage) (string,
 	}
 	// In owner chat the bubble is the delivery; the outbox and the desktop are
 	// for wakes the owner is not watching.
-	if turn := t.k.imageTurn(ctx); turn != nil && (turn.turnSource == link.NameTerminal || turn.turnSource == link.NameWeb) {
+	if turn := t.k.imageTurn(ctx); turn != nil && (turn.turnSource == inbox.NameTerminal || turn.turnSource == inbox.NameWeb) {
 		if len(images) > 0 {
 			return fmt.Sprintf("sent to the owner's chat with %d picture(s): %s", len(images), strings.Join(images, ", ")), nil
 		}
@@ -194,7 +194,7 @@ func deliverNote(ctx context.Context, k *Kernel, text string) error {
 // is not sent again. A later incoming message can produce a new finding.
 func (k *Kernel) pushFindings(ctx context.Context, produced []provider.Message) error {
 	switch k.curTurn().turnSource {
-	case link.NameTerminal, link.NameWeb:
+	case inbox.NameTerminal, inbox.NameWeb:
 		return nil
 	}
 	var replies []string

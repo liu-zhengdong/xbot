@@ -6,6 +6,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/config"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/mcp"
 )
@@ -13,7 +14,7 @@ import (
 // The system prompt lists installed apps under one 连接器 heading, one 名称:描述 line each.
 // Apps installed for the owner appear for every bot; no tool schema comes along.
 func TestConnectorsBlockListsGlobalInstalls(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}
 	if strings.Contains(systemOf(t, k), "## 连接器") {
 		t.Fatal("empty store must add no block")
@@ -50,7 +51,7 @@ func TestConnectorsBlockListsGlobalInstalls(t *testing.T) {
 }
 
 func TestConnectorsLoadAcceptsShownName(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := link.EnableConnector(b.GlobalMCPPath(), "playwright"); err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +65,7 @@ func TestConnectorsLoadAcceptsShownName(t *testing.T) {
 }
 
 func TestConnectorsBlockExcludesNonStoreLinks(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameWebhook, link.NameWatch, link.NameSkills, link.NameCoding)
+	b := testBot(t, inbox.NameTerminal, link.NameWebhook, link.NameWatch, link.NameSkills, inbox.NameCoding)
 	k := &Kernel{Bot: b}
 	text, err := k.installedSection()
 	if err != nil {
@@ -96,7 +97,7 @@ func TestNativeConnectorsLoadByNameAndID(t *testing.T) {
 		{"浏览器", link.NameBrowser, "browser_open"}, {"browser", link.NameBrowser, "browser_open"},
 	} {
 		t.Run(tc.id, func(t *testing.T) {
-			b := testBot(t, link.NameTerminal)
+			b := testBot(t, inbox.NameTerminal)
 			if err := bot.GrantGlobal(b.Root, tc.grant); err != nil {
 				t.Fatal(err)
 			}

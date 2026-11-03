@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 )
 
 func TestFirstRunSeedsPrimary(t *testing.T) {
@@ -48,7 +47,7 @@ func TestUnaddressedEventGoesToPrimary(t *testing.T) {
 	if err := other.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
-	ev := link.TerminalEvent("u1", "hello primary", time.Unix(10, 0).UTC())
+	ev := inbox.TerminalEvent("u1", "hello primary", time.Unix(10, 0).UTC())
 	if err := PostUnaddressed(root, ev); err != nil {
 		t.Fatal(err)
 	}

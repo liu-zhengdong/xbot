@@ -12,7 +12,6 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -66,7 +65,7 @@ func inboxPostCount(t *testing.T, path, id string) int {
 }
 
 // inboxPosts returns every raw post record with the given id, in log order.
-func inboxPosts(t *testing.T, path, id string) []link.Event {
+func inboxPosts(t *testing.T, path, id string) []inbox.Event {
 	t.Helper()
 	f, err := os.Open(path)
 	if err != nil {
@@ -76,12 +75,12 @@ func inboxPosts(t *testing.T, path, id string) []link.Event {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	var out []link.Event
+	var out []inbox.Event
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		var rec struct {
-			Op    string      `json:"op"`
-			Event *link.Event `json:"event"`
+			Op    string       `json:"op"`
+			Event *inbox.Event `json:"event"`
 		}
 		if json.Unmarshal(sc.Bytes(), &rec) != nil {
 			continue
@@ -114,7 +113,7 @@ func forkEndCount(t *testing.T, b *bot.Bot, id string) int {
 // A transcript with a fork and some branch rows but no fork_end is a crash. The
 // first Handle on a fresh kernel closes it, and a second kernel does not repeat.
 func TestRecoverInterruptedClosesOpenBranch(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.Append(bot.Entry{EventID: "u0", Time: time.Unix(1, 0).UTC(),
 		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("做个长任务")}}); err != nil {
 		t.Fatal(err)
@@ -136,7 +135,7 @@ func TestRecoverInterruptedClosesOpenBranch(t *testing.T) {
 	}
 	k := &Kernel{Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("收到")}, {Role: provider.RoleAssistant, Content: provider.TextContent("任务中断已报告")}}},
 		Inbox: box, Memory: memory.NopStore{}, MaxSteps: 4}
-	ev := link.TerminalEvent("u1", "现在怎样", time.Unix(10, 0).UTC())
+	ev := inbox.TerminalEvent("u1", "现在怎样", time.Unix(10, 0).UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +159,7 @@ func TestRecoverInterruptedClosesOpenBranch(t *testing.T) {
 	}
 	posted := inboxPosts(t, b.InboxPath(), "ev_bg_7_end")
 	end := posted[0]
-	if end.Source != link.SourceSubagent || end.Type != "fork_end" {
+	if end.Source != inbox.SourceSubagent || end.Type != "fork_end" {
 		t.Fatalf("event %+v", end)
 	}
 	if !strings.Contains(end.Content, "因进程重启中断") || !strings.Contains(end.Content, "整理日志") ||
@@ -184,7 +183,7 @@ func TestRecoverInterruptedClosesOpenBranch(t *testing.T) {
 	}
 	k2 := &Kernel{Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("好")}}},
 		Inbox: box2, Memory: memory.NopStore{}, MaxSteps: 4}
-	ev2 := link.TerminalEvent("u1", "再问", time.Unix(11, 0).UTC())
+	ev2 := inbox.TerminalEvent("u1", "再问", time.Unix(11, 0).UTC())
 	if err := k2.Handle(context.Background(), ev2); err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +198,7 @@ func TestRecoverInterruptedClosesOpenBranch(t *testing.T) {
 // Recovery runs before repairTail, so an interrupted branch's dangling call is
 // repaired with the branch tag and the fork_end does not block it.
 func TestRecoverBeforeRepairTagsBranchPlaceholder(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.Append(bot.Entry{EventID: "u0", Time: time.Unix(1, 0).UTC(),
 		Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("做个长任务")}}); err != nil {
 		t.Fatal(err)
@@ -219,7 +218,7 @@ func TestRecoverBeforeRepairTagsBranchPlaceholder(t *testing.T) {
 	}
 	k := &Kernel{Bot: b, Provider: &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("收到")}, {Role: provider.RoleAssistant, Content: provider.TextContent("任务中断已报告")}}},
 		Inbox: box, Memory: memory.NopStore{}, MaxSteps: 4}
-	ev := link.TerminalEvent("u1", "现在怎样", time.Unix(10, 0).UTC())
+	ev := inbox.TerminalEvent("u1", "现在怎样", time.Unix(10, 0).UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +248,7 @@ func TestRecoverBeforeRepairTagsBranchPlaceholder(t *testing.T) {
 
 // Legacy metadata can still identify a process from before the engine retired.
 func TestRecoverSkipsLiveLegacyProcess(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.Append(bot.Entry{Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent("start")}}); err != nil {
 		t.Fatal(err)
 	}

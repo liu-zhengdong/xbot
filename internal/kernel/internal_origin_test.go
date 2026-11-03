@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
@@ -17,12 +17,12 @@ import (
 // most frequent such line. The interface decides what to show by the origin
 // field and never by the text, so the kernel has to write it.
 func TestEnvironmentUpdateIsMarkedInternal(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("好")}}}
 	now := time.Unix(1_700_000_000, 0).UTC()
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4,
 		Now: func() time.Time { return now }}
-	ev := link.TerminalEvent("u1", "你好", now)
+	ev := inbox.TerminalEvent("u1", "你好", now)
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}

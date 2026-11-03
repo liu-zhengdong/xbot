@@ -52,8 +52,8 @@ func TestRoutineHandledWhileChat(t *testing.T) {
 			Poll:        20 * time.Millisecond,
 			SkipDeliver: true,
 			Lines:       lines,
-			Accept:      func(string) (link.Event, error) { return link.Event{}, nil },
-			After: func(link.Event, error) {
+			Accept:      func(string) (inbox.Event, error) { return inbox.Event{}, nil },
+			After: func(inbox.Event, error) {
 				notes, err := notify.Open(b.OutboxPath()).Unread()
 				if err != nil {
 					return
@@ -122,7 +122,7 @@ func TestSpawnWhileChatKeepsAnswering(t *testing.T) {
 	defer srv.Close()
 	client := &provider.Client{BaseURL: srv.URL + "/v1", APIKey: "test", Model: "mock", HTTPClient: srv.Client()}
 	root := t.TempDir()
-	b, err := bot.Create(root, "ada", "You are Ada.", []string{link.NameTerminal, link.NameAgents})
+	b, err := bot.Create(root, "ada", "You are Ada.", []string{inbox.NameTerminal, link.NameAgents})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func testControls(t *testing.T, viaRunner bool) {
 	defer srv.Close()
 	client := &provider.Client{BaseURL: srv.URL + "/v1", APIKey: "test", Model: "mock", HTTPClient: srv.Client()}
 	root := t.TempDir()
-	b, err := bot.Create(root, "ada", "You are Ada.", []string{link.NameTerminal, link.NameAgents})
+	b, err := bot.Create(root, "ada", "You are Ada.", []string{inbox.NameTerminal, link.NameAgents})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func testControls(t *testing.T, viaRunner bool) {
 	defer done()
 	k := m3Kernel(t, b, client, []link.Link{link.Terminal{}, link.Agents{}}, ex)
 
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "SPAWN_STEER", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "SPAWN_STEER", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if err := script.WaitEntered(context.Background(), "steer"); err != nil {
@@ -211,7 +211,7 @@ func testControls(t *testing.T, viaRunner bool) {
 		t.Fatalf("steer transcript:\n%s", text)
 	}
 
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "SPAWN_INTERRUPT", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "SPAWN_INTERRUPT", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if err := script.WaitEntered(context.Background(), "intr"); err != nil {
@@ -228,7 +228,7 @@ func testControls(t *testing.T, viaRunner bool) {
 		t.Fatalf("interrupt transcript:\n%s", text)
 	}
 
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "SPAWN_CANCEL", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "SPAWN_CANCEL", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if err := script.WaitEntered(context.Background(), "cancel"); err != nil {
@@ -266,7 +266,7 @@ func TestForkSeesContextBriefDoesNot(t *testing.T) {
 	defer srv.Close()
 	client := &provider.Client{BaseURL: srv.URL + "/v1", APIKey: "test", Model: "mock", HTTPClient: srv.Client()}
 	root := t.TempDir()
-	b, err := bot.Create(root, "ada", "You are Ada.", []string{link.NameTerminal, link.NameAgents})
+	b, err := bot.Create(root, "ada", "You are Ada.", []string{inbox.NameTerminal, link.NameAgents})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,17 +275,17 @@ func TestForkSeesContextBriefDoesNot(t *testing.T) {
 	}
 	loc := newLocal(client)
 	k := m3Kernel(t, b, client, []link.Link{link.Terminal{}, link.Agents{}}, loc)
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "MARKER_7f3a", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "MARKER_7f3a", time.Now())); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "SPAWN_FORK", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "SPAWN_FORK", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	known := map[string]bool{}
 	forkID := waitAgent(t, b, known)
 	known[forkID] = true
 	waitSub(t, b, forkID, "fork done")
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "SPAWN_BRIEF", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "SPAWN_BRIEF", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	briefID := waitAgent(t, b, known)
@@ -351,15 +351,15 @@ func executorFor(t *testing.T, client *provider.Client, viaRunner bool) (exec.Ex
 	}
 }
 
-func terminalAccept(k *kernel.Kernel, who string) func(string) (link.Event, error) {
-	return func(text string) (link.Event, error) {
+func terminalAccept(k *kernel.Kernel, who string) func(string) (inbox.Event, error) {
+	return func(text string) (inbox.Event, error) {
 		text = strings.TrimSpace(text)
 		if text == "" {
-			return link.Event{}, nil
+			return inbox.Event{}, nil
 		}
-		ev := link.TerminalEvent(who, text, time.Now())
+		ev := inbox.TerminalEvent(who, text, time.Now())
 		if err := k.Inbox.Post(ev); err != nil {
-			return link.Event{}, err
+			return inbox.Event{}, err
 		}
 		return ev, nil
 	}

@@ -10,13 +10,14 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
 	"xbot/internal/experience"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
 
 func TestExperienceRecordShowsInNextEnvironment(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameMemory, link.NameContext)
+	b := testBot(t, inbox.NameTerminal, link.NameMemory, link.NameContext)
 	p := &scripted{resps: []provider.Message{
 		toolCall("c1", "sh", `{"command":"\"$XBOT_BIN\" experience record --self --summary '决定部署改成蓝绿发布' --focus deploy","description":"record the deployment decision"}`),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("记下了")},
@@ -34,7 +35,7 @@ func TestExperienceRecordShowsInNextEnvironment(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = k.Close() })
 	ctx := context.Background()
-	if err := k.Handle(ctx, link.TerminalEvent("u1", "部署以后走蓝绿", time.Now())); err != nil {
+	if err := k.Handle(ctx, inbox.TerminalEvent("u1", "部署以后走蓝绿", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	first := p.reqs[0]
@@ -58,7 +59,7 @@ func TestExperienceRecordShowsInNextEnvironment(t *testing.T) {
 	if e.Summary != "决定部署改成蓝绿发布" || e.Focus != "deploy" || e.To < e.From || !strings.Contains(owner[0].Message.Text(), "部署以后走蓝绿") || !strings.HasPrefix(e.Segment, "user: 部署以后走蓝绿\n") || !strings.Contains(e.Segment, "assistant: [tools: sh]") {
 		t.Fatalf("stored %+v / %q", e, owner[0].Message.Text())
 	}
-	if err := k.Handle(ctx, link.TerminalEvent("u1", "在吗", time.Now())); err != nil {
+	if err := k.Handle(ctx, inbox.TerminalEvent("u1", "在吗", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	last := p.reqs[len(p.reqs)-1].Messages
@@ -74,7 +75,7 @@ func TestExperienceRecordShowsInNextEnvironment(t *testing.T) {
 }
 
 func TestExperienceSearchLeavesOutToolBodyAndDetailReadsIt(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameMemory, link.NameContext)
+	b := testBot(t, inbox.NameTerminal, link.NameMemory, link.NameContext)
 	k := &Kernel{Bot: b, Memory: memory.NopStore{}}
 	body := "TOOLBODY_MARK " + strings.Repeat("x", 6000) + " TOOLBODY_END"
 	for _, e := range []bot.Entry{

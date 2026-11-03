@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
-	"xbot/internal/link"
 	"xbot/internal/proc"
 	"xbot/internal/provider"
 )
@@ -45,7 +45,7 @@ func TestIdleChatLetsWebStreamAndFork(t *testing.T) {
 			K:      k,
 			Poll:   20 * time.Millisecond,
 			Lines:  lines,
-			Accept: func(string) (link.Event, error) { return link.Event{}, nil },
+			Accept: func(string) (inbox.Event, error) { return inbox.Event{}, nil },
 		})
 	}()
 	time.Sleep(40 * time.Millisecond)

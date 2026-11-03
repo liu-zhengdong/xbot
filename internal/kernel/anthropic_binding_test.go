@@ -13,12 +13,13 @@ import (
 	"time"
 
 	"xbot/internal/config"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 )
 
 func TestAnthropicBindingToolRoundTripAndSwitch(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	claudeRequests, localResults := 0, 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
@@ -138,7 +139,7 @@ func TestAnthropicBindingToolRoundTripAndSwitch(t *testing.T) {
 			t.Fatal(err)
 		}
 		start := time.Now()
-		if err := k.Handle(context.Background(), link.TerminalEvent("owner", "search", time.Unix(1000, 0))); err != nil {
+		if err := k.Handle(context.Background(), inbox.TerminalEvent("owner", "search", time.Unix(1000, 0))); err != nil {
 			t.Fatal(err)
 		}
 		t.Logf("%s synthetic turn: %s", binding.Name, time.Since(start))

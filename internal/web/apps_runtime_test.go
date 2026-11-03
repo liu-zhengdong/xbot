@@ -10,14 +10,14 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/config"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
-	"xbot/internal/link"
 	"xbot/internal/mcp"
 )
 
 func TestAppsExposeMCPRuntimeWithoutProbing(t *testing.T) {
 	root := t.TempDir()
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}

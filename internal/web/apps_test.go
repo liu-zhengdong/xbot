@@ -18,6 +18,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/browser"
 	"xbot/internal/config"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/mcp"
 	"xbot/internal/vault"
@@ -40,7 +41,7 @@ func newAppsEnv(t *testing.T) *appsEnv {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"ada", "bob"} {
-		b, err := bot.Create(root, name, "persona", []string{link.NameTerminal})
+		b, err := bot.Create(root, name, "persona", []string{inbox.NameTerminal})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -176,7 +177,7 @@ func TestAppsInstallIsGlobalAndIdempotent(t *testing.T) {
 		if all, _ := mcp.LoadMCPAll(mcp.Options{IsProviderKey: config.ProviderKey}, b.GlobalMCPPath(), b.MCPPath()); len(all) != 1 {
 			t.Fatalf("%s sees %+v", name, all)
 		}
-		if b.Config().Links[0] != link.NameTerminal || len(b.Config().Links) != 1 {
+		if b.Config().Links[0] != inbox.NameTerminal || len(b.Config().Links) != 1 {
 			t.Fatalf("%s config changed: %v", name, b.Config().Links)
 		}
 	}

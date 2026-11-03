@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -21,7 +21,7 @@ func (r *turnRun) validateReply(req provider.Request, msg provider.Message) erro
 			return nil
 		}
 		text := strings.TrimSpace(e.Message.Text())
-		if !strings.HasPrefix(text, link.UntrustedEventPrefix) || strings.Contains(strings.SplitN(text, "\n", 2)[0], `source="subagent"`) || strings.Contains(strings.SplitN(text, "\n", 2)[0], `source="coding-agent"`) {
+		if !strings.HasPrefix(text, inbox.UntrustedEventPrefix) || strings.Contains(strings.SplitN(text, "\n", 2)[0], `source="subagent"`) || strings.Contains(strings.SplitN(text, "\n", 2)[0], `source="coding-agent"`) {
 			required = true
 		}
 		return nil

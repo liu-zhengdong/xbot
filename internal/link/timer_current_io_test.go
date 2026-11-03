@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"xbot/internal/inbox"
 )
 
 func TestTimerCurrentDirectoryCommitsAfterEmitRename(t *testing.T) {
@@ -24,7 +26,7 @@ func TestTimerCurrentDirectoryCommitsAfterEmitRename(t *testing.T) {
 	if err != nil || len(due) != 1 {
 		t.Fatalf("due=%+v err=%v", due, err)
 	}
-	if err := tm.Deliver(context.Background(), due[0], func(ev Event) error {
+	if err := tm.Deliver(context.Background(), due[0], func(ev inbox.Event) error {
 		if ev.ID != due[0].ID || ev.Sender != "original-sender" {
 			t.Fatalf("identity changed: %+v", ev)
 		}

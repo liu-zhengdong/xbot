@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -31,7 +31,7 @@ func guardWrite(t *testing.T, k *Kernel, path, body string) error {
 }
 
 func TestMemoryFileProfileGuard(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Memory: memory.Open(b.Root)}
 	path := filepath.Join(b.Root, "bots", b.Name(), "memory", "memory.md")
 	if err := guardWrite(t, k, path, "- (2026-10-18) old\n"); err != nil {
@@ -53,7 +53,7 @@ func TestMemoryFileProfileGuard(t *testing.T) {
 }
 
 func TestMemoryFileLogGuard(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	// Pin the month-end that exposed AddDate normalizing September 31
 	// back into October; the rejected path must really be a past month.
 	now := time.Date(2026, time.October, 31, 12, 0, 0, 0, time.Local)
@@ -88,7 +88,7 @@ func TestMemoryFileLogGuard(t *testing.T) {
 }
 
 func TestMemoryFileUntrustedReview(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, turn: &turn{}}
 	path := filepath.Join(b.Root, "people", "u1", "memory", "notes.txt")
 	// A symlink alias and .. still resolve into a memory folder.
@@ -113,7 +113,7 @@ func TestMemoryFileUntrustedReview(t *testing.T) {
 }
 
 func TestMemoryFileOwnEditNoDiff(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestMemoryFileCaseFoldProfileCap(t *testing.T) {
 	memCaseFold = true
 	t.Cleanup(func() { memCaseFold = previous })
 
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Memory: memory.Open(b.Root)}
 	path := filepath.Join(b.Root, "bots", b.Name(), "memory", "MEMORY.md")
 	err := guardWrite(t, k, path, strings.Repeat("x", memory.ProfileBytes+1))

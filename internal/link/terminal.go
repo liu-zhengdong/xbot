@@ -3,6 +3,7 @@ package link
 import (
 	"os/user"
 
+	"xbot/internal/inbox"
 	"xbot/internal/tools"
 )
 
@@ -10,7 +11,7 @@ import (
 // User lines become Events; the kernel's assistant text is the reply.
 type Terminal struct{}
 
-func (Terminal) Name() string { return NameTerminal }
+func (Terminal) Name() string { return inbox.NameTerminal }
 
 func (Terminal) Tools() []tools.Tool { return nil }
 

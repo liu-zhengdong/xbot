@@ -13,7 +13,6 @@ import (
 	"xbot/internal/fsutil"
 	"xbot/internal/gateway"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/peer"
 )
 
@@ -29,11 +28,11 @@ import (
 const MaxChatText = 16 << 10
 
 type chatPending struct {
-	Device string     `json:"device"`
-	Bot    string     `json:"bot"`
-	ID     string     `json:"id"`
-	Event  link.Event `json:"event"`
-	At     time.Time  `json:"at"`
+	Device string      `json:"device"`
+	Bot    string      `json:"bot"`
+	ID     string      `json:"id"`
+	Event  inbox.Event `json:"event"`
+	At     time.Time   `json:"at"`
 }
 
 func pendingPath(root, evID string) string {
@@ -76,8 +75,8 @@ func receiveChat(root string, d Device, env gateway.Envelope, body []byte, now t
 		}
 		return err
 	}
-	ev := link.RemoteOwnerEvent(d.Person, text, now)
-	if !link.OwnerTrusted(ev.Source, ev.Sender, target.Config().Owners) {
+	ev := inbox.RemoteOwnerEvent(d.Person, text, now)
+	if !inbox.OwnerTrusted(ev.Source, ev.Sender, target.Config().Owners) {
 		return nil
 	}
 	// A crash after Post but before seen keeps the inbox free of duplicates.

@@ -14,7 +14,6 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 )
 
 func TestWebhookAuthDedupAndBurst(t *testing.T) {
@@ -387,7 +386,7 @@ func posts(t *testing.T, path string) int {
 	return strings.Count(string(raw), `"op":"post"`)
 }
 
-func onlyEvent(t *testing.T, b *bot.Bot) link.Event {
+func onlyEvent(t *testing.T, b *bot.Bot) inbox.Event {
 	t.Helper()
 	box, err := inbox.Open(b.InboxPath())
 	if err != nil {

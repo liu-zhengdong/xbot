@@ -18,9 +18,9 @@ import (
 )
 
 func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
-	for _, source := range []string{link.NameTimer, link.SourceSubagent, link.NameCoding, "webhook"} {
+	for _, source := range []string{inbox.NameTimer, inbox.SourceSubagent, inbox.NameCoding, "webhook"} {
 		t.Run(source, func(t *testing.T) {
-			b := testBot(t, link.NameTerminal)
+			b := testBot(t, inbox.NameTerminal)
 			if err := b.SetOwners([]string{"u1"}); err != nil {
 				t.Fatal(err)
 			}
@@ -32,7 +32,7 @@ func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
 			p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("one")}, {Role: provider.RoleAssistant, Content: provider.TextContent("wake")}, {Role: provider.RoleAssistant, Content: provider.TextContent("back")}}}
 			now := time.Unix(1000, 0)
 			k := &Kernel{Bot: b, Memory: store, Provider: p, MaxSteps: 2, Now: func() time.Time { return now }}
-			if err := k.Handle(ctx, link.TerminalEvent("u1", "first", now)); err != nil {
+			if err := k.Handle(ctx, inbox.TerminalEvent("u1", "first", now)); err != nil {
 				t.Fatal(err)
 			}
 			before := environmentGet[string](testPublished(t, k), "person:u1")
@@ -41,7 +41,7 @@ func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Mirrors serve's timer: owner id used for routing, no SenderKind.
-			ev := link.NewEvent(source, "wake", "wake", "u1", now)
+			ev := inbox.NewEvent(source, "wake", "wake", "u1", now)
 			if err := k.Handle(ctx, ev); err != nil {
 				t.Fatal(err)
 			}
@@ -69,7 +69,7 @@ func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
 			if !strings.Contains(updates, `"name":"`+source+`"`) || strings.Contains(updates, "person_data") {
 				t.Fatalf("wrong source update: %s", updates)
 			}
-			if err := k.Handle(ctx, link.TerminalEvent("u1", "again", now)); err != nil {
+			if err := k.Handle(ctx, inbox.TerminalEvent("u1", "again", now)); err != nil {
 				t.Fatal(err)
 			}
 			_, err = b.LoadState()
@@ -105,7 +105,7 @@ func TestNonPersonWakePreservesSeenPerson(t *testing.T) {
 func TestRecoveryUnreadableMetaDoesNotBlockBot(t *testing.T) {
 	for _, kind := range []string{"empty", "invalid-json", "meta-is-directory", "read-only-dir"} {
 		t.Run(kind, func(t *testing.T) {
-			b := testBot(t, link.NameTerminal)
+			b := testBot(t, inbox.NameTerminal)
 			box, err := inbox.Open(b.InboxPath())
 			if err != nil {
 				t.Fatal(err)
@@ -161,7 +161,7 @@ func TestRecoveryUnreadableMetaDoesNotBlockBot(t *testing.T) {
 			if len(pending) != 1 || pending[0].ID != "ev_"+id+"_interrupted" || !strings.Contains(pending[0].Content, "中断") {
 				t.Fatalf("missing interruption: %+v", pending)
 			}
-			sampled, err := k.taskEnvironment(tasks, link.Event{})
+			sampled, err := k.taskEnvironment(tasks, inbox.Event{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -185,7 +185,7 @@ func TestRecoveryUnreadableMetaDoesNotBlockBot(t *testing.T) {
 			// The bot remains usable, even if the broken old directory cannot be saved.
 			k.Provider = &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("still available")}, {Role: provider.RoleAssistant, Content: provider.TextContent("interruption noted")}}}
 			k.MaxSteps = 3
-			if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Now())); err != nil {
+			if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "hello", time.Now())); err != nil {
 				t.Fatal(err)
 			}
 			rows, err := b.Entries()
@@ -245,7 +245,7 @@ func TestBotCompactRangeGuarded(t *testing.T) {
 }
 
 func TestPersonBaselineReappearsAfterNonPersonCompaction(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -257,10 +257,10 @@ func TestPersonBaselineReappearsAfterNonPersonCompaction(t *testing.T) {
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("one")}, {Role: provider.RoleAssistant, Content: provider.TextContent("wake")}, {Role: provider.RoleAssistant, Content: provider.TextContent("back")}}}
 	k := &Kernel{Bot: b, Memory: store, Provider: p, Compactor: &recCompactor{}, MaxSteps: 2}
 	k.Budget.KeepTail = 1
-	if err := k.Handle(ctx, link.TerminalEvent("u1", "first", time.Now())); err != nil {
+	if err := k.Handle(ctx, inbox.TerminalEvent("u1", "first", time.Now())); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Handle(ctx, link.NewEvent(link.NameTimer, "wake", "wake", "u1", time.Now())); err != nil {
+	if err := k.Handle(ctx, inbox.NewEvent(inbox.NameTimer, "wake", "wake", "u1", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	n, err := b.Count()
@@ -270,7 +270,7 @@ func TestPersonBaselineReappearsAfterNonPersonCompaction(t *testing.T) {
 	if _, err := k.CompactRange(ctx, 1, n-1, "test summary does not retain profile"); err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Handle(ctx, link.TerminalEvent("u1", "again", time.Now())); err != nil {
+	if err := k.Handle(ctx, inbox.TerminalEvent("u1", "again", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(messagesText(p.reqs[len(p.reqs)-1].Messages), "PERSON_AFTER_COMPACTION_18") {

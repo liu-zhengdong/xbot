@@ -9,7 +9,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -54,7 +54,7 @@ func TestRuntimeProfileRefreshesOtherLiveHandleBeforeNextRequest(t *testing.T) {
 	done := make(chan error, 1)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	go func() { done <- live.Handle(ctx, link.TerminalEvent("u1", "continue", time.Now())) }()
+	go func() { done <- live.Handle(ctx, inbox.TerminalEvent("u1", "continue", time.Now())) }()
 	select {
 	case <-ready:
 	case <-ctx.Done():

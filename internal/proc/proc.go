@@ -39,14 +39,14 @@ type Config struct {
 	Lines       <-chan Line
 	// Accept turns a user line into an inbox event. A nil event is ignored.
 	// ErrStop ends the loop cleanly.
-	Accept func(text string) (link.Event, error)
+	Accept func(text string) (inbox.Event, error)
 	// Idle runs once each time the inbox is empty and the loop is about to wait.
 	Idle func()
 	// CatchUp prints transcript lines another process appended.
 	// It returns true when it printed something, so the prompt can be drawn again.
 	CatchUp func() bool
 	// After runs after each handled event, still holding the handle lock.
-	After func(ev link.Event, err error)
+	After func(ev inbox.Event, err error)
 }
 
 // Run handles inbox events as they arrive and accepts user lines between them.
@@ -198,7 +198,7 @@ func ackInbox(k *kernel.Kernel, id string) error {
 	return withInboxIO(k, func(box *inbox.Inbox) error { return box.Ack(id) })
 }
 
-func head(k *kernel.Kernel) (ev link.Event, ok bool) {
+func head(k *kernel.Kernel) (ev inbox.Event, ok bool) {
 	_ = withInboxIO(k, func(box *inbox.Inbox) error { ev, ok = box.Head(); return nil })
 	return
 }
@@ -212,7 +212,7 @@ func DeliverDue(k *kernel.Kernel, now time.Time) error {
 	if now.IsZero() {
 		now = time.Now()
 	}
-	post := func(ev link.Event) error {
+	post := func(ev inbox.Event) error {
 		return withInboxIO(k, func(box *inbox.Inbox) error { return box.Post(ev) })
 	}
 	for _, l := range k.Links {

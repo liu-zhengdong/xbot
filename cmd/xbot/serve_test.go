@@ -4,13 +4,13 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 )
 
 // The main line uses the runaway guard; subagent types own their budgets.
 func TestOpenKernelKeepsDefaultStepGuard(t *testing.T) {
 	t.Setenv("XBOT_API_KEY", "sk-test")
-	b, err := bot.Create(t.TempDir(), "ada", "persona", []string{link.NameTerminal})
+	b, err := bot.Create(t.TempDir(), "ada", "persona", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}

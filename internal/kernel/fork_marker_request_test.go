@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -15,7 +15,7 @@ func TestRequestContextSkipsForkMarkers(t *testing.T) {
 		t.Fatal(err)
 	}
 	k := &Kernel{Bot: b}
-	first, err := k.receive(link.TerminalEvent("u1", "opening", time.Now()))
+	first, err := k.receive(inbox.TerminalEvent("u1", "opening", time.Now()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestRequestContextSkipsForkMarkers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = k.receive(link.TerminalEvent("u1", "later words", time.Now()))
+	_, err = k.receive(inbox.TerminalEvent("u1", "later words", time.Now()))
 	if err != nil {
 		t.Fatal(err)
 	}

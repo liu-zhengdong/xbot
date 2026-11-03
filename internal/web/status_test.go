@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
 	"xbot/internal/link"
 	"xbot/internal/memory"
@@ -31,7 +32,7 @@ func statusFixture(t *testing.T, n int) (*Server, string, []*bot.Bot) {
 	}
 	var bots []*bot.Bot
 	for i := 0; i < n; i++ {
-		b, err := bot.Create(root, fmt.Sprintf("bot%d", i), "p", []string{link.NameTerminal, link.NameWeb})
+		b, err := bot.Create(root, fmt.Sprintf("bot%d", i), "p", []string{inbox.NameTerminal, inbox.NameWeb})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -120,7 +121,7 @@ func TestBotTodosEndpoint(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: provider.TextContent("继续吗？")},
 	}}
 	k := &kernel.Kernel{Bot: bots[0], Provider: p, Memory: memory.NopStore{}, Links: []link.Link{link.Terminal{}}, MaxSteps: 5}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "查三处", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "查三处", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(kernel.TodoPath(bots[0]))
@@ -159,7 +160,7 @@ func TestBotStepsEndpoint(t *testing.T) {
 		Bot: bots[0], Provider: p, Memory: memory.NopStore{}, MaxSteps: 40,
 		Links: []link.Link{link.Terminal{}, stepLink{}},
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "go", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	s.mu.Lock()
@@ -236,7 +237,7 @@ func BenchmarkBotStatusAPI5Bots(b *testing.B) {
 		b.Fatal(err)
 	}
 	for i := 0; i < 5; i++ {
-		bb, err := bot.Create(root, fmt.Sprintf("bot%d", i), "p", []string{link.NameTerminal, link.NameWeb})
+		bb, err := bot.Create(root, fmt.Sprintf("bot%d", i), "p", []string{inbox.NameTerminal, inbox.NameWeb})
 		if err != nil {
 			b.Fatal(err)
 		}

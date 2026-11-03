@@ -38,7 +38,7 @@ status: 已实现（功能分支 feature/tool-registry-proxy）·待合入与日
 
 ## 现状（2026-10-28）
 
-- `link.Organs()` 驱动 CLI 与内核的原生能力装配；memory、timer、persona、context、agents、skills、webhook、watch、web、peers、terminal、tools、desktop 和有本进程后端的 coding-agent 都常驻注册，旧原生 grant 被忽略。能力框和 catalog 不列这些器官。
+- `link.Organs()` 驱动 CLI 与内核的原生能力装配（进程侧装配入口为 `kernel.MountLinks`，ADR0072）；memory、timer、persona、context、agents、skills、webhook、watch、web、peers、terminal、tools、desktop 和有本进程后端的 coding-agent 都常驻注册，旧原生 grant 被忽略。能力框和 catalog 不列这些器官。
 - 浏览器：`StoreApps()` 里的原生 grant 卡（`dev` 分类），安装前探测 Chrome。
 - fetch：`connectors.json` 里标 `retired`，`Connectors()` 不返回；旧 `mcp.json` 里的同名条目不挂载，也不出现在 `/api/apps` 和已连接计数。
 - 判断按 `Organs()` / `StoreApps()` / `StoreGrant()` / `retired` 做，没有 id 黑名单，也没有命令指纹。

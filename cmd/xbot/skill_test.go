@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/person"
 	"xbot/internal/skill"
@@ -19,7 +20,7 @@ func TestSkillCLIImportDisable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	who, err := person.Identify(root, person.Account{Link: link.NameTerminal, ExternalID: ext}, display)
+	who, err := person.Identify(root, person.Account{Link: inbox.NameTerminal, ExternalID: ext}, display)
 	if err != nil {
 		t.Fatal(err)
 	}

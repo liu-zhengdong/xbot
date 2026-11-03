@@ -13,7 +13,7 @@ import (
 
 func timerBot(t *testing.T) *bot.Bot {
 	t.Helper()
-	b, err := bot.Create(t.TempDir(), "ada", "Be brief.", []string{link.NameTimer})
+	b, err := bot.Create(t.TempDir(), "ada", "Be brief.", []string{inbox.NameTimer})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestDeliverTimersPostsAndExpires(t *testing.T) {
 }
 
 func TestDeliverTimersSkipsBotsWithoutTimer(t *testing.T) {
-	b, err := bot.Create(t.TempDir(), "ada", "Be brief.", []string{link.NameTerminal})
+	b, err := bot.Create(t.TempDir(), "ada", "Be brief.", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}

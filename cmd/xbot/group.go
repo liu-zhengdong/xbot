@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/person"
 )
@@ -83,7 +84,7 @@ func terminalOwner(root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	who, err := person.Identify(root, person.Account{Link: link.NameTerminal, ExternalID: ext}, display)
+	who, err := person.Identify(root, person.Account{Link: inbox.NameTerminal, ExternalID: ext}, display)
 	if err != nil {
 		return "", err
 	}

@@ -14,7 +14,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/cliops"
 	"xbot/internal/fsutil"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/peer"
 	"xbot/internal/tools"
 	"xbot/internal/work"
@@ -22,7 +22,7 @@ import (
 
 func chatGroupRuntimeBot(t *testing.T, root, name string, owners ...string) *bot.Bot {
 	t.Helper()
-	b, err := bot.Create(root, name, "agreed duties", []string{link.NameWeb})
+	b, err := bot.Create(root, name, "agreed duties", []string{inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,9 +70,9 @@ func TestChatGroupRuntimeListHistoryFieldsAndSelection(t *testing.T) {
 	}
 	lines := make([]peer.Line, 60)
 	for i := range lines {
-		sender, kind, text := "B", link.KindBot, fmt.Sprintf("body %d", i)
+		sender, kind, text := "B", inbox.KindBot, fmt.Sprintf("body %d", i)
 		if i%10 == 0 {
-			sender, kind, text = "A", link.KindPerson, fmt.Sprintf("RELEASE %d\nid\tfake row", i)
+			sender, kind, text = "A", inbox.KindPerson, fmt.Sprintf("RELEASE %d\nid\tfake row", i)
 		}
 		lines[i] = peer.Line{ID: fmt.Sprintf("gm_%08d", i), Time: time.Unix(int64(i), 123456789).UTC(), Sender: sender, Kind: kind, Text: text}
 	}
@@ -219,7 +219,7 @@ func TestChatGroupRuntimeArtifactCurrentRenameAndRedaction(t *testing.T) {
 	h, resources := k.ChatGroupHandlers(), k.Resources
 	g := chatGroupRuntimeGroup(t, &peer.Bus{Root: root}, "A", "SOURCE_SECRET", "B")
 	text := strings.Repeat("complete<text>\n", 2800) + "SOURCE_SECRET TAIL_SENTINEL"
-	chatGroupRuntimeLines(t, root, g.ID, []peer.Line{{ID: "gm_full", Time: time.Unix(1, 321).UTC(), Sender: "SOURCE_SECRET", Kind: link.KindBot, Text: text}})
+	chatGroupRuntimeLines(t, root, g.ID, []peer.Line{{ID: "gm_full", Time: time.Unix(1, 321).UTC(), Sender: "SOURCE_SECRET", Kind: inbox.KindBot, Text: text}})
 	if err := resources.RenameTo("renamed"); err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ func TestChatGroupRuntimeHumanBudgetBothReadCallers(t *testing.T) {
 	a := chatGroupRuntimeBot(t, root, "A", "shared")
 	chatGroupRuntimeBot(t, root, "B", "shared")
 	g := chatGroupRuntimeGroup(t, &peer.Bus{Root: root}, "A", "room", "B")
-	lines := []peer.Line{{ID: "gm_1", Time: time.Unix(1, 0).UTC(), Sender: "B", Kind: link.KindBot, Text: strings.Repeat("\u0085", 4000)}, {ID: "gm_2", Time: time.Unix(2, 0).UTC(), Sender: "B", Kind: link.KindBot, Text: strings.Repeat("\u0085", 4000)}}
+	lines := []peer.Line{{ID: "gm_1", Time: time.Unix(1, 0).UTC(), Sender: "B", Kind: inbox.KindBot, Text: strings.Repeat("\u0085", 4000)}, {ID: "gm_2", Time: time.Unix(2, 0).UTC(), Sender: "B", Kind: inbox.KindBot, Text: strings.Repeat("\u0085", 4000)}}
 	chatGroupRuntimeLines(t, root, g.ID, lines)
 	h := (&Kernel{Bot: a}).ChatGroupHandlers()
 	reply, err := h.History(ctx, cliops.ChatGroupHistory{ID: g.ID})

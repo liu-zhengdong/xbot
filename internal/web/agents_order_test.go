@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 )
 
 // TestPanelOrdersAgentsByState pins the panel's agent order: live work first
@@ -23,7 +23,7 @@ func TestPanelOrdersAgentsByState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "p", []string{link.NameTerminal, link.NameWeb})
+	b, err := bot.Create(root, "ada", "p", []string{inbox.NameTerminal, inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}

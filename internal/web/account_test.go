@@ -16,7 +16,7 @@ import (
 
 	"xbot/internal/account"
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 )
 
 type acctEnv struct {
@@ -34,7 +34,7 @@ func newAcctEnv(t *testing.T, app bool) *acctEnv {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"考公助手", "写作"} {
-		b, err := bot.Create(root, name, "persona", []string{link.NameTerminal})
+		b, err := bot.Create(root, name, "persona", []string{inbox.NameTerminal})
 		if err != nil {
 			t.Fatal(err)
 		}

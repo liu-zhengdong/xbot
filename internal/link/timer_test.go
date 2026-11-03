@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 	_ "time/tzdata"
+
+	"xbot/internal/inbox"
 )
 
 func TestOneShotFiresOnceNearTheSlot(t *testing.T) {
@@ -15,8 +17,8 @@ func TestOneShotFiresOnceNearTheSlot(t *testing.T) {
 	if err := tm.Save(Routine{ID: "sip", Name: "Sip", Prompt: "drink", At: kAt, Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	var posted []Event
-	if err := tm.Fire(at.Add(-20*time.Second), func(ev Event) error {
+	var posted []inbox.Event
+	if err := tm.Fire(at.Add(-20*time.Second), func(ev inbox.Event) error {
 		posted = append(posted, ev)
 		return nil
 	}); err != nil {
@@ -25,7 +27,7 @@ func TestOneShotFiresOnceNearTheSlot(t *testing.T) {
 	if len(posted) != 0 {
 		t.Fatalf("early %+v", posted)
 	}
-	if err := tm.Fire(at.Add(10*time.Second), func(ev Event) error {
+	if err := tm.Fire(at.Add(10*time.Second), func(ev inbox.Event) error {
 		posted = append(posted, ev)
 		return nil
 	}); err != nil {
@@ -42,7 +44,7 @@ func TestOneShotFiresOnceNearTheSlot(t *testing.T) {
 		t.Fatalf("still enabled %+v %v", got, err)
 	}
 	posted = nil
-	if err := tm.Fire(at.Add(10*time.Second), func(ev Event) error {
+	if err := tm.Fire(at.Add(10*time.Second), func(ev inbox.Event) error {
 		posted = append(posted, ev)
 		return nil
 	}); err != nil {
@@ -63,21 +65,21 @@ func TestRoutineMinIntervalAndDueOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 10, 15, 8, 7, 30, 0, time.UTC)
-	var posted []Event
-	if err := tm.Fire(now, func(ev Event) error {
+	var posted []inbox.Event
+	if err := tm.Fire(now, func(ev inbox.Event) error {
 		posted = append(posted, ev)
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if len(posted) != 1 || posted[0].Source != NameTimer || posted[0].Sender != "u1" {
+	if len(posted) != 1 || posted[0].Source != inbox.NameTimer || posted[0].Sender != "u1" {
 		t.Fatalf("%+v", posted)
 	}
 	if !posted[0].Untrusted {
 		t.Fatal("routine events are untrusted")
 	}
 	posted = nil
-	if err := tm.Fire(now, func(ev Event) error {
+	if err := tm.Fire(now, func(ev inbox.Event) error {
 		posted = append(posted, ev)
 		return nil
 	}); err != nil {
@@ -87,7 +89,7 @@ func TestRoutineMinIntervalAndDueOnce(t *testing.T) {
 		t.Fatalf("same slot fired again: %+v", posted)
 	}
 	later := now.Add(time.Hour)
-	if err := tm.Fire(later, func(ev Event) error {
+	if err := tm.Fire(later, func(ev inbox.Event) error {
 		posted = append(posted, ev)
 		return nil
 	}); err != nil {
@@ -111,8 +113,8 @@ func TestDSTRepeatedHourFiresOnce(t *testing.T) {
 	}
 	fire := func(when time.Time) int {
 		t.Helper()
-		var posted []Event
-		if err := tm.Fire(when, func(ev Event) error {
+		var posted []inbox.Event
+		if err := tm.Fire(when, func(ev inbox.Event) error {
 			posted = append(posted, ev)
 			return nil
 		}); err != nil {
@@ -147,8 +149,8 @@ func TestDSTSkippedHourDoesNotFire(t *testing.T) {
 		time.Date(2026, 3, 8, 6, 30, 0, 0, time.UTC), // 01:30 EST
 		time.Date(2026, 3, 8, 7, 30, 0, 0, time.UTC), // 03:30 EDT
 	} {
-		var posted []Event
-		if err := tm.Fire(when, func(ev Event) error {
+		var posted []inbox.Event
+		if err := tm.Fire(when, func(ev inbox.Event) error {
 			posted = append(posted, ev)
 			return nil
 		}); err != nil {
@@ -174,8 +176,8 @@ func TestDSTHourlyWildcardFiresEveryHour(t *testing.T) {
 		t.Helper()
 		for i := 0; i < n; i++ {
 			when := start.Add(time.Duration(i) * time.Hour)
-			var posted []Event
-			if err := tm.Fire(when, func(ev Event) error {
+			var posted []inbox.Event
+			if err := tm.Fire(when, func(ev inbox.Event) error {
 				posted = append(posted, ev)
 				return nil
 			}); err != nil {

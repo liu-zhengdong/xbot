@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"xbot/internal/fsutil"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/person"
 )
@@ -57,7 +58,7 @@ func (s *Server) EnsureToken() (string, bool, error) {
 		if err != nil {
 			return "", false, err
 		}
-		who, err := person.Identify(s.Root, person.Account{Link: link.NameTerminal, ExternalID: ext}, display)
+		who, err := person.Identify(s.Root, person.Account{Link: inbox.NameTerminal, ExternalID: ext}, display)
 		if err != nil {
 			return "", false, err
 		}

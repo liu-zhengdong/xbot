@@ -16,7 +16,6 @@ import (
 	"xbot/internal/clock"
 	"xbot/internal/inbox"
 	"xbot/internal/kernel"
-	"xbot/internal/link"
 	"xbot/internal/mcp"
 	"xbot/internal/proc"
 	"xbot/internal/provider"
@@ -155,17 +154,17 @@ func chatConfig(k *kernel.Kernel, who string, lines <-chan proc.Line, pr *printe
 	return proc.Config{
 		K:     k,
 		Lines: lines,
-		Accept: func(text string) (link.Event, error) {
+		Accept: func(text string) (inbox.Event, error) {
 			text = strings.TrimRight(text, "\r\n")
 			if isQuit(text) {
-				return link.Event{}, proc.ErrStop
+				return inbox.Event{}, proc.ErrStop
 			}
 			if strings.TrimSpace(text) == "" {
-				return link.Event{}, nil
+				return inbox.Event{}, nil
 			}
-			ev := link.TerminalEvent(who, strings.TrimSpace(text), time.Now())
+			ev := inbox.TerminalEvent(who, strings.TrimSpace(text), time.Now())
 			if err := withChatIO(k, func(_ *bot.Bot, box *inbox.Inbox) error { return box.Post(ev) }); err != nil {
-				return link.Event{}, err
+				return inbox.Event{}, err
 			}
 			return ev, nil
 		},
@@ -182,7 +181,7 @@ func chatConfig(k *kernel.Kernel, who string, lines <-chan proc.Line, pr *printe
 		CatchUp: func() bool {
 			return showTranscriptSince(k, &seen)
 		},
-		After: func(_ link.Event, err error) {
+		After: func(_ inbox.Event, err error) {
 			pr.Break()
 			if err != nil && !errors.Is(err, context.Canceled) {
 				fmt.Fprintln(os.Stderr, "xbot:", err)

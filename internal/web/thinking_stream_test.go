@@ -13,8 +13,8 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
-	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
@@ -73,7 +73,7 @@ func TestThinkingToolTurnReplaysReasoningAndHidesIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(s.Root, "ada", "persona", []string{link.NameWeb})
+	b, err := bot.Create(s.Root, "ada", "persona", []string{inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}

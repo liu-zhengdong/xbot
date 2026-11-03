@@ -122,7 +122,7 @@ func TestSearchPolicyFiltersStaleExecutorTools(t *testing.T) {
 }
 
 func TestNewlyMountedCodingUsesDynamicSearchPolicy(t *testing.T) {
-	b := testBot(t, link.NameCoding)
+	b := testBot(t, inbox.NameCoding)
 	requests := make(chan bool, 4)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var in struct{ Tools []struct{ Type string } }
@@ -142,7 +142,7 @@ func TestNewlyMountedCodingUsesDynamicSearchPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	k := &Kernel{Bot: b, Provider: p}
-	coding := k.mountGrantLocked(link.NameCoding).(*code.Link)
+	coding := k.mountGrantLocked(inbox.NameCoding).(*code.Link)
 	coding.UseCommand("")
 	for i, step := range []struct {
 		enabled bool

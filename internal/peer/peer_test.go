@@ -9,6 +9,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/fsutil"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 )
@@ -55,7 +56,7 @@ func TestMessageVisibilityHopsAndRate(t *testing.T) {
 		t.Fatalf("rate: %v", err)
 	}
 	evs := readPosts(t, bob.InboxPath())
-	if len(evs) != 2 || evs[0].Source != "bot:ada" || evs[0].SenderKind != link.KindBot || evs[0].Hops != 1 || evs[0].Content != "one" {
+	if len(evs) != 2 || evs[0].Source != "bot:ada" || evs[0].SenderKind != inbox.KindBot || evs[0].Hops != 1 || evs[0].Content != "one" {
 		t.Fatalf("inbox %+v", evs)
 	}
 	if len(readPosts(t, ada.InboxPath())) != 0 {
@@ -81,7 +82,7 @@ func TestGroupFanoutSkipsSenderAndKeepsMemoryPrivate(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now()
-	if err := bus.PostGroup(link.KindBot, "ada", g.ID, "from ada", "ch_g", 1, now); err != nil {
+	if err := bus.PostGroup(inbox.KindBot, "ada", g.ID, "from ada", "ch_g", 1, now); err != nil {
 		t.Fatal(err)
 	}
 	if n := readPosts(t, ada.InboxPath()); len(n) != 0 {
@@ -91,10 +92,10 @@ func TestGroupFanoutSkipsSenderAndKeepsMemoryPrivate(t *testing.T) {
 	if len(bobPosts) != 1 || !strings.Contains(bobPosts[0].Content, "from ada") || strings.Contains(bobPosts[0].Content, "BOB_SECRET_FACT") {
 		t.Fatalf("bob fan-out %+v", bobPosts)
 	}
-	if bobPosts[0].Source != "group:"+g.ID || bobPosts[0].SenderKind != link.KindBot {
+	if bobPosts[0].Source != "group:"+g.ID || bobPosts[0].SenderKind != inbox.KindBot {
 		t.Fatalf("event %+v", bobPosts[0])
 	}
-	if err := bus.PostGroup(link.KindPerson, "u1", g.ID, "from owner", "", 1, now.Add(time.Second)); err != nil {
+	if err := bus.PostGroup(inbox.KindPerson, "u1", g.ID, "from owner", "", 1, now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if len(readPosts(t, ada.InboxPath())) != 1 || len(readPosts(t, bob.InboxPath())) != 2 {
@@ -104,7 +105,7 @@ func TestGroupFanoutSkipsSenderAndKeepsMemoryPrivate(t *testing.T) {
 	if err != nil || len(lines) != 2 || lines[1].Text != "from owner" {
 		t.Fatalf("transcript %+v %v", lines, err)
 	}
-	if err := bus.PostGroup(link.KindBot, "ada", g.ID, "too far", "", 0, now); err == nil {
+	if err := bus.PostGroup(inbox.KindBot, "ada", g.ID, "too far", "", 0, now); err == nil {
 		t.Fatal("group hop 0 was accepted")
 	}
 }
@@ -121,13 +122,13 @@ func mustPeerBot(t *testing.T, root, name, owner string) *bot.Bot {
 	return b
 }
 
-func readPosts(t *testing.T, path string) []link.Event {
+func readPosts(t *testing.T, path string) []inbox.Event {
 	t.Helper()
-	var out []link.Event
+	var out []inbox.Event
 	err := fsutil.ReadJSONL(path, func(line []byte) error {
 		var rec struct {
-			Op    string      `json:"op"`
-			Event *link.Event `json:"event"`
+			Op    string       `json:"op"`
+			Event *inbox.Event `json:"event"`
 		}
 		if err := json.Unmarshal(line, &rec); err != nil {
 			return err

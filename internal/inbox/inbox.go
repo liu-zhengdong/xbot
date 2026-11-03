@@ -10,22 +10,21 @@ import (
 	"time"
 
 	"xbot/internal/fsutil"
-	"xbot/internal/link"
 )
 
 // Inbox is safe for one consumer and concurrent producers.
 type Inbox struct {
 	mu      sync.Mutex
 	path    string
-	pending []link.Event
+	pending []Event
 	seen    map[string]bool
 	notify  chan struct{}
 }
 
 type record struct {
-	Op    string      `json:"op"`
-	Event *link.Event `json:"event,omitempty"`
-	ID    string      `json:"id,omitempty"`
+	Op    string `json:"op"`
+	Event *Event `json:"event,omitempty"`
+	ID    string `json:"id,omitempty"`
 }
 
 // Open loads pending events from the append-only log.
@@ -48,7 +47,7 @@ func (n *Inbox) Reload() error {
 
 func (n *Inbox) rebuild() error {
 	var order []string
-	posted := map[string]link.Event{}
+	posted := map[string]Event{}
 	acked := map[string]bool{}
 	err := fsutil.ReadJSONL(n.path, func(line []byte) error {
 		var rec record
@@ -90,7 +89,7 @@ func (n *Inbox) rebuild() error {
 
 // Post persists the event and queues it. A repeated id, including one already acked, is ignored.
 // The Untrusted bit is stored as given. The kernel decides whether the text is trusted.
-func (n *Inbox) Post(ev link.Event) error {
+func (n *Inbox) Post(ev Event) error {
 	if ev.Time.IsZero() {
 		ev.Time = time.Now().UTC()
 	}
@@ -117,20 +116,20 @@ func (n *Inbox) Post(ev link.Event) error {
 }
 
 // Pending returns a copy of the queue, oldest first.
-func (n *Inbox) Pending() []link.Event {
+func (n *Inbox) Pending() []Event {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	out := make([]link.Event, len(n.pending))
+	out := make([]Event, len(n.pending))
 	copy(out, n.pending)
 	return out
 }
 
 // Head returns the oldest pending event without removing it.
-func (n *Inbox) Head() (link.Event, bool) {
+func (n *Inbox) Head() (Event, bool) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if len(n.pending) == 0 {
-		return link.Event{}, false
+		return Event{}, false
 	}
 	return n.pending[0], true
 }

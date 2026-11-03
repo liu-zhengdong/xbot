@@ -11,12 +11,11 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 )
 
 func TestRecordQueueCancelAndFinish(t *testing.T) {
 	root := t.TempDir()
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameCoding})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameCoding})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +75,7 @@ func TestRecordQueueCancelAndFinish(t *testing.T) {
 	if len(pending) != 2 {
 		t.Fatalf("events %d", len(pending))
 	}
-	if pending[0].Source != link.NameCoding || pending[0].Type != StatusCancelled || pending[0].Sender != first.ID || !pending[0].Untrusted {
+	if pending[0].Source != inbox.NameCoding || pending[0].Type != StatusCancelled || pending[0].Sender != first.ID || !pending[0].Untrusted {
 		t.Fatalf("%+v", pending[0])
 	}
 	if pending[1].Type != StatusDone || !strings.Contains(pending[1].Content, "docs updated") || !strings.Contains(pending[1].Content, second.ID) {
@@ -97,7 +96,7 @@ func TestRecordQueueCancelAndFinish(t *testing.T) {
 
 func TestCodeToolsRoundTrip(t *testing.T) {
 	root := t.TempDir()
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameCoding})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameCoding})
 	if err != nil {
 		t.Fatal(err)
 	}

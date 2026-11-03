@@ -4,17 +4,17 @@ import (
 	"context"
 	"path/filepath"
 
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 )
 
 // personEvent reuses the authenticated Event identity; a timer carrying an
 // owner's id is still a timer, not that person's new words.
-func personEvent(ev link.Event) bool {
-	return memory.ValidID(ev.Sender) && ev.SenderKind != link.KindBot && ev.SenderKind != link.KindGroup && (ev.SenderKind == link.KindPerson || ev.Source == link.NameTerminal || ev.Source == link.NameWeb || ev.Source == link.NameApproval || ev.Source == link.NameRemoteOwner)
+func personEvent(ev inbox.Event) bool {
+	return memory.ValidID(ev.Sender) && ev.SenderKind != inbox.KindBot && ev.SenderKind != inbox.KindGroup && (ev.SenderKind == inbox.KindPerson || ev.Source == inbox.NameTerminal || ev.Source == inbox.NameWeb || ev.Source == inbox.NameApproval || ev.Source == inbox.NameRemoteOwner)
 }
 
-func (k *Kernel) personText(ctx context.Context, ev link.Event) (string, error) {
+func (k *Kernel) personText(ctx context.Context, ev inbox.Event) (string, error) {
 	if k.Memory == nil || !personEvent(ev) {
 		return "", nil
 	}

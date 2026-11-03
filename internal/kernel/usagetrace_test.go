@@ -8,6 +8,7 @@ import (
 
 	"xbot/internal/bot"
 	"xbot/internal/compact"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -26,9 +27,9 @@ func (usageModel) Chat(context.Context, provider.Request, func(string)) (provide
 // that opened it) and whether the provider reported a cache figure; a
 // summary call's usage is recorded too, tagged compact.
 func TestUsageTraceCarriesTurnCacheFlagAndCompaction(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Provider: usageModel{}, MaxSteps: 2, Compactor: compact.LLM{P: usageModel{}}, Links: []link.Link{link.Terminal{}}}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Unix(9, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "hello", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := k.compactor(turnSeqOf(context.Background())).Compact(context.Background(), "", []provider.Message{{Role: provider.RoleUser, Content: provider.TextContent("old")}}); err != nil {
@@ -71,7 +72,7 @@ func TestUsageTraceCarriesTurnCacheFlagAndCompaction(t *testing.T) {
 // A summary written inside a turn keeps that turn's opening seq, so a cost
 // count can tell in-turn compaction from a background job, which stays 0.
 func TestSummaryUsageKeepsTheTurnItRanIn(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Provider: usageModel{}, Links: []link.Link{link.Terminal{}}, Compactor: compact.LLM{P: usageModel{}}}
 	inTurn := context.WithValue(context.Background(), turnKey{}, &turn{fromSeq: 7})
 	if _, err := k.compactor(turnSeqOf(inTurn)).Compact(inTurn, "", []provider.Message{{Role: provider.RoleUser, Content: provider.TextContent("old")}}); err != nil {
@@ -105,7 +106,7 @@ func TestSummaryUsageKeepsTheTurnItRanIn(t *testing.T) {
 // opening message's seq instead of 0, so an in-turn compaction can be told
 // from a background job by its cost.
 func TestOpeningCompactionKeepsTheTurnsSeq(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	seedMarked(t, b, 6, 4000)
 	k := &Kernel{
 		Bot: b, Provider: usageModel{}, Memory: memory.NopStore{}, MaxSteps: 2,
@@ -113,7 +114,7 @@ func TestOpeningCompactionKeepsTheTurnsSeq(t *testing.T) {
 		Compactor: compact.LLM{P: usageModel{}},
 		Budget:    compact.Budget{Ceiling: 1, KeepTail: 1},
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Unix(9, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "hello", time.Unix(9, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	entries, err := b.Entries()

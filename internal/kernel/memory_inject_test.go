@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
 
 func TestNearFullProfileInjectsEveryScope(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	store := memory.Open(b.Root)
 	k := &Kernel{Bot: b, Memory: store}
 	ctx := context.Background()

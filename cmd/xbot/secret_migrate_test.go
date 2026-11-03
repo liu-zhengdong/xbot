@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/vault"
 )
 
@@ -50,7 +50,7 @@ func TestSecretMigrateMovesSecretsToDaemon(t *testing.T) {
 	// Keep an exported XBOT_VAULT_SOCKET from changing what this test exercises.
 	t.Setenv("XBOT_VAULT_SOCKET", "")
 	root := t.TempDir()
-	if _, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal}); err != nil {
+	if _, err := bot.Create(root, "ada", "persona", []string{inbox.NameTerminal}); err != nil {
 		t.Fatal(err)
 	}
 	const value = "migrate-secret-value-9"
@@ -136,7 +136,7 @@ func TestSecretMigrateRefusesRemoteNameCollision(t *testing.T) {
 func TestSecretMigrateNeedsSocket(t *testing.T) {
 	t.Setenv("XBOT_VAULT_SOCKET", "")
 	root := t.TempDir()
-	if _, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal}); err != nil {
+	if _, err := bot.Create(root, "ada", "persona", []string{inbox.NameTerminal}); err != nil {
 		t.Fatal(err)
 	}
 	if err := cmdSecret(root, []string{"migrate", "ada"}); err == nil {

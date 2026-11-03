@@ -16,7 +16,6 @@ import (
 	"xbot/internal/exec"
 	"xbot/internal/fsutil"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 )
 
 const restartContinuationFile = ".restart-continuation.json"
@@ -137,7 +136,7 @@ func deliverRestartContinuation(root string) error {
 			content += "\n用户的续跑提示：" + state.Hint
 		}
 		sum := sha256.Sum256([]byte(state.ID + "\x00" + name))
-		ev := link.NewEvent("restart", link.TypeMessage, content, "xbot", time.Now())
+		ev := inbox.NewEvent("restart", inbox.TypeMessage, content, "xbot", time.Now())
 		ev.ID = "restart_" + hex.EncodeToString(sum[:16])
 		if err := box.Post(ev); err != nil {
 			return err

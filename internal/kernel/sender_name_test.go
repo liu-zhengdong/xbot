@@ -7,15 +7,15 @@ import (
 	"testing"
 	"time"
 
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/memory"
 	"xbot/internal/person"
 	"xbot/internal/provider"
 )
 
 func TestEnvironmentSenderUsesPersonName(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
-	who, err := person.Identify(b.Root, person.Account{Link: link.NameTerminal, ExternalID: "uid:501"}, "刘政东")
+	b := testBot(t, inbox.NameTerminal)
+	who, err := person.Identify(b.Root, person.Account{Link: inbox.NameTerminal, ExternalID: "uid:501"}, "刘政东")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestEnvironmentSenderUsesPersonName(t *testing.T) {
 	}
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("hello")}}}
 	k := &Kernel{Bot: b, Provider: p, Memory: store, MaxSteps: 2}
-	if err := k.Handle(ctx, link.TerminalEvent(who.ID, "hello", time.Now())); err != nil {
+	if err := k.Handle(ctx, inbox.TerminalEvent(who.ID, "hello", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	check := func(e environment, name string) {

@@ -12,7 +12,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/clip"
 	"xbot/internal/gateway"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 )
 
 // chatGiveUp is when a pending reply is dropped unsent.
@@ -152,4 +152,4 @@ func chatReplyReady(root string, p chatPending) (done bool, text string, err err
 // TurnReply reads a finished turn's final answer from a bot's history; serve
 // sets it to kernel.ReplyAfter (the kernel imports this package, so it cannot
 // be called directly).
-var TurnReply func(b *bot.Bot, ev link.Event) (text string, done bool, err error)
+var TurnReply func(b *bot.Bot, ev inbox.Event) (text string, done bool, err error)

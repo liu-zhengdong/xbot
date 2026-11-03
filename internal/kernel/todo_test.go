@@ -74,7 +74,7 @@ func lastContent(req provider.Request) string {
 }
 
 func TestTodoWriteRulesAndDescription(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Redact: func(s string) string {
 		return strings.ReplaceAll(s, "SECRETVALUE", "[secret]")
 	}}
@@ -128,7 +128,7 @@ func TestTodoWriteRulesAndDescription(t *testing.T) {
 }
 
 func TestTodoSummaryOwnerLanguage(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	tests := []struct {
 		name  string
 		items []TodoItem
@@ -159,7 +159,7 @@ func TestTodoSummaryOwnerLanguage(t *testing.T) {
 }
 
 func TestTodoReminderDiffCooldownAndNotAfterUpdate(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	t0 := time.Unix(1_700_000_000, 0).UTC()
 	now := t0
 	list := `{"items":[{"id":"t1","content":"write the tests","status":"in_progress"},{"id":"t2","content":"update the docs","status":"pending"},{"id":"t3","content":"already finished","status":"done"}]}`
@@ -179,7 +179,7 @@ func TestTodoReminderDiffCooldownAndNotAfterUpdate(t *testing.T) {
 		Links: []link.Link{link.Terminal{}, pingLink{}},
 		Now:   func() time.Time { return now },
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "start", t0)); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "start", t0)); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.reqs) != 8 {
@@ -232,7 +232,7 @@ func TestTodoReminderDiffCooldownAndNotAfterUpdate(t *testing.T) {
 }
 
 func TestTodoDefaultStepsAndModelSwitch(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b}
 	on, steps := k.todoPolicy()
 	if !on || steps != defaultTodoStaleSteps || defaultTodoStaleSteps != 6 {
@@ -293,7 +293,7 @@ func TestTodoQuietForReadOnly(t *testing.T) {
 	if !todoToolListQuiet([]tools.Tool{roTool{}}) {
 		t.Fatal("read-only tool set should be quiet")
 	}
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	p := &scripted{resps: []provider.Message{
 		todoCall("c0", `{"items":[{"content":"write the tests","status":"pending"}]}`),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("ok")},
@@ -303,7 +303,7 @@ func TestTodoQuietForReadOnly(t *testing.T) {
 	if k.todoToolsQuiet() {
 		t.Fatal("native writable tools missing")
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "look", time.Unix(11, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "look", time.Unix(11, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.reqs) != 3 || !strings.Contains(messagesText(p.reqs[2].Messages), "<todo_gate>") {
@@ -312,7 +312,7 @@ func TestTodoQuietForReadOnly(t *testing.T) {
 }
 
 func TestTodoCompletionGateRespectsBreaker(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	p := &scripted{resps: []provider.Message{
 		todoCall("c0", `{"items":[{"content":"write the tests","status":"pending"}]}`),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
@@ -326,7 +326,7 @@ func TestTodoCompletionGateRespectsBreaker(t *testing.T) {
 		Bot: b, Provider: p, MaxSteps: 10,
 		Links: []link.Link{link.Terminal{}, pingLink{}},
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "finish", time.Unix(20, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "finish", time.Unix(20, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.reqs) != 7 {
@@ -352,7 +352,7 @@ func TestTodoCompletionGateRespectsBreaker(t *testing.T) {
 }
 
 func TestTodoStaleListDoesNotGateUnrelatedQuestion(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	p := &scripted{}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 10, Links: []link.Link{link.Terminal{}, pingLink{}}}
 	p.resps = append(p.resps,
@@ -360,7 +360,7 @@ func TestTodoStaleListDoesNotGateUnrelatedQuestion(t *testing.T) {
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("paused, waiting for you")},
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok (gate reply turn1)")},
 	)
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "refactor the parser", time.Unix(20, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "refactor the parser", time.Unix(20, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	n1 := len(p.reqs)
@@ -368,7 +368,7 @@ func TestTodoStaleListDoesNotGateUnrelatedQuestion(t *testing.T) {
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("It is 10:00.")},
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("(reply to gate)")},
 	)
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "what time is it?", time.Unix(4000, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "what time is it?", time.Unix(4000, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if calls := len(p.reqs) - n1; calls != 1 {
@@ -389,7 +389,7 @@ func TestTodoStaleListDoesNotGateUnrelatedQuestion(t *testing.T) {
 }
 
 func TestTodoTimerWakeDoesNotGate(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	p := &scripted{}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 10, Links: []link.Link{link.Terminal{}, pingLink{}}}
 	p.resps = append(p.resps,
@@ -397,7 +397,7 @@ func TestTodoTimerWakeDoesNotGate(t *testing.T) {
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("later")},
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("gate reply")},
 	)
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "plan", time.Unix(20, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "plan", time.Unix(20, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	n1 := len(p.reqs)
@@ -405,8 +405,8 @@ func TestTodoTimerWakeDoesNotGate(t *testing.T) {
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("drink water")},
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("gate reply 2")},
 	)
-	ev := link.TerminalEvent("u1", "timer: drink water", time.Unix(9000, 0).UTC())
-	ev.Source = link.NameTimer
+	ev := inbox.TerminalEvent("u1", "timer: drink water", time.Unix(9000, 0).UTC())
+	ev.Source = inbox.NameTimer
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
@@ -425,14 +425,14 @@ func TestTodoTimerWakeDoesNotGate(t *testing.T) {
 }
 
 func TestTodoGateIsUserMessage(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	p := &scripted{resps: []provider.Message{
 		todoCall("t1", `{"items":[{"content":"a","status":"pending"},{"content":"b","status":"pending"},{"content":"c","status":"pending"}]}`),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("all done")},
 		{Role: provider.RoleAssistant, Content: provider.TextContent("gate reply")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 6, Links: []link.Link{link.Terminal{}, pingLink{}}}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "do abc", time.Unix(20, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "do abc", time.Unix(20, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	var saw bool
@@ -464,21 +464,21 @@ func TestTodoGateIsUserMessage(t *testing.T) {
 }
 
 func TestTodoQuestionAndApprovalSkipTheGate(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameWeb)
+	b := testBot(t, inbox.NameTerminal, inbox.NameWeb)
 	p := &scripted{resps: []provider.Message{
 		todoCall("t1", `{"items":[{"content":"ship","status":"pending"}]}`),
 		{Role: provider.RoleAssistant, Content: provider.TextContent("Should I keep going?")},
 		{Role: provider.RoleAssistant, Content: provider.TextContent("should not run")},
 	}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 6, Links: []link.Link{link.Terminal{}, link.Web{}, pingLink{}}}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "ship it", time.Unix(20, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "ship it", time.Unix(20, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.reqs) != 2 {
 		t.Fatalf("question continued: %d calls", len(p.reqs))
 	}
 
-	b2 := testBot(t, link.NameTerminal, link.NameWeb)
+	b2 := testBot(t, inbox.NameTerminal, inbox.NameWeb)
 	card := bot.ApprovalCardText("ab12", "shell", "run", "", "mkdir x", bot.ApprovalPending)
 	if err := b2.Append(bot.Entry{Time: time.Unix(1, 0).UTC(), Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(card)}}); err != nil {
 		t.Fatal(err)
@@ -489,14 +489,14 @@ func TestTodoQuestionAndApprovalSkipTheGate(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: provider.TextContent("should not run")},
 	}}
 	k2 := &Kernel{Bot: b2, Provider: p2, MaxSteps: 6, Links: []link.Link{link.Terminal{}, link.Web{}, pingLink{}}}
-	if err := k2.Handle(context.Background(), link.TerminalEvent("u1", "ship it", time.Unix(30, 0).UTC())); err != nil {
+	if err := k2.Handle(context.Background(), inbox.TerminalEvent("u1", "ship it", time.Unix(30, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if len(p2.reqs) != 2 {
 		t.Fatalf("approval card continued: %d calls", len(p2.reqs))
 	}
 
-	b3 := testBot(t, link.NameTerminal, link.NameWeb)
+	b3 := testBot(t, inbox.NameTerminal, inbox.NameWeb)
 	p3 := &scripted{resps: []provider.Message{
 		todoCall("t1", `{"items":[{"content":"ship","status":"pending"}]}`),
 		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
@@ -507,7 +507,7 @@ func TestTodoQuestionAndApprovalSkipTheGate(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: provider.TextContent("should not run")},
 	}}
 	k3 := &Kernel{Bot: b3, Provider: p3, MaxSteps: 6, Links: []link.Link{link.Terminal{}, link.Web{}, pingLink{}}}
-	if err := k3.Handle(context.Background(), link.TerminalEvent("u1", "ship it", time.Unix(40, 0).UTC())); err != nil {
+	if err := k3.Handle(context.Background(), inbox.TerminalEvent("u1", "ship it", time.Unix(40, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	if len(p3.reqs) != 3 {
@@ -516,7 +516,7 @@ func TestTodoQuestionAndApprovalSkipTheGate(t *testing.T) {
 }
 
 func TestTodoOffDoesNotRewrite(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b}
 	if _, err := (todoTool{k}).Run(context.Background(), json.RawMessage(`{"items":[{"content":"keep","status":"pending"}]}`)); err != nil {
 		t.Fatal(err)
@@ -543,7 +543,7 @@ func TestTodoOffDoesNotRewrite(t *testing.T) {
 }
 
 func TestTodoStepCountStaysInMemory(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, TodoSteps: 2, Links: []link.Link{link.Terminal{}, pingLink{}}}
 	if _, err := (todoTool{k}).Run(context.Background(), json.RawMessage(`{"items":[{"content":"write the tests","status":"pending"}]}`)); err != nil {
 		t.Fatal(err)
@@ -569,7 +569,7 @@ func TestTodoStepCountStaysInMemory(t *testing.T) {
 }
 
 func TestTodoArchivesFinishedAndReplacedLists(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Now: func() time.Time { return time.Unix(70, 0).UTC() }}
 	tool := todoTool{k}
 	if _, err := tool.Run(context.Background(), json.RawMessage(`{"items":[{"id":"p","content":"parser","status":"in_progress"}]}`)); err != nil {
@@ -617,7 +617,7 @@ func TestTodoArchivesFinishedAndReplacedLists(t *testing.T) {
 }
 
 func TestTodoContinueKeepsList(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	p := &scripted{}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 10, Links: []link.Link{link.Terminal{}, pingLink{}}}
 	p.resps = append(p.resps,
@@ -625,7 +625,7 @@ func TestTodoContinueKeepsList(t *testing.T) {
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("step 1 done, pausing here for today.")},
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("ok, will continue next time.")},
 	)
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "do the 3-step migration", time.Unix(20, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "do the 3-step migration", time.Unix(20, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	before, err := ReadTodos(b)
@@ -633,7 +633,7 @@ func TestTodoContinueKeepsList(t *testing.T) {
 		t.Fatalf("before %+v %v", before, err)
 	}
 	p.resps = append(p.resps, provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("continuing")})
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "继续", time.Unix(4000, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "继续", time.Unix(4000, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	after, err := ReadTodos(b)
@@ -646,7 +646,7 @@ func TestTodoContinueKeepsList(t *testing.T) {
 }
 
 func TestTodoStatusTurnDoesNotArchiveExistingList(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -665,7 +665,7 @@ func TestTodoStatusTurnDoesNotArchiveExistingList(t *testing.T) {
 	if _, err := (todoTool{k}).Run(context.Background(), json.RawMessage(list)); err != nil {
 		t.Fatal(err)
 	}
-	ev := link.TerminalEvent("u1", "现在怎样", time.Unix(30, 0).UTC())
+	ev := inbox.TerminalEvent("u1", "现在怎样", time.Unix(30, 0).UTC())
 	if err := box.Post(ev); err != nil {
 		t.Fatal(err)
 	}

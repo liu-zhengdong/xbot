@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -22,7 +22,7 @@ func TestApprovalDecisionPanel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb})
+	b, err := bot.Create(root, "ada", "persona", []string{inbox.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestApprovalDecisionPanelSkipsUnneededTranscript(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb})
+			b, err := bot.Create(root, "ada", "persona", []string{inbox.NameWeb})
 			if err != nil {
 				t.Fatal(err)
 			}

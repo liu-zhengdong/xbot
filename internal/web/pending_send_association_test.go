@@ -14,7 +14,6 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/inbox"
 	"xbot/internal/kernel"
-	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
 )
@@ -211,7 +210,7 @@ func TestAbsorbedReplyUsesExactEventIdentity(t *testing.T) {
 			if scene == "empty_image" {
 				text = ""
 			}
-			ev := link.WebEvent("u1", text, time.Now())
+			ev := inbox.WebEvent("u1", text, time.Now())
 			ev.ID = id
 			if scene == "empty_image" {
 				ev.Images = []string{"picture.png"}

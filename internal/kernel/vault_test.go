@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 	"xbot/internal/vault"
 )
@@ -29,7 +29,7 @@ func TestScrubEntryUsesRedact(t *testing.T) {
 // the kernel for the runtime handler, but no vault tool name may reach the
 // model whether a vault exists or not.
 func TestModelToolsNeverListRetiredVaultTools(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	store, err := vault.Open(b.VaultDir(), b.VaultKeyPath())
 	if err != nil {
 		t.Fatal(err)

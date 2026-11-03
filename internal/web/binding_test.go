@@ -15,8 +15,8 @@ import (
 	"xbot/internal/compact"
 	"xbot/internal/config"
 	"xbot/internal/exec"
+	"xbot/internal/inbox"
 	"xbot/internal/kernel"
-	"xbot/internal/link"
 	"xbot/internal/provider"
 )
 
@@ -293,7 +293,7 @@ func TestBindingSmallWindowCompactsBeforeSwitchAndFirstRequestFits(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "continue", time.Now())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "continue", time.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if model.calls != 1 {

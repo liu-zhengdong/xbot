@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -66,7 +66,7 @@ func TestBatchCPartnerBehaviorComparison(t *testing.T) {
 					p := &scripted{resps: variant.responses}
 					b := testBot(t)
 					k := &Kernel{Bot: b, Provider: p, WorkDir: dir, Permissive: true, MaxSteps: 4}
-					if err := k.Handle(context.Background(), link.TerminalEvent("u1", tc.input, time.Now())); err != nil {
+					if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", tc.input, time.Now())); err != nil {
 						t.Fatal(err)
 					}
 					entries, err := b.Entries()

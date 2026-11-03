@@ -16,7 +16,7 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/config"
 	"xbot/internal/fsutil"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 	"xbot/internal/review"
 	"xbot/internal/tools"
@@ -255,7 +255,7 @@ func (k *Kernel) todoToolOn() bool {
 
 func (k *Kernel) turnIsTimer() bool {
 	t := k.liveTurn()
-	return t != nil && t.turnSource == link.NameTimer
+	return t != nil && t.turnSource == inbox.NameTimer
 }
 
 func (k *Kernel) loadTodo() (todoFile, error) {

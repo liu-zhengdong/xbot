@@ -13,7 +13,6 @@ import (
 	"xbot/internal/code"
 	"xbot/internal/config"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 )
 
 func TestOpenedKernelCodingUsesSearchSettings(t *testing.T) {
@@ -37,7 +36,7 @@ func TestOpenedKernelCodingUsesSearchSettings(t *testing.T) {
 	if err := config.Add(root, config.Provider{Name: "fake", Protocol: config.Responses, BaseURL: server.URL, APIKeyEnv: "FAKE_SEARCH_CODING_KEY"}, config.ModelSpec{Name: "gpt-5.5", Context: 128000}); err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "coding-search", "persona", []string{link.NameCoding})
+	b, err := bot.Create(root, "coding-search", "persona", []string{inbox.NameCoding})
 	if err != nil {
 		t.Fatal(err)
 	}

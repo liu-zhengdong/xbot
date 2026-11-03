@@ -45,7 +45,7 @@ func callBlock(id string) provider.Message {
 
 func capKernel(t *testing.T, resps ...provider.Message) (*Kernel, *blockTool) {
 	t.Helper()
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestLongTurnStaysOnMainLine(t *testing.T) {
 	close(bt.release)
 	var streamed strings.Builder
 	k.OnDelta = func(s string) { streamed.WriteString(s) }
-	ev := link.TerminalEvent("u1", "做六步", time.Unix(10, 0).UTC())
+	ev := inbox.TerminalEvent("u1", "做六步", time.Unix(10, 0).UTC())
 	if err := k.Inbox.Post(ev); err != nil {
 		t.Fatal(err)
 	}

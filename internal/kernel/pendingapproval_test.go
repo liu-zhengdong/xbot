@@ -8,6 +8,7 @@ import (
 
 	"xbot/internal/agent"
 	"xbot/internal/bot"
+	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/memory"
 	"xbot/internal/provider"
@@ -26,7 +27,7 @@ func appendCard(t *testing.T, b *bot.Bot, id, tool, summary, state string, at ti
 // the owner is appended to the newest message, not sent as its own message, so
 // the model can mention it without a second user turn.
 func TestPendingApprovalReminderReachesTheModel(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +39,7 @@ func TestPendingApprovalReminderReachesTheModel(t *testing.T) {
 		Links: []link.Link{link.Terminal{}},
 		Now:   func() time.Time { return now },
 	}
-	ev := link.TerminalEvent("u1", "hello", now.Add(time.Second))
+	ev := inbox.TerminalEvent("u1", "hello", now.Add(time.Second))
 	if err := k.Handle(context.Background(), ev); err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +86,7 @@ func TestPendingApprovalReminderReachesTheModel(t *testing.T) {
 // TestPendingApprovalReminderStopsAfterTheAnswer checks a decided card no longer
 // produces a reminder: only cards still open count.
 func TestPendingApprovalReminderStopsAfterTheAnswer(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	now := time.Unix(1000, 0).UTC()
 	appendCard(t, b, "card-1", "sh", "mkdir a", bot.ApprovalPending, now.Add(-time.Minute))
 	appendCard(t, b, "card-1", "sh", "mkdir a", bot.ApprovalApproved, now)
@@ -95,11 +96,11 @@ func TestPendingApprovalReminderStopsAfterTheAnswer(t *testing.T) {
 		Links: []link.Link{link.Terminal{}},
 		Now:   func() time.Time { return now },
 	}
-	if due, err := k.reminderKinds(link.Event{Source: link.NameTerminal}).Due(now); err != nil || len(due) != 0 {
+	if due, err := k.reminderKinds(inbox.Event{Source: inbox.NameTerminal}).Due(now); err != nil || len(due) != 0 {
 		t.Fatalf("decided cards still produced a note: %v %v", due, err)
 	}
 	appendCard(t, b, "card-3", "http_request", "GET example.test", bot.ApprovalPending, now.Add(-30*time.Second))
-	due, err := k.reminderKinds(link.Event{Source: link.NameTerminal}).Due(now)
+	due, err := k.reminderKinds(inbox.Event{Source: inbox.NameTerminal}).Due(now)
 	if err != nil || len(due) != 1 || !strings.Contains(due[0].Text, "http_request") {
 		t.Fatalf("open card not reported: %v %v", due, err)
 	}
@@ -111,9 +112,9 @@ func TestPendingApprovalReminderStopsAfterTheAnswer(t *testing.T) {
 // TestPendingApprovalNoteOmitsWhenNothingIsOpen checks the everyday case: no open
 // card means no extra message at all.
 func TestPendingApprovalNoteOmitsWhenNothingIsOpen(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{Bot: b, Memory: memory.NopStore{}, Links: []link.Link{link.Terminal{}}}
-	due, err := k.reminderKinds(link.Event{Source: link.NameTerminal}).Due(time.Unix(1, 0).UTC())
+	due, err := k.reminderKinds(inbox.Event{Source: inbox.NameTerminal}).Due(time.Unix(1, 0).UTC())
 	if err != nil || len(due) != 0 {
 		t.Fatalf("empty transcript produced a note: %v %v", due, err)
 	}
@@ -182,9 +183,9 @@ func TestPendingApprovalReminderOnlyOnOwnerMessages(t *testing.T) {
 		}
 		return false
 	}
-	run := func(t *testing.T, ev link.Event) bool {
+	run := func(t *testing.T, ev inbox.Event) bool {
 		t.Helper()
-		b := testBot(t, link.NameTerminal)
+		b := testBot(t, inbox.NameTerminal)
 		appendCard(t, b, "card-1", "sh", "mkdir a", bot.ApprovalPending, now.Add(-time.Minute))
 		p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
 		k := &Kernel{
@@ -197,10 +198,10 @@ func TestPendingApprovalReminderOnlyOnOwnerMessages(t *testing.T) {
 		}
 		return hasNote(p.reqs)
 	}
-	if !run(t, link.TerminalEvent("u1", "hello", time.Unix(3001, 0).UTC())) {
+	if !run(t, inbox.TerminalEvent("u1", "hello", time.Unix(3001, 0).UTC())) {
 		t.Fatal("owner message did not carry the pending-approval reminder")
 	}
-	timerEv := link.NewEvent(link.NameTimer, link.TypeTimer, "tick", "u1", time.Unix(3002, 0).UTC())
+	timerEv := inbox.NewEvent(inbox.NameTimer, inbox.TypeTimer, "tick", "u1", time.Unix(3002, 0).UTC())
 	if run(t, timerEv) {
 		t.Fatal("timer wake carried the pending-approval reminder")
 	}
@@ -209,7 +210,7 @@ func TestPendingApprovalReminderOnlyOnOwnerMessages(t *testing.T) {
 // TestOpenApprovalsReadsLatestCardState pins the transcript as the single source
 // of truth: the newest card for an id decides.
 func TestOpenApprovalsReadsLatestCardState(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	now := time.Unix(2000, 0).UTC()
 	appendCard(t, b, "c1", "sh", "mkdir a", bot.ApprovalPending, now.Add(-2*time.Minute))
 	appendCard(t, b, "c1", "sh", "mkdir a", bot.ApprovalDeclined, now.Add(-time.Minute))
@@ -220,7 +221,7 @@ func TestOpenApprovalsReadsLatestCardState(t *testing.T) {
 	if _, _, err := k.assemble(bot.State{}, ""); err != nil {
 		t.Fatal(err)
 	}
-	due, err := k.reminderKinds(link.Event{Source: link.NameTerminal}).Due(now)
+	due, err := k.reminderKinds(inbox.Event{Source: inbox.NameTerminal}).Due(now)
 	if err != nil || len(due) != 0 {
 		t.Fatalf("declined card still noted: %v %v", due, err)
 	}

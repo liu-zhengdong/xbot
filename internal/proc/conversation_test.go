@@ -11,7 +11,6 @@ import (
 	"xbot/internal/exec"
 	"xbot/internal/inbox"
 	"xbot/internal/kernel"
-	"xbot/internal/link"
 	"xbot/internal/provider"
 )
 
@@ -36,7 +35,7 @@ func (p *normalConversationModel) Chat(_ context.Context, r provider.Request, d 
 }
 func TestFailedResultDoesNotBlockNextOwnerMessage(t *testing.T) {
 	root := t.TempDir()
-	b, err := bot.Create(root, "ada", "brief", []string{link.NameTerminal})
+	b, err := bot.Create(root, "ada", "brief", []string{inbox.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,9 +46,9 @@ func TestFailedResultDoesNotBlockNextOwnerMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := link.NewEvent(link.SourceSubagent, exec.EvDone, "A的完整结果731", "sa_a", time.Now())
-	owner := link.TerminalEvent("u1", "继续问限制", time.Now())
-	for _, e := range []link.Event{result, owner} {
+	result := inbox.NewEvent(inbox.SourceSubagent, exec.EvDone, "A的完整结果731", "sa_a", time.Now())
+	owner := inbox.TerminalEvent("u1", "继续问限制", time.Now())
+	for _, e := range []inbox.Event{result, owner} {
 		if err := in.Post(e); err != nil {
 			t.Fatal(err)
 		}
@@ -58,9 +57,9 @@ func TestFailedResultDoesNotBlockNextOwnerMessage(t *testing.T) {
 	k := &kernel.Kernel{Bot: b, Inbox: in, Provider: p, MaxSteps: 2}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	var events []link.Event
+	var events []inbox.Event
 	var errs []error
-	err = Run(ctx, Config{K: k, SkipDeliver: true, After: func(e link.Event, err error) {
+	err = Run(ctx, Config{K: k, SkipDeliver: true, After: func(e inbox.Event, err error) {
 		events = append(events, e)
 		errs = append(errs, err)
 		if len(events) == 2 {
@@ -80,7 +79,7 @@ func TestFailedResultDoesNotBlockNextOwnerMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, ev := range []link.Event{result, owner} {
+	for _, ev := range []inbox.Event{result, owner} {
 		n := 0
 		for _, row := range rows {
 			if row.EventID == ev.ID {

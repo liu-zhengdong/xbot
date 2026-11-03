@@ -56,6 +56,10 @@ const serveSteps = 0
 // an old bot config may still list it; serve skips it with one notice.
 const legacyNodeGrant = "node"
 
+// retiredToolOrgan is the ToolsLink organ's name, retired by ADR0069. An old
+// bot config may still list it; like node it mounts nothing and must not fail.
+const retiredToolOrgan = "tools"
+
 // newServeKernel opens a kernel the way the serve path does, so every caller
 // there shares one definition of what a served bot gets.
 // loginTokenLine is the startup line with the web 登录码. It keeps "login token"
@@ -90,13 +94,12 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	if err != nil {
 		return nil, person.Person{}, err
 	}
-	links, err := mount(b, runner)
+	// MountLinks hands the vault to each connector it builds, so the
+	// first-access migration of legacy plaintext tokens happens inside mount.
+	links, err := mount(b, runner, store)
 	if err != nil {
 		return nil, person.Person{}, err
 	}
-	// First access on a mounted connector migrates any legacy plaintext token
-	// into the vault and switches the connector to placeholders.
-	attachConnectors(links, store)
 	workDir, sharedDir, err := work.Open(root, b.Name())
 	if err != nil {
 		return nil, person.Person{}, err
@@ -107,7 +110,7 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		if err != nil {
 			return nil, person.Person{}, err
 		}
-		who, err = person.Identify(root, person.Account{Link: link.NameTerminal, ExternalID: ext}, display)
+		who, err = person.Identify(root, person.Account{Link: inbox.NameTerminal, ExternalID: ext}, display)
 		if err != nil {
 			return nil, person.Person{}, err
 		}
@@ -190,28 +193,13 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 	return k, who, nil
 }
 
-// attachConnectors hands the vault to every connector link and runs the
-// first-access migration. A backend the connector refuses leaves it on the
-// legacy file, so the migration retries on the next start.
-func attachConnectors(links []link.Link, backend vault.Backend) {
-	if backend == nil {
-		return
-	}
-	for _, l := range links {
-		c, ok := l.(*link.Connector)
-		if !ok {
-			continue
-		}
-		if err := c.UseVault(backend); err != nil {
-			// The legacy plaintext stays in place and the migration retries on
-			// the next start. The error carries no value.
-			log.Printf("connector %s: credential migration into the vault failed, retrying next start: %v", c.Kind, err)
-		}
-	}
-}
-
-func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
-	var out []link.Link
+// mount resolves the kernel-independent inputs — the runner spec and the
+// retired node notice — then hands assembly to kernel.MountLinks, the single
+// dispatch that also builds organs, connectors, and the browser link.
+// Connectors get the vault inside MountLinks, so the first-access credential
+// migration runs there in the same order the retired attach step ran it.
+func mount(b *bot.Bot, runner runnerSpec, backend vault.Backend) ([]link.Link, error) {
+	var mounted *link.Runner
 	seen := map[string]bool{}
 	for _, name := range b.EffectiveLinks() {
 		if seen[name] {
@@ -222,10 +210,6 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 			continue
 		}
 		switch name {
-		case link.NameTelegram:
-			out = append(out, link.NewConnector(bot.Dir(b.Root, b.Name()), b.SecretPath(), link.NameTelegram))
-		case link.NameLark:
-			out = append(out, link.NewConnector(bot.Dir(b.Root, b.Name()), b.SecretPath(), link.NameLark))
 		case link.NameRunner:
 			url, token := runner.URL, runner.Token
 			if url == "" {
@@ -235,15 +219,17 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 			if url != "" && token == "" {
 				return nil, errors.New("runner token is empty")
 			}
-			out = append(out, link.Runner{BaseURL: url, Token: token})
+			mounted = &link.Runner{BaseURL: url, Token: token}
 		case legacyNodeGrant:
 			// The node feature is gone; an old grant mounts nothing and must not
 			// fail the bot. One notice per bot and process keeps restarts quiet.
 			if noteLegacyNodeGrant(b.Name()) {
 				fmt.Fprintf(os.Stderr, "xbot: bot %s: 节点功能已移除，忽略 node 授权\n", b.Name())
 			}
-		case link.NameBrowser:
-			out = append(out, browser.Open(b.Root))
+		case retiredToolOrgan:
+			// ToolsLink is gone too; an old grant mounts nothing, quietly.
+		case link.NameTelegram, link.NameLark, link.NameBrowser:
+			// Catalog grants that MountLinks builds through mountGrantLocked.
 		default:
 			return nil, fmt.Errorf("unknown link %q", name)
 		}
@@ -252,16 +238,16 @@ func mount(b *bot.Bot, runner runnerSpec) ([]link.Link, error) {
 		runner.URL = os.Getenv("XBOT_RUNNER_URL")
 		runner.Token = os.Getenv("XBOT_RUNNER_TOKEN")
 	}
-	if runner.URL != "" && !seen[link.NameRunner] {
+	if runner.URL != "" && mounted == nil {
 		if runner.Token == "" {
 			return nil, errors.New("runner token is empty")
 		}
-		out = append(out, link.Runner{BaseURL: runner.URL, Token: runner.Token})
+		mounted = &link.Runner{BaseURL: runner.URL, Token: runner.Token}
 	}
 	if _, _, err := work.Open(b.Root, b.Name()); err != nil {
 		return nil, err
 	}
-	return kernel.MountOrgans(b, out), nil
+	return kernel.MountLinks(b, mounted, backend), nil
 }
 
 // legacyNodeFiles names the retired node feature's files under root, in the

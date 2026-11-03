@@ -63,7 +63,7 @@ func TestShellJobSurvivesTurns(t *testing.T) {
 }
 
 func TestShellNoticeWaitsUntilToolReturns(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	in, err := inbox.Open(b.InboxPath())
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func TestShellNoticeWaitsUntilToolReturns(t *testing.T) {
 	}
 	errc := make(chan error, 1)
 	go func() {
-		errc <- k.Handle(context.Background(), link.TerminalEvent("u1", "go", time.Unix(1_700_000_000, 0).UTC()))
+		errc <- k.Handle(context.Background(), inbox.TerminalEvent("u1", "go", time.Unix(1_700_000_000, 0).UTC()))
 	}()
 	select {
 	case <-entered:
@@ -144,7 +144,7 @@ func TestShellNoticeWaitsUntilToolReturns(t *testing.T) {
 }
 
 func TestIdleShellJobWakesAndStaysANormalTurn(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	in, err := inbox.Open(b.InboxPath())
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +168,7 @@ func TestIdleShellJobWakesAndStaysANormalTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := strings.TrimSpace(strings.Split(strings.TrimPrefix(out, "background "), "\n")[0])
-	var ev link.Event
+	var ev inbox.Event
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		pending := in.Pending()
@@ -181,7 +181,7 @@ func TestIdleShellJobWakesAndStaysANormalTurn(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if ev.Source != "shell" || link.OwnerTrusted(ev.Source, ev.Sender, b.Config().Owners) {
+	if ev.Source != "shell" || inbox.OwnerTrusted(ev.Source, ev.Sender, b.Config().Owners) {
 		t.Fatalf("wake should be an ordinary untrusted event: %+v", ev)
 	}
 	if err := k.Handle(context.Background(), ev); err != nil {
@@ -218,7 +218,7 @@ func TestIdleShellJobWakesAndStaysANormalTurn(t *testing.T) {
 }
 
 func TestShellJobFileUsesKernelRedactor(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
+	b := testBot(t, inbox.NameTerminal)
 	k := &Kernel{
 		Bot: b,
 		Redact: func(s string) string {
@@ -349,7 +349,7 @@ func TestRestartDoesNotRewakeFinishedJobs(t *testing.T) {
 
 	now := time.Unix(1_700_000_000, 0).UTC()
 	p.resps = append(p.resps, provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("hi")})
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", now)); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "hello", now)); err != nil {
 		t.Fatal(err)
 	}
 	n := 0
@@ -453,7 +453,7 @@ func TestAttachShellJobsOnce(t *testing.T) {
 func TestBaseShellsCarryJobsBinding(t *testing.T) {
 	k, p, _ := freshBot(t)
 	p.resps = []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("hi")}}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Unix(1_700_000_500, 0).UTC())); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "hello", time.Unix(1_700_000_500, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
 	for _, tool := range p.reqs[0].Tools {
@@ -833,7 +833,7 @@ func TestShellJobsFollowRename(t *testing.T) {
 // moves the bot. Its completion lands in the new directory,
 // the old bot directory is not recreated, and the same turn keeps working.
 func TestProfileRenameDoesNotRecreateOldDir(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NamePersona)
+	b := testBot(t, inbox.NameTerminal, link.NamePersona)
 	root := b.Root
 	now := time.Unix(1_700_000_000, 0).UTC()
 	p := &scripted{resps: []provider.Message{
@@ -866,7 +866,7 @@ func TestProfileRenameDoesNotRecreateOldDir(t *testing.T) {
 	if k.shellJobs() != before {
 		t.Fatal("runtime rename replaced the job table")
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "改名叫 grace", now)); err != nil {
+	if err := k.Handle(context.Background(), inbox.TerminalEvent("u1", "改名叫 grace", now)); err != nil {
 		t.Fatal(err)
 	}
 	if k.Bot.Name() != "grace" {

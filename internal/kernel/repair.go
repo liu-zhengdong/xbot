@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 	"xbot/internal/provider"
 )
 
@@ -232,7 +232,7 @@ func lastAssistant(entries []bot.Entry, idx int) string {
 // answer of that turn. done is false while the turn is still running or never
 // started; text is empty when the bot finished with no final line. It reads
 // the transcript only.
-func ReplyAfter(b *bot.Bot, ev link.Event) (text string, done bool, err error) {
+func ReplyAfter(b *bot.Bot, ev inbox.Event) (text string, done bool, err error) {
 	seq, err := b.FindEvent(ev.ID)
 	if err != nil {
 		return "", false, err
@@ -255,7 +255,7 @@ func ReplyAfter(b *bot.Bot, ev link.Event) (text string, done bool, err error) {
 	if err != nil {
 		return "", false, err
 	}
-	want := link.Render(ev, true)
+	want := inbox.Render(ev, true)
 	for i, e := range span {
 		if e.Message.Role != provider.RoleUser || e.EventID != "" || e.Time.Before(ev.Time.Add(-2*time.Second)) || !strings.Contains(e.Message.Text(), want) {
 			continue

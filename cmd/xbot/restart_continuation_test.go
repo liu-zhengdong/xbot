@@ -10,14 +10,13 @@ import (
 	"xbot/internal/bot"
 	"xbot/internal/exec"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 )
 
 func TestRestartContinuationPersistsAndWakesEveryWorkingBot(t *testing.T) {
 	root := t.TempDir()
 	makeBot := func(name string) *bot.Bot {
 		t.Helper()
-		b, err := bot.Create(root, name, "persona", []string{link.NameTerminal})
+		b, err := bot.Create(root, name, "persona", []string{inbox.NameTerminal})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -73,7 +72,7 @@ func TestRestartContinuationPersistsAndWakesEveryWorkingBot(t *testing.T) {
 			t.Fatal(err)
 		}
 		pending := box.Pending()
-		if len(pending) != 1 || pending[0].Source != "restart" || pending[0].Type != link.TypeMessage || !pending[0].Untrusted || !strings.Contains(pending[0].Content, "XBot 已重启") || !strings.Contains(pending[0].Content, "用户的续跑提示：继续检查设备同步") {
+		if len(pending) != 1 || pending[0].Source != "restart" || pending[0].Type != inbox.TypeMessage || !pending[0].Untrusted || !strings.Contains(pending[0].Content, "XBot 已重启") || !strings.Contains(pending[0].Content, "用户的续跑提示：继续检查设备同步") {
 			t.Fatalf("%s continuation event = %+v", b.Name(), pending)
 		}
 	}

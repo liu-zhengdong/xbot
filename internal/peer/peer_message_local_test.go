@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"xbot/internal/link"
+	"xbot/internal/inbox"
 )
 
 func TestPeerMessageRuntimeLocalWriteFacts(t *testing.T) {
@@ -19,7 +19,7 @@ func TestPeerMessageRuntimeLocalWriteFacts(t *testing.T) {
 		t.Fatalf("actual acceptance %+v err=%v", result, err)
 	}
 	posts := readPosts(t, bob.InboxPath())
-	if len(posts) != 1 || posts[0].ID != result.EventID || posts[0].Source != "bot:ada" || posts[0].Sender != "ada" || posts[0].SenderKind != link.KindBot || !posts[0].Untrusted || posts[0].Content != "body" || posts[0].Chain != "ch_original" || posts[0].Hops != 2 || !posts[0].Time.Equal(now) {
+	if len(posts) != 1 || posts[0].ID != result.EventID || posts[0].Source != "bot:ada" || posts[0].Sender != "ada" || posts[0].SenderKind != inbox.KindBot || !posts[0].Untrusted || posts[0].Content != "body" || posts[0].Chain != "ch_original" || posts[0].Hops != 2 || !posts[0].Time.Equal(now) {
 		t.Fatalf("original delivery %+v", posts)
 	}
 	if len(readPosts(t, ada.InboxPath())) != 0 {
