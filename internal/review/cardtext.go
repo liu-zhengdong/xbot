@@ -36,11 +36,6 @@ func CardText(tool string, args json.RawMessage, summary, machine string) (title
 		return "调用 MCP 工具 " + strings.TrimSpace(tool), ""
 	case ClassOf(name) == Delete:
 		return deleteTitle(name), ""
-	case name == "links":
-		if strings.EqualFold(strings.TrimSpace(linksAction(args)), "remove") {
-			return "移除 Link", ""
-		}
-		return "安装 Link", ""
 	default:
 		return strings.TrimSpace(tool), ""
 	}

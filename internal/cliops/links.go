@@ -16,6 +16,16 @@ type LinksLoad struct {
 	ID string `json:"id"`
 }
 
+// LinksInstall carries one catalog id, name, or store connector to install.
+type LinksInstall struct {
+	ID string `json:"id"`
+}
+
+// LinksRemove carries one catalog id, name, or store connector to remove.
+type LinksRemove struct {
+	ID string `json:"id"`
+}
+
 // LinksReply contains only the original text and the actual error.
 type LinksReply struct {
 	Text  string `json:"text,omitempty"`
@@ -23,6 +33,8 @@ type LinksReply struct {
 }
 
 type LinksHandlers struct {
-	Search func(context.Context, LinksSearch) (LinksReply, error)
-	Load   func(context.Context, LinksLoad) (LinksReply, error)
+	Search  func(context.Context, LinksSearch) (LinksReply, error)
+	Load    func(context.Context, LinksLoad) (LinksReply, error)
+	Install func(context.Context, LinksInstall) (LinksReply, error)
+	Remove  func(context.Context, LinksRemove) (LinksReply, error)
 }

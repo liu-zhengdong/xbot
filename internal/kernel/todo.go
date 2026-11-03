@@ -234,7 +234,7 @@ func todoToolListQuiet(list []tools.Tool) bool {
 			continue
 		}
 		name := t.Name()
-		if name == "" || name == "todo" || name == "links" || name == "send_message_to_user" {
+		if name == "" || name == "todo" || name == "send_message_to_user" {
 			continue
 		}
 		saw = true

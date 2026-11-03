@@ -12,23 +12,26 @@ type LinksCommand struct {
 }
 
 // ParseLinksRuntime consumes syntax only; args excludes links. The noun level
-// accepts exactly search and load, each with the same strict flag layer as
-// ParseCompactRuntime: no aliases, value flags consume the next argument
-// literally, and help stays offline at both levels.
+// accepts exactly search, load, install, and remove, each with the same strict
+// flag layer as ParseCompactRuntime: no aliases, value flags consume the next
+// argument literally, and help stays offline at both levels.
 func ParseLinksRuntime(args []string) (LinksCommand, error) {
 	var command LinksCommand
 	if len(args) == 0 {
-		return command, errors.New("links: expected search or load")
+		return command, errors.New("links: expected search, load, install, or remove")
 	}
-	if args[0] == "search" || args[0] == "load" {
+	switch args[0] {
+	case "search", "load", "install", "remove":
 		command.Action, args = args[0], args[1:]
-	} else if args[0] != "--help" && args[0] != "-h" {
-		return command, fmt.Errorf("links: unexpected subcommand %q", args[0])
+	default:
+		if args[0] != "--help" && args[0] != "-h" {
+			return command, fmt.Errorf("links: unexpected subcommand %q", args[0])
+		}
 	}
 	seen := map[string]bool{}
 	hasID := false
 	for i := 0; i < len(args); i++ {
-		if command.Action == "load" && !strings.HasPrefix(args[i], "-") {
+		if command.Action != "" && command.Action != "search" && !strings.HasPrefix(args[i], "-") {
 			if hasID {
 				return command, fmt.Errorf("links: unexpected argument %q", args[i])
 			}
@@ -84,13 +87,13 @@ func ParseLinksRuntime(args []string) (LinksCommand, error) {
 		return command, nil
 	}
 	if command.Action == "" {
-		return command, errors.New("links: expected search or load")
+		return command, errors.New("links: expected search, load, install, or remove")
 	}
 	if !command.Self {
 		return command, errors.New("links: requires --self from an active XBot shell")
 	}
-	if command.Action == "load" && !hasID {
-		return command, errors.New("links: load requires exactly one id or name")
+	if command.Action != "search" && !hasID {
+		return command, fmt.Errorf("links: %s requires exactly one id or name", command.Action)
 	}
 	return command, nil
 }

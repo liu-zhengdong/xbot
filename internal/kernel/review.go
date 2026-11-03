@@ -218,8 +218,8 @@ func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawM
 		}
 	}
 	// Always-allow skips permission cards, including machine, protected-path
-	// and untrusted-memory checks above. Keep links for connector key input.
-	if k.permissive() && name != "links" {
+	// and untrusted-memory checks above.
+	if k.permissive() {
 		return false, summary, nil
 	}
 	if review.ClassOf(name) == review.SelfEdit && isFileEdit(name) {

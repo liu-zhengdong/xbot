@@ -25,10 +25,8 @@ func TestLinksInstallStoreConnectorWithKey(t *testing.T) {
 	k := &Kernel{Bot: b, Links: []link.Link{link.Terminal{}}}
 	tool := linksTool{k}
 	for _, id := range []string{"context7", "mcp:context7", "Context7"} {
-		args, _ := json.Marshal(map[string]string{"action": "install", "id": id})
-		_, summary, err := tool.Confirm(args)
-		if err != nil || !strings.HasPrefix(summary, "install context7\n") || !strings.Contains(summary, "\nsecrets: CONTEXT7_API_KEY") {
-			t.Fatalf("%s card %q %v", id, summary, err)
+		if summary := cardSummary("install", id); !strings.HasPrefix(summary, "install context7\n") || !strings.Contains(summary, "\nsecrets: CONTEXT7_API_KEY") {
+			t.Fatalf("%s card %q", id, summary)
 		}
 	}
 	// No key filled: nothing written, nothing claimed.

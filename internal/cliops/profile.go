@@ -217,6 +217,12 @@ func Start(root string, handlers Handlers) (*Server, error) {
 	mux.HandleFunc("/v1/links/load", func(w http.ResponseWriter, r *http.Request) {
 		serveLinksLoad(w, r, handlers.Links)
 	})
+	mux.HandleFunc("/v1/links/install", func(w http.ResponseWriter, r *http.Request) {
+		serveLinksInstall(w, r, handlers.Links)
+	})
+	mux.HandleFunc("/v1/links/remove", func(w http.ResponseWriter, r *http.Request) {
+		serveLinksRemove(w, r, handlers.Links)
+	})
 	guarded := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fail := func(code int, message string) {
 			w.Header().Set("Content-Type", "application/json")

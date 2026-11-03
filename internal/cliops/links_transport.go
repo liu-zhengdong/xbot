@@ -26,6 +26,22 @@ func serveLinksLoad(w http.ResponseWriter, r *http.Request, handlers *LinksHandl
 	serveLinks(w, r, "load", fn, &LinksLoad{})
 }
 
+func serveLinksInstall(w http.ResponseWriter, r *http.Request, handlers *LinksHandlers) {
+	var fn func(context.Context, LinksInstall) (LinksReply, error)
+	if handlers != nil {
+		fn = handlers.Install
+	}
+	serveLinks(w, r, "install", fn, &LinksInstall{})
+}
+
+func serveLinksRemove(w http.ResponseWriter, r *http.Request, handlers *LinksHandlers) {
+	var fn func(context.Context, LinksRemove) (LinksReply, error)
+	if handlers != nil {
+		fn = handlers.Remove
+	}
+	serveLinks(w, r, "remove", fn, &LinksRemove{})
+}
+
 // serveLinks enforces one strict JSON object per action and binds the original
 // Shell call ID into the handler context before the domain reply is bound.
 func serveLinks[I any](w http.ResponseWriter, r *http.Request, action string, fn func(context.Context, I) (LinksReply, error), input *I) {
@@ -105,6 +121,14 @@ func CallLinksSearch(ctx context.Context, endpoint, root, originalCallID string,
 
 func CallLinksLoad(ctx context.Context, endpoint, root, originalCallID string, input LinksLoad) (LinksReply, error) {
 	return callLinks(ctx, endpoint, root, originalCallID, "load", input)
+}
+
+func CallLinksInstall(ctx context.Context, endpoint, root, originalCallID string, input LinksInstall) (LinksReply, error) {
+	return callLinks(ctx, endpoint, root, originalCallID, "install", input)
+}
+
+func CallLinksRemove(ctx context.Context, endpoint, root, originalCallID string, input LinksRemove) (LinksReply, error) {
+	return callLinks(ctx, endpoint, root, originalCallID, "remove", input)
 }
 
 func callLinks(ctx context.Context, endpoint, root, originalCallID, action string, input any) (LinksReply, error) {
