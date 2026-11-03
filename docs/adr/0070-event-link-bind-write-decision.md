@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0070 Event/Link 绑写决策：剩余写类工具全部保留模型侧，零新 CLI 面
@@ -13,8 +13,8 @@ date: 2026-11-02
 盘点依据 remaining-inventory §1.1/§1.3 与本刀逐个源码核对。剩余写类工具共六族：
 
 - `send_message_to_user`（`tools.go:105-171`，chat 行 `always`）：`{text?, importance?, images?, audios?}`；`attachOutImages` 先落 paste/ 校验；`imageTurn(ctx).turnSource` 分叉——terminal/web 源时直接出泡回 `sent to the owner's chat`（不写 outbox），其它源走 `deliverNote`→outbox append + desktop 通知回 `notified the owner`；`pushFindings`（`:195-227`）同样按 `turnSource` 判。回执文本是 `pushFindings` 覆盖判据、web SSE `result`/`done.text` 出泡判据、`sentToChat`（`reply_inputs.go:44`）判据、bot.Chat `chatSay` 判据——**「唯一可见通道」语义由回执原文承载**。
-- `ask_user`（`peers.go:19-48` + `questions.go` 全文件）：`askOwner` 建 `ownerQuestion` 卡（ApprovalPending 行入 transcript）、30min timer 自动选 recommended；`ChooseQuestion`/`AnswerQuestions`/`deliverQuestion` 回投链——先 `InterjectInternal`，失败再 `link.NewEvent(NameApproval)` → `box.Post` + `wakers` 唤醒。完成事件绑 Event/Inbox 保留线本体。
-- `dispatch`/`spawn`（`dispatch.go:50-87`/`agents.go:345-400`）：`StartSubagent`/`spawn` → `ensureExec().Start`（exec.Local 或 Remote）→ `forwardExec`（`agents.go:265-313`）把 `exec.EvDone/EvFailed` 转成 `link.Event{Source: SourceSubagent, Untrusted: true}` → `withCurrentIO` → `box.Post` → `wakers` 唤醒。排队回执「已开始/已排队」告诉模型别自己干；完成结果经 Event 异步回投，是 Event 保留线的第二大生产者。
+- `ask_user`（`peers.go:19-48` + `questions.go` 全文件）：`askOwner` 建 `ownerQuestion` 卡（ApprovalPending 行入 transcript）、30min timer 自动选 recommended；`ChooseQuestion`/`AnswerQuestions`/`deliverQuestion`（`questions.go:219-233`）回投链——先 `InterjectInternal`，失败再 `link.NewEvent(NameApproval)` → `box.Post` + `wakers` 唤醒。完成事件绑 Event/Inbox 保留线本体。
+- `dispatch`/`spawn`（`dispatch.go:77-88`/`agents.go:345-400`，`StartSubagent` fork 装配在 `continuable_subagents.go:37-106`）：`StartSubagent`/`spawn` → `ensureExec().Start`（exec.Local 或 Remote）→ `forwardExec`（`agents.go:265-313`，Event Post 在 `agents.go:299`）把 `exec.EvDone/EvFailed` 转成 `link.Event{Source: SourceSubagent, Untrusted: true}` → `withCurrentIO` → `box.Post` → `wakers` 唤醒。排队回执「已开始/已排队」告诉模型别自己干；完成结果经 Event 异步回投，是 Event 保留线的第二大生产者。
 - `agent_message`/`agent_stop`/`steer`/`queue`/`interrupt`/`cancel`（`continuable_subagents.go:314-368`、`agents.go:505-597`）：`messageSubagent`（prepared turn sender `"bot:"+currentName`）/`StopSubagent`/`control` → `exec.Continuable.Message`/`exec.Local.Stop`/`executor.Control`——进程内 executor 活表操作，descriptor 存在时经 `MessageSubagent`/`StopSubagent` 走 continuable 分支，否则 `ensureExec().Control`。原 `Run` 读 ctx 仅用于传入 executor call。
 - `code_start`/`code_steer`/`code_queue`/`code_interrupt`/`code_cancel`/`code_show`（`internal/code/link.go:108-270`）：`code.Link` 是「Link 装配 + 事件生产」双面（inventory §2.4 已列最大残留）；`rec.Start`/`rec.Control`/`nudge` 写 task record，`rec.OnTerminal`→`l.post`→`box.Post` 完成事件（`link.go:80-106`）。`code_show` 是 Readonly 读（`rec.List`/`rec.Get`/`formatTask`/`output` tail），原 Run 忽略 ctx——与已迁 subagent 三读/shell jobs 同档的 runtime 读候选，但本刀不迁（理由见决策表）。
 - `generate_image`/`listen`/`tts`/`todo`（image_gen/audio/todo kernel 行）：绑 provider 登录态与工作区落盘（生图/音频）、绑本 bot todo 文件状态与 `UpdatedStep` 当轮提醒（todo）——inventory §3 归「厂商协议能力/当轮计划工具」，母路线归批 5 收口决策，不在本刀判。
@@ -72,3 +72,5 @@ date: 2026-11-02
 5. 无新增 `xbot subagent steer|queue|interrupt|cancel|stop` 或 `code` noun；`allowReadOnlyPlatform` 不新增分支；`cliProfileGuide` 不新增写类指引。
 
 本文保决策边界：不把「Event 保留」读成「写工具都该迁 CLI 发消息」（写终点本就是 Event/Inbox 或活表）、把批 5 收口候选（subagent 控制动词、code_show、厂商协议、todo）提前开合同、把 Event 上移/Link 瘦身写成本刀动作（它们是后续实现切片）。Root4USERdocs/OwnerSSE/guard/main/push 日用不动。
+
+经 SINGLE ACTUAL CONCRETE SHAPE PASS（24 shape，战略边界确认）：send/ask/dispatch/code 四族的写终点本就是 `box.Post` 或本实例活表——它们是 Event 生产链的入口侧，保模型侧注册、零新 CLI 面；subagent 六控制动词与 `code_show` 留批 5 收口候选。三处引用行号瑕疵已修正：`questions.go` 回投链实为 219-233（非 interject.go:129）、`agents.go` Event Post 实为 299（`forwardExec` 内）、dispatch fork Event 装配实在 `continuable_subagents.go:37-106`（`StartSubagent`，非 dispatch.go）。

@@ -1,5 +1,11 @@
 # XBot 里程碑与进度
 
+## 2026-11-02 Event/Link 绑写决策（战略边界确认，决策冻结）
+
+- 合同 6ce016d9 [ADR0070](adr/0070-event-link-bind-write-decision.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS（24 shape，战略边界确认；三处引用行号瑕疵已核并修正：`questions.go` 回投链实为 219-233 非 interject.go:129、`agents.go` Event Post 实为 299 非 284-306、dispatch fork Event 装配实在 `continuable_subagents.go:37-106` 非 dispatch.go）→Accepted。
+- 决策：批 4「出入站解耦」模型工具面收口为零迁出——剩余写类工具全部保留模型侧注册，零新 CLI 面。`send_message_to_user` 回执原文是六处领域判据消费点（`reply_inputs.go:44` `sentToChat`、`tools.go:205` `pushFindings`、`server.go:1026`/`:1420` SSE、`chat.go:186` `chatSay`/`window.go:261` 投影、`server.go` done.text）；`ask_user` 经 `questions.go` `deliverQuestion` 回投走 `InterjectInternal`/`NameApproval` Event 线；`dispatch`/`spawn` 完成结果经 `forwardExec`（`agents.go:265-313`）转 `link.Event{Source: SourceSubagent}` 投 Inbox，是 Event 线第二生产者；`agent_message`/`agent_stop`/`steer`/`queue`/`interrupt`/`cancel` 六控制写进程内 executor 活表、`code_show` 与五写绑 `code.Link` 双面——六控制 + `code_show` 留批 5 收口候选（`xbot subagent <verb> --self` 同 noun 候选），不预留 noun、不写合同；`generate_image`/`listen`/`tts`/`todo` 归批 5。Event/Inbox 保留链全留——写终点本就是 `box.Post`/活表（`link.Event`/`NewEvent`/`inbox` Post/Ack/Wait/`wakers`/`InterjectInternal`/`forwardExec`/`code.Link.post` 不动）。
+- docs only，无代码动作。Not run：产品测试/真模型/p95/主人日用/push。
+
 ## 2026-11-02 ToolsLink 退役六件改 kernel 行（所测独立端到端分阶段通过，待集成）
 
 - 合同 7f045a87 [ADR0069](adr/0069-toolslink-base-set-decision.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS（24 shape；附强约束 kernel 行工厂须持这批工具单例句柄供 `attachShell`/`shown()` 绑定、不得每 `toolRegistry()` 重 new 致绑定落空；两笔误已核并修正：shell 解释器按平台至多 3——darwin zsh/bash/sh、windows powershell/cmd/git-bash，`sandboxLink` 注入点 `eval/run.go:410` 原误写 `jail.go:410`）→2f9362de Accepted。
