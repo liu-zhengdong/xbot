@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"xbot/internal/cliops"
 	"xbot/internal/link"
 	"xbot/internal/machine"
 	"xbot/internal/permissions"
@@ -32,8 +33,54 @@ func needsCard(t *testing.T, k *Kernel, tool, args string) bool {
 	return need
 }
 
+// linksIntentAsks is the retired needsCard("links") check re-pointed at the
+// runtime owner-card path: on a permissive kernel with a live job table it
+// denies the typed _xbot_links intent inside a real prepared Shell call and
+// reports whether the card still went out, which no short-circuit may skip.
+func linksIntentAsks(t *testing.T, action, id string) bool {
+	t.Helper()
+	k := &Kernel{Bot: testBot(t, link.NameTerminal), Permissive: true}
+	k.ensureTurn().turnTrusted = true
+	if err := k.StartOperations(); err != nil {
+		t.Fatal(err)
+	}
+	defer k.CloseOperations()
+	asked := false
+	approve := func(context.Context, string, string) (bool, error) {
+		asked = true
+		return false, nil
+	}
+	// The bare context has no source correlation, which is what a call that
+	// never passed through a prepared Shell call must see.
+	if _, _, err := k.runtimeApprovalSource(context.Background()); err == nil {
+		t.Error("bare context reached the source approval path")
+	}
+	endpoint := ""
+	for _, item := range k.CLIEnvironment(nil) {
+		if value, ok := strings.CutPrefix(item, "XBOT_ENDPOINT="); ok {
+			endpoint = value
+		}
+	}
+	runRoutineSource(t, k, approve, `{"command":"\"$XBOT_BIN\" links `+action+` --self `+id+`"}`, func(ctx context.Context, _ json.RawMessage) (string, error) {
+		var reply cliops.LinksReply
+		var err error
+		switch action {
+		case "install":
+			reply, err = cliops.CallLinksInstall(context.Background(), endpoint, k.Bot.Root, tools.CallID(ctx), cliops.LinksInstall{ID: id})
+		default:
+			reply, err = cliops.CallLinksRemove(context.Background(), endpoint, k.Bot.Root, tools.CallID(ctx), cliops.LinksRemove{ID: id})
+		}
+		if err == nil || !strings.Contains(reply.Error, "denied by user") {
+			t.Errorf("denied links %s reply=%+v err=%v", action, reply, err)
+		}
+		return "", nil
+	})
+	return asked
+}
+
 // With the table's cards off (permanent for serve/chat, ADR 0019),
-// calls run without permission cards; links still collects connector keys.
+// calls run without permission cards; the links install/remove owner card
+// still goes out because secrets reach the bot only through it.
 func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
 	k := &Kernel{Bot: testBot(t, link.NameTools), Permissive: true}
 	k.ensureTurn().turnTrusted = true
@@ -55,8 +102,8 @@ func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
 	if checked < 3 {
 		t.Fatalf("only %d tools the table confirms", checked)
 	}
-	if !needsCard(t, k, "links", `{"action":"install","id":"telegram"}`) {
-		t.Error("the links card was dropped")
+	if !linksIntentAsks(t, "install", "telegram") {
+		t.Error("the links install card was dropped")
 	}
 	if needsCard(t, k, "restart_xbot", `{}`) {
 		t.Error("restart asked with the cards off")
@@ -191,7 +238,7 @@ func TestLivePermissionSwitch(t *testing.T) {
 				t.Fatalf("%s asked with permissions on=%v", tool, on)
 			}
 		}
-		if !needsCard(t, k, "links", `{"action":"install","id":"telegram"}`) {
+		if !linksIntentAsks(t, "install", "telegram") {
 			t.Fatal("links key input card was dropped")
 		}
 		before := asked

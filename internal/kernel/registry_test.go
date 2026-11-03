@@ -119,10 +119,20 @@ func TestDeclaredToolsAreTheShortFixedSet(t *testing.T) {
 			t.Fatalf("retired tool %s remains callable in model tools", name)
 		}
 	}
-	for _, name := range []string{"listen", "browser_open", "desktop_click", "links"} {
+	for _, name := range []string{"listen", "browser_open", "desktop_click"} {
 		if !hasToolName(list, name) || hasToolName(declared(list), name) {
 			t.Fatalf("%s must be registered and undeclared", name)
 		}
+	}
+	// The links tool is retired: install/remove run through the current
+	// instance CLI behind the owner card, so nothing named links may stay
+	// callable or forwardable through the door. The links registry group is
+	// not retired: kernel_manual still lives in it.
+	if hasToolName(list, "links") || hasToolName(mustMounted(t, k), "links") || registered(k, "links") {
+		t.Fatal("retired links tool remains callable in model tools")
+	}
+	if tool, _, err := (toolDoor{k}).Forward(context.Background(), json.RawMessage(`{"action":"call","id":"links","args":{"action":"install","id":"browser"}}`)); err == nil || tool != nil {
+		t.Fatal("retired links call still forwards")
 	}
 }
 

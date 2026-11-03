@@ -33,7 +33,8 @@ func TestLinksRuntimeOfflineAndCanonicalBoundSource(t *testing.T) {
 	}
 	for _, args := range [][]string{
 		{"search", "--self"}, {"search"}, {"load", "--self", "browser"}, {"load", "browser"},
-		{"load", "--self"}, {"install", "--self", "browser"}, {"search", "--self", "--query", "x", "extra"},
+		{"load", "--self"}, {"install", "--self", "browser"}, {"remove", "--self", "browser"},
+		{"search", "--self", "--query", "x", "extra"},
 		{"-h"}, {"help"}, {"--self", "search"}, {"search", "--self", "--self"},
 	} {
 		if err := run(append([]string{"--root", absent, "links"}, args...)); err == nil {

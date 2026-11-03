@@ -189,16 +189,16 @@ func TestRetiredChatGroupToolsAreUnknown(t *testing.T) {
 	}
 }
 
-func TestLinksInstallAndRemoveAsk(t *testing.T) {
-	if !need(t, "links", `{"action":"install","id":"webhook"}`) {
-		t.Fatal("install did not ask")
+// The links tool is retired: nothing named links may stay in the review
+// table, and the runtime install/remove intent arrives under the Shell tool
+// name inside the typed _xbot_links blob, where its owner's own handler asks.
+func TestRetiredLinksToolIsUnknown(t *testing.T) {
+	if Known("links") {
+		t.Error("retired policy links is still known")
 	}
-	if !need(t, "links", `{"action":"remove","id":"webhook"}`) {
-		t.Fatal("remove did not ask")
-	}
-	for _, action := range []string{"search", "load"} {
-		if need(t, "links", `{"action":"`+action+`","id":"webhook"}`) {
-			t.Fatalf("%s asked", action)
+	for _, args := range []string{`{"action":"install","id":"webhook"}`, `{"action":"remove","id":"webhook"}`} {
+		if need(t, "links", args) {
+			t.Fatalf("retired links args still ask: %s", args)
 		}
 	}
 }

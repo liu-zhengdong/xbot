@@ -220,3 +220,82 @@ func TestLinksTypedTransportCallIDAndStrictBudgetObjects(t *testing.T) {
 		t.Fatalf("redirect/retry calls=%d redirected=%d err=%v", peerCalls, redirected, err)
 	}
 }
+
+// install/remove share the same strict transport as search/load: the call ID
+// header is mandatory, the input marshals exactly {"id":...}, the reply is
+// the same Text/Error shape, and a denied or missing handler maps onto
+// Error rather than a fabricated success.
+func TestLinksTypedTransportInstallAndRemove(t *testing.T) {
+	root := t.TempDir()
+	canonical, err := CanonicalRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gotInstall LinksInstall
+	var gotRemove LinksRemove
+	installCalls, removeCalls := 0, 0
+	var handlerErr error
+	source, err := Start(root, Handlers{Links: &LinksHandlers{
+		Install: func(ctx context.Context, input LinksInstall) (LinksReply, error) {
+			installCalls++
+			gotInstall = input
+			if SourceCallID(ctx) != "actual-original-call" {
+				t.Errorf("install source call ID=%q", SourceCallID(ctx))
+			}
+			return LinksReply{Text: "installed " + input.ID}, handlerErr
+		},
+		Remove: func(ctx context.Context, input LinksRemove) (LinksReply, error) {
+			removeCalls++
+			gotRemove = input
+			if SourceCallID(ctx) != "actual-original-call" {
+				t.Errorf("remove source call ID=%q", SourceCallID(ctx))
+			}
+			return LinksReply{Text: "removed " + input.ID}, handlerErr
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+
+	reply, err := CallLinksInstall(context.Background(), source.Endpoint, root, "actual-original-call", LinksInstall{ID: "telegram"})
+	if err != nil || reply != (LinksReply{Text: "installed telegram"}) || gotInstall != (LinksInstall{ID: "telegram"}) {
+		t.Fatalf("install reply=%+v got=%+v err=%v", reply, gotInstall, err)
+	}
+	reply, err = CallLinksRemove(context.Background(), source.Endpoint, root, "actual-original-call", LinksRemove{ID: "browser"})
+	if err != nil || reply != (LinksReply{Text: "removed browser"}) || gotRemove != (LinksRemove{ID: "browser"}) {
+		t.Fatalf("remove reply=%+v got=%+v err=%v", reply, gotRemove, err)
+	}
+	// CallID is mandatory on both nouns.
+	if _, err := CallLinksInstall(context.Background(), source.Endpoint, root, "", LinksInstall{ID: "x"}); err == nil || installCalls != 1 {
+		t.Fatalf("missing call ID install calls=%d err=%v", installCalls, err)
+	}
+	if _, err := CallLinksRemove(context.Background(), source.Endpoint, root, "", LinksRemove{ID: "x"}); err == nil || removeCalls != 1 {
+		t.Fatalf("missing call ID remove calls=%d err=%v", removeCalls, err)
+	}
+	// The wire body is exactly the input's JSON, nothing more.
+	wire, _ := json.Marshal(LinksInstall{ID: "browser"})
+	if string(wire) != `{"id":"browser"}` {
+		t.Fatalf("install wire %s", wire)
+	}
+	// A handler error arrives as Error and a call error, never swallowed.
+	handlerErr = errors.New("denied by user")
+	reply, err = CallLinksInstall(context.Background(), source.Endpoint, root, "actual-original-call", LinksInstall{ID: "telegram"})
+	if err == nil || reply.Error != "denied by user" {
+		t.Fatalf("denied install reply=%+v err=%v", reply, err)
+	}
+	handlerErr = nil
+	// An oversized reply is refused on both nouns.
+	source.Close()
+	big := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-XBot-Root", canonical)
+		_, _ = io.WriteString(w, `{"text":"`+strings.Repeat("x", linksOutputBudget+1)+`"}`)
+	}))
+	defer big.Close()
+	if _, err := CallLinksInstall(context.Background(), big.URL, root, "actual-original-call", LinksInstall{ID: "x"}); err == nil {
+		t.Fatal("oversized install reply accepted")
+	}
+	if _, err := CallLinksRemove(context.Background(), big.URL, root, "actual-original-call", LinksRemove{ID: "x"}); err == nil {
+		t.Fatal("oversized remove reply accepted")
+	}
+}

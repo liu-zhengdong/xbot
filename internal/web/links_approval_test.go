@@ -6,105 +6,63 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"net/http/httptest"
-	"os"
+	"reflect"
 	"strings"
 	"testing"
 
-	"xbot/internal/bot"
-	"xbot/internal/kernel"
-	"xbot/internal/link"
 	"xbot/internal/provider"
 )
 
-func TestLinksApprovalCarriesSecretNames(t *testing.T) {
-	const secret = "super-secret-value"
-	root := t.TempDir()
-	s := &Server{Root: root, Owner: "u1"}
-	tok, _, err := s.EnsureToken()
-	if err != nil {
-		t.Fatal(err)
+// approvalSecretNames still reads the retired links tool name from the card
+// summary, and the runtime install/remove cards arrive under a Shell tool
+// name with the typed _xbot_links intent: install asks for the keys, remove
+// carries none, and a plain shell card never does.
+func TestApprovalSecretNames(t *testing.T) {
+	installArgs := `{"description":"install","command":"\"$XBOT_BIN\" links install --self telegram","_xbot_links":{"action":"install","id":"telegram"}}`
+	summary := "install telegram\nTelegram\nsecrets: TELEGRAM_BOT_TOKEN"
+	cases := []struct {
+		name     string
+		tool     string
+		args     string
+		summary  string
+		want     []string
+	}{
+		{"retired links tool", "links", `{"action":"install","id":"telegram"}`, summary, []string{"TELEGRAM_BOT_TOKEN"}},
+		{"shell install intent", "sh", installArgs, summary, []string{"TELEGRAM_BOT_TOKEN"}},
+		{"zsh install intent", "zsh", installArgs, summary, []string{"TELEGRAM_BOT_TOKEN"}},
+		{"remove asks nothing", "sh", `{"command":"\"$XBOT_BIN\" links remove --self telegram","_xbot_links":{"action":"remove","id":"telegram"}}`, "remove telegram", nil},
+		{"shell without intent", "sh", `{"command":"ls"}`, "run ls", nil},
+		{"non-shell card", "read_file", `{"path":"x"}`, "read x", nil},
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameTerminal})
-	if err != nil {
-		t.Fatal(err)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := approvalSecretNames(c.tool, json.RawMessage(c.args), c.summary)
+			if !reflect.DeepEqual(got, c.want) {
+				t.Fatalf("names %v", got)
+			}
+		})
 	}
-	if err := b.SetOwners([]string{"u1"}); err != nil {
-		t.Fatal(err)
-	}
-	p := &turnProvider{resps: []provider.Message{
-		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
-			ID: "c1", Type: "function",
-			Function: provider.FunctionCall{Name: "links", Arguments: `{"action":"install","id":"telegram"}`},
-		}})},
-		{Role: provider.RoleAssistant, Content: provider.TextContent("stopped")},
-	}}
-	s.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
-		return &kernel.Kernel{Bot: b, Provider: p, MaxSteps: 4, Links: []link.Link{link.Terminal{}}}, nil
-	}
-	ui := httptest.NewServer(muxOf(s))
-	defer ui.Close()
-	cookie := loginCookie(t, ui.URL, tok)
+}
 
-	stream := postSSE(t, ui.URL, cookie, "install telegram")
-	ev := waitEvent(t, stream, "approval")
-	if strings.Contains(ev.data, secret) {
-		t.Fatal(ev.data)
+// The decision handler stages secrets under the link id parsed from the
+// card's first line and only the names the card listed; keys the owner
+// typed beyond the card never reach the stage.
+func TestLinksApprovalStagingParsers(t *testing.T) {
+	if got := linkIDFromSummary("install telegram\nTelegram\nsecrets: TELEGRAM_BOT_TOKEN"); got != "telegram" {
+		t.Fatalf("install id %q", got)
 	}
-	if !strings.Contains(ev.data, `"secrets":["TELEGRAM_BOT_TOKEN"]`) || !strings.Contains(ev.data, `"tool":"links"`) {
-		t.Fatal(ev.data)
+	if got := linkIDFromSummary("remove telegram"); got != "" {
+		t.Fatalf("remove id %q", got)
 	}
-	var card struct {
-		ID string `json:"id"`
+	got := filterSecrets([]string{"TELEGRAM_BOT_TOKEN"}, map[string]string{"TELEGRAM_BOT_TOKEN": "v", "OTHER": "drop"})
+	if len(got) != 1 || got["TELEGRAM_BOT_TOKEN"] != "v" {
+		t.Fatalf("filtered %v", got)
 	}
-	if err := json.Unmarshal([]byte(ev.data), &card); err != nil {
-		t.Fatal(err)
+	if names := secretNamesFromSummary("install telegram\nTelegram\nsecrets: TELEGRAM_BOT_TOKEN"); !reflect.DeepEqual(names, []string{"TELEGRAM_BOT_TOKEN"}) {
+		t.Fatalf("names %v", names)
 	}
-	decideBody(t, ui.URL, cookie, card.ID, `{"allow":true,"secrets":{"TELEGRAM_BOT_TOKEN":"`+secret+`"}}`)
-	var blob strings.Builder
-	for ev := range stream {
-		blob.WriteString(ev.name)
-		blob.WriteByte(' ')
-		blob.WriteString(ev.data)
-		blob.WriteByte('\n')
-		if ev.name == "error" {
-			t.Fatal(ev.data)
-		}
-		if ev.name == "done" {
-			break
-		}
-	}
-	if strings.Contains(blob.String(), secret) {
-		t.Fatal(blob.String())
-	}
-	if !strings.Contains(blob.String(), "installed telegram") {
-		t.Fatal(blob.String())
-	}
-	entries, err := b.Entries()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var joined strings.Builder
-	for _, e := range entries {
-		joined.WriteString(e.Message.Text())
-		joined.WriteByte('\n')
-	}
-	if strings.Contains(joined.String(), secret) {
-		t.Fatal(joined.String())
-	}
-	raw, err := os.ReadFile(b.VaultDir() + "/secrets.enc")
-	if err != nil || strings.Contains(string(raw), secret) {
-		t.Fatal("global encrypted credential missing or plaintext leaked")
-	}
-	if got, ok := link.GlobalSecretLookup(root)("telegram.token"); !ok || got != secret {
-		t.Fatal("global approved credential missing")
-	}
-	loaded, err := bot.Load(root, "ada")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !loaded.Grants(link.NameTelegram) {
-		t.Fatal("telegram was not granted")
+	if names := secretNamesFromSummary("remove telegram"); names != nil {
+		t.Fatalf("remove names %v", names)
 	}
 }
 
@@ -143,3 +101,5 @@ func decideBody(t *testing.T, base string, cookie *http.Cookie, id, body string)
 		t.Fatalf("decide %d %s", res.StatusCode, raw)
 	}
 }
+
+var _ = decideBody

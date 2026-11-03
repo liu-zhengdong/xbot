@@ -25,6 +25,14 @@ func TestLinksParserNounsHelpAndStrictFlags(t *testing.T) {
 		{[]string{"load", "telegram", "--self"}, LinksCommand{Action: "load", ID: "telegram", Self: true}},
 		{[]string{"load", "--self", "--json", "电脑操作"}, LinksCommand{Action: "load", ID: "电脑操作", Self: true, JSON: true}},
 		{[]string{"load", "--self", ""}, LinksCommand{Action: "load", ID: "", Self: true}},
+		// install/remove take exactly one positional id like load, keep
+		// --self and --json, reject query flags, and honor --help.
+		{[]string{"install", "--self", "browser"}, LinksCommand{Action: "install", ID: "browser", Self: true}},
+		{[]string{"install", "telegram", "--self"}, LinksCommand{Action: "install", ID: "telegram", Self: true}},
+		{[]string{"remove", "--self", "browser"}, LinksCommand{Action: "remove", ID: "browser", Self: true}},
+		{[]string{"remove", "--self", "mcp:context7", "--json"}, LinksCommand{Action: "remove", ID: "mcp:context7", Self: true, JSON: true}},
+		{[]string{"install", "--self", "browser", "--help"}, LinksCommand{Action: "install", ID: "browser", Self: true, Help: true}},
+		{[]string{"remove", "--help"}, LinksCommand{Action: "remove", Help: true}},
 		// Help wins over every other constraint at either layer.
 		{[]string{"search", "--self", "--query", "x", "--help"}, LinksCommand{Action: "search", Query: "x", Self: true, Help: true}},
 		{[]string{"load", "--self", "browser", "--help"}, LinksCommand{Action: "load", ID: "browser", Self: true, Help: true}},
@@ -36,9 +44,14 @@ func TestLinksParserNounsHelpAndStrictFlags(t *testing.T) {
 		}
 	}
 	for _, args := range [][]string{
-		nil, {"help"}, {"-h"}, {"--"}, {"install", "--self", "browser"}, {"remove", "--self", "browser"},
+		nil, {"help"}, {"-h"}, {"--"},
 		{"links", "--help"}, {"SEARCH", "--self"}, {"Load", "--self", "x"}, {"s", "--self"},
 		{"search"}, {"load"}, {"load", "--self"}, {"load", "id1", "id2", "--self"},
+		{"install"}, {"install", "--self"}, {"install", "--self", "id1", "id2"},
+		{"remove"}, {"remove", "--self"}, {"remove", "--self", "id1", "id2"},
+		{"install", "--self", "browser", "extra"}, {"remove", "--self", "--self", "browser"},
+		{"install", "--self", "--query", "x", "browser"}, {"remove", "--self", "--query-file", "x", "browser"},
+		{"install", "x", "--query", "y"}, {"install", "--self", "--unknown", "x"}, {"remove", "--self", "-h", "x"},
 		{"load", "--self", "browser", "extra"}, {"load", "--self", "--self", "browser"},
 		{"search", "--self", "--query", "a", "--query", "b"},
 		{"search", "--self", "--query-file", "a", "--query-file", "b"},

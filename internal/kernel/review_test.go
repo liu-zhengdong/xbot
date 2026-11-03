@@ -356,10 +356,16 @@ func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"sh", "read_file", "write_file", "edit_file", "web_fetch", "web_search", "view_image", "http_request", "list_secrets",
-		"links", "telegram_send", "lark_send", "code_start", "desktop_click", "browser_open"} {
+		"telegram_send", "lark_send", "code_start", "desktop_click", "browser_open"} {
 		if !seen[want] {
 			t.Fatalf("expected tool %q was not registered", want)
 		}
+	}
+	// The links tool is retired into the runtime CLI (install/remove send the
+	// owner card under the Shell name), so the name must not be registered or
+	// classified. The retired list below covers it by name.
+	if seen["links"] || review.Known("links") {
+		t.Fatal("retired links tool remains registered or classified")
 	}
 	for _, name := range []string{"compact", "recall_history", "expand", "detail", "fork_bot", "message_bot", "list_groups", "get_group_message_history", "create_group", "post_group", "bot_propose_persona", "create_bot", "delete_bot", "list_bots", "bot_status"} {
 		if seen[name] || review.Known(name) {

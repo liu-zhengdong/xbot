@@ -199,6 +199,12 @@ func TestLinksRuntimeRejectsMissingSourceCall(t *testing.T) {
 		{"load", func(ctx context.Context) (cliops.LinksReply, error) {
 			return k.linksLoadRuntime(ctx, cliops.LinksLoad{ID: "telegram"})
 		}},
+		{"install", func(ctx context.Context) (cliops.LinksReply, error) {
+			return k.linksInstallRuntime(ctx, cliops.LinksInstall{ID: "telegram"})
+		}},
+		{"remove", func(ctx context.Context) (cliops.LinksReply, error) {
+			return k.linksRemoveRuntime(ctx, cliops.LinksRemove{ID: "telegram"})
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			reply, err := tc.run(context.Background())

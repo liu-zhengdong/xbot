@@ -2,12 +2,14 @@ package kernel
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
-	"time"
 
+	"xbot/internal/agent"
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
 	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/tools"
@@ -29,76 +31,63 @@ func TestLinksCardSummaryInstallAndRemove(t *testing.T) {
 	}
 }
 
+// Denial on the runtime owner card leaves the grant untouched and surfaces
+// "denied by user" in the reply, never running the helper.
 func TestLinksInstallRequiresApproval(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
-	p := &scripted{resps: []provider.Message{
-		linksCall("install", "browser"),
-		{Role: provider.RoleAssistant, Content: provider.TextContent("stopped")},
-	}}
-	var gotTool, gotSummary string
-	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4, Approve: func(_ context.Context, tool, summary string) (bool, error) {
-		gotTool, gotSummary = tool, summary
+	k, endpoint := linksRuntimeFixture(t)
+	var reply cliops.LinksReply
+	var callErr error
+	runLinksApprove(t, k, func(name, summary string) (bool, error) {
+		if name != "sh" || !strings.Contains(summary, "install browser") {
+			t.Errorf("card %s %q", name, summary)
+		}
 		return false, nil
-	}}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "install browser", time.Unix(1, 0).UTC())); err != nil {
-		t.Fatal(err)
+	}, "install", "browser", func(ctx context.Context) {
+		reply, callErr = cliops.CallLinksInstall(context.Background(), endpoint, k.Bot.Root, tools.CallID(ctx), cliops.LinksInstall{ID: "browser"})
+	})
+	if callErr == nil || !strings.Contains(reply.Error, "denied by user") {
+		t.Fatalf("denied install reply=%+v err=%v", reply, callErr)
 	}
-	if gotTool != "links" || !strings.Contains(gotSummary, "install browser") {
-		t.Fatalf("card %s %s", gotTool, gotSummary)
-	}
-	if b.Grants(link.NameBrowser) {
+	if k.Bot.Grants(link.NameBrowser) {
 		t.Fatal("granted without approval")
-	}
-	text := transcriptText(t, b)
-	if !strings.Contains(text, "denied by user") {
-		t.Fatal(text)
 	}
 }
 
 func TestLinksInstallAllowGrants(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
-	p := &scripted{resps: []provider.Message{
-		linksCall("install", "browser"),
-		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
-	}}
-	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4, Approve: func(context.Context, string, string) (bool, error) {
-		return true, nil
-	}}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "install browser", time.Unix(1, 0).UTC())); err != nil {
-		t.Fatal(err)
+	k, endpoint := linksRuntimeFixture(t)
+	var reply cliops.LinksReply
+	var callErr error
+	runLinksApprove(t, k, func(string, string) (bool, error) { return true, nil }, "install", "browser", func(ctx context.Context) {
+		reply, callErr = cliops.CallLinksInstall(context.Background(), endpoint, k.Bot.Root, tools.CallID(ctx), cliops.LinksInstall{ID: "browser"})
+	})
+	if callErr != nil || reply.Text != "installed browser" {
+		t.Fatalf("approved install reply=%+v err=%v", reply, callErr)
 	}
-	if !b.Grants(link.NameBrowser) {
+	if !k.Bot.Grants(link.NameBrowser) {
 		t.Fatal("not granted")
-	}
-	if !strings.Contains(transcriptText(t, b), "installed browser") {
-		t.Fatal(transcriptText(t, b))
 	}
 }
 
 func TestLinksInstallHidesSecrets(t *testing.T) {
 	const secret = "super-secret-value"
-	b := testBot(t, link.NameTerminal)
-	p := &scripted{resps: []provider.Message{
-		linksCall("install", "telegram"),
-		{Role: provider.RoleAssistant, Content: provider.TextContent("nope")},
-	}}
-	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4}
-	k.Approve = func(context.Context, string, string) (bool, error) {
+	k, endpoint := linksRuntimeFixture(t)
+	var reply cliops.LinksReply
+	var callErr error
+	runLinksApprove(t, k, func(_ string, summary string) (bool, error) {
+		if !strings.Contains(summary, "secrets: TELEGRAM_BOT_TOKEN") {
+			t.Errorf("card %q", summary)
+		}
 		k.StageSecrets("telegram", map[string]string{"TELEGRAM_BOT_TOKEN": secret})
 		return true, nil
+	}, "install", "telegram", func(ctx context.Context) {
+		reply, callErr = cliops.CallLinksInstall(context.Background(), endpoint, k.Bot.Root, tools.CallID(ctx), cliops.LinksInstall{ID: "telegram"})
+	})
+	if callErr != nil || reply.Text != "installed telegram" || strings.Contains(reply.Text, secret) || strings.Contains(reply.Error, secret) {
+		t.Fatalf("install reply=%+v err=%v", reply, callErr)
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "install telegram", time.Unix(1, 0).UTC())); err != nil {
-		t.Fatal(err)
-	}
+	b := k.Bot
 	if !b.Grants(link.NameTelegram) {
 		t.Fatal("telegram was not granted")
-	}
-	text := transcriptText(t, b)
-	if strings.Contains(text, secret) {
-		t.Fatal("secret reached the transcript")
-	}
-	if !strings.Contains(text, "installed telegram") {
-		t.Fatal(text)
 	}
 	raw, err := os.ReadFile(b.VaultDir() + "/secrets.enc")
 	if err != nil || strings.Contains(string(raw), secret) {
@@ -111,57 +100,56 @@ func TestLinksInstallHidesSecrets(t *testing.T) {
 	if err != nil || info.Mode().Perm() != 0600 {
 		t.Fatalf("mode %v %v", info, err)
 	}
+	if len(k.takeSecrets("telegram")) != 0 {
+		t.Fatal("staged secrets left after install")
+	}
 }
 
+// An approved card that collects no key still does not grant: the staged
+// secret stage is the only way a value reaches the helper.
 func TestLinksInstallWaitsForSecretFill(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
-	p := &scripted{resps: []provider.Message{
-		linksCall("install", "telegram"),
-		{Role: provider.RoleAssistant, Content: provider.TextContent("nope")},
-	}}
-	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4, Approve: func(context.Context, string, string) (bool, error) {
-		return true, nil
-	}}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "install telegram", time.Unix(1, 0).UTC())); err != nil {
-		t.Fatal(err)
+	k, endpoint := linksRuntimeFixture(t)
+	var reply cliops.LinksReply
+	var callErr error
+	runLinksApprove(t, k, func(string, string) (bool, error) { return true, nil }, "install", "telegram", func(ctx context.Context) {
+		reply, callErr = cliops.CallLinksInstall(context.Background(), endpoint, k.Bot.Root, tools.CallID(ctx), cliops.LinksInstall{ID: "telegram"})
+	})
+	if callErr != nil || !strings.Contains(reply.Text, "owner did not fill") || !strings.Contains(reply.Text, "TELEGRAM_BOT_TOKEN") {
+		t.Fatalf("unfilled install reply=%+v err=%v", reply, callErr)
 	}
-	if b.Grants("telegram") {
+	if k.Bot.Grants("telegram") {
 		t.Fatal("granted")
 	}
-	text := transcriptText(t, b)
-	if !strings.Contains(text, "owner did not fill") || !strings.Contains(text, "TELEGRAM_BOT_TOKEN") {
-		t.Fatal(text)
-	}
-	if _, err := os.Stat(b.SecretPath()); err == nil {
+	if _, err := os.Stat(k.Bot.SecretPath()); err == nil {
 		t.Fatal("secrets file created")
 	}
 }
 
 func TestLinksRemoveRequiresApproval(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
-	if err := b.GrantLink(link.NameBrowser); err != nil {
+	k, endpoint := linksRuntimeFixture(t)
+	if err := k.Bot.GrantLink(link.NameBrowser); err != nil {
 		t.Fatal(err)
 	}
-	p := &scripted{resps: []provider.Message{
-		linksCall("remove", "browser"),
-		{Role: provider.RoleAssistant, Content: provider.TextContent("gone")},
-	}}
+	var reply cliops.LinksReply
+	var callErr error
 	asked := false
-	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4, Approve: func(context.Context, string, string) (bool, error) {
+	runLinksApprove(t, k, func(name, summary string) (bool, error) {
 		asked = true
+		if name != "sh" || !strings.Contains(summary, "remove browser") {
+			t.Errorf("card %s %q", name, summary)
+		}
 		return true, nil
-	}}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "remove browser", time.Unix(1, 0).UTC())); err != nil {
-		t.Fatal(err)
-	}
+	}, "remove", "browser", func(ctx context.Context) {
+		reply, callErr = cliops.CallLinksRemove(context.Background(), endpoint, k.Bot.Root, tools.CallID(ctx), cliops.LinksRemove{ID: "browser"})
+	})
 	if !asked {
 		t.Fatal("remove did not ask for approval")
 	}
-	if b.Grants(link.NameBrowser) {
-		t.Fatal("still granted")
+	if callErr != nil || reply.Text != "removed browser" {
+		t.Fatalf("remove reply=%+v err=%v", reply, callErr)
 	}
-	if !strings.Contains(transcriptText(t, b), "removed browser") {
-		t.Fatal(transcriptText(t, b))
+	if k.Bot.Grants(link.NameBrowser) {
+		t.Fatal("still granted")
 	}
 }
 
@@ -318,6 +306,19 @@ func TestLinksInstallMountsToolsImmediately(t *testing.T) {
 	if _, err := (linksTool{k}).load("telegram"); err == nil {
 		t.Fatal("removed telegram still loaded")
 	}
+}
+
+// runLinksApprove opens the same real prepared Shell call runLinksSource
+// does, but with an approver: the runtime install/remove handlers reach it as
+// the original Shell approver and send the Confirm-shaped owner card.
+func runLinksApprove(t *testing.T, k *Kernel, approve func(name, summary string) (bool, error), action, id string, run func(context.Context)) {
+	t.Helper()
+	runRoutineSource(t, k, agent.Approver(func(_ context.Context, name, summary string) (bool, error) {
+		return approve(name, summary)
+	}), `{"command":"\"$XBOT_BIN\" links `+action+` --self `+id+`"}`, func(ctx context.Context, _ json.RawMessage) (string, error) {
+		run(ctx)
+		return "completed", nil
+	})
 }
 
 func linksCall(action, id string) provider.Message {

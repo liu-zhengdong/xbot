@@ -2,16 +2,15 @@ package kernel
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"strings"
 	"testing"
-	"time"
 
+	"xbot/internal/cliops"
 	"xbot/internal/config"
 	"xbot/internal/link"
 	"xbot/internal/mcp"
-	"xbot/internal/provider"
+	"xbot/internal/tools"
 )
 
 // A store server that names a key (Context7) installs through the chat card
@@ -99,40 +98,33 @@ func TestLinksInstallStoreConnectorWithKey(t *testing.T) {
 	}
 }
 
-// The whole turn: the card fills the key, the model sees only the outcome.
+// The card fills the key through the runtime install call; the reply text
+// the shell (and any transcript of it) sees never carries the value.
 func TestLinksInstallStoreConnectorHidesKey(t *testing.T) {
 	const secret = "ctx7sk-turn-secret-456"
-	b := testBot(t, link.NameTerminal)
-	p := &scripted{resps: []provider.Message{
-		linksCall("install", "context7"),
-		{Role: provider.RoleAssistant, Content: provider.TextContent("done")},
-	}}
-	k := &Kernel{Bot: b, Provider: p, MaxSteps: 4}
-	k.Approve = func(_ context.Context, _ string, summary string) (bool, error) {
+	k, endpoint := linksRuntimeFixture(t)
+	var reply cliops.LinksReply
+	var callErr error
+	runLinksApprove(t, k, func(_ string, summary string) (bool, error) {
 		if !strings.Contains(summary, "secrets: CONTEXT7_API_KEY") {
 			t.Errorf("card %q", summary)
 		}
 		k.StageSecrets("context7", map[string]string{"CONTEXT7_API_KEY": secret})
 		return true, nil
+	}, "install", "context7", func(ctx context.Context) {
+		reply, callErr = cliops.CallLinksInstall(context.Background(), endpoint, k.Bot.Root, tools.CallID(ctx), cliops.LinksInstall{ID: "context7"})
+	})
+	if callErr != nil || reply.Text != "installed context7" || strings.Contains(reply.Text, secret) || strings.Contains(reply.Error, secret) {
+		t.Fatalf("connector install reply=%+v err=%v", reply, callErr)
 	}
-	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "请帮我安装 Context7", time.Unix(1, 0).UTC())); err != nil {
-		t.Fatal(err)
+	if global, _ := mcp.LoadMCP(k.Bot.GlobalMCPPath(), mcp.Options{IsProviderKey: config.ProviderKey}); len(global) != 1 {
+		t.Fatalf("connector entry %+v", global)
 	}
-	text := transcriptText(t, b)
-	if strings.Contains(text, secret) {
-		t.Fatal("key reached the transcript")
+	if got, ok := link.GlobalSecretLookup(k.Bot.Root)("CONTEXT7_API_KEY"); !ok || got != secret {
+		t.Fatal("global connector credential missing")
 	}
-	if !strings.Contains(text, "installed context7") {
-		t.Fatal(text)
-	}
-	for _, req := range p.reqs {
-		raw, _ := json.Marshal(req.Messages)
-		if strings.Contains(string(raw), secret) {
-			t.Fatal("key reached the model")
-		}
-	}
-	if len(p.reqs) < 2 {
-		t.Fatalf("model saw %d requests", len(p.reqs))
+	if len(k.takeSecrets("context7")) != 0 {
+		t.Fatal("staged secrets left after install")
 	}
 }
 

@@ -116,9 +116,9 @@ func TestCardText(t *testing.T) {
 			wantT: "调用 MCP 工具 mcp_github_create_issue", wantSub: "",
 		},
 		{
-			name: "links install", tool: "links",
-			args: `{"action":"install","id":"telegram"}`, summary: "install telegram",
-			wantT: "安装 Link", wantSub: "",
+			name: "links install is a shell card", tool: "sh",
+			args: `{"command":"\"$XBOT_BIN\" links install --self telegram","_xbot_links":{"action":"install","id":"telegram"}}`, summary: "install telegram\nTelegram\nsecrets: TELEGRAM_BOT_TOKEN",
+			wantT: "运行命令", wantSub: "在本机上执行",
 		},
 		{
 			name: "default is tool name", tool: "ask_user",
