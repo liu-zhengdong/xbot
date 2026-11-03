@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0068 restart_xbot 与 http_request 两卡族工具 runtime CLI
@@ -106,7 +106,7 @@ CLI 导入 cliops，`CallRestart`/`CallHTTP` → `POST /v1/restart`、`POST /v1/
 
 restart 路径：`holdOperations`→`runtimeSourceCall`→`k.Restart` nil 查 →`restartTool{k}.Run(prepared, args)`（hint trim/4000 校验/`k.Restart(hint)`）→固定 ACK text。`restartCh` 非阻塞塞入后 return，response 写完；serve loop 异步 `Drain`+`Relaunch`——**response 先行、进程后置**的顺序与原工具「Run 返回→turn 收尾→drain 放行」逐字等价；Drain 超时（drainCap）走原 `in-flight turns did not finish in time` 分支不阻塞 response。
 
-`allowReadOnlyPlatform`（mcp_readonly_shell.go）分支：restart/http 都是写/卡类动作，research 下 `--self` 拒（同 jobs cancel/links install-remove 档）；`--help` 放行。无需新分支——parser Action 判定天然不含两动作，在验收钉死。
+`allowReadOnlyPlatform`（mcp_readonly_shell.go）分支：restart/http 都是写/卡类动作，research 下 `--self` 拒（同 jobs cancel/links install-remove 档）。无 restart/http 分支时 `--help` 一并拒——比「放行」更严但与白名单逐 noun 显式列分支的形状一致；若要对齐 `--help` 放行，需为两 noun 各加 `parsed.Help` 分支，本刀不加。在验收钉死。
 
 ## 接受的代价与验证
 
@@ -122,7 +122,9 @@ restart 路径：`holdOperations`→`runtimeSourceCall`→`k.Restart` nil 查 �
 6. permissive kernel：http secret/写方法**无卡直跑**（NeedsOwner 分支在 permissive 检查之后，原链本就不发卡——与 links 相反，验收钉死防照抄）；restart 无卡同原。
 7. 拒绝 → `"denied by user"`；卡超时 → `retireExpired` 自动 allow+`ApprovalAutoApproved`；`deniedBefore`/`parkable`/`grant` 按 `(sh, canonArgs)` 键控，A→B 不吃 A；`noApprover`（无 owner turn，如 child call）报原错。
 8. 退役面：registry `system`/`secrets` 行删（secrets 组空随退）、`review.Table` 两行删、`review.Restart`/`review.HTTP` class 常量与 `NeedsOwner` 两分支死代码删（`httpNeedsOwner` 导出保）、`kernel/review.go:165` Restart 分支删、cardtext http 分支删、restartTool/http.go 按消费定去留、`restart_unattended_test` 退；`tools.HTTPRequest` 类型保由 handler 直调；**`NeedsOwner("http_request")` 不再被任何路径调用**（handler 走 `HTTPNeedsOwner`），守门断言迁移。
-9. CallID 缺失报 `requires XBOT_CALL_ID from an active XBot shell`；人读/JSONNL ≤32 KiB、HTTP ≤64 KiB、CLI 先印事实再非 0；`allowReadOnlyPlatform` 不放 restart/http `--self`（research 拒）、`--help` 放行。
+9. CallID 缺失报 `requires XBOT_CALL_ID from an active XBot shell`；人读/JSONNL ≤32 KiB、HTTP ≤64 KiB、CLI 先印事实再非 0；`allowReadOnlyPlatform` 不放 restart/http `--self`（research 拒）；无 restart/http 分支时 `--help` 一并拒（更严一致，若放行需加分支）。
 10. Drain 语义：restart 批准/直通后 response 在 `restartCh` 投递后正常写完（桩测试断言 response body 完整 + restartCh 收到 reason）；进程重启后 `deliverRestartContinuation` 投 restart 事件原样（cmd_serve/restart_continuation 不动）。
 
 完整 caller 合同见 [母路线](../dev/cli-platform-entry.md#批-cardsfamily-restarthttp-两工具-runtime-cli-具体合同)。本文保决策边界：不把「restart 需 owner 卡」的早期背景误写进合同（原工具 unattended 无卡是设计事实）；不把 links 的「permissive 不短路」照抄给 http（links 例外在表外，http 的 NeedsOwner 分支在 permissive 检查之后，原链 permissive 下本就无卡）；不把 `NeedsOwner("http_request")` 当 need 判定源（退役表行后它恒 false，必须调导出的 `HTTPNeedsOwner`）；不把 restart 的 response 想成「发命令后断开」（`restartCh` 非阻塞投递+异步 Drain，response 先行是原语义）。Root4USERdocs/OwnerSSE/guard/main/push 日用不动。
+
+SINGLE PASS：复审 10/10 通过，唯一修订为验收⑨ `--help` 措辞——实无 restart/http 分支时 research 下 `--help` 亦拒（更严一致），本文按实现对齐；若日后要 `--help` 放行需为两 noun 各加分支。

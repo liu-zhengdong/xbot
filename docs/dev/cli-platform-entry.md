@@ -807,7 +807,7 @@ A 离线读 `shell-jobs/` 目录（`bot.Load`+`NewJobs(dir).Load()`）：落选�
 
 ## 批 cardsfamily：restart+http 两工具 runtime CLI 具体合同
 
-**本刀定位**：`restart_xbot`（`system` 组）+`http_request`（`secrets` 组）两卡族工具走 `xbot restart --self`/`xbot http --self` runtime；registry `system`/`secrets` 两行随退（secrets 组空随退）。基线 main `b97f93ff`（shell jobs 已合 `41540050`）。盘点依据 remaining-inventory §1.1 两行 + §1.3 卡族速分。[Proposed ADR0068](../adr/0068-cards-family-cli.md)。
+**本刀定位**：`restart_xbot`（`system` 组）+`http_request`（`secrets` 组）两卡族工具走 `xbot restart --self`/`xbot http --self` runtime；registry `system`/`secrets` 两行随退（secrets 组空随退）。基线 main `b97f93ff`（shell jobs 已合 `41540050`）。盘点依据 remaining-inventory §1.1 两行 + §1.3 卡族速分。[Accepted ADR0068](../adr/0068-cards-family-cli.md)。
 
 **先纠背景**：原 `restart_xbot` **从无 owner 卡**——`reviewCall`（kernel/review.go:165）对 `review.Restart` class 直接 `return false`，`review.go:204` `case Restart: return true` 是到不了的死代码；`restart_unattended_test.go` 钉死 timer/webhook 源 + permissive 两态零卡直跑。早期背景「需 owner 卡」与源码不符，restart 半族只需 `runtimeSourceCall` 资格、不需 `runtimeApprovalSource`/approveRuntimeIntent。
 
@@ -821,7 +821,7 @@ A 离线读 `shell-jobs/` 目录（`bot.Load`+`NewJobs(dir).Load()`）：落选�
 
 **输入输出**：两个单层 parser（`ParseRestartRuntime`/`ParseHTTPRuntime` 或合一 `ParseCardsRuntime` 最小形）；`restart --self [--hint TEXT]`、`http --self <url> [--method M] [--header K=V]… [--body B|--body-file F]`；`--self` mandatory、`--json`、`--help` 离线、裸 noun/未知 flag/重复 flag 拒；http 恰一位置 url、`--header` 可重复（K=V、K 非空、重 K 拒）、`--body`/`--body-file` 互斥（`-` stdin）；hint 4000 字节校验交原 Run。HTTP strict 单 object/unknown/null/尾随/URL query 拒、1 MiB/64 KiB；`{text?,error?}`、双 32 KiB、CLI 先印事实再非 0。
 
-**最窄验收**：①restart 无 hint→`runtimeSourceCall`→`saveRestartContinuation` 写文件→`restartCh` 投递→response 先行回固定 ACK→桩 k.Restart 断 hint（不真重启）；②hint 传参/超 4000 原错/`k.Restart==nil` 原 unavailable 错/二次 `restart already requested`；③GET 无 secret→HTTPNeedsOwner=false 直通无卡→`Status\nbody`；④POST/body→卡（tool=sh、`"POST <url>"`）→批准→发出；⑤`{{secret:NAME}}` 触发卡→egress 替换→值不出现在结果/卡/回包；⑥permissive 下 http secret/写方法**无卡直跑**、restart 无卡（与 links 相反钉死）；⑦拒→`denied by user`/超时→自动 allow/`(sh,canonArgs)` 键控 A→B 不吃 A/`noApprover` 原错；⑧退役面全项（registry/review/class 常量/cardtext/restart_unattended_test/`NeedsOwner("http_request")` 无消费者）；⑨CallID 缺失报错、双 32KiB/HTTP 64KiB、`allowReadOnlyPlatform` 不放两 `--self` 放 help；⑩Drain 语义：response 完整+restartCh 收到 reason，`deliverRestartContinuation` 重启后投 restart 事件原样。复用 links/jobs 骨架与已绿族，只 new+必要 affected 最小 once，不整 longrun/真模型/性能矩阵。
+**最窄验收**：①restart 无 hint→`runtimeSourceCall`→`saveRestartContinuation` 写文件→`restartCh` 投递→response 先行回固定 ACK→桩 k.Restart 断 hint（不真重启）；②hint 传参/超 4000 原错/`k.Restart==nil` 原 unavailable 错/二次 `restart already requested`；③GET 无 secret→HTTPNeedsOwner=false 直通无卡→`Status\nbody`；④POST/body→卡（tool=sh、`"POST <url>"`）→批准→发出；⑤`{{secret:NAME}}` 触发卡→egress 替换→值不出现在结果/卡/回包；⑥permissive 下 http secret/写方法**无卡直跑**、restart 无卡（与 links 相反钉死）；⑦拒→`denied by user`/超时→自动 allow/`(sh,canonArgs)` 键控 A→B 不吃 A/`noApprover` 原错；⑧退役面全项（registry/review/class 常量/cardtext/restart_unattended_test/`NeedsOwner("http_request")` 无消费者）；⑨CallID 缺失报错、双 32KiB/HTTP 64KiB、`allowReadOnlyPlatform` 不放两 `--self`（无 restart/http 分支时 `--help` 一并拒，更严一致，放行需加分支）；⑩Drain 语义：response 完整+restartCh 收到 reason，`deliverRestartContinuation` 重启后投 restart 事件原样。复用 links/jobs 骨架与已绿族，只 new+必要 affected 最小 once，不整 longrun/真模型/性能矩阵。
 
 
 
