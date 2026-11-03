@@ -72,6 +72,11 @@ type Server struct {
 	// Nil leaves the action unavailable, including in a plain web server.
 	AppRestart func() error
 
+	// DevReload rebuilds the running binary from the checkout named by
+	// XBOT_DEV_ROOT and restarts into it. Nil leaves the route 404; only the
+	// dev instance started by scripts/xbot-dev wires it.
+	DevReload func() error
+
 	// Updater answers the page's update panel and installs a downloaded
 	// version on the owner's click. Nil leaves the panel out.
 	Updater *upgrade.Updater
@@ -204,6 +209,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/setup/key", s.setupKey)
 	mux.HandleFunc("POST /api/app/theme", s.appTheme)
 	mux.HandleFunc("POST /api/app/restart", s.appRestart)
+	mux.HandleFunc("POST /api/dev/reload", s.devReload)
 
 	mux.HandleFunc("GET /api/image-gen", s.getImageGen)
 	mux.HandleFunc("PUT /api/image-gen", s.putImageGenSettings)
@@ -231,6 +237,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/providers/oauth/{kind}/status", s.oauthStatus)
 	mux.HandleFunc("POST /api/providers/oauth/{kind}/cancel", s.oauthCancel)
 	mux.HandleFunc("POST /api/providers/oauth/{kind}/logout", s.oauthLogout)
+	mux.HandleFunc("GET /api/providers/oauth/{kind}/local", s.oauthLocal)
 	mux.HandleFunc("PUT /api/bots/{name}/binding", s.bindModel)
 	mux.HandleFunc("GET /providers.js", s.static("static/providers.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /providers.css", s.static("static/providers.css", "text/css; charset=utf-8"))
@@ -412,6 +419,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 	// devices instead of this computer.
 	out["remote"] = forwarded(r)
 	out["can_restart"] = s.App && s.AppRestart != nil
+	out["can_reload"] = s.DevReload != nil
 	out["owner_avatar_url"] = s.ownerAvatarURL()
 	if s.needsKey() {
 		out["needs_key"] = true

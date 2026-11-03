@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -472,6 +473,55 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		restartRequested = true
 		return nil
 	}
+	// Dev builds rebuild the checkout named by XBOT_DEV_ROOT and re-exec into
+	// the result. One build at a time; a second request while one runs is a
+	// conflict. Nothing about this path exists on a production instance.
+	var devBuild atomic.Bool
+	devReload := func() error {
+		repo := strings.TrimSpace(os.Getenv("XBOT_DEV_ROOT"))
+		if repo == "" {
+			return errors.New("not a dev instance")
+		}
+		if !devBuild.CompareAndSwap(false, true) {
+			return errors.New("已在编译")
+		}
+		go func() {
+			defer devBuild.Store(false)
+			exe, err := os.Executable()
+			if err == nil {
+				exe, err = filepath.EvalSymlinks(exe)
+			}
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "xbot: dev reload:", err)
+				return
+			}
+			next := exe + ".next"
+			prev := exe + ".prev"
+			head, _ := exec.Command("git", "-C", repo, "rev-parse", "--short", "HEAD").Output()
+			tip := strings.TrimSpace(string(head))
+			build := exec.Command("go", "build",
+				"-ldflags", "-X xbot/internal/version.Tip="+tip,
+				"-o", next, "./cmd/xbot")
+			build.Dir = repo
+			out, err := build.CombinedOutput()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "xbot: dev reload: build failed: %v\n%s\n", err, out)
+				_ = os.Remove(next)
+				return
+			}
+			_ = os.Rename(exe, prev)
+			if err := os.Rename(next, exe); err != nil {
+				fmt.Fprintln(os.Stderr, "xbot: dev reload:", err)
+				_ = os.Rename(prev, exe)
+				return
+			}
+			restart("dev rebuild " + tip)
+		}()
+		return nil
+	}
+	if os.Getenv("XBOT_DEV_ROOT") == "" {
+		devReload = nil
+	}
 	deliverTimers := cfg.DeliverTimers
 	if deliverTimers == nil {
 		deliverTimers = serve.DeliverTimers
@@ -511,7 +561,8 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 			}
 			return k, err
 		},
-		Updater: updater,
+		Updater:   updater,
+		DevReload: devReload,
 	}
 	defer ui.CloseOperations()
 	defer ui.CloseResources()

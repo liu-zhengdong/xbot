@@ -125,7 +125,7 @@ launch() {
 	mkdir -p "$STATE"
 	rm -f "$PIDFILE"
 	echo "---- $(date '+%Y-%m-%d %H:%M:%S') start $(sed -n 's/^commit=//p' "$INFO") ----" >>"$LOG"
-	XBOT_DEV_STATIC="$REPO/internal/web/static" XBOT_AUTO_UPGRADE=0 \
+	XBOT_DEV_STATIC="$REPO/internal/web/static" XBOT_DEV_ROOT="$REPO" XBOT_AUTO_UPGRADE=0 \
 		BIN="$BIN" DATA="$DATA" ADDR="$ADDR" PIDFILE="$PIDFILE" LOG="$LOG" WEB_MODE="$WEB_MODE" \
 		nohup bash -c '
 			if [ "$WEB_MODE" = 1 ]; then
