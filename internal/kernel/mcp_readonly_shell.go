@@ -50,6 +50,10 @@ func (k *Kernel) allowReadOnlyPlatform(interpreter string, args json.RawMessage)
 		parsed, err := cliops.ParseCompactRuntime(argv[1:])
 		return err == nil && parsed.Help
 	}
+	if argv[0] == "links" {
+		parsed, err := cliops.ParseLinksRuntime(argv[1:])
+		return err == nil && (parsed.Help || parsed.Self && parsed.Action == "search")
+	}
 	if argv[0] == "transcript" {
 		parsed, err := cliops.ParseTranscriptRuntime(argv[1:])
 		return err == nil && (parsed.Help || parsed.Self)

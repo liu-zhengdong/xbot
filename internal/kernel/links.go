@@ -22,20 +22,21 @@ import (
 	"xbot/internal/work"
 )
 
-// linksTool lets the bot search, install, remove, and load links.
+// linksTool lets the bot install and remove links. Search and load moved to
+// the current instance CLI ("$XBOT_BIN" links search|load --self).
 // Install always asks the owner. Secret values arrive from the approval card,
 // never from the model, and never go back out in the tool result.
 type linksTool struct{ k *Kernel }
 
 func (linksTool) Name() string { return "links" }
 func (linksTool) Description() string {
-	return "搜索、安装、移除或加载连接器。浏览器/browser 等非 MCP 连接器可 action=load、id=名称或 id；成功返回工具 id，之后用 tools 的 describe/call。MCP（如 Playwright）通过当前实例 CLI 操作：先运行 \"$XBOT_BIN\" mcp tools <服务器> --self --json，再用 mcp describe/call 和远端原工具名。search 查目录摘要；install/remove 走用户确认，所需密钥由用户在确认卡填写，你不接收密钥值。"
+	return "安装、移除连接器；搜索目录和加载已装连接器走 \"$XBOT_BIN\" links search|load --self。MCP（如 Playwright）通过当前实例 CLI 操作：先运行 \"$XBOT_BIN\" mcp tools <服务器> --self --json，再用 mcp describe/call 和远端原工具名。install/remove 走用户确认，所需密钥由用户在确认卡填写，你不接收密钥值。"
 }
 func (linksTool) Parameters() any {
+	// search and load moved to the CLI; only install/remove stay on the tool.
 	return schema(map[string]any{
-		"action": stringProp("search, install, remove, or load"),
-		"id":     stringProp("名称或 id；load 也接受 mcp:<服务器>"),
-		"query":  stringProp("search text; empty lists the catalog"),
+		"action": stringProp("install or remove"),
+		"id":     stringProp("名称或 id"),
 	}, []string{"action"})
 }
 
@@ -77,7 +78,6 @@ func (t linksTool) Run(ctx context.Context, args json.RawMessage) (string, error
 	var in struct {
 		Action string `json:"action"`
 		ID     string `json:"id"`
-		Query  string `json:"query"`
 	}
 	if err := json.Unmarshal(args, &in); err != nil {
 		return "", err
@@ -87,7 +87,7 @@ func (t linksTool) Run(ctx context.Context, args json.RawMessage) (string, error
 	}
 	switch strings.ToLower(strings.TrimSpace(in.Action)) {
 	case "search":
-		return t.search(in.Query), nil
+		return "", fmt.Errorf("links: search moved to the CLI: \"$XBOT_BIN\" links search --self")
 	case "install", "remove":
 		var text string
 		var err error
@@ -101,9 +101,9 @@ func (t linksTool) Run(ctx context.Context, args json.RawMessage) (string, error
 		}
 		return text, err
 	case "load":
-		return t.loadContext(ctx, strings.TrimSpace(in.ID))
+		return "", fmt.Errorf("links: load moved to the CLI: \"$XBOT_BIN\" links load --self <id|name>")
 	default:
-		return "", fmt.Errorf("links: action must be search, install, remove, or load")
+		return "", fmt.Errorf("links: action must be install or remove")
 	}
 }
 
