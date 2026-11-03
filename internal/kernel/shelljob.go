@@ -2,18 +2,14 @@ package kernel
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"xbot/internal/bot"
 	"xbot/internal/config"
-	"xbot/internal/exec"
 	"xbot/internal/inbox"
-	"xbot/internal/link"
 	"xbot/internal/tools"
 	"xbot/internal/vault"
 )
@@ -116,24 +112,6 @@ func (k *Kernel) bindShellRuntime(sh *tools.Shell) {
 	sh.BindLocalSudo(func() (vault.Backend, error) {
 		return vault.OpenGlobal(k.Bot.Root)
 	})
-}
-
-// shellBackgroundOn reports that a real shell on these links has a job table.
-// An eval jail is also named "tools" but its shell is not *tools.Shell and has
-// no jobs, so it must not gain shell_output, shell_status, or shell_cancel.
-func shellBackgroundOn(links []link.Link) bool {
-	for _, l := range links {
-		if l == nil {
-			continue
-		}
-		for _, t := range l.Tools() {
-			sh, ok := t.(*tools.Shell)
-			if ok && sh.Jobs != nil {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // bindFileCwd points file tools at the shell's current directory. A sandbox
@@ -378,151 +356,4 @@ func vaultFormGen(k *Kernel) uint64 {
 	return 0
 }
 
-type shellOutputTool struct{ k *Kernel }
-
-func (shellOutputTool) Name() string { return "shell_output" }
-func (shellOutputTool) Description() string {
-	return "Read a background tool job's output. offset is a byte position in the whole stream, not the retained file; the result names next_offset and says when earlier bytes were dropped. When bytes are still buffered because they might begin a secret, the result includes held_bytes. Pass tail to take the last N lines. Do not poll in a tight loop; wait for its normal completion message, then read."
-}
-func (shellOutputTool) Parameters() any {
-	return schema(map[string]any{
-		"id":     stringProp("Background job id"),
-		"offset": intProp("Byte offset to read from. Ignored when tail is set."),
-		"tail":   intProp("Return the last N lines instead of a byte range."),
-	}, []string{"id"})
-}
-func (shellOutputTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
-func (t shellOutputTool) Run(_ context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		ID     string `json:"id"`
-		Offset int    `json:"offset"`
-		Tail   int    `json:"tail"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	jobs := t.k.shellJobs()
-	if jobs == nil {
-		return "", errNoShellJobs
-	}
-	return jobs.Output(strings.TrimSpace(in.ID), in.Offset, in.Tail)
-}
-
-type shellStatusTool struct{ k *Kernel }
-
-func (shellStatusTool) Name() string { return "shell_status" }
-func (shellStatusTool) Description() string {
-	return "Report one background tool job, or list them when id is omitted. Status is running, done, failed, cancelled, or lost. lost means this serve process restarted and is not tracking the process anymore. When bytes are still buffered because they might begin a secret, the result includes held_bytes."
-}
-func (shellStatusTool) Parameters() any {
-	return schema(map[string]any{
-		"id": stringProp("Background job id. Omit to list jobs."),
-	}, []string{})
-}
-func (shellStatusTool) Confirm(json.RawMessage) (bool, string, error) { return false, "", nil }
-func (t shellStatusTool) Run(_ context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		ID string `json:"id"`
-	}
-	if len(args) > 0 {
-		if err := json.Unmarshal(args, &in); err != nil {
-			return "", err
-		}
-	}
-	jobs := t.k.shellJobs()
-	if jobs == nil {
-		return "", errNoShellJobs
-	}
-	id := strings.TrimSpace(in.ID)
-	if id == "" {
-		list := jobs.List()
-		if len(list) == 0 {
-			return "no background tool jobs", nil
-		}
-		var b strings.Builder
-		for i, job := range list {
-			if i >= 32 {
-				b.WriteString("...\n")
-				break
-			}
-			fmt.Fprintf(&b, "%s %s %s", job.ID, job.Status, clipRunes(job.Command, 80))
-			if job.Cwd != "" {
-				fmt.Fprintf(&b, " cwd %s", job.Cwd)
-			}
-			if job.Held > 0 {
-				fmt.Fprintf(&b, " held_bytes: %d", job.Held)
-			}
-			b.WriteByte('\n')
-		}
-		return strings.TrimRight(b.String(), "\n"), nil
-	}
-	job, err := jobs.Status(id)
-	if err != nil {
-		return "", err
-	}
-	line := fmt.Sprintf("%s %s", job.ID, job.Status)
-	if job.Status == "done" {
-		line += fmt.Sprintf(" exit %d", job.ExitCode)
-	}
-	if job.Cwd != "" {
-		line += "\ncwd: " + job.Cwd
-	}
-	if job.Held > 0 {
-		line += fmt.Sprintf("\nheld_bytes: %d", job.Held)
-	}
-	if job.Output != "" {
-		line += "\noutput: " + job.Output
-	}
-	return line, nil
-}
-
-type shellCancelTool struct{ k *Kernel }
-
-func (shellCancelTool) Name() string { return "shell_cancel" }
-func (shellCancelTool) Description() string {
-	return "Request cancellation of a background tool job. Shell jobs kill their process group; other tools stay running until they return."
-}
-func (shellCancelTool) Parameters() any {
-	return schema(map[string]any{
-		"id": stringProp("Background job id"),
-	}, []string{"id"})
-}
-func (shellCancelTool) Confirm(args json.RawMessage) (bool, string, error) {
-	var in struct {
-		ID string `json:"id"`
-	}
-	_ = json.Unmarshal(args, &in)
-	if strings.TrimSpace(in.ID) == "" {
-		return false, "shell_cancel", nil
-	}
-	return false, "cancel " + strings.TrimSpace(in.ID), nil
-}
-func (t shellCancelTool) Run(_ context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		ID string `json:"id"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	jobs := t.k.shellJobs()
-	if jobs == nil {
-		return "", errNoShellJobs
-	}
-	id := strings.TrimSpace(in.ID)
-	out, err := jobs.Cancel(id)
-	if errors.Is(err, tools.ErrForeignJob) {
-		if remote, ok := t.k.execSnapshot().(*exec.Remote); ok {
-			err = remote.CancelToolJob(context.Background(), jobs.Dir, id)
-			if err == nil {
-				out = "cancellation requested " + id
-			}
-		}
-	}
-	return out, err
-}
-
-var errNoShellJobs = errShell("shell: background jobs are not available")
-
-type errShell string
-
-func (e errShell) Error() string { return string(e) }
+var errNoShellJobs = errors.New("shell: background jobs are not available")

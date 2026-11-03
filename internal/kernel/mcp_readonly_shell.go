@@ -62,6 +62,10 @@ func (k *Kernel) allowReadOnlyPlatform(interpreter string, args json.RawMessage)
 		parsed, err := cliops.ParseSubagentRuntime(argv[1:])
 		return err == nil && (parsed.Help || parsed.Self)
 	}
+	if argv[0] == "jobs" {
+		parsed, err := cliops.ParseJobsRuntime(argv[1:])
+		return err == nil && (parsed.Help || parsed.Self && (parsed.Action == "output" || parsed.Action == "status"))
+	}
 	if argv[0] == "memory-recall" {
 		parsed, err := cliops.ParseMemoryRecallRuntime(argv[1:])
 		return err == nil && (parsed.Help || parsed.Self)

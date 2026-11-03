@@ -25,7 +25,7 @@ const (
 	maxShellJobs = 32
 	// defaultJobBytes is the tail kept in a background job's output file.
 	defaultJobBytes = 256 << 10
-	// maxJobRead is the most output one shell_output call returns.
+	// maxJobRead is the most output one jobs output call returns.
 	maxJobRead = 32 << 10
 	// maxJobTail is the most lines a tail read returns.
 	maxJobTail = 200
@@ -800,7 +800,7 @@ func formatBackground(job Job, note string) string {
 	if job.Cwd != "" {
 		cwd = "\ncwd: " + job.Cwd
 	}
-	return fmt.Sprintf("background %s\noutput: %s%s\n%s\nUse shell_output to read (offset or tail), shell_status to check, and shell_cancel to stop. Do not poll in a tight loop.", job.ID, job.Output, cwd, note)
+	return fmt.Sprintf("background %s\noutput: %s%s\n%s\nUse \"$XBOT_BIN\" jobs output --self to read (--offset or --tail), jobs status --self to check, and jobs cancel --self to stop. Do not poll in a tight loop.", job.ID, job.Output, cwd, note)
 }
 
 func tailLines(s string, n int) string {

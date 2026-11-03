@@ -128,11 +128,6 @@ var kernelTools = []struct {
 	{"secrets", func(k *Kernel, links []link.Link) bool { return k.Vault != nil && namedLink(links, link.NameTools) }, func(k *Kernel) []tools.Tool {
 		return []tools.Tool{&tools.HTTPRequest{Store: k.Vault}}
 	}, nil},
-	{"shell_jobs", func(k *Kernel, links []link.Link) bool {
-		return shellBackgroundOn(links) || k.liveShell() != nil && len(k.liveShell().List()) > 0
-	}, func(k *Kernel) []tools.Tool {
-		return []tools.Tool{shellOutputTool{k}, shellStatusTool{k}, shellCancelTool{k}}
-	}, nil},
 	{"agents", always, func(k *Kernel) []tools.Tool {
 		var start tools.Tool = spawnTool{k}
 		if k.Dispatch {

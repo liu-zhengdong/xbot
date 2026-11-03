@@ -232,6 +232,15 @@ func Start(root string, handlers Handlers) (*Server, error) {
 	mux.HandleFunc("/v1/subagent/expand", func(w http.ResponseWriter, r *http.Request) {
 		serveSubagentExpand(w, r, handlers.Subagents)
 	})
+	mux.HandleFunc("/v1/jobs/output", func(w http.ResponseWriter, r *http.Request) {
+		serveJobsOutput(w, r, handlers.Jobs)
+	})
+	mux.HandleFunc("/v1/jobs/status", func(w http.ResponseWriter, r *http.Request) {
+		serveJobsStatus(w, r, handlers.Jobs)
+	})
+	mux.HandleFunc("/v1/jobs/cancel", func(w http.ResponseWriter, r *http.Request) {
+		serveJobsCancel(w, r, handlers.Jobs)
+	})
 	guarded := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fail := func(code int, message string) {
 			w.Header().Set("Content-Type", "application/json")

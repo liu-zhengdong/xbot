@@ -31,9 +31,6 @@ func TestTableHasEveryClass(t *testing.T) {
 		"code_start":    Normal,
 		"browser_stop":  Normal,
 		"todo":          Normal,
-		"shell_output":  Readonly,
-		"shell_status":  Readonly,
-		"shell_cancel":  Normal,
 	}
 	for name, class := range want {
 		if !Known(name) {
@@ -41,6 +38,14 @@ func TestTableHasEveryClass(t *testing.T) {
 		}
 		if got := ClassOf(name); got != class {
 			t.Fatalf("%s class %q want %q", name, got, class)
+		}
+	}
+}
+
+func TestRetiredShellJobsUnknown(t *testing.T) {
+	for _, name := range []string{"shell_output", "shell_status", "shell_cancel"} {
+		if Known(name) || ClassOf(name) != Normal {
+			t.Fatalf("retired shell jobs tool retains an executable policy entry: %s", name)
 		}
 	}
 }

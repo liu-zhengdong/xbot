@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
-verified: 2026-11-02 @ c9a6e170 (links install/remove approval-source owner card, secrets stage via _xbot_links blob and linksTool retirement)
+verified: 2026-11-02 (shell jobs three-tool policy rows retired with the model wrappers)
 ---
 # 安全：保险箱与权限表
 
@@ -182,8 +182,8 @@ WantedBy=multi-user.target
 
 | 类别 | 工具 | 确认条件 |
 |---|---|---|
-| `readonly` | `tools`（代理门的 search/describe）、`read_file`、`web_fetch`、`web_search`、`view_image`、`shell_output`、`shell_status`、chat-group list/history CLI、memory-recall self CLI、transcript search/expand/detail self CLI、links search self CLI、subagent list/read/expand self CLI、`code_show`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不（`read_file` 或 `view_image` 触及保险箱/密钥路径时确认） |
-| `normal` | `generate_image`（复用全局 OAuth 的生图代理）、`send_message_to_user`、compact self CLI、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`shell_cancel`、`ask_user`、`todo`、chat-group create/post CLI、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
+| `readonly` | `tools`（代理门的 search/describe）、`read_file`、`web_fetch`、`web_search`、`view_image`、chat-group list/history CLI、memory-recall self CLI、transcript search/expand/detail self CLI、links search self CLI、subagent list/read/expand self CLI、`code_show`、`desktop_screenshot`、`browser_snapshot`，以及服务器标了 `readOnlyHint` 的 `mcp_*` 工具 | 从不（`read_file` 或 `view_image` 触及保险箱/密钥路径时确认） |
+| `normal` | `generate_image`（复用全局 OAuth 的生图代理）、`send_message_to_user`、compact self CLI、`spawn`、`steer`、`queue`、`interrupt`、`cancel`、`ask_user`、`todo`、chat-group create/post CLI、`code_start`、`code_steer`、`code_queue`、`code_interrupt`、`code_cancel`、`desktop_click`、`desktop_type`、`desktop_scroll`、`desktop_key`、`browser_open`、`browser_click`、`browser_stop` | 从不 |
 | `delete` | strict Bot CLI delete、`delete_file`、`remove_file`、`secret_rm`、`delete_link`、`remove_mcp` 等名称明确的删除工具 | 总是 |
 | `external_send` | `telegram_send`、`lark_send`、`send_email`、`send_webhook`、其余 `mcp_*`（按前缀规则，没标 `readOnlyHint` 的） | 总是 |
 | `http` | `http_request` | 注入 `{{secret:}}` 或方法非 `GET`/`HEAD` |

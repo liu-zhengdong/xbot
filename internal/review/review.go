@@ -48,9 +48,6 @@ var Table = map[string]Class{
 	// Built-in tools link: shell and files.
 	"shell": Shell, // Historical records only; never registered.
 	"bash":  Shell, "sh": Shell, "zsh": Shell, "powershell": Shell, "cmd": Shell, "git-bash": Shell,
-	"shell_output": Readonly,
-	"shell_status": Readonly,
-	"shell_cancel": Normal,
 	"read_file":    Readonly,
 	"write_file":   SelfEdit,
 	"edit_file":    SelfEdit,

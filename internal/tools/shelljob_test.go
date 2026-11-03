@@ -33,7 +33,7 @@ func TestShellBackgroundDescription(t *testing.T) {
 	}
 	sh.Jobs = NewJobs(t.TempDir())
 	d := sh.Description()
-	for _, s := range []string{"run_in_background", "shell_output", "shell_status", "shell_cancel", "tight loop", "not killed"} {
+	for _, s := range []string{"run_in_background", "jobs output", "jobs status", "jobs cancel", "tight loop", "not killed"} {
 		if !strings.Contains(d, s) {
 			t.Fatalf("description missing %q", s)
 		}

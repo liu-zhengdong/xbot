@@ -1,6 +1,7 @@
 package kernel
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
 	"xbot/internal/compact"
 	"xbot/internal/config"
 	"xbot/internal/link"
@@ -446,15 +448,15 @@ func TestPersistentWorkingDirectory(t *testing.T) {
 	advance(now, time.Second)
 	runTurn(t, k, now, "bg",
 		toolCall("b1", "sh", `{"description":"Verify the scenario behavior","command":"cd /","run_in_background":true}`),
-		toolCall("b2", "shell_status", `{}`),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("bg")},
 	)
 	bg := bodies(t, k)
-	if len(bg) < 2 || !strings.HasPrefix(bg[len(bg)-2], "background ") || strings.Count(bg[len(bg)-2], "\ncwd:") != 1 || !strings.Contains(bg[len(bg)-2], "\ncwd: "+wantSub) {
-		t.Fatalf("background: %q", bg[len(bg)-2])
+	if len(bg) < 1 || !strings.HasPrefix(bg[len(bg)-1], "background ") || strings.Count(bg[len(bg)-1], "\ncwd:") != 1 || !strings.Contains(bg[len(bg)-1], "\ncwd: "+wantSub) {
+		t.Fatalf("background: %q", bg[len(bg)-1])
 	}
-	if !strings.Contains(bg[len(bg)-1], wantSub) {
-		t.Fatalf("status: %q", bg[len(bg)-1])
+	jobsStatus, err := k.JobsHandlers().Status(context.Background(), cliops.JobsStatus{})
+	if err != nil || !strings.Contains(jobsStatus.Text, wantSub) {
+		t.Fatalf("jobs status %q %v", jobsStatus.Text, err)
 	}
 
 	advance(now, time.Second)

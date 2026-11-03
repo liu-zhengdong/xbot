@@ -71,4 +71,5 @@ type Handlers struct {
 	Compact       func(context.Context, Compact) (CompactReply, error)
 	Links         *LinksHandlers
 	Subagents     *SubagentHandlers
+	Jobs          *JobsHandlers
 }

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"xbot/internal/cliops"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
@@ -150,16 +151,17 @@ func TestC1JobControlsWorkAtCapacity(t *testing.T) {
 			first = r.Job.ID
 		}
 	}
-	args, _ := json.Marshal(map[string]string{"id": first})
-	for _, tool := range []tools.Tool{shellStatusTool{k}, shellOutputTool{k}, shellCancelTool{k}} {
-		tool := reviewedTool{Tool: tool, k: k}
-		r := k.runToolCall(context.Background(), tool, args, func(ctx context.Context) tools.CallResult {
-			out, err := tool.Run(ctx, args)
-			return tools.CallResult{Text: out, Err: err}
-		})
-		if r.Err != nil || r.Job != nil {
-			t.Fatalf("full-capacity %s: %+v", tool.Name(), r)
-		}
+	// Inspecting and cancelling jobs went through the runtime jobs handlers
+	// (ADR 0066); they never take a Jobs slot, so a full table still answers.
+	handlers := k.JobsHandlers()
+	if r, err := handlers.Status(context.Background(), cliops.JobsStatus{ID: first}); err != nil || r.Text == "" {
+		t.Fatalf("full-capacity status: %+v %v", r, err)
+	}
+	if r, err := handlers.Output(context.Background(), cliops.JobsOutput{ID: first}); err != nil {
+		t.Fatalf("full-capacity output: %+v %v", r, err)
+	}
+	if _, err := handlers.Cancel(context.Background(), cliops.JobsCancel{ID: first}); err != nil {
+		t.Fatalf("full-capacity cancel: %v", err)
 	}
 	job, err := jobs.Status(first)
 	if err != nil || job.Status != "cancelled" {

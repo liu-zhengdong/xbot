@@ -28,15 +28,6 @@ func (k *Kernel) callTurn(ctx context.Context) *turn {
 }
 
 func (k *Kernel) runToolCall(ctx context.Context, t tools.Tool, args json.RawMessage, run func(context.Context) tools.CallResult) tools.CallResult {
-	// Inspecting/cancelling Jobs must not itself require a free Job slot.
-	base := t
-	if rt, ok := t.(reviewedTool); ok {
-		base = rt.Tool
-	}
-	switch base.(type) {
-	case shellOutputTool, shellStatusTool, shellCancelTool:
-		return run(ctx)
-	}
 	jobs := k.shellJobs()
 	if jobs == nil {
 		if k.Bot != nil {

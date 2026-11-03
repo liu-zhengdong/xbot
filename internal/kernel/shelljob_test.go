@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
 	"xbot/internal/config"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
@@ -39,24 +40,22 @@ func TestShellJobSurvivesTurns(t *testing.T) {
 		}
 	})
 	advance(now, time.Second)
-	statusArgs := mustArgs(t, map[string]string{"id": id})
+	st, err := k.JobsHandlers().Status(context.Background(), cliops.JobsStatus{ID: id})
+	if err != nil || !strings.Contains(st.Text, "running") {
+		t.Fatalf("jobs status %q %v", st.Text, err)
+	}
 	p.resps = nil
 	p.i = 0
 	runTurn(t, k, now, "status",
-		toolCall("c2", "shell_status", statusArgs),
 		provider.Message{Role: provider.RoleAssistant, Content: provider.TextContent("still going")},
 	)
-	got = bodies(t, k)
-	if len(got) < 2 || !strings.Contains(got[len(got)-1], "running") {
-		t.Fatalf("%q", got)
-	}
 	desc := ""
 	for _, tool := range p.reqs[len(p.reqs)-1].Tools {
 		if tool.Name == "sh" {
 			desc = tool.Description
 		}
 	}
-	for _, s := range []string{"run_in_background", "shell_output", "tight loop"} {
+	for _, s := range []string{"run_in_background", "jobs output", "tight loop"} {
 		if !strings.Contains(desc, s) {
 			t.Fatalf("model shell description missing %q: %s", s, desc)
 		}
@@ -601,12 +600,12 @@ func TestRunningShortOutputAndHeldPrefix(t *testing.T) {
 	if st.Status != "running" || st.Bytes == 0 {
 		t.Fatalf("status %+v", st)
 	}
-	got, err := shellStatusTool{k: k}.Run(context.Background(), json.RawMessage(`{"id":"`+id+`"}`))
+	r, err := k.JobsHandlers().Status(context.Background(), cliops.JobsStatus{ID: id})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got, "held_bytes:") {
-		t.Fatalf("status tool %s", got)
+	if !strings.Contains(r.Text, "held_bytes:") {
+		t.Fatalf("status %s", r.Text)
 	}
 }
 
