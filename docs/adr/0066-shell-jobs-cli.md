@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0066 shell jobs 三工具 runtime CLI
@@ -105,7 +105,9 @@ CLI 导入 cliops，`CallJobsOutput`/`CallJobsStatus`/`CallJobsCancel`（`ctx,en
 - `registry.go:131-135` `shell_jobs` 行整行删（组空随退：on 判据 `shellBackgroundOn`/`liveShell` 与 tools slice `shellOutputTool{k}, shellStatusTool{k}, shellCancelTool{k}` 同行退）；`review.go:51-53` 三行删（`shell_output`/`shell_status` Readonly、`shell_cancel` Normal）。
 - `shelljob.go:381-528` 三 wrapper 型删（`shellOutputTool`/`shellStatusTool`/`shellCancelTool` 的 Name/Description/Parameters/Confirm/Run + `errNoShellJobs`/`errShell`——errShell 若仅三工具用则随退，否则保）；`jobs.Output/Status/List/Cancel`/`tools.ErrForeignJob`/`execSnapshot`/`exec.Remote.CancelToolJob` 领域函数**保**，由 kernel 侧 runtime handler 直调；`attachShellJobs`/`attachShell`/`shellBackgroundOn`/`bindShellRuntime` 全保（Jobs 装配与工具注册无关）。
 - `tooljob.go:36-38` `runToolCall` 的 `case shellOutputTool, shellStatusTool, shellCancelTool` 免 Jobs 槽位分支随三型删——分支引用三工具类型，型删则分支删；runtime handler 本就不经 `runToolCall` 不占 Jobs 槽，原「inspect/cancel 不占用 Job 槽」语义由 handler 不经 Jobs.RunCall 天然保持。
-- `internal/tools/shell.go:260` `interpreterDescription` 指引文案 `shell_output reads output (offset or tail), shell_status checks status, shell_cancel requests cancellation` 改指 `"$XBOT_BIN" jobs output|status|cancel --self` 同义句。
+- `internal/tools/shell.go:260` `interpreterDescription` 指引文案 `shell_output reads output (offset or tail), shell_status checks status, shell_cancel requests cancellation` 改指 `"$XBOT_BIN" jobs output|status|cancel --self` 同义句；`internal/tools/shelljob.go:803` `formatBackground` 人读尾行 `Use shell_output to read (offset or tail), shell_status to check, and shell_cancel to stop.` 同步改指 `xbot jobs output|status|cancel --self`（模型经 Shell 拿 XBOT_BIN 回同一 listener），`shelljob.go:121-123` `shellBackgroundOn` 注释的三工具提法随注释对象（on 判据/组行）同行退。
+- `internal/kernel/c1_output_test.go:154` `TestC1JobControlsWorkAtCapacity` 对 `shellStatusTool/shellOutputTool/shellCancelTool` 三型包 `reviewedTool` 的免槽位断言随三型删——容量语义由 runtime handler 不经 `runToolCall` 天然不占槽保持，原断言无替代物；`internal/kernel/shelljob_test.go:604` `shellStatusTool{k}.Run` 直接调用断言迁 `jobs.Status` 领域断言（held_bytes 行保核 `st.Held`）。
+- `internal/tools/shelljob_test.go:36` `TestShellBackgroundDescription` 的 `shell_output`/`shell_status`/`shell_cancel` 文案断言随 shell.go 文案改指 CLI 提法；`internal/tools/shelljob_prop_test.go:17` 注释 `shell_output` 提法同步改 `jobs output`。
 - `docs/atlas/kernel.md:172`（慢工具后台化段 `shell_output/status/cancel` 提法）、`docs/atlas/ecosystem.md:27`（原生内置 Link 段「复用 shell_output/shell_status/shell_cancel」）、`docs/atlas/security.md:185-186`（readonly 表 `shell_output`/`shell_status`、normal 表 `shell_cancel` 三处）同步改指 `jobs … --self` CLI 同形。
 - `e2e/smoke` 四处 scripted 生产者随退役断言迁移：`cli_profile_full_runtime_test.go:298` `shell_status`、`cli_chat_group_runtime_projection_test.go:150` `shell_output`、`cli_bot_runtime_projection_test.go:233` `shell_output`、`mcp_runtime_test.go:414-416` `shell_status`/`shell_output`/`shell_cancel`——改 scripted `sh` 调 `"$XBOT_BIN" jobs … --self`（同 subagent cut 的 mockopenai/e2e 迁移先例）。
 - `internal/kernel/envaware_test.go:449` `toolCall("b2","shell_status",…)` 断言迁移；`internal/review/review_test.go` readonly/normal 循环列表的 `shell_output`/`shell_status`/`shell_cancel` 三名删（退后落 default，不再需原分类断言）；`internal/kernel/shelljob_test.go:46,59` 的 `shell_status`/工具名提及按现行契约修正。
@@ -129,3 +131,5 @@ CLI 导入 cliops，`CallJobsOutput`/`CallJobsStatus`/`CallJobsCancel`（`ctx,en
 8. research 只读包装：`jobs output|status --self` 放行、 `jobs cancel --self` 拒绝、help 放行——与 readonly 表迁移一致。
 
 复用 subagent 三读的 transport/parser/handler 骨架与已绿族证据，只 new+必要 actual affected 最小 once，不整 longrun/真模型/性能矩阵。完整 caller 合同见 [母路线](../dev/cli-platform-entry.md#批-shelljobs-三工具-runtime-cli-具体合同)。本文保决策边界：不把离线目录读冒运行态等价（live writer/owned cancel/Remote 兜底只在本实例）、把 endpoint 资格冒 CallID 资格（原方法本就不要 ctx）、把新 noun 冒批 5 基础集入口（shell 解释器本体留批 5）。Root4USERdocs/OwnerSSE/guard/main/push 日用不动。
+
+SINGLE ACTUAL CONCRETE SHAPE PASS（2026-11-02）：已核退役面/保留面/验收八点逐条对照现码，design 方向成立无实质修正；退役面补列 `formatBackground` 人读尾行（shelljob.go:803）改指 jobs CLI、`c1_output_test.go:154` 三型 reviewedTool 免槽位断言与 `shelljob_test.go:604` `shellStatusTool` 直接调用随型删/迁、`shelljob_test.go:36`/`shelljob_prop_test.go:17` Description/formatBackground 文案断言随文案同步、`shellBackgroundOn` 注释三工具提法同行退。本 ADR 转 Accepted 实施。
