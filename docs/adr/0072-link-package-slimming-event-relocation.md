@@ -1,10 +1,12 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0072 Link 包瘦身 + Event 上移 + Link 装配合一
+
+单次实现切片通过：12 项核心检查全对（Event 上移、装配合一、代理门、razor 退役面、grep 清零）。
 
 ## 原能力与调用方
 
@@ -27,13 +29,13 @@ date: 2026-11-02
 | `installed.go` | 57 | `InstalledCap`/`InstalledRef`/`InstalledSection`/`renderInstalled`/`oneLine` 能力框 connector 段渲染 | kernel `installedSection` |
 | `routine_migrate.go` | 148 | `MigrateRoutines` + `RoutineMigration`（C1 zone 迁移工具） | `cmd/xbot/routine.go:72`、`cmd_serve.go:894` |
 | `terminal.go` | 25 | `Terminal`（`Name`/`Tools` nil）+ `Account()` | kernel mount 分支、eval fixture、`bot/primary.go` 等 |
-| `link_test.go` 等 17 测试文件 | ~1450 | catalog/connector/installed/interpreters/link/routine_body/routine_migrate/routine_skills/shell_catalog/store/terminal/timer×6/vaultmigrate | — |
+| `link_test.go` 等 18 测试文件 | ~1450 | catalog/connector/installed/interpreters/link/routine_body/routine_migrate/routine_skills/shell_catalog/store/terminal/timer×6/vaultmigrate | — |
 
 ### Link 装配现状（四路）
 
 | 路径 | 位置 | 角色 |
 |---|---|---|
-| `mountGrantLocked` | `internal/kernel/links.go:444-514` | 17 分支大 switch：13 organ struct 直返 + telegram/lark `k.connector()` + desktop `desktop.Open` + browser `browser.Open` + coding `code.Open`+四绑（`bindCurrentPaths`/`boundProvider`/`UseRunner`/`UseTranscript`/`UseCommand`） |
+| `mountGrantLocked` | `internal/kernel/links.go:444-514` | 16 分支大 switch：12 organ struct 直返 + telegram/lark `k.connector()` + desktop `desktop.Open` + browser `browser.Open` + coding `code.Open`+四绑（`bindCurrentPaths`/`boundProvider`/`UseRunner`/`UseTranscript`/`UseCommand`） |
 | `syncGrantsLocked` | `internal/kernel/links.go:342-387` | 每 `snapshotLinks()` 同步 `Bot.EffectiveLinks()` grant 的 mount/drop：`catalogRuntime(name)` 过滤、`have` 去重、organ 循环无条件挂 13 个 |
 | `snapshotLinks` | `internal/kernel/links.go:328-340` | `linksMu` 锁 + `syncGrantsLocked` + 返回 `k.Links` 拷贝；15 个调用点（`attachShell`、`toolRegistry`、`namedLink`、`linkNames`、`toolsForLoaded`、`StartEmitters`、`memoryEnv`、`person_env` 等） |
 | `MountOrgans` | `internal/kernel/links.go:391-394` | 薄封装：new 一个装配-only `&Kernel{Bot, Links}` 调 `snapshotLinks()`；唯一调用 `cmd/xbot/cmd_serve.go:265` |
@@ -62,7 +64,7 @@ date: 2026-11-02
 - `catalog.go`/`connectors.go`/`store.go`/`installed.go`（共 422 行）是连接应用目录与能力框渲染——`links` CLI 与 `/api/apps` 的真源。留。
 - `timer.go`/`grants.go`/`terminal.go` 是 organ struct 与 Timer 数据模型——决策 5 定它们随不随抽象走。
 
-**唯一确认可删**：`link.CollectTools`（`link.go:222-229`）——ADR0069 保留面写「仍有 desktop/browser/code/connector 等 link.Tools() 消费者」有误：该函数全仓零非 link/零非 test 引用（`toolRegistry` 直接遍历 `l.Tools()` 不经 `CollectTools`）。本刀把它列入退役面（连同其单测），是「找不到成立理由就删」的 razor 动作，不改动任何调用方。
+**唯一确认可删**：`link.CollectTools`（`link.go:222-229`）——ADR0069 保留面写「仍有 desktop/browser/code/connector 等 link.Tools() 消费者」有误：该函数全仓零非 link/零非 test 引用（`toolRegistry` 直接遍历 `l.Tools()` 不经 `CollectTools`）。本刀把它列入退役面（无专属单测），是「找不到成立理由就删」的 razor 动作，不改动任何调用方。
 
 **Event 结构不留在 link 包**——见决策 2。
 
@@ -90,7 +92,7 @@ date: 2026-11-02
 
 **合一形状**：`mount()` 保持遍历 `EffectiveLinks()` 的入口，把 `NameRunner`/legacy 各自 case 留下的同时，connector/browser/organ 不再靠「mount() 分派一遍 + MountOrgans 补一遍」——改为：**`mount()` 只建 kernel 无关的 `Runner`，然后调一个导出函数完成 organ + grant + connector + browser 的统一装配**。最窄合一 = `MountOrgans` 语义扩展为「唯一 link 装配入口」：`MountLinks(b *bot.Bot, runner link.Runner, backend vault.Backend) []link.Link`——内部做 `syncGrantsLocked` 的 grant 同步 + organ 挂载 + connector 建 + vault 首访绑定，让 `cmd_serve mount()` 不再自己分派 connector/browser（两者由 `mountGrantLocked` 统一建），`mount()` 只负责 `Runner` env 解析与 legacy 兜底这两个 kernel 无关分支。vault 参数承载原 `attachConnectors` 的「补 vault」职责——合一函数建 connector 后即调 `UseVault`，与现行 `attachConnectors` 同序、同重试语义。
 
-**`snapshotLinks`/`syncGrantsLocked`/`mountGrantLocked` 本体不动**：它们是「每轮同步 grant→link 的活快照」，合一后仍是唯一同步点；合一的是「谁来调用同步」与「外部 link 怎么进 k.Links」——不是把 17 分支 switch 拆掉。
+**`snapshotLinks`/`syncGrantsLocked`/`mountGrantLocked` 本体不动**：它们是「每轮同步 grant→link 的活快照」，合一后仍是唯一同步点；合一的是「谁来调用同步」与「外部 link 怎么进 k.Links」——不是把 16 分支 switch 拆掉。
 
 ### 决策 4：代理门最终去留——`hasLink(NameAgents)` 改 `k.Dispatch` 直判
 
@@ -120,7 +122,7 @@ date: 2026-11-02
 
 ## 保留面
 
-- `link.Link`/`link.Emitter`/`link.Timer`/`link.Connector`/10 organ struct/`link.Runner`/`kernel.Links []link.Link`/`snapshotLinks`/`syncGrantsLocked`/`mountGrantLocked` 17 分支 switch 主体——接口与 organ 装配主体不动。
+- `link.Link`/`link.Emitter`/`link.Timer`/`link.Connector`/10 organ struct/`link.Runner`/`kernel.Links []link.Link`/`snapshotLinks`/`syncGrantsLocked`/`mountGrantLocked` 16 分支 switch 主体——接口与 organ 装配主体不动。
 - `link.Routine`/`RoutineBody`/`MigrateRoutines`/`RoutineMigration`/`timer.go` 数据模型全保。
 - `catalog.go`/`connectors.go`/`store.go`/`installed.go`/`grants.go` 的 `blurbs`/`Organs`/`StoreApps`/`StoreGrant`/`ResolveApp` 目录与能力框全保。
 - `secrets.go`/`global_secrets.go`/`vaultmigrate.go` 凭据面全保。
@@ -137,7 +139,7 @@ date: 2026-11-02
 
 - 不把「Event 上移」读成「link 包消失」——link 包仍是 connector/catalog/store/secrets/organ struct/Timer 数据模型/Link interface 的家；退役的是「Event 结构与 Link 抽象同包」这个历史耦合。
 - 不把「Messenger/SendPolicy/Deliver 删」扩到 `sendTool`/`saveDraft`/`review` 链——`sendTool` 的 `Confirm`/`Run` 是 telegram/lark 草稿卡的活跃链，不走 `Messenger`/`k.Deliver`；删的是未被使用的 `Messenger` interface 与 `Kernel.Deliver` 包装。
-- 不把「装配合一」读成「拆掉 mountGrantLocked switch」——合一的是 cmd_serve `mount()` 与 organ/grant 装配的入口分叉，17 分支 switch 本体是单一真源保。
+- 不把「装配合一」读成「拆掉 mountGrantLocked switch」——合一的是 cmd_serve `mount()` 与 organ/grant 装配的入口分叉，16 分支 switch 本体是单一真源保。
 - 不把 `hasLink(NameAgents)` 删读成「agents organ 退」——`link.Agents{}` struct、organ 循环挂载、`blurbs[NameAgents]` 全保；删的只是「存在判据」这个死条件。
 - 不把 Event source 名常量分两组写成「新 alias 层」——`NameTimer` 等在 link 包删除，消费者改 `inbox.NameTimer`；link 包不保留 alias 转发（避免 link↔inbox 双向 import 或假 shim）。
 - `Timer.Run`/`Emitter` 收窄、link 名常量进一步瘦身、`link.Link` 改更窄接口留作「还没做的」——本刀是「Event 上移 + 装配合一 + razor 死代码」三件的决策冻结，实现切片按合同另开。
