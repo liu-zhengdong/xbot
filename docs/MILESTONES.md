@@ -1,5 +1,15 @@
 # XBot 里程碑与进度
 
+## 2026-11-02 link包瘦身+Event上移+装配合一（退役Link抽象最终块，已合main）
+
+- 合同 5e2b7388 [ADR0072](adr/0072-link-package-slimming-event-relocation.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS（12 项核心检查全对：Event 上移、装配合一、代理门、razor 退役面、grep 清零）→0ea6c7ba Accepted。
+- impl 7bba5737（258 文件 +1503/-1577，impl 含 test 迁移一体）：Event 整组上移 `internal/inbox/event.go`（151 行：`Event`/`NewEvent`/`TerminalEvent`/`WebEvent`/`RemoteOwnerEvent`/`Validate`/`OwnerTrusted`/`Render`/`Wrap`/`UntrustedEventPrefix`/`newID` + `TypeMessage`/`TypeTimer`/`Kind*`/`SourceSubagent` + Event source 名常量 terminal/timer/web/remote-owner/approval/coding）；`link.go` 瘦到 51 行——只剩 `Link`/`Emitter` 两 interface 与留 link 的 13 个 `Name*` 常量（telegram/lark/desktop/browser/memory/persona/context/agents/skills/runner/webhook/watch/peers）；Event 段、`Messenger`/`SendPolicy`/`ErrNotSent`/`CollectTools`、上移常量全删。
+- 装配合一：`MountOrgans` 退，`kernel.MountLinks(b, runner, backend)` 成唯一 link 装配入口——内部经 `syncGrantsLocked`/`mountGrantLocked` 统一建 organ/connector/browser/timer/coding，connector `UseVault` 首访迁移在合一函数内做、与原 `attachConnectors` 同序同语义；`cmd_serve mount()` 不再自己分派 connector/browser/organ，只留 `NameRunner` env 解析、`legacyNodeGrant` 静默通知、`retiredToolOrgan("tools")` 旧 grant 静默 skip（不 fail）、`work.Open` 校验；`attachConnectors` 删。
+- 代理门：`dispatching()` 的死条件 `k.hasLink(link.NameAgents)`（agents organ 恒挂、存在判恒真）改 `k != nil && k.Dispatch` 直判；`hasLink`/`namedLink` 保（`kernel.go` memory 判据仍在用）。razor 删：`link.CollectTools`（零消费者）、`link.Messenger` interface/`link.SendPolicy`/`link.ErrNotSent`/`Kernel.Deliver`/`Kernel.SendPolicy` 字段（零生产实现/零生产调用的旧 ExternalSend 草稿链）连同 `kernel_test` 对应断言。
+- 237 个文件 `link.Event`→`inbox.Event`/`link.NewEvent`→`inbox.NewEvent` 机械换，类型字段与 JSON tag 逐字不变，link 侧不留别名/不 shim；依赖方向成 link→inbox 单向（inbox 不 import link），`Event.Wrap` 的 `tools.NeutralizeUntrusted` 给 inbox 新增 `import tools`，单向无环。
+- 退役 Link 抽象最终边界：`link.Link` interface 保真多态不删（desktop/browser/code/connector/timer/10 organ struct 全实现它，`l.Tools()` 在 `toolRegistry`/`toolsForLoaded` 是真实多态消费点，`Name()` 是 `namedLink`/`linkNames`/`linkSource` 判据）；`link.Emitter` 保（`StartEmitters` 按 interface 断言 `*Timer`）。留作「还没做的」：`Emitter` 收窄 `Timer.Run` 直调化、`link.Link` 更窄接口、organ struct 归位。
+- 当前级别：**已合 main** 7bba5737，build/vet/相关包 test 绿；kernel/web/eval/bot pre-existing 失败非本刀。Not run：kernel3 旧族/真模型/p95/主人日用/push。
+
 ## 2026-11-02 批5小工具收口决策（最终边界定形，决策冻结）
 
 - 合同 b740e854 [ADR0071](adr/0071-batch5-small-tools-closeout.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS（24 shape，最终边界确认：六候选全保 + sender 独立否决 + turn 语义 + 厂商协议二分完整覆盖全部剩余候选，无遗漏；2 非阻断观察已记入 ADR 接受记：①决策表格略简化——`steer`/`queue`/`cancel` 同样带固定 sender，descriptor 分支经 `MessageSubagent` 得 `"owner"`、非 descriptor 分支 `ensureExec().Control` 硬编 `"owner"`；②`continuable_subagents.go:234` `MessageSubagent` 是第三处 sender 解析点）→Accepted。
