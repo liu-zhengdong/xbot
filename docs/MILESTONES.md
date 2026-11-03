@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-11-02 卡族 restart+http runtime CLI（所测独立端到端分阶段通过，待集成）
+
+- 合同 1c39da75 [ADR0068](adr/0068-cards-family-cli.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS 10/10（HTTPNeedsOwner 导出防 carddrop、permissive 反 links、restart 死代码纠正）→97dca3e0 Accepted（help 措辞无分支拒更严）。
+- impl fa800f10（25 文件 +807/-222，impl 含 test 迁移一体）：`xbot restart --self`→`runtimeSourceCall` 无卡资格路径（复刻原 Restart class early-false 死代码语义，`k.Restart==nil` 原 unavailable、hint≤4000、非阻塞 restartCh→固定 ACK，response 先行进程后置）；`xbot http --self`→`runtimeApprovalSource` owner 重绑→canonical `{method,url,headers,body}` blob→`review.HTTPNeedsOwner`（本刀唯一新导出协议面：`review.Table` 删 `"http_request"` 行后 `NeedsOwner` 落 Normal 恒 false，导出防条件卡静默消失）→`approveRuntimeIntent`→`(&tools.HTTPRequest{Store: k.Vault}).Run` 原链（`{{secret:` 或非 GET/HEAD 条件卡、`Status\nbody`+Redact+64KiB clip+`[truncated]`）；permissive 顺序照原 `reviewCall`（permissive 为真跳过 `approveRuntimeIntent`，与 links「不短路」相反——links 依据已退表外例外）；`XBOT_CALL_ID`/`X-XBot-Call-ID` mandatory 两路径。退役：registry `system`/`secrets` 两行退（secrets 组空随退）、`review.Table` 两行删、`Restart`/`HTTP` class 常量退、`NeedsOwner` 收窄 `case Delete`+HTTP 分支删、`kernel/review.go` Restart 分支退、`restartTool` 整型+`cardtext` http 分支+`restart_unattended_test` 退；`tools.HTTPRequest` 保 handler 直调（仅 `var _ tools.Tool` 断言删）。test 迁移：registry/review/cardtext/permissive/vault/dispatch。
+- STATIC PASS 97dca3e0..fa800f10（8/8：verbatim+HTTPNeedsOwner+permissive 顺序+mandatory CallID 两路径）。
+- 独立业务：entry f4ab8811 GREEN 2.799s（val merge 后 noun 已存在；`restart --self --hint>4000` 命中原校验证明 `runtimeSourceCall`、http GET 拒绝端口命中 `http_request` 域错误证明 `httpRuntime`）。
+- 当前级别：所测独立端到端分阶段通过+静态，产品冻结 fa800f10，**待集成 main**、未日用。本族是最复杂两路（sourceCall+approvalSource+HTTPNeedsOwner 新协议面）。Not run：kernel3 旧族/真模型/p95/主人日用/push。Pre-existing fails 无关：kernel3+`code.Link` panic+`delete_bot`+exec——均在 fa800f10 上已红。
+
 ## 2026-11-02 shell jobs 三工具 runtime CLI（所测独立端到端分阶段通过，待集成）
 
 - 合同 690abfdf [ADR0066](adr/0066-shell-jobs-cli.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS 10/10（3 非阻塞修正：formatBackground 指引补、shelljob_test 断言迁移清单、c1_output/prop 测试断言补记）→1215169f Accepted。
@@ -67,6 +75,18 @@
 - 作者首compiled复用父go build ./...PASS、原cliops/cmd整包.701/2.116s与vet三包；父额外broadkernel的EnvStreamSilenceRules(terminal/subagent)、RequestContextSkipsForkMarkers失败及RetiredRuntimeFollowsLocalTaskLifetime/coding nilInbox panic已独立在clean c51复现，非本刀红/未修/不重kernel整包。末SOURCE仅go build kernel/review/link exit0 noCases。新CLI十项once race cliops六1.744s/cmd四1.904s、review两affected1.494s PASS；新core八+readonlyLoop一+kernel affected十六共二十五，先因newtest unusedlinkimport BUILDFAIL无case，查询教训后仅删import。随后racepackage5.042s二十三PASS/两fixtureFAIL：空query原Bot.Search880–884早return未触故障锁；RESOURCE_FIXTURE_SECRET包含SOURCE_FIXTURE_SECRET被先替换。读实际源/SharedLesson47后只补known nonemptyquery与不重叠token+三层严格assert，原锁目录EISDIR/全64K-JSON-0600Bytes-currentRename断言保；ONLY失败两项raceArtifact.10/OwnerSnapshotDisk.05/package1.865s PASS，其余二十三/CLI/review绿不重，不合成整二十五包绿时长。
 - dbab6f3a561dd79dcab9a82b959bf283d4999397仅十九testfiles，non-test Go vs712为空；三十七必要checks按有效分期闭合。八newcore核无CallID/旧header/原canceledcallback、retained source Owners≠freshResources仍原交集、mask/diskerr、preview字节/8hit、summary覆盖range/目标附件、Detail两全文锚与实际双预算完整artifact/FS错；真实Domain/储存/current ref，不伪ctx或ToolResult。十六affected保Door search/describe+真实read_file string/object/badargs/Shell/tools[]稳定、routine busy吸收/回执与后续轮；fit单位从新提示调用原exportedExpand完整读回/counter1，是primitive层，不冒物理CLI；删一个仅旧wrapper的过期测试，原四historyAPI与ExperienceRuntime170两锚直调仍live未改。kernel/review/link三受影响包vet/diff0；原source解析/群三审批/旧族证据复用。
 - API/五相关atlas(context/kernel/security/ecosystem/memory)当前能力、Accepted0060/母路线与LESSONS已提炼，五node均2026-11-02 @71216e72实际源hash并引用0060，非测试提交或推测Nov3。唯一atlas审计exit0/无断链，35非致命提示=25原存+3仅测试提交产生的source verified后stale提示+7父既有baseline coding panic临时文档；无0060漏引用，不清其它owner临时目录/旧warnings、不重审。当前级别三项所测独立端到端、全部必要静态及作者最小有效checks通过，待父集成main1053、未主人日用。Not run：末SHA整三/整二十五复跑、旧FTS-Memory-Context-Store全族、Experience3/Fork7/Message6/Group5/原三审批与其它已绿族、整包整仓/多OS-Linuxjail、真模型外网/性能-p95/截图/日用/rootmain/push-release/guard；Root4USERdocs/OwnerSSE与独立owned文件不动。
+
+## 2026-11-02 聊天输入框残留底部空白修正（S 档，本地浏览器验证通过，未提交）
+
+- 用户截图指出首轮仍有空白。原因是主工作区的隐藏 `.subtitle` 用 `visibility:hidden` 保留 16.8px 行高；首轮只测 `.chat` 内的 16px，实际距主工作区底边 32.796875px。现隐藏状态行改为不占位，dock 底距收为 8px 加安全区，状态有内容时继续显示。
+- 将原浏览器断言改为量主工作区至输入框底边，修前定向红（32.796875px），修后 `TestContextAndTaskIndirectNavigationBrowser` 与 `TestChatStreamBrowser` 同次通过；实际开发实例提供的 CSS 与本地一致。DPR 2 桌面／窄屏截图已看，证据 `~/.xbot-build/ui-shots/composer-bottom/no-status-gap/`，夹具 manifest 404 提示同前；未跑全仓、真模型或 Windows。首轮记录保留如下，不作为最终底距结论。
+
+## 2026-11-02 聊天底部移除上下文条（S 档，首轮本地验证，后续底距修正见上）
+
+- 按用户截图要求删除输入框下方的上下文条宿主、渲染与专用样式；输入区底距收为 16px 加 safe area，沿用 44px 药丸与多行向上增长。上下文用量仍经顶部标签查看，上方工作状态入口保留。
+- 删除退役的上下文条单测；原混合浏览器用例保留上下文页用量和任务间接导航，并检查输入框实际底距。`go test ./internal/web -run '^TestContextAndTaskIndirectNavigationBrowser$' -count=1 -v` 一次通过，`node --check`、`go vet ./internal/web`、diff 检查通过；atlas 审计退出 0，现有文档提示未扩修。
+- 独立 HTTP 夹具以 DPR 2 检查 1440×900、390×844 的单行与自然换行草稿，主 Agent 已看图；证据在 `~/.xbot-build/ui-shots/composer-bottom/{single-line,wrapped-draft}/`。夹具的动态 manifest 路由返回 404，未影响界面，未改产品配置；最初合成 Shift+Enter 未得到多行，改用真实长草稿换行取证，不将初图当多行证据。
+- 现有开发实例 `127.0.0.1:8788` 的 HTML、JS、CSS 与工作区逐字一致，刷新即可加载。同步 atlas，保留原有未提交修改。Not run：全仓、真模型、Windows 桌面壳及用户日用；本次只验局部布局和相关入口，未发布、未提交并行工作。
 
 ## 2026-11-02 可见记忆文件检索沿原 source CLI（已合入本地 main，三项所测端到端分阶段通过）
 
@@ -204,6 +224,13 @@
 - 五项后24另抓到实际消费P2：HTTP/CLI64KiB预算高于原Shell32KiB输出，40KiBASCII正文在模型处截断JSON。精确 `9100c791` / validation `f6d27ba6` 新增 ONLY ShellOutputBudget实际红 .94s/package2.486s，未到完整file/fulltail断言。`e21224cf` 只导出现有Shell预算只读alias、skills整JSON含newline按两者较小值投影，finalartifactreply/metadata也检查；HTTP仍64KiB，不提高Shell、不让research重定向。仅受影响精确caller预算单位及真实全文产物 .979s、kernel/tools vet通过。精确 `e21224cf` / validation `2601e232fb04c2b398e27a2ac7615a9450b2ba46` ONLY ShellOutputBudget+BodyBudgets一次双PASS，新40KiB无redirect消费 .13s、原预算1.10s，package3.069s、exit0；模型所收strict完整JSON、当前results全文/精确尾哨兵、22KiB仍内联、file/stdin/转义产物与改名旧ref全到。其它三项旧绿及首链封存不重跑，协议、harness与独立断言未改。
 - 父方在保留并行重启功能 `fca3a61f` 的隔离分支集成：产品 merge `8c26e5b7`，独立四提交仅取为 `e1fc4bdc/2b0bb31e/73898460/06d55230`，未取 validation 产品镜像。CLI 编译1.083s、smoke只编译与 diff通过，集成 atlas audit退出0无断链，非致命提示未扩修；固定业务绿未重跑。本次以选择性暂存合入 main；并行文档修改继续保持未提交，未覆盖或代为提交。
 - 当前级别：已合入本地 main，原固定五项skills与新增实际消费接缝均独立端到端通过，六项按首1551、其余9100、消费补缝及相关预算e212的实际SHA封存，不把它们抬成最终docs HEAD重跑；尚未用户日用。所有独立job/私服均已收，未改独立期望。Not run：已封存profile五项、旧MCP/长调用、全包/全仓/完整矩阵、真模型、无关旅程与日用实例；不push/发版/重启日用实例，母dev其它族继续保留。
+
+## 2026-11-01 关于页重启客户端：后端入口与原型
+
+- 复用现有桌面重启链路补人用请求入口。分支 `14729d82` 的 API／装配已取入本地 main 为 `36bd15f8`：session 明确声明 can_restart；桌面且有回调时 POST /api/app/restart 入原 restartCh，后续 Drain／Relaunch 沿既有实现，非桌面／无回调404，接收失败500，接受202不等于已重开。Windows 沿当前不支持的边界不装配；不改 Bot 续跑账。
+- 独立作者的 AppRestart 四组真实 mux 用例先红（缺能力／路由405），实现后可用性、恰一次回调、失败、401／403／404全部通过；与旧 AppTheme 合跑1.124s。真实 runServe 的平台能力读回 .516s、既有 relaunch参数／旧进程等待／环境检查 .370s、相关vet／格式／diff通过。主工作区同期 profile 合并结束后，集成版仅复跑受影响 AppRestart 与 RunServeApp，分别 .682／.590s通过，旧未变用例不重复。
+- 审美顾问第一版关于页灰按钮经实际渲染后，用户反馈「有点丑奥，设计一下」，尚未定稿。第二版在 `~/.xbot-build/client-restart/prototype-v2/` 比较扁平操作行与版本区内联动作；产品 UI 未接，尚未重启日用进程。正在做的与未完成项见 [桌面重启设计](dev/desktop-shell-restart-continuation.md)。
+- 级别：后端已合入、定向接口／装配验证通过；整条客户端点击重开旅程未完成。Not run：原生窗口实际重启、UI浏览器链路、全仓、真模型、跨平台原生执行；等待入口设计定稿，未push／发版。
 
 ## 2026-11-01 聊天收消息与回复收尾保阅读位置
 

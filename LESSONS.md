@@ -123,7 +123,13 @@
 
 - **整门退役工具后要同时查守门测试的 want 列表与按名断言，不只看生产注册表。** 原因：registry/review 表删干净后，permissive 保卡断言、review.Table 断言、cardtext 标题、notable/todo 豁免和 links_approval 里仍可能留着旧工具名的 want 项或按名分支，它们不因编译失败而显形，只在运行时落空或漂移成假绿。正确做法：退役面盘点把每个「按工具名特判」的测试 want/分支列入退役断言迁移，并加一条「unknown tool 不再出现」的负断言。守护：links 整门退 test-only 3fc65077 迁移的 permissive/registry/review/cardtext/links_approval 断言与 unknown-tool 退役断言。Seen 1×（2026-11-02），范围为本项目模型工具整门退役切片。
 
+- **表行退役后按表查的分类谓词会落 Normal default 恒 false，条件卡的判定函数要导出独立存在。** 原因：卡族迁移删 `review.Table` `"http_request"` 行后，`NeedsOwner("http_request")` 落 Normal 恒 false——若 handler 沿用 NeedsOwner，`{{secret:}}`／非 GET 的 owner 条件卡会静默消失、无任何报错。正确做法：把 `httpNeedsOwner` 导出为 `review.HTTPNeedsOwner` 供 runtime handler 直调，谓词与表解耦。守护：卡族 impl fa800f10 的 `cards_runtime.go` 直调 `review.HTTPNeedsOwner`，STATIC PASS 含「HTTPNeedsOwner 导出防 carddrop」一条。Seen 1×（2026-11-02），范围为本项目模型工具退役切片。
+
+- **permissive 是否跳过审批要看原 `reviewCall` 里 `k.permissive()` 与 `NeedsOwner` 的实际顺序，不能照抄上一族的结论。** 原因：原 `reviewCall` 的 permissive early-false 在 `NeedsOwner` 之前，所以 http 的 secret/写方法卡在 permissive 下本就不发——handler 照原顺序在 `k.permissive()` 为真时跳过 `approveRuntimeIntent`；links 的「permissive 不短路」依据是当时还在的表外 links 例外（密钥只能从卡 stage），该例外已随 0063 退役，http 无此例外，照抄会多一张原链没有的卡。守护：卡族 impl fa800f10 的 `cards_runtime.go` permissive 分支与 ADR0068 记录的顺序依据；permissive_test 断言迁移。Seen 1×（2026-11-02），范围为本项目模型工具退役切片。
+
 ## 界面交互
+
+- **贴底布局要量到用户看见的主工作区边缘。** 首轮只量 `.chat` 至输入框，漏掉同级隐藏 `.subtitle` 用 `visibility:hidden` 仍保留的 16.8px，16px 内距实际成为 32.796875px。守护：`TestContextAndTaskIndirectNavigationBrowser` 改量 `.workspace` 至输入框，修前红、修后实际 8px；隐藏状态行改为不占位，并与 `TestChatStreamBrowser` 同次通过。Seen 1×（2026-11-02，用户截图纠正）。
 
 - **滚动回归要比较可见文字的屏幕位置，并真正结束 SSE。** 只检查 scrollTop 或文本存在，会漏掉控件增高与临时回复收工后补头像／名字的位移；本次长回复逐字 Range 坐标在旧布局实测下移 34px。守护：`TestChatStickSettlementBrowser`、`TestChatStickHistoryNoticeBrowser`、`TestChatStickQuoteBrowser`，分别验证持久历史／临时正文收工保位、轮询控件／失败提示保锚和引用解除跟随，均有命中缺陷的先红证据。Seen 1×（2026-11-01）。
 
