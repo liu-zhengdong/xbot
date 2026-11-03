@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
-verified: 2026-11-02 (shell jobs three-tool policy rows retired with the model wrappers)
+verified: 2026-11-02 (cards family CLI migrated; HTTP needs-owner card preserved; Event/Link write-side retained)
 ---
 # 安全：保险箱与权限表
 
@@ -168,11 +168,11 @@ WantedBy=multi-user.target
 - **群发送Normal仍保原链**：四群native/Known/schema退而chat-group member CLI沿原Bus；List/History/Create不强CallID，Post不调用approveIntent/不加卡，却只取actual live同listener Shell prepared冻结tuple（nil approver函数可用），不能审批ctx owner/child重绑后fallback到另一turn。原chain/hops+1/KindBot/时钟和8KiB/hops3/8次每分钟保，missing/finished/foreign/nonShell/noFrozen在rate/append前拒；无身份/Job/许可新表。actual Append/各Inbox.Post成功才计appended/posted，latepartial非0不冒全未写或重试回滚；原Shell机器gate独立，research只list/history/help。见 [ADR0055](../adr/0055-chat-groups-runtime-cli.md)与 [内核](kernel.md#成员聊天群与原消息链)。
 - **单聊Normal与真实来源**：peer-message的LOCAL/REMOTE沿同source loopback/Host/browser/root guard，必须原live Local/running同listener Shell prepared context，不加approvalIntent或确认卡，nil approver函数可用；原Shell gate独立。chain/hops显式取冻结turnKey，远端普通source事实记录显式取callTurnKey实际owner动态branch，不能借latestTurn/审批重绑身份。保本地非空owner交集、自发/跳数/频率限制及远端精确配对、Person-owner/XKey/互发开关；历史读取保持原owned本机+ByName边界，不套发送门。完整冻结正文经原scrub，不进CLI回执，记录失败保已知发送/queue事实、非0且不重发。message_bot wrapper/Known/schema/index已退；research只同窄parser识别的help，text/target字面--help不构成许可。见 [ADR0056](../adr/0056-peer-message-runtime-cli.md)及 [单聊消息链](kernel.md#bot-单聊与远端源记录)。
 - **机器开关在核心里**：对本机工具（`shell`、`read_file`、`write_file`、`edit_file`、`view_image`、桌面、浏览器）统一在核心的 review 路径处理：`off` 直接拒绝；`ask` 每次都要确认；`allow` 按下面的表走。`browser_stop` 不在此列，`off` 时仍可用来关掉进程。`web_fetch` 和 `web_search` 不碰本机文件，不走这道开关。`shell` 的 `keys:true` 也要确认。
-- **HTTP**：`http_request` 只在注入 `{{secret:名字}}`（URL、请求头或正文任意一处），或者方法不是 `GET`/`HEAD` 时确认。
+- **HTTP**：`http_request` 只在注入 `{{secret:名字}}`（URL、请求头或正文任意一处），或者方法不是 `GET`/`HEAD` 时确认；迁 `xbot http --self` 后原 `NeedsOwner` 条件卡由 runtime handler 的 `approveRuntimeIntent` 保留（[ADR0068](../adr/0068-cards-family-cli.md)）。
 - **shell**：删除命令（`rm`、`rmdir`、`unlink`、`shred`、`find -delete`、`git clean` 等）和真正离开 XBot 的发送（`curl`/`wget` 上传或 POST/PUT、`mail`/`sendmail`、`nc`、发往远端的 `scp`/`rsync`、Python 的 `requests.post` 等）确认。
 - **删除**：文件/数据删除工具、strict Bot CLI delete、`secret rm`、删除 Link 或 MCP 服务器确认；routine CLI delete是Bot自己的排期，不额外走数据删除模型工具确认，外Shell原policy保持。
 - **对外发送**：连接器（`telegram_send`、`lark_send` 等）、未知工具和没标 `readOnlyHint` 的 MCP 工具确认；标了 `readOnlyHint` 的 MCP 工具是 `readonly`。用户自己 Bot 之间的消息不算对外发送。原 `links` 工具的 install/remove 已随工具退役离开此表，其 owner 卡改由 runtime handler 的 `approveRuntimeIntent` 直发。
-- **代理门**：`tools` 的 search、describe 归 `readonly`；call 在 agent 层转发成被调用的工具，确认卡、拒绝表和决定记录都用那个工具的名字和参数，跟直接调用一模一样，代理门本身不增加确认，也不能绕开确认（见 [内核](kernel.md#工具注册与代理门)、[ADR 0035](../adr/0035-unified-tool-registry.md)）。
+- **代理门**：`tools` 的 search、describe 归 `readonly`；call 在 agent 层转发成被调用的工具，确认卡、拒绝表和决定记录都用那个工具的名字和参数，跟直接调用一模一样，代理门本身不增加确认，也不能绕开确认（见 [内核](kernel.md#工具注册与代理门)、[ADR 0035](../adr/0035-unified-tool-registry.md)）。Event/Link 生产链入口侧的工具（`send_message_to_user`、`ask_user`、`dispatch`/`spawn`、`code_*` 五写）经 `link.Event` + `inbox.Inbox` 保留线投回，不移入 CLI 面（[ADR0070](../adr/0070-event-link-bind-write-decision.md)）。
 - **self_edit**：严格测试/评测内核对persona self CLI显式按SelfEdit审核职责修改；`write_file`/`edit_file` 只在解析后的路径正是本 Bot 的 `persona.md` 或 `config.json` 时按自改审核。资料更新已经由当前实例 CLI 领域入口承接，旧 profile 模型工具没有注册、Known 或专用审批卡入口；生产默认放行与现有 persona/group 规则保持。
 - **记忆文件夹**（记忆 v2 批 3）：不可信回合里 `write_file`/`edit_file` 写进任何 `bots/*/memory/` 或 `people/*/memory/` 都确认；可信回合不弹卡，但内核持目录锁校验（`memory.md` ≤ 4 KiB、日志只能在当月文件末尾按格式追加、索引和锁文件不许写、文件夹内不许符号链接），违规就恢复原文件并把原因告诉模型。`remember`/`forget` 工具已拿掉。
 - **只读不动**：`read_file`、列表、搜索、只看不发的检查不弹确认卡。
