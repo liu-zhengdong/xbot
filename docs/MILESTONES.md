@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-11-02 ToolsLink 退役六件改 kernel 行（所测独立端到端分阶段通过，待集成）
+
+- 合同 7f045a87 [ADR0069](adr/0069-toolslink-base-set-decision.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS（24 shape；附强约束 kernel 行工厂须持这批工具单例句柄供 `attachShell`/`shown()` 绑定、不得每 `toolRegistry()` 重 new 致绑定落空；两笔误已核并修正：shell 解释器按平台至多 3——darwin zsh/bash/sh、windows powershell/cmd/git-bash，`sandboxLink` 注入点 `eval/run.go:410` 原误写 `jail.go:410`）→2f9362de Accepted。
+- impl bc20c603（57 文件 +290/-294，impl 含 test 迁移一体）：Kernel 新增 `baseTools()` 以 `baseOnce` 持 `toolsSet` 单例（`Dir` 取 `WorkDir`、`Shared` 取 `SharedDir`，nil K/无 root 兜底进程 cwd），`kernelTools` 加 `shell`/`files`/`web`（`web_fetch` 恒在、`web_search` 按 `webSearchOn()` 独占）/`vision` 行回同一句柄；`attachShell`/`attachShellJobs` 遍历 `baseTools().list()`/`.shells` 完成 `BindJobs`/`BindSession`/`bindShellRuntime`/`bindFileCwd`/`configureWeb`，不再扫 `snapshotLinks()`；`memoryEnv.shown()` 换从 `baseTools()` 找 `write_file`。ToolsLink 整门退：`internal/link/tools.go` 整文件删（`ToolsLink`/`NewToolsLink`/`NewToolsLinkAt`）、`link.go` `NameTools` 常量删、`store.go` organs 表 `{ID:"tools"…}` 行删、`grants.go` `blurbs[NameTools]` 删、`links.go` `mountGrantLocked` `case link.NameTools` 分支（约 450 行）删。`eval/run.go` grants 去 `NameTools`、`sandboxLink` 改名 `"sandbox"`；`Kernel.SkipBaseTools` 评测逃生门——eval 以同名夹具工具集经 sandbox link 注入，不重复登记六件。test 迁移：fixture/kernel 集迁 kernel 行等价。
+- STATIC PASS 2f9362de..bc20c603（10/10：`baseTools` 单例+`Dir`/`Shared`+kernel 行同句柄+`SkipBaseTools`+retirement complete+preserved）。
+- 关键：工具 ID 不变（`sh`/`read_file`/`write_file`/`edit_file`/`web_fetch`/`web_search`/`view_image`），只组名与 source 变——tool_index `"tools"` 组消失，六件按 `shell`/`files`/`web`/`vision` 新组名列出、source 由 `"organ"` 变 `"kernel"`；代理门 `describe tools` 报 `no tool or group "tools"`。`send_message_to_user`/`ask_user`/`generate_image`/`listen`/`tts`/`todo`/`agent_*`/`desktop_*`/`browser_*`/`code_*`/connector 各保原 kernel 行或自有 link，Link 保 Event/Memory/Timer/connectors/desktop/browser/code 其它 link。
+- 当前级别：所测独立端到端分阶段通过+静态，产品冻结 bc20c603，**待集成 main**。战略转向：base 工具改为 kernel 登记而非 Link。Not run：kernel3 旧族/真模型/p95/主人日用/push。Pre-existing fails 无关：kernel3/web browser/`BusyDispatch` steer/`persistContextSnap` stale `k.Bot.Name()`——与本刀 Name 无关。
+
 ## 2026-11-02 三处代码坏味道整治（所选端到端通过，待用户日用）
 
 - 用户批准修复全仓审查选出的三项。UC-1 保现行对话、插话和真实任务；UC-2 保 CLI 原语义；UC-3 保独立附件发送身份。原始 UC 与选型保存在 Obsidian「三处代码坏味道整治」。结构决定见 [ADR0067](adr/0067-review-hotspot-simplification.md)。guard 步骤和验收未改。

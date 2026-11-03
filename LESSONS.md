@@ -127,6 +127,8 @@
 
 - **permissive 是否跳过审批要看原 `reviewCall` 里 `k.permissive()` 与 `NeedsOwner` 的实际顺序，不能照抄上一族的结论。** 原因：原 `reviewCall` 的 permissive early-false 在 `NeedsOwner` 之前，所以 http 的 secret/写方法卡在 permissive 下本就不发——handler 照原顺序在 `k.permissive()` 为真时跳过 `approveRuntimeIntent`；links 的「permissive 不短路」依据是当时还在的表外 links 例外（密钥只能从卡 stage），该例外已随 0063 退役，http 无此例外，照抄会多一张原链没有的卡。守护：卡族 impl fa800f10 的 `cards_runtime.go` permissive 分支与 ADR0068 记录的顺序依据；permissive_test 断言迁移。Seen 1×（2026-11-02），范围为本项目模型工具退役切片。
 
+- **kernel 行工厂若每 `toolRegistry()` 重建工具实例，`attachShell`/`shown()` 的运行态绑定会落空；kernel 必须以 `sync.Once` 持这批工具的单例句柄。** 原因：ToolsLink 退役时六件改 kernel 行——若 kernel 行工厂每次 `new` 新实例，`attachShell` 写在旧句柄上的 `BindJobs`/`BindSession`/`bindShellRuntime`/`bindFileCwd`/`configureWeb` 与新实例脱钩，模型调到的工具没有本 Bot 的 Jobs/session/cwd/IO/vault。正确做法：`baseTools()` 用 `baseOnce` 持 `toolsSet` 单例（`Dir`/`Shared` 在 build 时取 `WorkDir`/`SharedDir`），`kernelTools` 行工厂、`attachShell` 遍历与 `memoryEnv.shown()` 共用同一句柄；需要夹具替代的走 `SkipBaseTools` 逃生门，不重复登记。守护：ADR0069 SHAPE PASS 附强约束「kernel 行工厂须持这批工具单例句柄」；impl bc20c603 的 `baseOnce`/`toolsSet` 与 STATIC PASS「baseTools 单例+kernel 行同句柄」一条。Seen 1×（2026-11-02），范围为本项目基础工具改 kernel 行切片。
+
 ## 界面交互
 
 - **贴底布局要量到用户看见的主工作区边缘。** 首轮只量 `.chat` 至输入框，漏掉同级隐藏 `.subtitle` 用 `visibility:hidden` 仍保留的 16.8px，16px 内距实际成为 32.796875px。守护：`TestContextAndTaskIndirectNavigationBrowser` 改量 `.workspace` 至输入框，修前红、修后实际 8px；隐藏状态行改为不占位，并与 `TestChatStreamBrowser` 同次通过。Seen 1×（2026-11-02，用户截图纠正）。
