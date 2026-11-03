@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall三项所测独立端到端按精确phase通过并已合main1053d0a9；transcript三读三项所测独立端到端按精确phase通过并已合mainc4b368bf；compact具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结dcbf05fd待集成main；links search/load两无审批子集具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结fe6952b5待集成main，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall三项所测独立端到端按精确phase通过并已合main1053d0a9；transcript三读三项所测独立端到端按精确phase通过并已合mainc4b368bf；compact具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结dcbf05fd待集成main；links search/load两无审批子集具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结fe6952b5待集成main；links install/remove整门退具体合同已SINGLE PASS以Proposed ADR0063起草待批准，其余平台批次继续推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -694,13 +694,39 @@ linksTool保留注册（Normal ExternalSend卡保），review.go:99归类、Need
 
 最窄验收：①search --json与原search同TSV行集（catalog4+connectors+mcp行，三态一致，"no links"兜底，secrets名在值不在）；②load native后运行中kernel isLoaded置位（tools door describe/call或deferred解除可验），organ走loadedNames原路径，`mcp:`/store名指mcp tools错误不置位；③工具search/load报指CLI错误，install/remove卡链/secrets stage/permissive例外原样；④CallID缺失报`requires XBOT_CALL_ID from an active XBot shell`；⑤strict拒绝面+双32KiB/HTTP64KiB。复用secrets-hiding/catalog原证据与前序已绿族，只new+必要affected最小once，不整longrun/真模型/性能矩阵。
 
+## 批 linksinstallremove：owner卡secrets整门退具体合同
+
+基线 worktree `641ff57c`（6a 后 `linksTool` 只剩 install/remove；search/load 已合 main `9bdfee25`）。本刀把 install/remove 迁 runtime CLI 并**整门退 linksTool**（connectors-install-remove-inventory-20261102 候选A推荐，完整行号/secrets-stage洞/退役面/最窄验收已盘点）。**Proposed** [ADR0063](../adr/0063-links-install-remove-cli.md)；两doc经 SINGLE ACTUAL CONCRETE SHAPE PASS 起草，待批准后实施。
+
+调用方：
+
+```bash
+"$XBOT_BIN" links install --self <id|name|store-connector> [--json]
+"$XBOT_BIN" links remove --self <id|name|store-connector> [--json]
+"$XBOT_BIN" links --help
+"$XBOT_BIN" links install --help
+"$XBOT_BIN" links remove --help
+```
+
+A离线Load+新Kernel：install/remove要owner卡+卡填secrets stage+live Reconcile+进程态grant/deniedBefore/parkable——一次性进程无prepared ctx发卡，写盘后运行中Manager/k.Links不感知，与「卡填完即安装生效」原语义不等价，落选（同6a更重）。B同K/现listener：`LinksHandlers`增`Install`/`Remove`函数字段，`LinksInstall`/`LinksRemove`同`{id}`/`{text?,error?}`形状→`POST /v1/links/install|remove`→mandatory X-XBot-Call-ID→holdOperations→**runtimeApprovalSource**（非search/load的runtimeSourceCall：卡需`WithValue(turnKey{},source.owner)`重绑走owner动态fork分支，child时owner=nil）→原Shell ToolArgs map嵌`_xbot_links:{action,id}` canonical blob→`approveRuntimeIntent`（deniedBefore/parkable/grant按`(sh,canonArgs嵌blob)`键控，A→B不吃A，approve nil报noApprover）→发卡（summary与Confirm同构：`"install <id>\n<summary>\nsecrets: <names>"`/`connectorCard`/`"remove <id>"`）→批准后原`install`/`installConnector`/`remove`/`removeConnector` helper（takeSecrets同id、缺名报`owner did not fill`、storeSecrets→vault+SetProductSecrets、GrantLink/EnableConnector/RevokeLink/dropSecrets/RemoveMCP幂等、removeConnector内snapshotLinks）→`Reconcile(callCtx)`→`"installed|removed <id>"` scrubbed text或实际error。
+
+**secrets-stage洞最小解**：`approveRuntimeIntent`走原Shell wrapped approver，web `webApprove`收`tool=="sh"`非`"links"`，`approvalSecretNames`（approvals.go:184-189）现只认`tool=="links"`。本刀扩展认CLI意图：`tool=="links"`原分支保，另认`tool=="sh"`+approvalArgs含`_xbot_links` blob且action=="install"（按args判不按文案；`linkIDFromSummary`/`secretNamesFromSummary`/`filterSecrets`/`StageSecrets`原解析不动——前提是卡summary保Confirm同构格式）。不扩`approveRuntimeIntent`返回签名、不造新secrets通道。
+
+**permissive不短路**：persona/bot delete先例`checkRuntime*开头if k.permissive() return nil`——install/remove**不照抄**：原语义是permissive下仍要卡（密钥从卡来，不stage装不成secrets条目），handler始终`approveRuntimeIntent`，等价原NeedsOwner permissive例外（kernel/review.go:222）的保留。
+
+**整门退退役面**：registry.go:124 `"links"`组移除`linksTool{k}`（`kernelManualTool{}`保）；review.go:99 `"links":ExternalSend`删、NeedsOwner links分支（222-228）与`linksAction`（332-338）退、cardtext.go:39-43 links标题分支随退（CLI意图卡走shellCardText「运行命令」）、kernel/review.go:222 permissive links例外退；`linksTool`+Confirm/Run/Description/Parameters/`var _ tools.Tool`删，`install/installConnector/remove/removeConnector/storeConnector/connectorCard`领域方法**保**由runtime handler直调；notable.go:213/todo.go:237 links豁免删；connectors.md「走工具确认卡」与linksUsage末行改CLI语义。**保**：StageSecrets/takeSecrets/secretMu/secrets（生产者web applyDecision不变，消费者换runtime handler）、secretValues/scrubSecrets/shellForms、installedSection/stableLinkNames/markLoaded/snapshotLinks/syncGrants/mountGrant/storeSecrets/dropSecrets/mcpSpecs、web/links.go独立API、离线cmdLink/cmdConnector旁路、mcp_readonly links分支（`Action=="search"`天然不含install/remove，research拒同load档，无需新分支）。
+
+**输入输出**：`ParseLinksRuntime` noun层扩四subcommand（裸links拒/未知sub拒/三help离线退0原样）；install/remove sub层同load（恰一位置id、`--self`mandatory、`--json`可选、无query族flag）；linksUsage与main.go帮助同步。HTTP复用`serveLinks`泛型strict（单object/unknown/null/尾随/query拒、1MiB/64KiB）；`boundLinksReply`/`FormatLinks`/双32KiB不动；CLI先印事实再非0不retry。
+
+**最窄验收**：①install --self catalog-id出owner卡（tool=sh、summary带secrets行、卡payload含字段名）→填值→StageSecrets→takeSecrets→storeSecrets→GrantLink→Reconcile→`installed <id>`；②install --self store-connector走connectorCard+EnableConnector写global mcp.json；③remove --self幂等（RevokeLink/dropSecrets/RemoveMCP ErrMCPMissing吞+snapshotLinks）；④secrets值经filterSecrets白名单才stage，不出现在transcript/工具结果/CLI/HTTP；⑤拒→`denied by user`、超时→retireExpired自动allow、deniedBefore/parkable/grant按`(sh,嵌blob)`键控A→B不吃A；⑥approvalSecretNames扩展后install卡带secrets字段，remove/无secrets条目不带；⑦linksTool退后search/load/install/remove全走CLI无双入口（registry/review表/NeedsOwner/cardtext/notable/todo无links残留，tools door不见links）；⑧connectors.md指路保、mcp:仍指`mcp tools`；⑨readonly不放install/remove --self；⑩CallID缺失报`requires XBOT_CALL_ID from an active XBot shell`+双32KiB/HTTP64KiB。复用secrets-hiding/catalog原证据与前序已绿族，只new+必要affected最小once，不整longrun/真模型/性能矩阵。
+
 ## 还没做的
 
 - 主人日用验收尚未开始。普通资料首刀的独立审计、真入口验证与合入已完成；后续不重复该刀设计审批，按新切片复核实际增量。
 - 批 0 的后续实际操作及入站依赖清单、尚未迁族的 research 业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已提炼 atlas，固定五项独立所测端到端按各自精确版本通过，证据见 MILESTONES；原 chat loop 下一输入/Timer handle 及其 recover、回放、通知实际消费者也已以局部红绿和 reviewer24 至 `63762ae5` 连续增量 PASS 收口，已合入本地 main，尚未日用；合并时与主线持久选择的交叠补单项真实浏览器红绿，不重跑固定五项。已通过的普通字段、avatar_seed、MCP 和本刀五项不重复整批验收，母路线其它族继续在本 dev 中推进。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
-- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search已合maind632e7a3；memory-recall已合main1053d0a9，transcript三读已合mainc4b368bf，compact模型与State写已按上方Accepted合同实施完毕（dcbf05fd产品冻结，待集成main）；links search/load已按上方Accepted合同实施完毕（fe6952b5产品冻结，待集成main），install/remove卡链与secrets-stage留后续切刀；连接器及剩余目录管理等平台能力继续逐族迁移。
+- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search已合maind632e7a3；memory-recall已合main1053d0a9，transcript三读已合mainc4b368bf，compact模型与State写已按上方Accepted合同实施完毕（dcbf05fd产品冻结，待集成main）；links search/load已按上方Accepted合同实施完毕（fe6952b5产品冻结，待集成main），install/remove整门退合同已按上方Proposed ADR0063起草待批准（卡链与secrets-stage最小扩展已定点）；连接器及剩余目录管理等平台能力继续逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。
 - 各批独立冒烟、相关旅程回归、性能与上下文收益测量、主人日用验收。
