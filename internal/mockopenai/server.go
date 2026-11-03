@@ -102,6 +102,9 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 					if invocation.Command == `"$XBOT_BIN" memory-recall --self --query tea --scope person` {
 						sawRecall = true
 					}
+					if strings.HasPrefix(invocation.Command, `"$XBOT_BIN" subagent read --self `) {
+						sawReadSub = true
+					}
 				}
 			case "write_file":
 				sawWrite = true
@@ -110,8 +113,6 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 				sawNotify = true
 			case "spawn":
 				sawSpawn = true
-			case "read_subagent":
-				sawReadSub = true
 			}
 		}
 	}
@@ -230,12 +231,23 @@ func serve(w http.ResponseWriter, r *http.Request, dir string, script *Script) {
 		writeText(w, "subagent finished\n")
 		return
 	case strings.Contains(lastUser, `source="subagent"`) && strings.Contains(lastUser, `type="done"`) && !sawReadSub:
-		// Completion reports carry a pointer. Follow the task id with the
-		// existing agents tool before using its conclusion in the script.
+		// Completion reports carry a pointer. Follow the task id through the
+		// source CLI read before using its conclusion in the script. Fixture
+		// kernels without an operations listener leave XBOT_BIN empty, so the
+		// result file the event points at is the scripted fallback.
 		_, sender, _ := strings.Cut(lastUser, `sender="`)
 		id, _, _ := strings.Cut(sender, `"`)
-		args, _ := json.Marshal(map[string]string{"id": id})
-		writeTool(w, "call_read_sub", "read_subagent", string(args))
+		command := `"$XBOT_BIN" subagent read --self ` + id
+		if _, result, ok := strings.Cut(lastUser, "结论全文："); ok {
+			if path, _, ok := strings.Cut(result, "；"); ok {
+				command += " || cat " + path
+			}
+		}
+		args, _ := json.Marshal(map[string]string{
+			"description": "Read the completed child's status through the source CLI",
+			"command":     command,
+		})
+		writeTool(w, "call_read_sub", "sh", string(args))
 		return
 	case strings.Contains(lastUser, `source="subagent"`) && strings.Contains(all, "subagent finished") && !sawMemoryWrite:
 		writeTool(w, "call_rem_sub", "write_file", memoryWriteArgs(req, "Person", "owner likes water"))

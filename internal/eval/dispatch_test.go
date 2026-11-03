@@ -1,8 +1,14 @@
 package eval
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	"xbot/internal/bot"
+	"xbot/internal/cliops"
+	"xbot/internal/kernel"
+	"xbot/internal/link"
 )
 
 // The dispatch suite runs without the jail, so it runs on every platform,
@@ -104,6 +110,11 @@ func TestBusyDispatchCasesRejectWrongActions(t *testing.T) {
 	}
 }
 
+// The seeded agent fixture must answer through the same path a running model
+// reaches: `xbot subagent read --self` -> SubagentHandlers.Read ->
+// exec.ReadStatus on the same agents directory. The eval case offers no sh
+// (the dispatch sandbox lists only read_file), so the inspection leg runs the
+// handler transport directly against a live kernel built over the same seed.
 func TestBusyDispatchSeedCanBeInspectedBeforeSteering(t *testing.T) {
 	cases, _, err := LoadSuite("", "dispatch")
 	if err != nil {
@@ -111,10 +122,37 @@ func TestBusyDispatchSeedCanBeInspectedBeforeSteering(t *testing.T) {
 	}
 	for _, c := range cases {
 		if c.Name == "dispatch-busy-steer" {
-			c.Checks.ToolResultContains["read_subagent"] = []string{"status: running", "id: sa_0123456789abcdef"}
-			r := runCase(c, "normal", Script{{Tool: "read_subagent", Args: `{"id":"sa_0123456789abcdef"}`}, {Tool: "steer", Args: `{"id":"sa_0123456789abcdef","text":"README 改用 go test ./..."}`}, {Text: "补充已交给原来的任务。"}}, nil)
-			if !r.Pass {
-				t.Fatalf("seed is not inspectable: %s\n%s", r.Reason, r.Transcript)
+			root := t.TempDir()
+			b, err := bot.Create(root, "ada", "Be brief.", []string{link.NameTerminal, link.NameTools, link.NameAgents})
+			if err != nil {
+				t.Fatal(err)
+			}
+			recorded, err := seedDispatchAgents(b, c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			k := &kernel.Kernel{Bot: b, Exec: recorded, Dispatch: true}
+			if err := k.StartOperations(); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(k.CloseOperations)
+			var endpoint string
+			for _, item := range k.CLIEnvironment(nil) {
+				if value, ok := strings.CutPrefix(item, "XBOT_ENDPOINT="); ok {
+					endpoint = value
+				}
+			}
+			if endpoint == "" {
+				t.Fatal("operations did not publish an endpoint")
+			}
+			reply, err := cliops.CallSubagentRead(context.Background(), endpoint, b.Root, cliops.SubagentRead{ID: "sa_0123456789abcdef"})
+			if err != nil {
+				t.Fatalf("seed is not inspectable: %v", err)
+			}
+			for _, part := range []string{"status: running", "id: sa_0123456789abcdef"} {
+				if !strings.Contains(reply.Text, part) {
+					t.Fatalf("subagent read --self missed %q: %s", part, reply.Text)
+				}
 			}
 			return
 		}

@@ -372,7 +372,7 @@ func TestContinuableSubagentParentMessagesBinary(t *testing.T) {
 				if caller == callerSubagent {
 					for _, tool := range req.Tools {
 						switch tool.Function.Name {
-						case "dispatch", "spawn", "agent_message", "agent_stop", "list_subagents", "send_message_to_user":
+						case "dispatch", "spawn", "agent_message", "agent_stop", "list_subagents", "read_subagent", "expand_subagent", "steer", "queue", "interrupt", "cancel", "send_message_to_user":
 							t.Errorf("child was offered a tool outside direct parent communication: %s", tool.Function.Name)
 						}
 					}

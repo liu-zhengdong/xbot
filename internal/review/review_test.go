@@ -203,7 +203,7 @@ func TestRetiredLinksToolIsUnknown(t *testing.T) {
 }
 
 func TestSelfEditAndReadOnlyClasses(t *testing.T) {
-	for _, name := range []string{"recall_history", "expand", "detail", "kernel_manual", "list_secrets"} {
+	for _, name := range []string{"recall_history", "expand", "detail", "kernel_manual", "list_secrets", "list_subagents", "read_subagent", "expand_subagent"} {
 		if Known(name) || ClassOf(name) != Normal {
 			t.Fatalf("retired tool remains classified: %s", name)
 		}
@@ -215,7 +215,7 @@ func TestSelfEditAndReadOnlyClasses(t *testing.T) {
 	if need(t, "edit_file", `{"path":"plans/2026.md"}`) {
 		t.Fatal("edit_file asked without a path check")
 	}
-	for _, name := range []string{"read_file", "read_subagent", "expand_subagent", "browser_snapshot", "code_show", "web_fetch", "web_search", "view_image"} {
+	for _, name := range []string{"read_file", "browser_snapshot", "code_show", "web_fetch", "web_search", "view_image"} {
 		if need(t, name, `{}`) {
 			t.Fatalf("%s asked", name)
 		}

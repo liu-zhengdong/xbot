@@ -78,7 +78,10 @@ func TestContinuableSubagentModelBinary(t *testing.T) {
 			return true
 		case strings.Contains(text, "MODEL_LIST_COMPLETED"):
 			if result, ok := req.result("list_completed_children"); !ok {
-				streamTool(w, "list_completed_children", "list_subagents", `{}`)
+				streamTool(w, "list_completed_children", "sh", argsJSON(map[string]string{
+					"description": "List the parent's subagent records through the source CLI",
+					"command":     `"$XBOT_BIN" subagent list --self`,
+				}))
 			} else {
 				id := continuationDispatchID(t, req, "selected_model_dispatch")
 				if !strings.Contains(result, id) || !strings.Contains(result, "done") {
