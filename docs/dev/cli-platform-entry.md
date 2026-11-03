@@ -747,7 +747,35 @@ xbot secret list <bot>         # 离线读 global vault，secret.go:90-106
 
 **最窄验收**：①registry 无 `kernelManualTool`/`SecretList` 注册行，links 组空随退，secrets 组只剩 `http_request`；②review 表两行删，`Known`/`ClassOf` 落 `Normal` default，守门断言迁移；③`manual.Prompt()`/`Index()` 指 `xbot manual`，`KernelRules` 注入不变；④`context_batch_c_test` 改写为 scripted `sh` 调 `xbot manual` 断言正文到达+prefix 只含目录；⑤`vault_test`/`review_test`/`registry_test`/`http_test` 断言迁移，door `describe` 报 unknown；⑥`breaker.go` `looseCall` 无 `list_secrets`；⑦`xbot manual`/`xbot secret list` 离线行为不变；⑧atlas 三处同步。
 
-## 还没做的
+## 批 subagentread：三读 runtime CLI 具体合同
+
+**本刀定位**：agents 组第一刀、也是最窄一刀——`list_subagents`/`read_subagent`/`expand_subagent` 三个 Readonly 读类走 `xbot subagent … --self` runtime，model 侧三 wrapper 退注册；agents 组余 dispatch/spawn/agent_message/agent_stop/steer/queue/interrupt/cancel（写类、绑 Event/Link）留后刀。[Proposed ADR0065](../adr/0065-subagent-read-cli.md)。
+
+基线 main `b9245a90`（manual+secrets 已合）。盘点依据 remaining-inventory §1.1 agents 组三行 + §3「第二刀 runtime 读类形态照抄 transcript 三读」+ expand「最像已迁三读可复用读模式」。
+
+**ctx 判据结论：IGNORE ctx，同 transcript 三读（ADR0060），不要 XBOT_CALL_ID。** 核过三个原 Run：`listSubagentsTool`/`readSubTool`/`expandSubTool` 签名均 `Run(_ context.Context, args)` 下划线忽略 ctx，原方法体不读 turnKey/frozen turn/CallID/routineCallSource，`ReadStatus`/`Expand`/`ReadMeta`/`ActiveTask` 签名本就不要 ctx——无 prepared ctx 消费点，同 transcript 判据而非 compact/links 判据（那两个原方法或同 K 运行态效果确需 prepared）。必须命中同一运行中 kernel 的理由于是**不是** ctx 而是两点：(a) list 的 `exec.ActiveTask(dir)` 覆盖活任务 `Status/Blocked/TurnSeq` 只在运行中 Local owner 表，离线进程查 `owners.local` 永远 miss、活孩子显示成陈旧 meta；(b) `withCurrentIO` 取 route 锁保护的 current ref，离线 `bot.Load` 不是同一对象、rename 后旧诊断名访问错路径。这两层由 `--self`→XBOT_ENDPOINT→`/v1/*`→当前 listener 承载的 K 满足，同 transcript「endpoint 即同实例资格」；CallID/prepared 在这条路径上无消费点，不新增人工门槛。
+
+调用方：
+
+```bash
+"$XBOT_BIN" subagent list --self [--limit N] [--json]
+"$XBOT_BIN" subagent read --self <id> [--json]
+"$XBOT_BIN" subagent expand --self <id> [--from N] [--to N] [--json]
+"$XBOT_BIN" subagent --help
+"$XBOT_BIN" subagent list|read|expand --help
+```
+
+A 离线读 bot 目录（Load 诊断名+直读 `agents/` meta/transcript）：落选——ActiveTask 活表离线 miss、`withCurrentIO` current ref 离线非同一对象、目录定位+owner 覆盖逻辑复制成第二份领域真源；同 transcript 判据：读取涉 source current 路由走 `/v1/*`。B（选用）同 K 现 listener 增 `Subagents *SubagentsHandlers`：`{limit?}`/`{id}`/`{id,from?,to?}` → `POST /v1/subagent/list|read|expand` → `holdOperations` → 原方法体逐字复用（withCurrentIO+exec.ReadMeta/ReadDescriptor/ActiveTask/clipSummary 排序截断；withCurrentIO+exec.ReadStatus 五行拼装；withCurrentIO+exec.Expand）→ 原 text 或实错。无 runtimeSourceCall/approvalSource/intent/approver/primary-person 资格，不新 service/dispatcher/ctxMetaFrame。
+
+**原领域语义**：`execID`（sa_前缀+长≥11+hex 小写）照原在 `AgentDir` 前校验/过滤；list 原拼装逐字（limit 默认 40/上限 100、ReadMeta 错跳过、ReadDescriptor 判 Continuable、clipSummary300、Notable=nil、ActiveTask 逐项覆盖——覆盖前二次短持 withCurrentIO 取 path 的原序保持、StartedAt 降序同刻 id 降序、Marshal items 返回）；read 原五行 `id/status/steps/lines/summary`+untrusted 尾行；expand 原 `exec.Expand`（1 基 inclusive、`from<1`钳1、`to`超界/缺省钳 len、`from>to`/空报 `exec: bad range`、`# seq N role` 头、expandCap 8KiB 整体 clip、untrusted 前缀）。`--from`/`--to` 均可省（省传0交原钳位），整数只边界解析 Go int/溢出；无 `--bot`——原方法就走 current 无 foreign 读。成功文本不新 scrub（原 Run 就不 scrub），边界只补 `config.RedactHeld`+`Resources.Redact` 同 transcript finish 层；error 沿动态 redactor+secretValues 仅显错可缩。
+
+**输入输出**：`ParseSubagentRuntime` 早入口分流；noun+subcommand 双层（同 links 先例）——四种 help 离线退0、裸 noun 拒、未知 sub 拒；sub 层 strict：`--self` mandatory（缺报 `requires --self from an active XBot shell`）、read/expand 各恰一位置 id、list 无位置参数、拒未知/重复 flag、按 arity 消费、help 离线；无文本输入参数（无 query/query-file/stdin）。typed 请求 ≤1MiB；HTTP strict 单 object/unknown/null/尾随/URL query 拒，loopback/Host/browser/canonical-root guard+X-XBot-Root；HTTP 回包 64KiB。回包 `{text?,error?}`，`FormatSubagent`/JSONNL 各 ≤32KiB，CLI 先印事实再非0，无 artifact/File/Applied/rollback/retry/proxy——expand 8KiB cap 在原语义内无大正文。
+
+**退役面**：`continuable_subagents.go:371` `listSubagentsTool`、`agents.go:591` `readSubTool`、`agents.go:624` `expandSubTool` 三 wrapper 型删；`registry.go:142/144` agents 两分支 slice 去三读（Dispatch 分支余 `{start,agentMessage,agentStop}`、非 Dispatch 余 `{start,steer,queue,interrupt,cancel}`，组不空保留）；`review.go:79,85-86` readonly 三行删。`exec.ReadStatus/Expand/ReadMeta/ReadDescriptor/ActiveTask/execID/clipSummary/subagentReceipt` 领域函数保由 runtime handler 直调。`agenttype.go:58,67` research/coding 子代理 Tools 表 `read_subagent`/`expand_subagent` 改指 CLI——孩子经 scoped sh 打 `--self` 回自己 kernel 的 current 读自己记录，与 atlas「在孩子内限定自己的记录」一致。manual/sections/subagents.md:7、atlas subagents.md:20,28、security.md:15,185 同步。`breaker.go:250` looseCall `read_subagent` 豁免删。`dispatch.go:233` noSeq、`fit.go:106` summary、`exec/records.go:167` 占位文案三处 `expand_subagent` 指引改 `"$XBOT_BIN" subagent expand --self`（`read_file` 保）。mockopenai:113,238、eval/voice.go:36 断言迁移。`allowReadOnlyPlatform` 加 `subagent` 分支：help 与三读 `--self` 全放行（皆原 Readonly，同 transcript 分支判定）；DirectXBotArgs 只认 canonicalBIN/受控 XBOT_BIN 单 POSIX+本 parser。旧 native literal/配对历史同目录同格式仍读，无暗 shim/假配对/新 ENV。
+
+**最窄验收**：①list --json 同 items（ActiveTask 覆盖/limit/排序/clip/Continuable/Notable=nil）；②read 五行+untrusted 同语、坏 id `exec: bad id`、不存在目录原 ReadStatus 错；③expand 钳位/seq头/8KiB/untrusted/`bad range` 同语；④CallID 缺失**不**报错（无 CallID 门）、root mismatch 拒；⑤registry 无三读注册、review 三行删、door describe unknown；⑥agenttype 两表+manual+atlas+looseCall+三处指引同步；⑦strict 拒绝面+双 32KiB/HTTP 64KiB；⑧子代理 scoped sh 内 `subagent read --self` 命中自己 kernel current（孩子读自己记录）。复用 transcript 三读骨架与已绿族证据，只 new+必要 affected 最小 once，不整 longrun/真模型/性能矩阵。
+
+
 
 - 主人日用验收尚未开始。普通资料首刀的独立审计、真入口验证与合入已完成；后续不重复该刀设计审批，按新切片复核实际增量。
 - 批 0 的后续实际操作及入站依赖清单、尚未迁族的 research 业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
