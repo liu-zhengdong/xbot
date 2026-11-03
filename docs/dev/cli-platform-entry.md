@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall三项所测独立端到端按精确phase通过并已合main1053d0a9；transcript三读三项所测独立端到端按精确phase通过并已合mainc4b368bf；compact具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结dcbf05fd待集成main；links search/load两无审批子集具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结fe6952b5待集成main；links install/remove整门退具体合同已SINGLE PASS按Accepted ADR0063实施完毕、所测独立端到端分阶段通过并已合main9277f5c2（links/connectors家族完成，linksTool全退四动作走CLI）；剩余目录管理、Event/Link解耦与基础工具去留继续按路线推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall三项所测独立端到端按精确phase通过并已合main1053d0a9；transcript三读三项所测独立端到端按精确phase通过并已合mainc4b368bf；compact具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结dcbf05fd待集成main；links search/load两无审批子集具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结fe6952b5待集成main；links install/remove整门退具体合同已SINGLE PASS按Accepted ADR0063实施完毕、所测独立端到端分阶段通过并已合main9277f5c2（links/connectors家族完成，linksTool全退四动作走CLI）；kernel_manual+list_secrets两读类离线等价退注册合同已起草为Proposed ADR0064待PASS；剩余目录管理、Event/Link解耦与基础工具去留继续按路线推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -721,6 +721,31 @@ A离线Load+新Kernel：install/remove要owner卡+卡填secrets stage+live Recon
 **输入输出**：`ParseLinksRuntime` noun层扩四subcommand（裸links拒/未知sub拒/三help离线退0原样）；install/remove sub层同load（恰一位置id、`--self`mandatory、`--json`可选、无query族flag）；linksUsage与main.go帮助同步。HTTP复用`serveLinks`泛型strict（单object/unknown/null/尾随/query拒、1MiB/64KiB）；`boundLinksReply`/`FormatLinks`/双32KiB不动；CLI先印事实再非0不retry。
 
 **最窄验收**：①install --self catalog-id出owner卡（tool=sh、summary带secrets行、卡payload含字段名）→填值→StageSecrets→takeSecrets→storeSecrets→GrantLink→Reconcile→`installed <id>`；②install --self store-connector走connectorCard+EnableConnector写global mcp.json；③remove --self幂等（RevokeLink/dropSecrets/RemoveMCP ErrMCPMissing吞+snapshotLinks）；④secrets值经filterSecrets白名单才stage，不出现在transcript/工具结果/CLI/HTTP；⑤拒→`denied by user`、超时→retireExpired自动allow、deniedBefore/parkable/grant按`(sh,嵌blob)`键控A→B不吃A；⑥approvalSecretNames扩展后install卡带secrets字段，remove/无secrets条目不带；⑦linksTool退后search/load/install/remove全走CLI无双入口（registry/review表/NeedsOwner/cardtext/notable/todo无links残留，tools door不见links）；⑧connectors.md指路保、mcp:仍指`mcp tools`；⑨readonly不放install/remove --self；⑩CallID缺失报`requires XBOT_CALL_ID from an active XBot shell`+双32KiB/HTTP64KiB。复用secrets-hiding/catalog原证据与前序已绿族，只new+必要affected最小once，不整longrun/真模型/性能矩阵。
+
+## 批 manualsecrets：两读类离线等价退注册具体合同
+
+**本刀定位**：批 5 收口前最窄一刀——`kernel_manual` + `list_secrets` 两个 Readonly/零卡/零 ctx 工具退注册，离线等价 CLI 已在（`xbot manual`/`xbot secret list`），**不需要** runtimeSourceCall/prepared ctx/`/v1/*` endpoint/`--self`/XBOT_CALL_ID——与 6a/6b 的「同 K prepared ctx」形态不同，本刀就是「退注册 + 模型经 sh 走离线 CLI」。
+
+基线 main `1cede475`（links/connectors 家族已合 `9277f5c2`）。盘点依据 remaining-inventory §1.1 kernel 行 + §1.3 读类速分 + §3 下一刀建议首两条。[Proposed ADR0064](../adr/0064-manual-secrets-retire.md)。
+
+调用方：
+
+```bash
+xbot manual [section]          # 离线，cmd_manual.go:8-22，main.go:274 在 resolveRoot 前分流
+xbot secret list <bot>         # 离线读 global vault，secret.go:90-106
+```
+
+`xbot manual` 与 `kernel_manual` 共用同一 `internal/manual` embed 正文（`manual.Read`/`Sections` 同一份）；`xbot secret list` 与 `SecretList.Run` 都读 `vault.OpenGlobal(root).List()` 拼 `name\tdomains` TSV——语义逐字等价，区别只是 CLI 需 `<bot>` 定位 root（`bot.Load`→`openSecretBackend`），而 `list_secrets` 直接注入 `k.Vault`。
+
+**退役面**：`registry.go:124` `{"links",…kernelManualTool{}}` 整行删（links 组空随退）；`registry.go:129-131` secrets 组的 `&tools.SecretList{}` 删（`http_request` 保）；`manual.go` `kernelManualTool` 整型删（`internal/manual` 包本体保——`xbot manual` CLI 与 `KernelRules` 注入在用）；`secrets.go` `SecretList` 整型删；`review.go` 表 `"kernel_manual":Readonly`+`"list_secrets":Readonly` 两行删；`manual.Prompt()`/`Index()` 指引词改指 `xbot manual`；`breaker.go:249` `looseCall` 的 `"list_secrets"` 豁免删（`read_file` 保）；`docs/atlas` 三处（security.md readonly 表+两处 `list_secrets` 提及、kernel.md:212、memory.md:11）同步；`context_batch_c_test.go:33-69` 改写为 scripted `sh` 调 `xbot manual`；`vault_test`/`review_test`/`registry_test`/`http_test` 断言迁移。
+
+**保**：`internal/manual` 包（`xbot manual` CLI 与 `KernelRules` 注入同消费）、`internal/vault` 全链（`xbot secret` 同消费）、`http_request`、`xbot manual`/`xbot secret` CLI 本体、`KernelRules` 手册指引要求（只改入口词）、`secretValues`/`scrubSecrets`/`redactor`/`scrubEntry` 脱敏链。
+
+**模型侧行为变化**：`kernel_manual`/`list_secrets` 从 tool_index 消失，door search/describe/call 报 unknown；模型被问机制经 `sh` 跑 `xbot manual <section>`（`KernelRules` 指引词同步），列 secrets 名经 `sh` 跑 `xbot secret list <bot>`；trusted turn 下 `sh` 无写/发送词不弹卡与原 Readonly 等效，**research 平台下走正常 Shell 审批**——离线命令无运行实例资格链，不享受 `--self` runtime 调用的只读豁免（与 transcript/memory-recall 的 research 放行不同，有意收紧）。`looseCall` 的 `list_secrets` 豁免随退（原豁免本就是死代码）。
+
+**不碰**：`http_request`（HTTP 卡留后刀）、secrets 组的 `HTTPRequest`、Event/Link、`ToolsLink` 基础集、`internal/manual` embed 正文、`internal/vault`、真模型。
+
+**最窄验收**：①registry 无 `kernelManualTool`/`SecretList` 注册行，links 组空随退，secrets 组只剩 `http_request`；②review 表两行删，`Known`/`ClassOf` 落 `Normal` default，守门断言迁移；③`manual.Prompt()`/`Index()` 指 `xbot manual`，`KernelRules` 注入不变；④`context_batch_c_test` 改写为 scripted `sh` 调 `xbot manual` 断言正文到达+prefix 只含目录；⑤`vault_test`/`review_test`/`registry_test`/`http_test` 断言迁移，door `describe` 报 unknown；⑥`breaker.go` `looseCall` 无 `list_secrets`；⑦`xbot manual`/`xbot secret list` 离线行为不变；⑧atlas 三处同步。
 
 ## 还没做的
 
