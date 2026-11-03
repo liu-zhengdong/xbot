@@ -694,9 +694,9 @@ linksTool保留注册（Normal ExternalSend卡保），review.go:99归类、Need
 
 最窄验收：①search --json与原search同TSV行集（catalog4+connectors+mcp行，三态一致，"no links"兜底，secrets名在值不在）；②load native后运行中kernel isLoaded置位（tools door describe/call或deferred解除可验），organ走loadedNames原路径，`mcp:`/store名指mcp tools错误不置位；③工具search/load报指CLI错误，install/remove卡链/secrets stage/permissive例外原样；④CallID缺失报`requires XBOT_CALL_ID from an active XBot shell`；⑤strict拒绝面+双32KiB/HTTP64KiB。复用secrets-hiding/catalog原证据与前序已绿族，只new+必要affected最小once，不整longrun/真模型/性能矩阵。
 
-## 批 linksinstallremove：owner卡secrets整门退具体合同
+## 批 linksinstallremove：owner卡secrets整门退具体合同PASS已实施
 
-基线 worktree `641ff57c`（6a 后 `linksTool` 只剩 install/remove；search/load 已合 main `9bdfee25`）。本刀把 install/remove 迁 runtime CLI 并**整门退 linksTool**（connectors-install-remove-inventory-20261102 候选A推荐，完整行号/secrets-stage洞/退役面/最窄验收已盘点）。**Proposed** [ADR0063](../adr/0063-links-install-remove-cli.md)；两doc经 SINGLE ACTUAL CONCRETE SHAPE PASS 起草，待批准后实施。
+基线 worktree `641ff57c`（6a 后 `linksTool` 只剩 install/remove；search/load 已合 main `9bdfee25`）。本刀把 install/remove 迁 runtime CLI 并**整门退 linksTool**（connectors-install-remove-inventory-20261102 候选A推荐，完整行号/secrets-stage洞/退役面/最窄验收已盘点）。[Accepted ADR0063](../adr/0063-links-install-remove-cli.md)；两doc经 SINGLE ACTUAL CONCRETE SHAPE PASS（reviewer确认permissive不短路写准、验收十点全对，summary secrets逗号分隔注记不阻塞），已按原结构实施完毕。
 
 调用方：
 

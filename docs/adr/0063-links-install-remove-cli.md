@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0063 links install/remove 沿原 source CLI 意图卡，linksTool 整门退
@@ -96,4 +96,4 @@ CLI 导入 cliops，`CallLinksInstall`/`CallLinksRemove` → `POST /v1/links/ins
 9. `allowReadOnlyPlatform` links 分支不放 install/remove --self（research 下拒）；离线 help 仍放行。
 10. XBOT_CALL_ID 缺失报 `"links: requires XBOT_CALL_ID from an active XBot shell"`；人读/JSONNL ≤32KiB、HTTP ≤64KiB、CLI 先印事实再非0。
 
-完整 caller 合同见 [母路线](../dev/cli-platform-entry.md#批-linksinstallremove-owner卡secrets整门退具体合同)。本文保决策边界：不把离线写文件冒「装完即生效」，不把 tool=="sh" 意图卡冒 tool=="links" 原卡链，不把 `_xbot_links` blob 冒新审批协议。Root4USERdocs/OwnerSSE/guard/main/push 日用不动。
+完整 caller 合同见 [母路线](../dev/cli-platform-entry.md#批-linksinstallremove-owner卡secrets整门退具体合同pass已实施)。本文保决策边界：不把离线写文件冒「装完即生效」，不把 tool=="sh" 意图卡冒 tool=="links" 原卡链，不把 `_xbot_links` blob 冒新审批协议。两 docs 经 SINGLE ACTUAL CONCRETE SHAPE PASS（reviewer 确认 permissive 不短路写准、验收十点全对，summary secrets 逗号分隔注记不阻塞），本 ADR Accepted，按上述原结构实施；实际入口红与业务证据分别收，不以未知命令冒领域红。Root4USERdocs/OwnerSSE/guard/main/push 日用不动。
