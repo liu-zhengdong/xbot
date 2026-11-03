@@ -69,4 +69,5 @@ type Handlers struct {
 	Recall        func(context.Context, MemoryRecall) (MemoryRecallReply, error)
 	Transcript    *TranscriptHandlers
 	Compact       func(context.Context, Compact) (CompactReply, error)
+	Links         *LinksHandlers
 }

@@ -181,3 +181,68 @@ func TestResearchCompactHelpOnlyUsesBoundSource(t *testing.T) {
 		t.Fatal("unbound compact help reached interpreter")
 	}
 }
+
+func TestResearchLinksReadOnlyUsesBoundSource(t *testing.T) {
+	k, _, _ := freshBot(t)
+	if err := k.StartOperations(); err != nil {
+		t.Fatal(err)
+	}
+	defer k.CloseOperations()
+	k.operations.mu.Lock()
+	binary, root := k.operations.binary, k.operations.root
+	k.operations.mu.Unlock()
+	interpreter := &boundReadOnlyInterpreter{}
+	shell := readOnlyShell{Tool: interpreter, k: k}
+	for _, test := range []struct {
+		name, command string
+		allowed       bool
+	}{
+		{"help", `"$XBOT_BIN" links --help`, true},
+		{"search_help", `"$XBOT_BIN" links search --help`, true},
+		{"load_help", `"$XBOT_BIN" links load --help`, true},
+		{"search_self", `"$XBOT_BIN" links search --self`, true},
+		{"search_self_query", `"$XBOT_BIN" links search --self --query browser`, true},
+		{"search_self_query_file", `"$XBOT_BIN" links search --self --query-file catalog.txt`, true},
+		{"search_self_json", `"$XBOT_BIN" links search --self --json`, true},
+		{"canonical_binary", strconv.Quote(binary) + ` links search --self`, true},
+		{"bound_root", `"$XBOT_BIN" --root ` + strconv.Quote(root) + ` links search --self`, true},
+		{"bound_root_equals", `"$XBOT_BIN" ` + strconv.Quote("--root="+root) + ` links search --self`, true},
+		{"load_self", `"$XBOT_BIN" links load --self browser`, false},
+		{"load_self_json", `"$XBOT_BIN" links load --self telegram --json`, false},
+		{"search_no_self", `"$XBOT_BIN" links search`, false},
+		{"search_query_data", `"$XBOT_BIN" links search --self --query "--help"`, true},
+		{"search_query_file_data", `"$XBOT_BIN" links search --self --query-file "--help"`, true},
+		{"install_shape", `"$XBOT_BIN" links install --self browser`, false},
+		{"remove_shape", `"$XBOT_BIN" links remove --self browser`, false},
+		{"wrong_root", `"$XBOT_BIN" --root /other links search --self`, false},
+		{"wrong_binary", `/other/xbot links search --self`, false},
+		{"bare_binary", `xbot links search --self`, false},
+		{"chaining", `"$XBOT_BIN" links search --self; echo injected`, false},
+		{"substitution", `"$XBOT_BIN" links search --self --query "$(echo browser)"`, false},
+		{"repeated_help", `"$XBOT_BIN" links --help --help`, false},
+		{"unknown_flag", `"$XBOT_BIN" links search --self --focus x`, false},
+		{"extra_positional", `"$XBOT_BIN" links load --self browser extra`, false},
+		{"load_no_id", `"$XBOT_BIN" links load --self`, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			before := interpreter.calls
+			raw, _ := json.Marshal(map[string]string{"command": test.command})
+			_, err := shell.Run(context.Background(), raw)
+			if (err == nil) != test.allowed {
+				t.Fatalf("allowed=%v command=%s: %v", test.allowed, test.command, err)
+			}
+			wantCalls := before
+			if test.allowed {
+				wantCalls++
+			}
+			if interpreter.calls != wantCalls {
+				t.Fatalf("interpreter calls=%d, want %d", interpreter.calls, wantCalls)
+			}
+		})
+	}
+	k.CloseOperations()
+	before := interpreter.calls
+	if _, err := shell.Run(context.Background(), json.RawMessage(`{"command":"\"$XBOT_BIN\" links search --self"}`)); err == nil || interpreter.calls != before {
+		t.Fatal("unbound links search reached interpreter")
+	}
+}

@@ -335,6 +335,28 @@ CompactRange 确实把 ctx 交给模型调用，并用原 turnSeqOf 归属用量
 
 compact 最后一个 native wrapper/Normal Known/schema/index 与确已空的 context 工具注册行已退；连同三读，原 context 四工具均无可执行 shim。Link.Context 器官的 Tools()==nil、Event、4 KiB 记忆文件写守卫与旧四 native 字面/工具配对历史读取保留。live Context 指引同时说明主动 compact CLI、自动压缩和三读。autoCompact/foldBlocks、后台 finishJob/applyReady、idle 与 bindingPrecheck 仍直接走原规划/方法/队列，不经 native 门或解析 ACK。research 仅当前 canonical BIN/受控 XBOT_BIN、原 DirectXBotArgs 单 POSIX lexer+同 parser 的合法 help（err=nil 且 Help）；self 压缩是 Normal 写，在解释器前拒绝，focus 的字面 --help 不冒帮助，不增加 loose 熔断宽阈值。现 manual 无主动 compact 脚本，mock/eval 无 compact producer，MemoryRecall 限定桥保持，不臆造迁移或新 Web parser。上下文投影见 [上下文](atlas/context.md#主动范围压缩)、ctx/保存接线见 [内核](atlas/kernel.md#主动范围压缩实例入口)，决定见 [ADR0061](adr/0061-compact-runtime-cli.md)。
 
+## links 目录搜索与加载运行时 CLI
+
+```sh
+"$XBOT_BIN" links search --self [--query TEXT|--query-file FILE|-] [--json]
+"$XBOT_BIN" links load --self <id|name> [--json]
+"$XBOT_BIN" links --help
+"$XBOT_BIN" links search --help
+"$XBOT_BIN" links load --help
+```
+
+纯 `ParseLinksRuntime` 是首个 noun+subcommand 双层 parser，main 在 root/default/legacy 初始化前分流。noun 层只认 `search`/`load`：三种 help 形式离线退 0，裸 `links` 与未知 subcommand 拒绝；subcommand 层同 ParseCompactRuntime strict——`links search|load` 缺 `--self` 拒、无别名/`-h`、拒未知/重复 flag、按 flag arity 消费字面 `--help`/`--` 值，self/json/help 不接受 equals 值。search 的 query 可省略/空（空串列全目录），`--query`/`--query-file` 至多一、路径不可空、`-` 读 stdin；load 的位置参数恰好一个 id/name，原 TrimSpace+`id is required` 语义交领域。raw 文本/文件/stdin 以 max+1 有界读取，连同最终转义 typed JSON 各限 1 MiB，不在 wire 预算前 trim；原 Shell 命令仍限 16 KiB，大 query 用文件/stdin。
+
+self 取原 source `XBOT_ENDPOINT`、规范 `XBOT_ROOT` 与实际 Resources ref，显式 root 必须相同，旧 XBOT_BOT 只诊断；缺端点、root 不同或调用失败非 0，不离线 Load source 或新建 Kernel。原 Native Shell 的 `XBOT_CALL_ID` 必需，client 以 `X-XBot-Call-ID` header 传原值，缺失时报 `requires XBOT_CALL_ID from an active XBot shell`。既有 `Handlers.Links` 为 typed `Search`/`Load` 一对：`CallLinksSearch(ctx,endpoint,root,originalCallID,input)` 到 `POST /v1/links/search`（请求仅 `cliops.LinksSearch{query?}`），`CallLinksLoad(...)` 到 `POST /v1/links/load`（请求仅 `cliops.LinksLoad{id}`），回包均仅 `cliops.LinksReply{text?,error?}`。
+
+HTTP 只收单 JSON 对象，拒未知字段、null/非对象、EOF 前尾随内容、URL query（含空 `?`），请求原始及转义 typed JSON 各≤1 MiB、回包≤64 KiB，复用原 loopback/Host/browser/规范 root guard。source callback 持原 operations lease，再经**未改的** runtimeSourceCall 取原 prepared ctx——同 compact 判据：search 的 `mcpSpecs`/`EffectiveLinks`/`secretValues` 与 load 的 `snapshotLinks`/`markLoaded` 都要求同一运行中 kernel，离线新 K 的标记随进程消失。原 helper 只核同 listener 实际 Local/running/未 finished Shell 绑定并合入 HTTP 取消链；缺失/完成/foreign/nonShell/cancel 沿原 helper 拒绝。不用 runtimeApprovalSource/owner 重绑、审批 intent、卡或 approver，不加 primary/person/project 资格或 Recall 的非 nil 冻结 turn 门；承载 Shell 机器 gate/policy 独立。loadContext 将 prepared ctx 透传给 `toolsForLoaded`（签名留参、实现不读 ctx），不宣称新增即时取消。
+
+search 直调同 K 原 `linksTool{k}.search(query)`：遍历 `link.Catalog()`+`link.Connectors()`+`mcpSpecs()` 拼 TSV `id\tstate\tsummary\tsecrets:…`，state 三态 listed/available/installed，空集兜底 "no links"，收尾 `scrubSecrets(text, k.secretValues())`——secrets 名出现、值不出现。load 直调原 `loadContext(prepared,id)`：`link.ResolveApp`→storeConnector 归一 `mcp:`→`mcp:` 前缀一律返回指向 `"$XBOT_BIN" mcp tools <server> --self --json` 的指路错误→organ 走 `loadedNames(o.Grant)`→catalog `e.Grant==""||!Bot.Grants` 报 "not installed"→`markLoaded(e.ID)` 写进程内 `k.loaded`（registry deferred 解除、stableLinkNames 排除 lazy）→返回原 `loaded id: tool1, …` 短 ACK。`isLoaded("mcp:"+id)` 永不置位；成功 text 后无 artifact/File/Applied/rollback 回包。
+
+成功人读原 text+newline，JSON `{text:…}` 含最终 newline；错误沿原动态 redactor+`secretValues()` scrub，仅显示 error 可缩短。准确共享 `FormatLinks` 的 human 与整 JSONNL 各须≤原 Shell 32 KiB。CLI 先输出收到的事实再非 0，不代理/重定向或自动重试。
+
+linksTool 保留注册（review 归类 ExternalSend、NeedsOwner 的 install/remove 例外、permissive 唯一保卡、`approvalSecretNames` 只认 tool=="links" 与 StageSecrets→takeSecrets→storeSecrets/dropSecrets→GrantLink/RevokeLink→EnableConnector/RemoveMCP→Reconcile 整链不动）；install/remove 仍以工具为确认卡/secrets 锚。工具的 search/load 分支返回指 CLI 的指路错误（`links: search|load moved to the CLI …`），Description/Parameters 只广告 "install or remove"，query prop 已退，Confirm 对两动作仍返回空——模型不再先吃指路错误才学到入口。manual connectors.md 指引同指 CLI；`allowReadOnlyPlatform` links 分支放 help 与 `search --self`（只读），`load --self` 置进程内 loaded 状态不算只读、解释器前拒绝，与 compact 同档；research 经原 DirectXBotArgs 单 POSIX lexer+本 parser，只认 canonical BIN/受控 XBOT_BIN 合法 help/self search。notable.go links 豁免、旧 native literal/工具配对历史保持，无执行 shim/伪配对/新 ENV/Inbox/waker。连接器目录与安装现状见 [生态](atlas/ecosystem.md#怎么运转)，决定见 [ADR0062](adr/0062-links-runtime-cli.md)。
+
 ## Bot 列表与创建
 
 `GET /api/bots` 返回当前 owner 的 Bot。顺序是置顶在前，组内按名字。主 Bot 会被 `SetPrimary` 置顶，所以通常排在置顶组里。
