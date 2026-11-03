@@ -1,0 +1,198 @@
+[
+  {
+    "file": "motion-probe",
+    "state": null,
+    "size": "1440x900",
+    "zoom": 1,
+    "motion": {
+      "load": {
+        "elements": 6,
+        "loops": 0,
+        "maxMove": 7,
+        "maxSize": 0,
+        "maxOpacity": 0.94,
+        "top": [
+          {
+            "el": "main#workspace.workspace",
+            "move": 4,
+            "size": 0,
+            "opacity": 0.94,
+            "loop": false,
+            "sources": [
+              "css:surface-enter"
+            ]
+          },
+          {
+            "el": "div.msg.bot",
+            "move": 7,
+            "size": 0,
+            "opacity": 0.83,
+            "loop": false,
+            "sources": [
+              "css:msg-in"
+            ]
+          },
+          {
+            "el": "div.msg.user",
+            "move": 7,
+            "size": 0,
+            "opacity": 0.83,
+            "loop": false,
+            "sources": [
+              "css:msg-in"
+            ]
+          },
+          {
+            "el": "div.msg.bot",
+            "move": 7,
+            "size": 0,
+            "opacity": 0.83,
+            "loop": false,
+            "sources": [
+              "css:msg-in"
+            ]
+          },
+          {
+            "el": "aside#sidebar.sidebar",
+            "move": 3,
+            "size": 0,
+            "opacity": 0.69,
+            "loop": false,
+            "sources": [
+              "css:surface-enter"
+            ]
+          },
+          {
+            "el": "div#tab-indicator.tab-pill-indicator",
+            "move": 4,
+            "size": 0,
+            "opacity": 0,
+            "loop": false,
+            "sources": [
+              "js:style",
+              "transition:transform"
+            ]
+          }
+        ]
+      },
+      "steps": {
+        "elements": 8,
+        "loops": 0,
+        "maxMove": 1115,
+        "maxSize": 1,
+        "maxOpacity": 0.83,
+        "top": [
+          {
+            "el": "svg",
+            "move": 1115,
+            "size": 1,
+            "opacity": 0,
+            "loop": false,
+            "sources": [
+              "transition:transform"
+            ]
+          },
+          {
+            "el": "button#aside-toggle.sysline-pill",
+            "move": 1097,
+            "size": 1,
+            "opacity": 0,
+            "loop": false,
+            "sources": [
+              "transition:background-color",
+              "transition:color",
+              "transition:transform"
+            ]
+          },
+          {
+            "el": "div#aside-drawer.aside-drawer",
+            "move": 960,
+            "size": 1,
+            "opacity": 0.83,
+            "loop": false,
+            "sources": [
+              "css:pop-in"
+            ]
+          },
+          {
+            "el": "section#panel-pane.panel-pane",
+            "move": 277,
+            "size": 1,
+            "opacity": 0.81,
+            "loop": false,
+            "sources": [
+              "css:fade-view"
+            ]
+          },
+          {
+            "el": "div#tab-indicator.tab-pill-indicator",
+            "move": 73,
+            "size": 0,
+            "opacity": 0,
+            "loop": false,
+            "sources": [
+              "js:style",
+              "transition:transform"
+            ]
+          },
+          {
+            "el": "div.msg.bot",
+            "move": 2,
+            "size": 0,
+            "opacity": 0.83,
+            "loop": false,
+            "sources": [
+              "css:msg-in"
+            ]
+          },
+          {
+            "el": "div.msg.user",
+            "move": 2,
+            "size": 0,
+            "opacity": 0.83,
+            "loop": false,
+            "sources": [
+              "css:msg-in"
+            ]
+          },
+          {
+            "el": "div.msg.bot",
+            "move": 2,
+            "size": 0,
+            "opacity": 0.83,
+            "loop": false,
+            "sources": [
+              "css:msg-in"
+            ]
+          }
+        ]
+      },
+      "hero": {
+        "elements": 0,
+        "loops": 0,
+        "maxMove": 0,
+        "maxSize": 0,
+        "maxOpacity": 0,
+        "top": [],
+        "layers": 0
+      },
+      "scroll": {
+        "elements": 0,
+        "loops": 0,
+        "maxMove": 0,
+        "maxSize": 0,
+        "maxOpacity": 0,
+        "top": [],
+        "scrollable": false
+      }
+    },
+    "issues": []
+  },
+  {
+    "file": "page.png",
+    "state": null,
+    "size": "1440x900",
+    "zoom": 1,
+    "issues": []
+  }
+]

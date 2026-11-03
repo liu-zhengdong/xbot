@@ -1,0 +1,23 @@
+[
+  {
+    "file": "idle-@2x.png",
+    "state": "idle",
+    "size": "1440x900",
+    "zoom": 2,
+    "issues": []
+  },
+  {
+    "file": "dark-@2x.png",
+    "state": "dark",
+    "size": "1440x900",
+    "zoom": 2,
+    "issues": []
+  },
+  {
+    "file": "multiline-@2x.png",
+    "state": "multiline",
+    "size": "1440x900",
+    "zoom": 2,
+    "issues": []
+  }
+]

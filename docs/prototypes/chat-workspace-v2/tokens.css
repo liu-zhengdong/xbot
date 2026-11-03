@@ -1,0 +1,173 @@
+/* XBot 视觉规范 v1 · 方向 A「白纸」+ 深色（B 式明度分层）
+   用法：html[data-theme="dark"] 切深色；所有组件只引用这些变量。 */
+:root{
+  /* 弹出层：一次回弹；缩小动效模式只淡入淡出。 */
+  --ease-spring:cubic-bezier(0.34,1.56,0.64,1);
+  --dur-pop:220ms; --dur-pop-close:120ms; --dur-press:120ms; --dur-motion-reduced:100ms;
+  --pop-scale-start:.92; --pop-scale-overshoot:.03; --press-scale:.97;
+  --bubble-press-scale:.96; --bubble-spring-overshoot:.025;
+  --dur-bubble-press:90ms; --dur-bubble-spring:300ms;
+
+  /* 表面：窗口灰 → 卡片白 → 面板 → 填充三档（靠明度分层，不画线） */
+  --x-win:#f3f3f5;        /* 窗口底、侧栏 */
+  --x-card:#ffffff;       /* 主卡片（对话区） */
+  --x-panel:#fafafa;      /* 信息面板，和对话区同卡，靠底色分开 */
+  --x-panel-card:#ffffff; /* 面板里的卡片：任务卡、例程 */
+  --x-fill-1:#f5f5f7;     /* 卡片内的块：任务卡、命令框、斑马行 */
+  --x-fill-2:#ededf0;     /* 次级按钮、标签、悬停 */
+  --x-fill-3:#e4e4e8;     /* 选中、按下 */
+  --x-zebra:#f4f4f6;
+  --x-user-bubble:#18181b; --x-user-bubble-text:#ffffff; /* 用户气泡：深底白字（同 primary） */
+  --x-user-code:rgba(255,255,255,.14); --x-user-sel:rgba(255,255,255,.28); /* 用户气泡里的代码块 / 选中 */
+  --x-bot-bubble:#f5f5f7; /* Bot 气泡（单聊），同 fill-1 */
+  --x-input:#f3f3f5;      /* 输入框 */
+  --x-code:#f1f1f3;
+  /* 文字四档 */
+  --x-text:#18181b; --x-text-2:#3f3f46; --x-muted:#6b6b70; --x-faint:#9a9aa0; --x-ph:#a6a6ac;
+  /* 主操作：黑底白字（深色反过来） */
+  --x-primary:#18181b; --x-primary-hover:#33333a; --x-on-primary:#ffffff;
+  --x-disabled:#e2e2e6; --x-on-disabled:#a6a6ac;
+  /* 含义色：只有这几种 */
+  --x-danger:#c93a2b; --x-danger-bg:#fbeaea; /* 只给错误、删除、失败 */
+  /* 用户定稿：客户端重启使用橙色警示。 */
+  --x-warning:var(--trace-tool-mark); --x-on-warning:#18181b; --x-restart-icon:14px;
+  --x-caption-close:#c42b1c; /* 只给 Windows 关闭按钮悬停（系统惯例） */
+  --x-online:#2f9e5b;                         /* 只给「在线」小圆点 */
+  /* 文内可点文字（外链、跳转）：默认只是偏蓝字无底；悬停或光标进链才出淡蓝圆角底（bg/hover 只用于这时）；按钮、整行、code 不用 */
+  --x-text-link:#3b82f6; --x-text-link-bg:#e8f1ff; --x-text-link-hover:#e8f1ff;
+  /* 用户气泡底色与卡片相反，链接用另一侧主题的那组 */
+  --x-user-link:#8ab8ff; --x-user-link-bg:rgba(110,160,255,.16); --x-user-link-hover:rgba(110,160,255,.16);
+  --x-pending:#c9a227;                        /* 只给「等待登录…」小圆点（xAI 详情定稿） */
+  /* 子代理类型标签（低饱和，同一族明度） */
+  --x-type-dev:#4f7d69;  --x-type-dev-bg:#e5efe9;   /* 开发 · 墨绿 */
+  --x-type-res:#5c7a9c;  --x-type-res-bg:#e6edf5;   /* 调研 · 雾蓝 */
+  --x-type-gen:#7a7268;  --x-type-gen-bg:#efece7;   /* 通用 · 暖灰 */
+  --x-type-own:#766d96;  --x-type-own-bg:#ecebf3;   /* 自定义 · 紫灰 */
+  /* 上下文用量分段（沿用 atlas 现有 --ctx-*） */
+  --x-ctx-turn:#3b82f6; --x-ctx-hist:#8fb4f5; --x-ctx-block:#14a37f; --x-ctx-mem:#d4882b;
+  --x-ctx-sys:#a3a3aa; --x-ctx-env:#c7c7cd; --x-ctx-tools:#b9b9c0; --x-ctx-free:#e7e7eb;
+  /* 头像容器 */
+  --x-avatar-bg:#e4e4e7;
+  /* 阴影：只给浮层（菜单、抽屉、弹窗、提示） */
+  --x-popover:#ffffff; --x-popover-hover:var(--x-fill-2);
+  --x-bot-code:rgba(24,24,27,.06);
+  --x-shadow-pop:0 8px 30px rgba(0,0,0,.12),0 1px 3px rgba(0,0,0,.06);
+  --x-scrim:rgba(24,24,27,.28);
+  /* 图片查看：浅深主题都使用沉浸暗底。 */
+  --x-viewer-bg:#101012; --x-viewer-text:#f5f5f7;
+  --x-viewer-control-bg:rgba(255,255,255,.10); --x-viewer-hover:rgba(255,255,255,.22);
+  --x-viewer-control:44px; --x-viewer-gutter:72px; --x-viewer-disabled:.35;
+  /* 字体 */
+  --x-font:"Segoe UI","Noto Sans SC","PingFang SC",sans-serif;
+  --x-mono:"JetBrains Mono","SF Mono",Consolas,"Noto Sans Mono",monospace;
+  /* 围栏公式块（已定稿） */
+  --x-formula-font:"KaTeX_Main","Times New Roman","Noto Serif SC","Songti SC",serif;
+  --x-formula-fs:15.5px; --x-formula-lh:1.78;
+  --x-formula-radius:9px; --x-formula-padding:8px 36px 8px 12px;
+  --x-formula-copy-size:26px; --x-formula-icon-size:14px; --x-formula-gap:2px;
+  --x-formula-copy-radius:7px;
+  /* 字号 */
+  --x-fs-cap:11.5px; --x-fs-label:12px; --x-fs-sm:12.5px; --x-fs-ui:13.5px; --x-fs-body:15px; --x-fs-title:17px; --x-fs-greet:19px; --x-fs-h:24px;
+  /* 间距（4 的倍数为主，6/10 用于紧凑行） */
+  --x-s1:4px; --x-s2:6px; --x-s3:8px; --x-s4:10px; --x-s5:12px; --x-s6:16px; --x-s7:20px; --x-s8:24px; --x-s9:32px;
+  /* 圆角 */
+  --x-r-xs:6px; --x-r-sm:8px; --x-r-card:12px; --x-r-bubble:18px; --x-r-input:24px; --x-r-pill:999px;
+  /* 保险库：已定稿 Grok 风格卡行，色块只区分出站 / 本机。 */
+  --vault-outbound:#d4897a; --vault-local:#5a9e7f; --vault-glyph-ink:#fff;
+  --vault-glyph-size:36px; --vault-card-radius:14px; --vault-card-height:56px;
+  --vault-search-width:200px; --vault-search-icon:14px;
+  --vault-glyph-radius:10px; --vault-chip-height:28px;
+  color-scheme:light;
+}
+html[data-theme="dark"]{
+  --x-win:#0f0f11; --x-card:#18181b; --x-panel:#1c1c20; --x-panel-card:#24242a;
+  --x-fill-1:#222226; --x-fill-2:#2a2a2f; --x-fill-3:#33333a; --x-zebra:#222226;
+  --x-user-bubble:#ececef; --x-user-bubble-text:#18181b; --x-user-code:rgba(24,24,27,.08); --x-user-sel:rgba(24,24,27,.16); --x-bot-bubble:#222226; --x-input:#252528; --x-code:#2a2a2f;
+  --x-text:#ececef; --x-text-2:#d4d4d8; --x-muted:#a1a1a9; --x-faint:#6f6f78; --x-ph:#6f6f75;
+  --x-primary:#f2f2f2; --x-primary-hover:#ffffff; --x-on-primary:#111111;
+  --x-disabled:rgba(255,255,255,.08); --x-on-disabled:#6f6f75;
+  --x-danger:#f97066; --x-danger-bg:rgba(249,112,102,.12); --x-online:#3fb27f; --x-pending:#d9b44a;
+  --x-text-link:#8ab8ff; --x-text-link-bg:rgba(110,160,255,.16); --x-text-link-hover:rgba(110,160,255,.16);
+  --x-user-link:#3b82f6; --x-user-link-bg:rgba(59,130,246,.12); --x-user-link-hover:rgba(59,130,246,.12);
+  --x-type-dev:#8fbfa8; --x-type-dev-bg:#21302a;
+  --x-type-res:#9db6d4; --x-type-res-bg:#222b37;
+  --x-type-gen:#c2b8aa; --x-type-gen-bg:#2e2b27;
+  --x-type-own:#b3a9d6; --x-type-own-bg:#2a2836;
+  --x-ctx-turn:#4c8df6; --x-ctx-hist:#2f5ea8; --x-ctx-block:#1fb08a; --x-ctx-mem:#e0912f;
+  --x-ctx-sys:#a8a8b0; --x-ctx-env:#6b6b73; --x-ctx-tools:#55555c; --x-ctx-free:#2c2c30;
+  --x-avatar-bg:#a8a8ad;
+  --x-popover:#232327; --x-popover-hover:#303034;
+  --x-bot-code:rgba(255,255,255,.07);
+  --x-shadow-pop:0 10px 34px rgba(0,0,0,.5);
+  --x-scrim:rgba(0,0,0,.5);
+  --vault-outbound:#c47868; --vault-local:#4a8f70;
+  color-scheme:dark;
+}
+
+/* Voice chat: approved composer and bubble geometry. */
+:root {
+  --voice-button:32px; --voice-mic-button:36px; --voice-wave-base:56px;
+  --voice-wave-bar:3px; --voice-wave-radius:1.5px; --voice-wave-muted:.55;
+  --voice-caption-size:13px; --voice-user-muted:.7;
+  --chat-paragraph-gap:9px; --voice-dot:10px;
+  --voice-pulse:1100ms;
+}
+
+/* Approved chat workspace: identity, navigation and one reading surface. */
+:root {
+  --workspace-head:88px; --workspace-tabs:60px; --workspace-tab-height:38px;
+  --workspace-thread:800px; --workspace-reading:944px; --workspace-gutter:32px;
+  --workspace-control:34px; --workspace-avatar:36px;
+  --memory-search-width:280px; --memory-search-height:40px; --memory-row-padding:20px;
+  --sa-detail-width:390px; --sa-detail-medium:350px; --sa-detail-narrow:320px;
+  --memory-detail-gap:14px; --memory-enter-offset:4px;
+  --memory-reading-width:36em; --memory-dialogue-gap:20px;
+  --workspace-menu:252px; --workspace-menu-height:60dvh; --workspace-space:48px;
+  --workspace-focus-width:2px; --workspace-disabled-opacity:.5;
+  --workspace-shell-caption:32px; --workspace-mac-caption:28px;
+  --workspace-line:1.85; --workspace-input-line:1.6;
+  --workspace-user-max:86%; --workspace-user-max-mobile:95%; --x-icon-stroke:1.8; --workspace-weight:550; --workspace-input-height:60px;
+  --x-font:"Segoe UI","Noto Sans SC","PingFang SC","XBot SC",sans-serif;
+  --x-user-bubble:var(--x-fill-1); --x-user-bubble-text:var(--x-text);
+  --x-user-code:var(--x-fill-2); --x-user-sel:var(--x-fill-3);
+  --x-user-link:var(--x-text-link); --x-user-link-bg:var(--x-text-link-bg); --x-user-link-hover:var(--x-text-link-hover);
+}
+html[data-theme="dark"] {
+  --x-user-bubble:var(--x-fill-1); --x-user-bubble-text:var(--x-text);
+  --x-user-code:var(--x-fill-2); --x-user-sel:var(--x-fill-3);
+  --x-user-link:var(--x-text-link); --x-user-link-bg:var(--x-text-link-bg); --x-user-link-hover:var(--x-text-link-hover);
+}
+@media(min-width:1600px) { :root { --workspace-thread:860px; --workspace-reading:1040px; } }
+@media(max-width:1100px) { :root { --workspace-gutter:24px; } }
+@media(max-width:767px) { :root { --workspace-gutter:16px; } }
+
+/* Approved trace explorer: compact rows, semantic accents, neutral selection. */
+:root {
+  --trace-input:#3d65ad; --trace-input-mark:#6c95ed; --trace-input-bg:#edf3ff;
+  --trace-context:#2e7544; --trace-context-mark:#6dba85; --trace-context-bg:#edf8f0;
+  --trace-model:#765398; --trace-model-mark:#886bae; --trace-model-bg:#f3edf9;
+  --trace-tool:#9b5d13; --trace-tool-mark:#dd852a; --trace-tool-bg:#fff4e4;
+  --trace-row-height:34px; --trace-body-size:13px; --trace-detail-width:390px;
+  --trace-search-width:270px; --trace-search-min:160px; --trace-search-height:38px;
+  --trace-seq-width:36px; --trace-time-width:64px; --trace-type-width:64px;
+  --trace-chevron-width:12px; --trace-badge-radius:4px; --trace-overview-radius:10px;
+  --trace-track-height:20px; --trace-track-name:48px; --trace-track-grid:17px;
+  --trace-mark-height:10px; --trace-mark-result:4px; --trace-mark-selected:15px;
+  --trace-mark-min:3px; --trace-mark-top:3px; --trace-result-top:7px; --trace-selected-top:1px;
+  --trace-mark-radius:3px; --trace-dim-opacity:.22; --trace-axis-size:9px;
+  --trace-axis-height:10px; --trace-detail-title:21px; --trace-enter-offset:8px;
+  --trace-source-line:1.75; --trace-record-line:1.8;
+}
+html[data-theme="dark"] {
+  --trace-input:#a9c3ff; --trace-input-bg:#222f49;
+  --trace-context:#92d5a5; --trace-context-bg:#213b2a;
+  --trace-model:#c4ace6; --trace-model-bg:#332840;
+  --trace-tool:#f0bb76; --trace-tool-bg:#3f3021;
+}
+@media(max-width:1200px) { :root { --trace-detail-width:340px; --trace-search-width:230px; } }
+@media(max-width:767px) {
+  :root {
+    --trace-row-height:44px; --trace-seq-width:34px; --trace-time-width:55px;
+    --trace-track-name:32px; --trace-track-height:26px; --trace-mark-min:4px;
+  }
+}

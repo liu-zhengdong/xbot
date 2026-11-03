@@ -21,3 +21,7 @@
 ## 还没做的
 
 - 外置 Codex for 循环 5 分钟无回再修：仍在候选「重启失败由外置 Codex 兜底」。
+
+## 边界（2026-10-29）
+
+主人 `message` 只服务主人话。Codex / 外置 Agent 叫醒走 **CLI 外部 Event**（`xbot send --whoami …`），见 Obsidian `设计/CLI外部Event到Bot.md`；本文件不覆盖那条缝。

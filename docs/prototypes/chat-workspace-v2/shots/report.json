@@ -1,0 +1,142 @@
+[
+  {
+    "file": "idle-390x844.png",
+    "state": "idle",
+    "size": "390x844",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "dark-390x844.png",
+    "state": "dark",
+    "size": "390x844",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "multiline-390x844.png",
+    "state": "multiline",
+    "size": "390x844",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "quoting-390x844.png",
+    "state": "quoting",
+    "size": "390x844",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "attach-390x844.png",
+    "state": "attach",
+    "size": "390x844",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "recording-390x844.png",
+    "state": "recording",
+    "size": "390x844",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "aside-390x844.png",
+    "state": "aside",
+    "size": "390x844",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "win-390x844.png",
+    "state": "win",
+    "size": "390x844",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "memory-390x844.png",
+    "state": "memory",
+    "size": "390x844",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "trace-390x844.png",
+    "state": "trace",
+    "size": "390x844",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "idle-1440x900.png",
+    "state": "idle",
+    "size": "1440x900",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "dark-1440x900.png",
+    "state": "dark",
+    "size": "1440x900",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "multiline-1440x900.png",
+    "state": "multiline",
+    "size": "1440x900",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "quoting-1440x900.png",
+    "state": "quoting",
+    "size": "1440x900",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "attach-1440x900.png",
+    "state": "attach",
+    "size": "1440x900",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "recording-1440x900.png",
+    "state": "recording",
+    "size": "1440x900",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "aside-1440x900.png",
+    "state": "aside",
+    "size": "1440x900",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "win-1440x900.png",
+    "state": "win",
+    "size": "1440x900",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "memory-1440x900.png",
+    "state": "memory",
+    "size": "1440x900",
+    "zoom": 1,
+    "issues": []
+  },
+  {
+    "file": "trace-1440x900.png",
+    "state": "trace",
+    "size": "1440x900",
+    "zoom": 1,
+    "issues": []
+  }
+]

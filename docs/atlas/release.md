@@ -62,6 +62,12 @@ Release，但产物是更早的 `xbot_<os>_<arch>` 裸二进制，和 release.ym
   Windows 那枚点下去是打开安装包下载。
 - `GET /api/update` 给状态，`POST /api/update/check` 立刻查一次。三个接口都要登录。
 - `xbot upgrade [--check]` 在命令行走同一条 `Stage` + `Install`；`xbot version` 打印版本。
+- **dev 自编译重载**：`scripts/xbot-dev` 启动时注入 `XBOT_DEV_ROOT=<仓库>`，serve 装配
+  `Server.DevReload` 并把 `can_reload` 摊给 session。网页顶栏「更新」旁多一枚圆形箭头小按钮
+  （`#dev-reload`），点一下 `POST /api/dev/reload`：后台 `go build ./cmd/xbot` 到 `<exe>.next`，
+  成功就把当前二进制备份成 `.prev`、换上 `.next`，再发 `restartCh` 走既有 Drain +
+  `syscall.Exec`。编译失败什么都不动。生产实例（没有 `XBOT_DEV_ROOT`）不装配，接口 404。
+  Agent 用 shell 调同一个接口也能触发；回调立即返回，一次只编一份。
 - 周期检查：`xbot serve` 和桌面版都是启动 30 秒后第一次，之后每 6 小时。`--no-auto-upgrade`
   或 `XBOT_AUTO_UPGRADE=0` 关闭。桌面版也查——它以前被显式关掉了。
 - 装完的重启：桌面版用 `appshell.Relaunch`（MyGo 重开窗口）；serve 走下面这套优雅重起。
