@@ -25,28 +25,28 @@ func TestScrubEntryUsesRedact(t *testing.T) {
 	}
 }
 
-func TestModelToolsIncludeVaultToolsOnlyWithVault(t *testing.T) {
+// http_request is retired into the runtime CLI (ADR 0068): the vault stays on
+// the kernel for the runtime handler, but no vault tool name may reach the
+// model whether a vault exists or not.
+func TestModelToolsNeverListRetiredVaultTools(t *testing.T) {
 	b := testBot(t, link.NameTerminal, link.NameTools)
 	store, err := vault.Open(b.VaultDir(), b.VaultKeyPath())
 	if err != nil {
 		t.Fatal(err)
 	}
 	toolsLink := link.NewToolsLink()
-	k := &Kernel{Bot: b, Links: []link.Link{toolsLink}, Vault: store}
-	list, err := k.modelTools()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !hasToolName(list, "http_request") || hasToolName(list, "list_secrets") {
-		t.Fatal("expected only http_request with a vault, no list_secrets")
-	}
-
-	bare := &Kernel{Bot: b, Links: []link.Link{toolsLink}}
-	list, err = bare.modelTools()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hasToolName(list, "http_request") || hasToolName(list, "list_secrets") {
-		t.Fatal("vault tools listed without a vault")
+	for label, k := range map[string]*Kernel{
+		"vault":    {Bot: b, Links: []link.Link{toolsLink}, Vault: store},
+		"no-vault": {Bot: b, Links: []link.Link{toolsLink}},
+	} {
+		list, err := k.modelTools()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"http_request", "list_secrets"} {
+			if hasToolName(list, name) || registered(k, name) {
+				t.Fatalf("%s kernel lists retired tool %s", label, name)
+			}
+		}
 	}
 }

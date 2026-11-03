@@ -211,6 +211,20 @@ func Start(root string, handlers Handlers) (*Server, error) {
 	mux.HandleFunc("/v1/compact", func(w http.ResponseWriter, r *http.Request) {
 		serveCompact(w, r, handlers.Compact)
 	})
+	mux.HandleFunc("/v1/restart", func(w http.ResponseWriter, r *http.Request) {
+		var fn func(context.Context, RestartCall) (CardReply, error)
+		if handlers.Restart != nil {
+			fn = handlers.Restart
+		}
+		serveRestart(w, r, fn)
+	})
+	mux.HandleFunc("/v1/http", func(w http.ResponseWriter, r *http.Request) {
+		var fn func(context.Context, HTTPCall) (CardReply, error)
+		if handlers.HTTP != nil {
+			fn = handlers.HTTP
+		}
+		serveHTTP(w, r, fn)
+	})
 	mux.HandleFunc("/v1/links/search", func(w http.ResponseWriter, r *http.Request) {
 		serveLinksSearch(w, r, handlers.Links)
 	})

@@ -409,7 +409,7 @@ func TestMainLineAndSubagentsReachTheMountedTools(t *testing.T) {
 	}
 	// code, desktop, and browser tools are lazy until loaded, for the main line
 	// and subagents alike; that is not a main-line limit.
-	for _, want := range []string{"dispatch", "write_file", "sh", "http_request", "send_email", "delete_file", "mcp_srv_post"} {
+	for _, want := range []string{"dispatch", "write_file", "sh", "send_email", "delete_file", "mcp_srv_post"} {
 		if !contains(mainNames, want) {
 			t.Errorf("main line lacks %s", want)
 		}
@@ -430,7 +430,7 @@ func TestMainLineAndSubagentsReachTheMountedTools(t *testing.T) {
 	}
 	research := namesOf(k.toolsFor(exec.StartRequest{ID: "sa_0123456789", Type: "research"}))
 	for _, never := range []string{"write_file", "send_email", "delete_file", "mcp_srv_post",
-		"code_start", "desktop_click", "browser_open", "http_request"} {
+		"code_start", "desktop_click", "browser_open", "http_request", "restart_xbot"} {
 		if contains(research, never) {
 			t.Errorf("research subagent offers %s", never)
 		}

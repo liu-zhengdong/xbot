@@ -211,7 +211,11 @@ func Tool(ctx context.Context, name string, args json.RawMessage, out string, re
 		recordDelete(ctx, objects, unit)
 	case review.ExternalSend:
 		record(ctx, "external_message", sendObjects(name, args)...)
-	case review.HTTP:
+	}
+	if name != "http_request" {
+		return
+	}
+	{
 		var in struct {
 			Method string `json:"method"`
 			URL    string `json:"url"`

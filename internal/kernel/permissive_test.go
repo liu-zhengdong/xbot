@@ -85,7 +85,7 @@ func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
 	k := &Kernel{Bot: testBot(t, link.NameTools), Permissive: true}
 	k.ensureTurn().turnTrusted = true
 	checked := 0
-	for _, tool := range []string{"mcp_x_send", "http_request", "delete_file"} {
+	for _, tool := range []string{"mcp_x_send", "delete_file", "secret_rm"} {
 		if !review.NeedsOwner(tool, json.RawMessage(`{"method":"POST","url":"https://x"}`)) {
 			continue
 		}
@@ -105,8 +105,10 @@ func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
 	if !linksIntentAsks(t, "install", "telegram") {
 		t.Error("the links install card was dropped")
 	}
-	if needsCard(t, k, "restart_xbot", `{}`) {
-		t.Error("restart asked with the cards off")
+	// The retired restart_xbot keeps no table entry: it runs through the
+	// runtime CLI, which never sends a card.
+	if review.Known("restart_xbot") {
+		t.Error("retired restart_xbot keeps a policy entry")
 	}
 	// The machine switch and the guard on outside turns are off too.
 	k.Machine = func() (string, error) { return "ask", nil }
@@ -149,14 +151,41 @@ func TestPermissiveProtectedCallsNeverAsk(t *testing.T) {
 	}
 }
 
-func TestRestartDoesNotRequireTrustedUserTurnOrConfirmation(t *testing.T) {
-	k := &Kernel{Bot: testBot(t, link.NameTools), Permissive: true}
+// The runtime restart path qualifies the original source Shell call, then
+// calls k.Restart directly: no approver, no card, under every trust and
+// permissive combination — the retired tool's original semantics.
+func TestRestartRuntimeRunsWithoutCardEveryPolicy(t *testing.T) {
+	k, _ := doorKernel(t, nil)
+	if err := k.StartOperations(); err != nil {
+		t.Fatal(err)
+	}
+	defer k.CloseOperations()
+	endpoint := ""
+	for _, item := range k.CLIEnvironment(nil) {
+		if value, ok := strings.CutPrefix(item, "XBOT_ENDPOINT="); ok {
+			endpoint = value
+		}
+	}
 	for _, trusted := range []bool{false, true} {
 		for _, permissive := range []bool{false, true} {
 			k.ensureTurn().turnTrusted = trusted
 			k.Permissive = permissive
-			if needsCard(t, k, "restart_xbot", `{}`) {
-				t.Fatalf("restart asked: trusted=%v permissive=%v", trusted, permissive)
+			var hint string
+			k.Restart = func(h string) error { hint = h; return nil }
+			cards := 0
+			approve := func(context.Context, string, string) (bool, error) {
+				cards++
+				return false, nil
+			}
+			runRoutineSource(t, k, approve, `{"command":"\"$XBOT_BIN\" restart --self"}`, func(ctx context.Context, _ json.RawMessage) (string, error) {
+				reply, err := cliops.CallRestart(ctx, endpoint, k.Bot.Root, tools.CallID(ctx), cliops.RestartCall{Hint: "继续检查"})
+				if err != nil || !strings.Contains(reply.Text, "重启") {
+					t.Errorf("restart reply=%+v err=%v", reply, err)
+				}
+				return "", nil
+			})
+			if hint != "继续检查" || cards != 0 {
+				t.Fatalf("trusted=%v permissive=%v: hint=%q cards=%d", trusted, permissive, hint, cards)
 			}
 		}
 	}
@@ -233,7 +262,7 @@ func TestLivePermissionSwitch(t *testing.T) {
 		if got := needsCard(t, k, "delete_file", `{"path":"a.txt"}`); got {
 			t.Fatalf("delete needsCard=%v, on=%v", got, on)
 		}
-		for _, tool := range []string{"http_request", "mcp_x_send", "sh"} {
+		for _, tool := range []string{"delete_file", "mcp_x_send", "sh"} {
 			if needsCard(t, k, tool, `{"method":"POST","command":"rm a.txt","text":"new persona"}`) {
 				t.Fatalf("%s asked with permissions on=%v", tool, on)
 			}

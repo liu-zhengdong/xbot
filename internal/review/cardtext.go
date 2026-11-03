@@ -18,8 +18,6 @@ func CardText(tool string, args json.RawMessage, summary, machine string) (title
 	switch {
 	case IsShellTool(name):
 		return shellCardText(args, summary, machine)
-	case name == "http_request":
-		return httpCardText(args, summary)
 	case name == "write_file" || name == "edit_file":
 		return fileCardText(args, summary)
 	case name == "view_image":
@@ -61,29 +59,6 @@ func shellCardText(args json.RawMessage, summary, machine string) (string, strin
 	default:
 		return "运行命令", whereRun(target)
 	}
-}
-
-// httpCardText labels an HTTP request and shows the method and host. A request
-// that injects a secret is called out.
-func httpCardText(args json.RawMessage, summary string) (string, string) {
-	title := "发起 HTTP 请求"
-	if strings.Contains(string(args), "{{secret:") || strings.Contains(summary, "{{secret:") {
-		title = "带密钥的 HTTP 请求"
-	}
-	method := jsonString(args, "method")
-	rawURL := jsonString(args, "url")
-	if strings.TrimSpace(method) == "" && strings.TrimSpace(rawURL) == "" {
-		method, rawURL = splitRequest(summary)
-	}
-	method = strings.ToUpper(strings.TrimSpace(method))
-	if method == "" {
-		method = "GET"
-	}
-	host := hostOf(rawURL)
-	if host == "" {
-		return title, method
-	}
-	return title, method + " " + host
 }
 
 // fileCardText labels a file write or edit. A persona or profile file is a
@@ -184,19 +159,6 @@ func jsonString(args json.RawMessage, key string) string {
 func firstLine(s string) string {
 	line, _, _ := strings.Cut(s, "\n")
 	return strings.TrimSpace(line)
-}
-
-// splitRequest reads "METHOD URL" from a tool summary.
-func splitRequest(summary string) (method, rawURL string) {
-	fields := strings.Fields(firstLine(summary))
-	switch len(fields) {
-	case 0:
-		return "", ""
-	case 1:
-		return "", fields[0]
-	default:
-		return fields[0], fields[1]
-	}
 }
 
 // hostOf returns the host of an absolute or scheme-less URL.

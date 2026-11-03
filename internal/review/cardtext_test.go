@@ -51,21 +51,6 @@ func TestCardText(t *testing.T) {
 			wantT: "删除文件", wantSub: "在本机上执行",
 		},
 		{
-			name: "http get", tool: "http_request",
-			args: `{"method":"GET","url":"https://api.example.com/v1/x"}`, summary: "GET https://api.example.com/v1/x",
-			wantT: "发起 HTTP 请求", wantSub: "GET api.example.com",
-		},
-		{
-			name: "http secret", tool: "http_request",
-			args: `{"method":"POST","url":"https://api.example.com/x","headers":{"Authorization":"Bearer {{secret:TOKEN}}"}}`, summary: "POST https://api.example.com/x",
-			wantT: "带密钥的 HTTP 请求", wantSub: "POST api.example.com",
-		},
-		{
-			name: "http host from summary", tool: "http_request",
-			args: ``, summary: "DELETE example.com:8443/x",
-			wantT: "发起 HTTP 请求", wantSub: "DELETE example.com:8443",
-		},
-		{
 			name: "write plain", tool: "write_file",
 			args: `{"path":"/tmp/a/b.txt","content":"x"}`, summary: "write /tmp/a/b.txt (1 bytes)",
 			wantT: "写入文件", wantSub: "b.txt",

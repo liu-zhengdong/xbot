@@ -20,11 +20,9 @@ func TestTableHasEveryClass(t *testing.T) {
 	want := map[string]Class{
 		"read_file":     Readonly,
 		"code_show":     Readonly,
-		"restart_xbot":  Restart,
 		"secret_rm":     Delete,
 		"telegram_send": ExternalSend,
 		"lark_send":     ExternalSend,
-		"http_request":  HTTP,
 		"shell":         Shell,
 		"write_file":    SelfEdit,
 		"edit_file":     SelfEdit,
@@ -66,9 +64,17 @@ func TestRetiredProfileAndPersonaUnknown(t *testing.T) {
 	}
 }
 
-func TestRestartAlwaysNeedsOwnerConfirmation(t *testing.T) {
-	if !need(t, "restart_xbot", `{}`) {
-		t.Fatal("restart_xbot did not require owner confirmation")
+// restart_xbot and http_request are retired into the runtime CLI family
+// (ADR 0068): neither keeps a policy-table entry, and the runtime handler
+// decides the http card through the exported HTTPNeedsOwner, not NeedsOwner.
+func TestRetiredCardsFamilyUnknown(t *testing.T) {
+	for _, name := range []string{"restart_xbot", "http_request"} {
+		if Known(name) || ClassOf(name) != Normal {
+			t.Fatalf("retired tool %s remains classified", name)
+		}
+		if need(t, name, `{"method":"POST","url":"https://x"}`) {
+			t.Fatalf("retired tool %s still asks", name)
+		}
 	}
 }
 
@@ -81,7 +87,7 @@ func TestHTTPNeedsOwnerOnlyForSecretOrWriteMethod(t *testing.T) {
 		`{"url":"https://example.com","headers":{"Authorization":"Bearer {{secret:TOKEN}}"}}`,
 	}
 	for _, args := range ask {
-		if !need(t, "http_request", args) {
+		if !HTTPNeedsOwner(json.RawMessage(args)) {
 			t.Fatalf("%s did not ask", args)
 		}
 	}
@@ -90,7 +96,7 @@ func TestHTTPNeedsOwnerOnlyForSecretOrWriteMethod(t *testing.T) {
 		`{"method":"GET","url":"https://example.com"}`,
 		`{"method":"head","url":"https://example.com"}`,
 	} {
-		if need(t, "http_request", args) {
+		if HTTPNeedsOwner(json.RawMessage(args)) {
 			t.Fatalf("%s asked", args)
 		}
 	}

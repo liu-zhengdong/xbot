@@ -76,20 +76,37 @@ func TestRegistryListsEveryToolOnceWithSource(t *testing.T) {
 
 }
 
-func TestRestartToolUsesKernelRegistryAndPassesHintToServiceHook(t *testing.T) {
+// The restart tool is retired into the runtime CLI (ADR 0068): its handler
+// qualifies the original source Shell call, then calls the same k.Restart
+// service hook with the trimmed hint. Nothing named restart_xbot may stay
+// registered or forwardable.
+func TestRestartRuntimePassesHintToServiceHook(t *testing.T) {
 	k, _ := doorKernel(t, nil)
-	if _, ok := k.toolRegistry().find("restart_xbot"); ok {
-		t.Fatal("restart tool registered without a service restart hook")
+	if registered(k, "restart_xbot") {
+		t.Fatal("retired restart tool remains registered")
 	}
-	var got string
-	k.Restart = func(hint string) error { got = hint; return nil }
-	e, ok := k.toolRegistry().find("restart_xbot")
-	if !ok || e.source != "kernel" || e.group != "system" {
-		t.Fatalf("restart tool registry entry = %+v, %v", e, ok)
+	if tool, _, err := (toolDoor{k}).Forward(context.Background(), json.RawMessage(`{"action":"call","id":"restart_xbot","args":{}}`)); err == nil || tool != nil {
+		t.Fatal("retired restart call still forwards")
 	}
-	if _, err := e.tool.Run(context.Background(), json.RawMessage(`{"hint":"继续检查设备同步"}`)); err != nil {
+	if err := k.StartOperations(); err != nil {
 		t.Fatal(err)
 	}
+	defer k.CloseOperations()
+	var got string
+	k.Restart = func(hint string) error { got = hint; return nil }
+	runRoutineSource(t, k, nil, `{"command":"\"$XBOT_BIN\" restart --self --hint 继续检查设备同步"}`, func(ctx context.Context, _ json.RawMessage) (string, error) {
+		endpoint := ""
+		for _, item := range k.CLIEnvironment(nil) {
+			if value, ok := strings.CutPrefix(item, "XBOT_ENDPOINT="); ok {
+				endpoint = value
+			}
+		}
+		reply, err := cliops.CallRestart(ctx, endpoint, k.Bot.Root, tools.CallID(ctx), cliops.RestartCall{Hint: "继续检查设备同步"})
+		if err != nil || reply.Text == "" {
+			t.Errorf("restart runtime reply=%+v err=%v", reply, err)
+		}
+		return "", nil
+	})
 	if got != "继续检查设备同步" {
 		t.Fatalf("restart hook hint = %q", got)
 	}

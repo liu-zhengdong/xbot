@@ -162,9 +162,6 @@ func (t reviewedTool) PrepareRun(ctx context.Context, args json.RawMessage) (too
 // reviewCall returns whether the owner must confirm this concrete call.
 func (k *Kernel) reviewCall(ctx context.Context, tool tools.Tool, args json.RawMessage, summary string) (bool, string, error) {
 	name := tool.Name()
-	if review.ClassOf(name) == review.Restart {
-		return false, summary, nil
-	}
 	// The machine switch is orthogonal to the class: it applies to every tool
 	// that touches this machine. off refuses, ask confirms each action, and
 	// allow falls through to the table.

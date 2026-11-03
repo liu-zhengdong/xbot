@@ -26,16 +26,10 @@ const (
 	// ExternalSend tools send data out of XBot or install an external link;
 	// they always ask.
 	ExternalSend Class = "external_send"
-	// HTTP tools ask only when the call injects a secret or uses a method
-	// other than GET/HEAD.
-	HTTP Class = "http"
 	// Shell tools ask only when the command deletes or sends data out.
 	Shell Class = "shell"
 	// SelfEdit tools change the bot's own persona or profile; they ask.
 	SelfEdit Class = "self_edit"
-	// Restart interrupts and relaunches the local XBot process. Kernel review
-	// handles this class directly before consulting NeedsOwner.
-	Restart Class = "restart"
 )
 
 // Table is the one explicit policy table. Every tool any link or the kernel
@@ -48,18 +42,16 @@ var Table = map[string]Class{
 	// Built-in tools link: shell and files.
 	"shell": Shell, // Historical records only; never registered.
 	"bash":  Shell, "sh": Shell, "zsh": Shell, "powershell": Shell, "cmd": Shell, "git-bash": Shell,
-	"read_file":    Readonly,
-	"write_file":   SelfEdit,
-	"edit_file":    SelfEdit,
-	"web_fetch":    Readonly,
-	"web_search":   Readonly,
-	"view_image":   Readonly,
-	"http_request": HTTP,
+	"read_file":  Readonly,
+	"write_file": SelfEdit,
+	"edit_file":  SelfEdit,
+	"web_fetch":  Readonly,
+	"web_search": Readonly,
+	"view_image": Readonly,
 
 	// The tool door's search and describe only read the registry; a call
 	// through it is reviewed as the tool it names (ADR 0035).
-	"tools":        Readonly,
-	"restart_xbot": Restart,
+	"tools": Readonly,
 
 	// Runtime routine CRUD uses the source CLI; its effective precheck is
 	// reviewed as the existing Shell call with this same policy table.
@@ -201,12 +193,10 @@ func NeedsOwner(tool string, args json.RawMessage) bool {
 	switch ClassOf(name) {
 	case Readonly, Normal:
 		return false
-	case Delete, Restart:
+	case Delete:
 		return true
 	case ExternalSend:
 		return true
-	case HTTP:
-		return httpNeedsOwner(args)
 	case Shell:
 		if IsShellTool(name) && shellKeys(args) {
 			return true
@@ -229,9 +219,11 @@ func normalize(tool string) string {
 	return strings.ToLower(strings.TrimSpace(tool))
 }
 
-// httpNeedsOwner reports whether an http_request must be confirmed: it injects
-// a {{secret:NAME}} placeholder anywhere, or its method is not GET or HEAD.
-func httpNeedsOwner(args json.RawMessage) bool {
+// HTTPNeedsOwner reports whether one http_request call must be confirmed: it
+// injects a {{secret:NAME}} placeholder anywhere, or its method is not GET or
+// HEAD. The kernel's runtime handler calls it directly; NeedsOwner no longer
+// classifies the retired tool.
+func HTTPNeedsOwner(args json.RawMessage) bool {
 	if strings.Contains(string(args), "{{secret:") {
 		return true
 	}
