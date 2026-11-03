@@ -295,7 +295,7 @@ func TestCLIProfileFullRuntimeResources(t *testing.T) {
 	}
 	// Before releasing either task, a real new-name web turn must acquire the
 	// same host entry and use the Timer captured before the move.
-	model.base.add("FULL_AFTER_MOVE", mcpRuntimeTool("tools", map[string]any{"action": "call", "id": "routine_update", "args": map[string]string{"id": "full-timer", "name": "after move"}}), mcpRuntimeTool("tools", map[string]any{"action": "call", "id": "routine_list", "args": map[string]any{}}), mcpRuntimeTool("shell_status", map[string]string{"id": jobID}))
+	model.base.add("FULL_AFTER_MOVE", mcpRuntimeTool("tools", map[string]any{"action": "call", "id": "routine_update", "args": map[string]string{"id": "full-timer", "name": "after move"}}), mcpRuntimeTool("tools", map[string]any{"action": "call", "id": "routine_list", "args": map[string]any{}}), mcpRuntimeTool("sh", map[string]string{"description": "Check the original job through the runtime jobs CLI", "command": `"$XBOT_BIN" jobs status ` + jobID + ` --self`}))
 	cliFullSend(t, srv, "MovedWorker", "FULL_AFTER_MOVE")
 	post := model.base.results("FULL_AFTER_MOVE")
 	if !strings.Contains(post[0], "updated") || !strings.Contains(post[1], "after move") || !strings.Contains(post[2], jobID+" running") {

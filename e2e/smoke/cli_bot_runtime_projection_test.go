@@ -230,15 +230,15 @@ func TestCLIBotRuntimeListInfoProjectionCurrentRoute(t *testing.T) {
 				t.Fatal("actual CLI background Job failed or exceeded complete native output budget")
 			}
 			readCue := fmt.Sprintf("CLI_BOT_PROJECTION_COMPLETED_OUTPUT_%d", index)
-			model.add(readCue, mcpRuntimeTool("shell_output", map[string]string{"id": jobID}))
+			model.add(readCue, mcpRuntimeTool("sh", map[string]string{"description": "Read the completed job through the runtime jobs CLI", "command": `"$XBOT_BIN" jobs output ` + jobID + ` --self`}))
 			cliSkillSend(t, srv, current, readCue)
 			read := model.results(readCue)
 			if len(read) != 1 || len(read[0]) > 32<<10 {
 				t.Fatal("actual native output consumer exceeded32KiB")
 			}
-			parts := strings.SplitN(read[0], "\n", 4)
+			parts := strings.SplitN(commandOutput(read[0]), "\n", 4)
 			if len(parts) != 4 || parts[0] != "status: done" || parts[1] != "offset: 0" || parts[2] != fmt.Sprintf("next_offset: %d", job.Bytes) {
-				t.Fatal("actual native Job consumer did not return the full untruncated result")
+				t.Fatalf("actual native Job consumer did not return the full untruncated result: %s", read[0])
 			}
 			output = parts[3]
 			if strings.HasPrefix(output, "exit ") {

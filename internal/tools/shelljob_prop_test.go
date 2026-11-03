@@ -14,7 +14,7 @@ import (
 )
 
 // TestJobLogRedactionProperty feeds random streams through jobWriter. No secret
-// form may show up in the file, a snapshot, or shell_output, and the finished
+// form may show up in the file, a snapshot, or jobs output, and the finished
 // file is exactly the redaction of the whole stream.
 func TestJobLogRedactionProperty(t *testing.T) {
 	iters := 10000

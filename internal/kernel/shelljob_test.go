@@ -470,7 +470,7 @@ func TestEvalNamedToolsLinkOmitsShellJobTools(t *testing.T) {
 	}
 	got := strings.Join(names, ",")
 	if strings.Contains(got, "shell_output") || strings.Contains(got, "shell_status") || strings.Contains(got, "shell_cancel") {
-		t.Fatalf("job tools on a shell with no job table: %s", got)
+		t.Fatalf("retired job tool still offered on a shell with no job table: %s", got)
 	}
 }
 

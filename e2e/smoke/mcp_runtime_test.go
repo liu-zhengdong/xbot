@@ -409,11 +409,19 @@ func mcpRuntimeOneJobEvent(t *testing.T, srv *Server, id string) {
 	})
 }
 
+// The retired shell_output/shell_status/shell_cancel model tools reached the
+// same live jobs table the runtime jobs CLI now shares (ADR 0066), so scripted
+// inspection goes through the source Shell like the model would.
+func mcpRuntimeJobs(t *testing.T, args string) mcpRuntimeStep {
+	t.Helper()
+	return mcpRuntimeTool("sh", map[string]string{"description": "Inspect the original job through the runtime jobs CLI", "command": `"$XBOT_BIN" jobs ` + args + ` --self`})
+}
+
 func mcpRuntimeInspect(t *testing.T, srv *Server, model *mcpRuntimeModel, cue, id string, cancel bool) []string {
 	t.Helper()
-	steps := []mcpRuntimeStep{mcpRuntimeTool("shell_status", map[string]string{"id": id}), mcpRuntimeTool("shell_output", map[string]string{"id": id})}
+	steps := []mcpRuntimeStep{mcpRuntimeJobs(t, "status "+id), mcpRuntimeJobs(t, "output "+id)}
 	if cancel {
-		steps = append(steps, mcpRuntimeTool("shell_cancel", map[string]string{"id": id}))
+		steps = append(steps, mcpRuntimeJobs(t, "cancel "+id))
 	}
 	model.add(cue, steps...)
 	srv.Send("Worker", cue)
@@ -473,7 +481,7 @@ func TestMCPRuntimeCallsAndSourceLease(t *testing.T) {
 		t.Fatal("an empty retired source kept its listener because another source owned a shared job")
 	}
 	// First actual web Kernel: it must see the original live job, not a lost
-	// disk record loaded into a second table. Inspection uses the old real tools.
+	// disk record loaded into a second table. Inspection uses the runtime CLI.
 	live := mcpRuntimeInspect(t, srv, model, "MCP_WEB_INSPECT_SLOW", slowID, false)
 	if !strings.Contains(live[0], slowID+" running") || !strings.Contains(live[1], "status: running") {
 		t.Fatalf("later web Kernel lost original live job: %v", live)
@@ -535,6 +543,10 @@ func TestMCPRuntimeCallsAndSourceLease(t *testing.T) {
 	beforeCancel := mcpRuntimeInspect(t, srv, model, "MCP_WEB_CANCEL_ORIGINAL", cancelID, true)
 	if !strings.Contains(beforeCancel[0], cancelID+" running") || !strings.Contains(beforeCancel[1], "status: running") {
 		t.Fatalf("web controls did not find original cancel target: %v", beforeCancel)
+	}
+	if !strings.HasPrefix(beforeCancel[2], "exit 0\n") ||
+		!(strings.Contains(beforeCancel[2], "cancellation requested "+cancelID) || strings.Contains(beforeCancel[2], "cancelled "+cancelID)) {
+		t.Fatalf("runtime jobs cancel did not stop the original call: %v", beforeCancel)
 	}
 	mcpRuntimeWait(t, cancelGate.canceled, 8*time.Second, "original HTTP call did not observe cross-K cancellation")
 	if job := mcpRuntimeJobEnded(t, srv, cancelID, 8*time.Second); job["status"] != "cancelled" {

@@ -147,15 +147,15 @@ func TestCLIChatGroupRuntimeProjectionCurrentRoute(t *testing.T) {
 				t.Fatal("actual group Job failed or lost complete32KiB output")
 			}
 			readCue := fmt.Sprintf("CLI_CHAT_PROJECTION_JOB_%d", index)
-			model.add(readCue, mcpRuntimeTool("shell_output", map[string]string{"id": id}))
+			model.add(readCue, mcpRuntimeTool("sh", map[string]string{"description": "Read the completed job through the runtime jobs CLI", "command": `"$XBOT_BIN" jobs output ` + id + ` --self`}))
 			cliSkillSend(t, srv, current, readCue)
 			read := model.results(readCue)
 			if len(read) != 1 || len(read[0]) > 32<<10 {
 				t.Fatal("native group Job consumer exceeded32KiB")
 			}
-			parts := strings.SplitN(read[0], "\n", 4)
+			parts := strings.SplitN(commandOutput(read[0]), "\n", 4)
 			if len(parts) != 4 || parts[0] != "status: done" || parts[1] != "offset: 0" || parts[2] != fmt.Sprintf("next_offset: %d", job.Bytes) {
-				t.Fatal("native group Job consumer lost full status/offset/bytes")
+				t.Fatalf("native group Job consumer lost full status/offset/bytes: %s", read[0])
 			}
 			output = parts[3]
 			if strings.HasPrefix(output, "exit ") {
