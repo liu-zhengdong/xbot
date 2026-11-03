@@ -660,6 +660,36 @@ A离线Load(sourceName)+新Kernel/Compactor/Memory重建，会丢source原provid
 
 autoCompact/foldBlocks/bgcompact.finishJob/applyReady/idle及bindingPrecheck原规划/队列/直接方法不经native门或解析ACK，保持原样。single形状后才独立最窄入口红，firstcompiled真实sourceSH+scripted compact.LLM无tools请求→原turn usage/Block→环境先于覆盖/memory.md及log正文未改（非锁/派生文件零IO）/原文可读，早交后继续同cut错误/cancel与Chat成功后State失败实错/已有env、模型等待期间真实sourceRename后State/trace当前路径/旧目录不复活；不以无usage裸fakeCompactor替代此首链。复用原range/pair/tail/overlap及源resolver/群三审批有效证据，只new+必要actualaffected最小once，不整longrun/缓存/FTS-Memory-Context-Store/前序各已绿族/真模型/性能矩阵。Root4USERdocs/SSE/guard/main/push日用不动，当前仅合同一个面。
 
+## 批 linkssearchload：两无审批子集具体合同
+
+基线TRUE compact worktree `828d9340`（compact产品冻结dcbf05fd待集成，前序各组分期证据封存不重跑）。本刀只迁linksTool的`search`+`load`（connectors-inventory-20261102候选A，完整行号/secrets-stage洞/最窄验收已盘点）；`install`/`remove`留owner卡+secrets-stage原链路下刀再议，linksTool不删。[Proposed ADR0062](../adr/0062-links-runtime-cli.md)。源证据：search links.go:110（Catalog+Connectors+mcpSpecs→TSV `id\tstate\tsummary\tsecrets:…`，state三态listed/available/installed，"no links"兜底，scrubSecrets收尾）、loadContext links.go:312（ResolveApp→storeConnector归一`mcp:`→指路`mcp tools`→organ loadedNames→catalog grant校验→markLoaded→loadedNames）；markLoaded/isLoaded/loadMu links.go:616-641、deferred registry.go:162、stableLinkNames links.go:737。
+
+### 实际caller与两结构
+
+```sh
+"$XBOT_BIN" links search --self [--query TEXT|--query-file FILE|-] [--json]
+"$XBOT_BIN" links load --self <id|name> [--json]
+"$XBOT_BIN" links --help
+```
+
+A离线Load(sourceName)+新Kernel：search要重造EffectiveLinks/mcpSpecs（Manager有效spec≠文件重读）/GlobalSecretLookup/vault占位；load的markLoaded写进程内`k.loaded`（loadMu），deferred解除与stableLinkNames是运行中kernel的效果，一次性进程标记随退出消失，tools door永远看不到——落选。B同原K/现listener：既有Handlers增加`Links *LinksHandlers`，request `{query?}`/`{id}`、reply `{text?,error?}`；`CallLinksSearch`/`CallLinksLoad`→`POST /v1/links/search|load`→holdOperations→原runtimeSourceCall preparedctx→原`linksTool{k}.search(query)`/`loadContext(prepared,id)`→原scrubbed text/实错。无需groupedService/actionEnvelope/ctxMetaFrame，不重新extract领域方法。
+
+### preparedctx与CallID判据
+
+search/load虽对live Shell ctx内容依赖最弱（search无ctx，loadContext的ctx只透传toolsForLoaded签名留参、Reconcile不在load路径），但两动作都必须命中**同一运行中kernel**的Bot/snapshotLinks/loaded状态；走runtimeSourceCall同时得到同listener/liveLocal/running/未finished/原Shell资格检查，故XBOT_CALL_ID/header必需，同compact判据而非transcript ignorectx。缺失/完成/foreign/nonShell/cancel沿原helper拒绝，不假造ctx；不用HTTPctx/latestTurn、不调runtimeApprovalSource/approveRuntimeIntent/approver、非primary-person资格。承载Shell原机器/policy gate独立；endpoint/规范root权威，显式root同一、旧XBOT_BOT只诊断，无离线fallback/newK。
+
+### 领域与退门边界
+
+search/load原helper逐字复用：三态判定、connectors目录过滤storeConnector、mcp行installed、organ恒loaded路径、`not installed`/`not found`/`id is required`实错、markLoaded只在loadedNames成功段后置位原序保持。load对`mcp:`前缀与store-connector名仍返回原指路文本指`"$XBOT_BIN" mcp tools %q --self --json`（playwright_load/connectors_prompt断言同语），`isLoaded("mcp:"+id)`永不置位。
+
+linksTool保留注册（Normal ExternalSend卡保），review.go:99归类、NeedsOwner install/remove例外、permissive唯一保卡、approvalSecretNames（仅tool=="links"）、StageSecrets→takeSecrets→storeSecrets/dropSecrets→GrantLink/RevokeLink→EnableConnector/RemoveMCP→Reconcile整链不动。本刀把linksTool.Run的search/load分支改为指路错误`links: … use the CLI: "$XBOT_BIN" links search|load --self`：install/remove仍以工具为卡/secrets锚不能整门退，而保留原返回会造成CLI+工具双入口与母路线方向相悖；Confirm对两action原""不变。
+
+输入侧：纯ParseLinksRuntime早于root/default/legacy分流，help离线、余self；query可省略/空，query/query-file互斥、路径非空、`-`stdin；load位置参数恰一。raw/文件/stdin max+1与escaped typedJSON各1MiB不先trim。HTTP strict单object/unknown/null/nonobject/尾随/URLquery拒，HTTP64KiB；FormatLinks human与JSONNL各32KiB，error沿dynamicRedactor+secretValues scrub仅显错可缩，CLI先印事实再非0，无artifact/File/Applied/rollback/retry/proxy。
+
+实际consumer同cut：manual/sections/connectors.md首段`links search`/`links load`指引改`"$XBOT_BIN" links … --self`（install/remove行保原工具语义）；installedSection/`InstalledRef`产出不改（只列id+summary无入口指令）；tools door describe/call、stableLinkNames/deferred原样。`allowReadOnlyPlatform`新增links分支：仅离线help与`search --self`放行，`load --self`置进程内loaded状态（deferred解除=运行时效果）不算只读——与compact同档；research DirectXBotArgs只认canonicalBIN/受控XBOT_BIN单POSIX+本parser。notable.go:213豁免、旧native literal/工具配对历史保，无暗shim/假配对/新ENV/Inbox/waker。
+
+最窄验收：①search --json与原search同TSV行集（catalog4+connectors+mcp行，三态一致，"no links"兜底，secrets名在值不在）；②load native后运行中kernel isLoaded置位（tools door describe/call或deferred解除可验），organ走loadedNames原路径，`mcp:`/store名指mcp tools错误不置位；③工具search/load报指CLI错误，install/remove卡链/secrets stage/permissive例外原样；④CallID缺失报`requires XBOT_CALL_ID from an active XBot shell`；⑤strict拒绝面+双32KiB/HTTP64KiB。复用secrets-hiding/catalog原证据与前序已绿族，只new+必要affected最小once，不整longrun/真模型/性能矩阵。
+
 ## 还没做的
 
 - 主人日用验收尚未开始。普通资料首刀的独立审计、真入口验证与合入已完成；后续不重复该刀设计审批，按新切片复核实际增量。
