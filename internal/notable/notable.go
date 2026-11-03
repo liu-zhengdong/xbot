@@ -210,9 +210,7 @@ func Tool(ctx context.Context, name string, args json.RawMessage, out string, re
 		objects, unit := deletedObjects(name, args)
 		recordDelete(ctx, objects, unit)
 	case review.ExternalSend:
-		if name != "links" {
-			record(ctx, "external_message", sendObjects(name, args)...)
-		}
+		record(ctx, "external_message", sendObjects(name, args)...)
 	case review.HTTP:
 		var in struct {
 			Method string `json:"method"`

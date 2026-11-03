@@ -2,7 +2,6 @@ package kernel
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -22,88 +21,38 @@ import (
 	"xbot/internal/work"
 )
 
-// linksTool lets the bot install and remove links. Search and load moved to
-// the current instance CLI ("$XBOT_BIN" links search|load --self).
-// Install always asks the owner. Secret values arrive from the approval card,
-// never from the model, and never go back out in the tool result.
+// linksTool carries the links domain helpers. It is no longer a model tool:
+// search/load/install/remove all run through the current instance CLI
+// ("$XBOT_BIN" links <action> --self), and install/remove reach these helpers
+// through the runtime handler's owner-card path. Secret values arrive from
+// the approval card, never from the model, and never go back out.
 type linksTool struct{ k *Kernel }
 
-func (linksTool) Name() string { return "links" }
-func (linksTool) Description() string {
-	return "安装、移除连接器；搜索目录和加载已装连接器走 \"$XBOT_BIN\" links search|load --self。MCP（如 Playwright）通过当前实例 CLI 操作：先运行 \"$XBOT_BIN\" mcp tools <服务器> --self --json，再用 mcp describe/call 和远端原工具名。install/remove 走用户确认，所需密钥由用户在确认卡填写，你不接收密钥值。"
-}
-func (linksTool) Parameters() any {
-	// search and load moved to the CLI; only install/remove stay on the tool.
-	return schema(map[string]any{
-		"action": stringProp("install or remove"),
-		"id":     stringProp("名称或 id"),
-	}, []string{"action"})
-}
-
-// Confirm only builds the card summary for install and remove. The kernel
-// review path decides that install and remove need the owner.
-func (t linksTool) Confirm(args json.RawMessage) (bool, string, error) {
-	var in struct {
-		Action string `json:"action"`
-		ID     string `json:"id"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return false, "", err
-	}
-	action := strings.ToLower(strings.TrimSpace(in.Action))
-	id := strings.TrimSpace(in.ID)
+// cardSummary builds the owner-card summary for install and remove, matching
+// the retired tool Confirm byte for byte: install is "install <id>\n<summary>
+// \nsecrets: <names>" (or connectorCard for a store connector, "install <id>"
+// on a lookup miss) and remove is "remove <id>". The web secrets stage reads
+// the id from the first line and the key names from the secrets line.
+func cardSummary(action, id string) string {
 	switch action {
 	case "install":
 		e, ok := link.Lookup(id)
 		if !ok {
 			if c, ok := storeConnector(id); ok {
-				return false, connectorCard(c), nil
+				return connectorCard(c)
 			}
-			return false, "install " + id, nil
+			return "install " + id
 		}
 		var b strings.Builder
 		fmt.Fprintf(&b, "install %s\n%s", e.ID, linkOneLine(e.Summary))
 		if len(e.Secrets) > 0 {
 			fmt.Fprintf(&b, "\nsecrets: %s", strings.Join(e.Secrets, ", "))
 		}
-		return false, b.String(), nil
+		return b.String()
 	case "remove":
-		return false, "remove " + id, nil
+		return "remove " + id
 	default:
-		return false, "", nil
-	}
-}
-
-func (t linksTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	var in struct {
-		Action string `json:"action"`
-		ID     string `json:"id"`
-	}
-	if err := json.Unmarshal(args, &in); err != nil {
-		return "", err
-	}
-	if t.k == nil || t.k.Bot == nil {
-		return "", fmt.Errorf("links: no bot")
-	}
-	switch strings.ToLower(strings.TrimSpace(in.Action)) {
-	case "search":
-		return "", fmt.Errorf("links: search moved to the CLI: \"$XBOT_BIN\" links search --self")
-	case "install", "remove":
-		var text string
-		var err error
-		if strings.EqualFold(strings.TrimSpace(in.Action), "install") {
-			text, err = t.install(strings.TrimSpace(in.ID))
-		} else {
-			text, err = t.remove(strings.TrimSpace(in.ID))
-		}
-		if err == nil && t.k.Resources != nil {
-			_ = t.k.Resources.manager.Reconcile(ctx)
-		}
-		return text, err
-	case "load":
-		return "", fmt.Errorf("links: load moved to the CLI: \"$XBOT_BIN\" links load --self <id|name>")
-	default:
-		return "", fmt.Errorf("links: action must be install or remove")
+		return ""
 	}
 }
 
@@ -771,6 +720,3 @@ func (k *Kernel) scrubEntry(m provider.Message) provider.Message {
 func lazyUntilLoad(name string) bool {
 	return link.StoreGrant(name)
 }
-
-// silence unused import if tools is only used in toolsForLoaded
-var _ tools.Tool = linksTool{}

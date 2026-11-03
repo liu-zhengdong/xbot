@@ -13,21 +13,18 @@ import (
 	"xbot/internal/tools"
 )
 
-func TestLinksConfirmInstallAndRemove(t *testing.T) {
-	// The tool only builds the card summary; the kernel review path decides.
-	var tool linksTool
-	need, summary, err := tool.Confirm([]byte(`{"action":"install","id":"webhook"}`))
-	if err != nil || need || !strings.HasPrefix(summary, "install webhook") {
-		t.Fatalf("need %v summary %q err %v", need, summary, err)
+func TestLinksCardSummaryInstallAndRemove(t *testing.T) {
+	// cardSummary keeps the retired Confirm's card text byte for byte; the
+	// runtime handler decides that install and remove need the owner.
+	if summary := cardSummary("install", "webhook"); !strings.HasPrefix(summary, "install webhook") {
+		t.Fatalf("install summary %q", summary)
 	}
-	need, summary, err = tool.Confirm([]byte(`{"action":"remove","id":"webhook"}`))
-	if err != nil || need || !strings.HasPrefix(summary, "remove webhook") {
-		t.Fatalf("remove need %v summary %q err %v", need, summary, err)
+	if summary := cardSummary("remove", "webhook"); !strings.HasPrefix(summary, "remove webhook") {
+		t.Fatalf("remove summary %q", summary)
 	}
 	for _, action := range []string{"search", "load"} {
-		need, summary, err = tool.Confirm([]byte(`{"action":"` + action + `","id":"webhook"}`))
-		if err != nil || need {
-			t.Fatalf("%s need %v summary %q err %v", action, need, summary, err)
+		if summary := cardSummary(action, "webhook"); summary != "" {
+			t.Fatalf("%s summary %q", action, summary)
 		}
 	}
 }

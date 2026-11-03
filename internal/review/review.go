@@ -95,9 +95,6 @@ var Table = map[string]Class{
 	// The bot's own task list. It does not leave XBot or destroy data.
 	"todo": Normal,
 
-	// Link catalog. install and remove ask; search and load do not.
-	"links": ExternalSend,
-
 	// Connectors.
 	"telegram_send": ExternalSend,
 	"lark_send":     ExternalSend,
@@ -217,16 +214,6 @@ func NeedsOwner(tool string, args json.RawMessage) bool {
 	case Delete, Restart:
 		return true
 	case ExternalSend:
-		// links is one tool with four actions. Only install and remove change
-		// the bot's grants or secrets.
-		if name == "links" {
-			switch strings.ToLower(linksAction(args)) {
-			case "install", "remove":
-				return true
-			default:
-				return false
-			}
-		}
 		return true
 	case HTTP:
 		return httpNeedsOwner(args)
@@ -327,14 +314,6 @@ func shellKeys(args json.RawMessage) bool {
 	}
 	_ = json.Unmarshal(args, &in)
 	return in.Keys
-}
-
-func linksAction(args json.RawMessage) string {
-	var in struct {
-		Action string `json:"action"`
-	}
-	_ = json.Unmarshal(args, &in)
-	return in.Action
 }
 
 // shellWords splits a shell command on operators and quotes so a dangerous

@@ -158,54 +158,6 @@ func TestLinksRuntimeScrubsSecretValuesFromErrors(t *testing.T) {
 	}
 }
 
-// The links tool keeps only install and remove; search and load return the
-// pointer errors that name the current instance CLI commands.
-func TestLinksToolRunPointsSearchLoadAtCLI(t *testing.T) {
-	b := testBot(t, link.NameTerminal)
-	tool := linksTool{&Kernel{Bot: b}}
-	for _, tc := range []struct{ action, want string }{
-		{"search", `"$XBOT_BIN" links search --self`},
-		{"load", `"$XBOT_BIN" links load --self <id|name>`},
-	} {
-		out, err := tool.Run(context.Background(), json.RawMessage(`{"action":"`+tc.action+`","id":"browser"}`))
-		if err == nil || out != "" || !strings.Contains(err.Error(), tc.want) {
-			t.Fatalf("%s out=%q want pointer %q err=%v", tc.action, out, tc.want, err)
-		}
-	}
-	for _, action := range []string{"", "Search", "LOAD", "remove-extra", "query"} {
-		_, err := tool.Run(context.Background(), json.RawMessage(`{"action":"`+action+`"}`))
-		if action == "Search" || action == "LOAD" {
-			if err == nil || !strings.Contains(err.Error(), "moved to the CLI") {
-				t.Fatalf("case-folded %s err=%v", action, err)
-			}
-			continue
-		}
-		if err == nil || !strings.Contains(err.Error(), "install or remove") {
-			t.Fatalf("action=%q err=%v", action, err)
-		}
-	}
-	desc := tool.Description()
-	if !strings.Contains(desc, `"$XBOT_BIN" links search|load --self`) || strings.Contains(desc, "query") {
-		t.Fatalf("description=%q", desc)
-	}
-	raw, err := json.Marshal(tool.Parameters())
-	if err != nil {
-		t.Fatal(err)
-	}
-	var params map[string]any
-	if err := json.Unmarshal(raw, &params); err != nil {
-		t.Fatal(err)
-	}
-	props, _ := params["properties"].(map[string]any)
-	action, _ := props["action"].(map[string]any)
-	if !strings.Contains(action["description"].(string), "install or remove") {
-		t.Fatalf("schema action=%v", action)
-	}
-	if enum, ok := action["enum"].([]any); ok && len(enum) != 0 {
-		t.Fatalf("schema enum still advertises retired actions=%v", enum)
-	}
-}
-
 // linksSearchRuntime runs the original linksTool.search end to end: the
 // output still passes through scrubSecrets with live secretValues, so a staged
 // secret that occurs inside a real MCP row never reaches the caller.
@@ -241,8 +193,12 @@ func TestLinksRuntimeRejectsMissingSourceCall(t *testing.T) {
 		name string
 		run  func(context.Context) (cliops.LinksReply, error)
 	}{
-		{"search", func(ctx context.Context) (cliops.LinksReply, error) { return k.linksSearchRuntime(ctx, cliops.LinksSearch{}) }},
-		{"load", func(ctx context.Context) (cliops.LinksReply, error) { return k.linksLoadRuntime(ctx, cliops.LinksLoad{ID: "telegram"}) }},
+		{"search", func(ctx context.Context) (cliops.LinksReply, error) {
+			return k.linksSearchRuntime(ctx, cliops.LinksSearch{})
+		}},
+		{"load", func(ctx context.Context) (cliops.LinksReply, error) {
+			return k.linksLoadRuntime(ctx, cliops.LinksLoad{ID: "telegram"})
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			reply, err := tc.run(context.Background())

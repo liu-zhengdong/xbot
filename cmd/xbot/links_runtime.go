@@ -17,17 +17,21 @@ import (
 
 const linksUsage = `Usage: xbot [--root DIR] links search --self [--query TEXT | --query-file FILE|-] [--json]
   xbot [--root DIR] links load --self <id|name> [--json]
+  xbot [--root DIR] links install --self <id|name|store-connector> [--json]
+  xbot [--root DIR] links remove --self <id|name|store-connector> [--json]
   xbot links --help
-  xbot links search|load --help
+  xbot links search|load|install|remove --help
 --self selects the active source through XBOT_ENDPOINT and canonical XBOT_ROOT;
 XBOT_CALL_ID supplies the original active Shell context. XBOT_BOT is diagnostic
 only. search prints the original TSV catalog rows, or "no links"; an empty
 query lists the whole catalog. load prints the original "loaded id: tools…"
 acknowledgement; mcp: ids and store connectors still point at mcp tools.
---query-file - reads stdin. Raw query and escaped JSON each allow 1 MiB.
-Received facts print before a failure exit; no automatic retry is added.
-Help works offline; runtime calls require the active source endpoint and the
-original Shell call ID. Install and remove stay on the links tool owner card.
+install and remove show the original owner approval card; install collects
+any required keys on the card itself, and prints "installed id" or
+"removed id". --query-file - reads stdin. Raw query and escaped JSON each
+allow 1 MiB. Received facts print before a failure exit; no automatic retry
+is added. Help works offline; runtime calls require the active source
+endpoint and the original Shell call ID.
 `
 
 func cmdLinksRuntime(rawRoot string, rootExplicit bool, args []string) error {
@@ -92,8 +96,12 @@ func runLinksRuntime(ctx context.Context, rawRoot string, rootExplicit bool, arg
 		reply, operationErr = cliops.CallLinksSearch(ctx, endpoint, root, callID, input)
 	case "load":
 		reply, operationErr = cliops.CallLinksLoad(ctx, endpoint, root, callID, cliops.LinksLoad{ID: command.ID})
+	case "install":
+		reply, operationErr = cliops.CallLinksInstall(ctx, endpoint, root, callID, cliops.LinksInstall{ID: command.ID})
+	case "remove":
+		reply, operationErr = cliops.CallLinksRemove(ctx, endpoint, root, callID, cliops.LinksRemove{ID: command.ID})
 	default:
-		return errors.New("links: expected search or load")
+		return errors.New("links: expected search, load, install, or remove")
 	}
 	if operationErr != nil && reply == (cliops.LinksReply{}) {
 		return operationErr

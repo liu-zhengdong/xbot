@@ -1,6 +1,6 @@
 # 连接器
 
-非 MCP Link 仍以出站工具、入站事件接入。`"$XBOT_BIN" links search --self` 查目录，`links install/remove` 走工具确认卡改安装，非 MCP 的 `"$XBOT_BIN" links load <id|名称> --self` 列出工具 id，再经 `tools` 的 search/describe/call；安装不等于实际请求已经成功。
+非 MCP Link 仍以出站工具、入站事件接入。`"$XBOT_BIN" links search --self` 查目录，`"$XBOT_BIN" links install|remove <id|名称> --self` 走主人确认卡改安装，非 MCP 的 `"$XBOT_BIN" links load <id|名称> --self` 列出工具 id，再经 `tools` 的 search/describe/call；安装不等于实际请求已经成功。
 
 MCP 用当前实例 CLI：Shell 中先运行 `"$XBOT_BIN" mcp --help`，然后 `mcp list --self --json`、`mcp tools <服务器> --self --json`、`mcp describe <服务器> <远端原名> --self --json`、`mcp call <服务器> <远端原名> --args '<JSON object>' --self --json`。服务默认全局配置，显式 `--scope bot` 是当前 Bot 的整条覆盖；调用总用有效配置。MCP 不再注册模型 schema，不用旧 `mcp_` 工具名或 links load。research 只允许当前实例的读取命令，call 另需 `--readonly` 且远端当前工具明确只读。
 

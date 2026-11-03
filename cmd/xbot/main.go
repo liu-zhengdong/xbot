@@ -37,6 +37,8 @@ Usage:
   xbot links --help
   xbot [--root DIR] links search --self [--query TEXT | --query-file FILE|-] [--json]
   xbot [--root DIR] links load --self <id|name> [--json]
+  xbot [--root DIR] links install --self <id|name|store-connector> [--json]
+  xbot [--root DIR] links remove --self <id|name|store-connector> [--json]
   xbot transcript --help
   xbot [--root DIR] transcript search --self [--query TEXT | --query-file FILE|-] [--bot NAME] [--json]
   xbot [--root DIR] transcript expand --self --from N --to N [--bot NAME] [--json]

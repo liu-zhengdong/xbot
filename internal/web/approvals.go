@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -96,7 +97,8 @@ func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)
 			}
 			s.mu.Unlock()
 		}()
-		title, subtitle := review.CardText(tool, agent.ToolArgs(ctx), summary, machine.Local)
+		args := agent.ToolArgs(ctx)
+		title, subtitle := review.CardText(tool, args, summary, machine.Local)
 		deadline := card.deadline.Format(time.RFC3339)
 		appendCard := func(state string) {
 			text := bot.ApprovalCardText(id, tool, title, subtitle, summary, state)
@@ -113,7 +115,7 @@ func (s *Server) webApprove(b *bot.Bot, k *kernel.Kernel, send func(string, any)
 			"id": id, "tool": tool, "summary": summary, "title": title, "subtitle": subtitle,
 			"deadline": deadline,
 		}
-		names := approvalSecretNames(tool, summary)
+		names := approvalSecretNames(tool, args, summary)
 		if len(names) > 0 {
 			payload["secrets"] = names
 		}
@@ -181,8 +183,32 @@ func (s *Server) applyDecision(b *bot.Bot, k *kernel.Kernel, id, summary string,
 	return d.allow, nil
 }
 
-func approvalSecretNames(tool, summary string) []string {
-	if tool != "links" {
+// approvalSecretNames reads the key names a card should collect. It judges by
+// the typed approval args, not by card text: the retired links tool name still
+// matches, and a runtime links CLI card arrives under the Shell tool name with
+// its intent in the _xbot_links blob (install asks for keys; remove does not).
+func approvalSecretNames(tool string, args json.RawMessage, summary string) []string {
+	if tool == "links" {
+		return secretNamesFromSummary(summary)
+	}
+	if !review.IsShellTool(tool) {
+		return nil
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(args, &fields); err != nil {
+		return nil
+	}
+	raw, ok := fields["_xbot_links"]
+	if !ok {
+		return nil
+	}
+	var intent struct {
+		Action string `json:"action"`
+	}
+	if err := json.Unmarshal(raw, &intent); err != nil {
+		return nil
+	}
+	if !strings.EqualFold(strings.TrimSpace(intent.Action), "install") {
 		return nil
 	}
 	return secretNamesFromSummary(summary)
