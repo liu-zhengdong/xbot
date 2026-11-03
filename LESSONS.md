@@ -57,6 +57,7 @@
 - **合并草稿 PR 前先 `gh pr ready`。** 原因：草稿状态下合并会被拒，合并流程卡在半路。证据：2026-10-17 合 #33。Seen 1×（2026-10-17）
 - **升级脚本用 flock 拿的锁，要在启动 serve 之前关掉文件描述符。** 原因：serve 会继承这个描述符，一直攥着 `.upgrade.lock`，下一次升级或回退报「another upgrade holds .upgrade.lock」。证据：线上 `backups/rollback-m6.sh` 的 `exec 9>&-`。Seen 1×（2026-10-17）
 - **退役工具时守门 want 列表、looseCall 豁免和 manual 指引词要一起查。** 退役 kernel_manual/list_secrets 时断言散在 registry/review/vault/http 各 want 列表、breaker 的 `looseCall` 豁免和 `manual.Prompt()`/`Index()` 的入口指引词；少迁一处测试或文档就过时。守护：`registry_test`/`review_test`/`vault_test`/`http_test` 的退役断言与 `context_batch_c_test` 的 `sh xbot manual` 断言随产品同刀迁移。Seen 1×（2026-11-02）
+- **孩子代理没有自己的 kernel 时，靠 scoped Shell 环境钉住调用方身份的工具面收窄会随 ctx 通道消失。** 退役 subagent 三读时 `selfSubagentTool` 靠 `req.ID` 钉自己 id、并排除 `list_subagents`；迁 CLI 后孩子 `--self` 经 `XBOT_ENDPOINT` 回父 listener，IGNORE ctx 无 `XBOT_CALL_ID` 即无调用方识别，只能接受 scoping 放宽——孩子 read/expand 任意有效 `sa_` id、list 全部兄弟。这是工具面语义收窄而非硬边界：孩子本就 `read_file` 可读兄弟 transcript（dispatch.go 指引明文）。守护：ADR0065 SHAPE PASS 记录放宽依据，atlas subagents.md/kernel.md 与安全 readonly 表明文标注；continuable contract 测试负表断言孩子读兄弟 id 按原语义返回。Seen 1×（2026-11-02）
 
 ## 做对了
 - 盒子回归用假模型和回显服务，真值只在服务端出现，transcript 和模型输入里 0 处（M7，2026-10-16）。

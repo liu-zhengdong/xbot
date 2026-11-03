@@ -1,5 +1,14 @@
 # XBot 里程碑与进度
 
+## 2026-11-02 subagent 三读 runtime CLI（所测独立端到端分阶段通过，待集成）
+
+- 合同 3d5a08e8 [ADR0065](adr/0065-subagent-read-cli.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS（1 实质修正：接受 scoping 放宽——孩子无 kernel、scoped sh 绑父 endpoint、IGNORE ctx 后无调用方识别，`selfSubagentTool` 钉自己 id 的工具面收窄不保留，孩子本就 `read_file` 可读兄弟 transcript，非硬安全边界；另补退役面清单与小错）→ca5fe01e Accepted。
+- impl 15cb10d6（28prod +642/-210）：`xbot subagent list|read|expand --self` 经 source `XBOT_ENDPOINT` POST `/v1/subagent/{list,read,expand}` 回同 listener，三原 Run 均 IGNORE ctx、无 `XBOT_CALL_ID`；kernel `SubagentsHandlers` 在 `holdOperations` 下逐字复用原方法体（`withCurrentIO`+`exec.ReadStatus`/`Expand`/`ReadMeta`/`ReadDescriptor`/`ActiveTask`，`execID` 边界检查不变）。退役：`listSubagentsTool`/`readSubTool`/`expandSubTool` 三 wrapper、`selfSubagentTool` 整型及其 `scopeTools` 分支、readonly 表三行、persona/agenttype/manual/atlas/README 指引、breaker `looseCall` 的 `read_subagent` 豁免、readonly 分支与 kernel.md 入口段；agents 组写类（dispatch/spawn/agent_*/steer/queue/interrupt/cancel）保。
+- TEST-ONLY ad17848a（5 testfiles）：`review_test` 三退役名迁 retired 表（`Known()==false`、`ClassOf==Normal`）；`eval/dispatch_test` 种子检查腿改经真 kernel+`cliops.CallSubagentRead` 断言运行字段；`mockopenai` `sawReadSub` 改 sh 前缀 `"$XBOT_BIN" subagent read --self`+`cat result.txt` fallback；continuable lifecycle 的 `list_subagents` producer 迁 `sh "$XBOT_BIN" subagent list --self`；contract 孩子负表 `list_subagents` 死名删、补三退役读名+非 Dispatch 写名。
+- STATIC prod PASS ca5fe01e..15cb10d6（28 actualPROD，三领域方法体逐字复用，无实际不一致）。
+- 独立业务：entry-red a6e8628d FAIL .73s（door `unknown command`）→merge b1e0fb90+ab99f99f GREEN .73s/pkg1.895s（list exit0、read 域错误真到 runtime）。
+- 当前级别：所测独立端到端分阶段通过+STATIC prod PASS+作者 checks，产品 28 文件冻结 15cb10d6，**待集成 main**、未日用。scoping 放宽为接受的语义（孩子可读兄弟，非硬边界）。Not run：kernel3 旧族/真模型/p95/主人日用/push。Pre-existing fails 无关：TestCardText `delete_bot`、eval steer-fixture gap（`TestDispatchSuitePassesWithScripts`/`TestBusyDispatchCasesRejectWrongActions`）、LongRunJourney/peer loop 空 `XBOT_BIN` gap——均在 15cb10d6 上已红。
+
 ## 2026-11-02 kernel_manual 与 list_secrets 退注册走离线等价 CLI（所测独立端到端分阶段通过，待集成）
 
 - 合同 d0ff7731 [ADR0064](adr/0064-manual-secrets-retire.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS（1措辞修正：research 下 `xbot manual`/`xbot secret` 实为 readOnlyShell 解释器前硬拒、不弹卡不执行）→1456be04 Accepted。

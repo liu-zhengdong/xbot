@@ -364,6 +364,18 @@ linksTool 已整门退役，模型侧不再有 `links` 入口：registry `"links
 
 `kernel_manual` 与 `list_secrets` 两个 Readonly 模型工具随后也退注册：模型经 `sh` 运行离线等价的 `xbot manual <section>` 与 `xbot secret list <bot>`（读同一 embed 正文与同一 vault backend），无 runtime endpoint/prepared ctx/`--self` 桥。registry `"links"` 组随 `kernelManualTool{}` 退组整组删，`"secrets"` 组只剩 `http_request`；review 表 `kernel_manual`/`list_secrets` 两行删、`Known`/`ClassOf` 落 Normal default，`breaker` 的 `looseCall` `list_secrets` 豁免随退，`manual.Prompt()`/`Index()` 指引词改指 `xbot manual`。决定见 [ADR0064](adr/0064-manual-secrets-retire.md)。
 
+## 子代理三读运行时 CLI
+
+```sh
+"$XBOT_BIN" subagent list --self [--limit N] [--json]
+"$XBOT_BIN" subagent read --self <id> [--json]
+"$XBOT_BIN" subagent expand --self <id> [--from N] [--to N] [--json]
+"$XBOT_BIN" subagent --help
+"$XBOT_BIN" subagent list|read|expand --help
+```
+
+`list_subagents`/`read_subagent`/`expand_subagent` 三个 Readonly 模型工具已退注册：模型经 `sh` 运行 `"$XBOT_BIN" subagent list|read|expand --self`，沿原 source `XBOT_ENDPOINT`/`XBOT_ROOT` POST 到同 listener 的 `POST /v1/subagent/list|read|expand`，由同一运行中 kernel 的原方法体读 `exec.ReadStatus`/`Expand`/`ReadMeta`/`ReadDescriptor`/`ActiveTask`。三原 Run 均 IGNORE ctx，无 `XBOT_CALL_ID` 要求；endpoint 是同实例资格——`ActiveTask` 活任务覆盖与 route 锁保护的 current ref 只在运行中 kernel 存在。孩子 scoped Shell 的 `--self` 经父 endpoint 回同一 listener 取父 current：read/expand 任意有效 `sa_` id、list 全部兄弟——scoping 放宽是接受的语义（原 `selfSubagentTool` 钉自己 id 的工具面收窄不保留，孩子本就 `read_file` 可读兄弟 transcript，非硬安全边界）。退役面：`listSubagentsTool`/`readSubTool`/`expandSubTool` 三 wrapper、`selfSubagentTool` 整型及其 `scopeTools` 分支、readonly 表三行、`looseCall` 的 `read_subagent` 豁免、persona/agenttype/manual/atlas/README 与三处 `expand_subagent`/`read_subagent` 指引均改指 CLI；agents 组写类保留。回包 `{text?,error?}`，human 与整 JSONNL 各≤原 Shell 32 KiB，HTTP 64 KiB。实例接线见 [内核](atlas/kernel.md)，决定见 [ADR0065](adr/0065-subagent-read-cli.md)。
+
 ## Bot 列表与创建
 
 `GET /api/bots` 返回当前 owner 的 Bot。顺序是置顶在前，组内按名字。主 Bot 会被 `SetPrimary` 置顶，所以通常排在置顶组里。
