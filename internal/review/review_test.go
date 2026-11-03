@@ -19,7 +19,6 @@ func shellNeed(t *testing.T, command string) bool {
 func TestTableHasEveryClass(t *testing.T) {
 	want := map[string]Class{
 		"read_file":     Readonly,
-		"list_secrets":  Readonly,
 		"code_show":     Readonly,
 		"restart_xbot":  Restart,
 		"secret_rm":     Delete,
@@ -204,9 +203,9 @@ func TestRetiredLinksToolIsUnknown(t *testing.T) {
 }
 
 func TestSelfEditAndReadOnlyClasses(t *testing.T) {
-	for _, name := range []string{"recall_history", "expand", "detail"} {
+	for _, name := range []string{"recall_history", "expand", "detail", "kernel_manual", "list_secrets"} {
 		if Known(name) || ClassOf(name) != Normal {
-			t.Fatalf("retired transcript tool remains classified: %s", name)
+			t.Fatalf("retired tool remains classified: %s", name)
 		}
 	}
 	// write_file/edit_file are path-dependent; the kernel checks the path.
@@ -216,7 +215,7 @@ func TestSelfEditAndReadOnlyClasses(t *testing.T) {
 	if need(t, "edit_file", `{"path":"plans/2026.md"}`) {
 		t.Fatal("edit_file asked without a path check")
 	}
-	for _, name := range []string{"read_file", "list_secrets", "read_subagent", "expand_subagent", "browser_snapshot", "code_show", "web_fetch", "web_search", "view_image"} {
+	for _, name := range []string{"read_file", "read_subagent", "expand_subagent", "browser_snapshot", "code_show", "web_fetch", "web_search", "view_image"} {
 		if need(t, name, `{}`) {
 			t.Fatalf("%s asked", name)
 		}

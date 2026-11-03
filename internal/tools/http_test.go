@@ -118,25 +118,6 @@ func TestHTTPRequestRefusesUnboundHost(t *testing.T) {
 	}
 }
 
-func TestSecretListShowsNamesAndDomainsOnly(t *testing.T) {
-	const value = "hidden-value"
-	store := httpTestStore(t)
-	if err := store.Set("TOKEN", value, []string{"a.com", "b.com"}); err != nil {
-		t.Fatal(err)
-	}
-	tool := &SecretList{Store: store}
-	out, err := tool.Run(context.Background(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out, "TOKEN") || !strings.Contains(out, "a.com,b.com") {
-		t.Fatalf("names/domains missing: %q", out)
-	}
-	if strings.Contains(out, value) {
-		t.Fatalf("value leaked: %q", out)
-	}
-}
-
 func TestHTTPRequestConfirmDefersToKernelReview(t *testing.T) {
 	tool := &HTTPRequest{}
 	// The tool itself never forces a card; the kernel's central review does.
@@ -155,9 +136,4 @@ func TestHTTPRequestConfirmDefersToKernelReview(t *testing.T) {
 	}
 }
 
-func TestSecretListDoesNotAsk(t *testing.T) {
-	need, _, err := (&SecretList{}).Confirm(nil)
-	if err != nil || need {
-		t.Fatalf("list_secrets need=%v err=%v", need, err)
-	}
-}
+	

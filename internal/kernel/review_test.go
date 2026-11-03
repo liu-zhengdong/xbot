@@ -355,7 +355,7 @@ func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
 			t.Fatalf("tool %q answered need=true on its own; the table must decide", name)
 		}
 	}
-	for _, want := range []string{"sh", "read_file", "write_file", "edit_file", "web_fetch", "web_search", "view_image", "http_request", "list_secrets",
+	for _, want := range []string{"sh", "read_file", "write_file", "edit_file", "web_fetch", "web_search", "view_image", "http_request",
 		"telegram_send", "lark_send", "code_start", "desktop_click", "browser_open"} {
 		if !seen[want] {
 			t.Fatalf("expected tool %q was not registered", want)
@@ -367,7 +367,7 @@ func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
 	if seen["links"] || review.Known("links") {
 		t.Fatal("retired links tool remains registered or classified")
 	}
-	for _, name := range []string{"compact", "recall_history", "expand", "detail", "fork_bot", "message_bot", "list_groups", "get_group_message_history", "create_group", "post_group", "bot_propose_persona", "create_bot", "delete_bot", "list_bots", "bot_status"} {
+	for _, name := range []string{"compact", "recall_history", "expand", "detail", "fork_bot", "message_bot", "list_groups", "get_group_message_history", "create_group", "post_group", "bot_propose_persona", "create_bot", "delete_bot", "list_bots", "bot_status", "kernel_manual", "list_secrets"} {
 		if seen[name] || review.Known(name) {
 			t.Fatalf("retired tool %s remains registered or classified", name)
 		}

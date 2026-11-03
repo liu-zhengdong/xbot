@@ -37,8 +37,8 @@ func TestModelToolsIncludeVaultToolsOnlyWithVault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasToolName(list, "http_request") || !hasToolName(list, "list_secrets") {
-		t.Fatal("vault tools missing with a vault")
+	if !hasToolName(list, "http_request") || hasToolName(list, "list_secrets") {
+		t.Fatal("expected only http_request with a vault, no list_secrets")
 	}
 
 	bare := &Kernel{Bot: b, Links: []link.Link{toolsLink}}

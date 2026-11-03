@@ -33,10 +33,27 @@ func batchReply(text string) provider.Message {
 func TestBatchCManualReadBeforeAnswer(t *testing.T) {
 	for _, section := range manual.Sections() {
 		t.Run(section.ID, func(t *testing.T) {
-			b := testBot(t, link.NameTerminal)
+			b, _, err := bot.EnsurePrimary(t.TempDir(), bot.Seed{Links: []string{link.NameTerminal}, Owner: "u1"})
+			if err != nil {
+				t.Fatal(err)
+			}
 			body, _ := manual.Read(section.ID)
-			p := &scripted{resps: []provider.Message{batchCall("manual", "kernel_manual", fmt.Sprintf(`{"section":%q}`, section.ID)), batchReply(body)}}
-			k := &Kernel{Bot: b, Provider: p, MaxSteps: 4}
+			shArgs, _ := json.Marshal(map[string]string{"command": `"$XBOT_BIN" manual ` + section.ID})
+			p := &scripted{resps: []provider.Message{batchCall("manual", "sh", string(shArgs)), batchReply(body)}}
+			k := &Kernel{Bot: b, Provider: p, MaxSteps: 4, Links: []link.Link{c1Link{tool: routineSourceShell{run: func(ctx context.Context, raw json.RawMessage) (string, error) {
+				var input struct{ Command string }
+				if err := json.Unmarshal(raw, &input); err != nil {
+					return "", err
+				}
+				argv, ok := review.DirectXBotArgs(input.Command, "$XBOT_BIN")
+				if !ok {
+					return "", fmt.Errorf("fixture requires a direct source CLI command")
+				}
+				if len(argv) != 2 || argv[0] != "manual" {
+					return "", fmt.Errorf("fixture requires: xbot manual <section>")
+				}
+				return manual.Read(argv[1])
+			}}}}}
 			if err := k.Handle(context.Background(), link.TerminalEvent("u1", "你怎么做到"+section.Title+"，我在哪看？", time.Now())); err != nil {
 				t.Fatal(err)
 			}
@@ -56,15 +73,7 @@ func TestBatchCManualReadBeforeAnswer(t *testing.T) {
 			if !strings.Contains(got, body) {
 				t.Fatal("manual tool content missing before scripted answer")
 			}
-			if review.ClassOf("kernel_manual") != review.Readonly {
-				t.Fatal("manual must be readonly")
-			}
 		})
-	}
-	for _, args := range []string{`{}`, `{"section":"../../secret"}`, `{"section":1}`} {
-		if _, err := (kernelManualTool{}).Run(context.Background(), json.RawMessage(args)); err == nil {
-			t.Fatalf("accepted %s", args)
-		}
 	}
 }
 
