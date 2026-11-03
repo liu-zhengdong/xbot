@@ -1,5 +1,14 @@
 # XBot 里程碑与进度
 
+## 2026-11-02 kernel_manual 与 list_secrets 退注册走离线等价 CLI（所测独立端到端分阶段通过，待集成）
+
+- 合同 d0ff7731 [ADR0064](adr/0064-manual-secrets-retire.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS（1措辞修正：research 下 `xbot manual`/`xbot secret` 实为 readOnlyShell 解释器前硬拒、不弹卡不执行）→1456be04 Accepted。
+- impl a10d2056（9prod +9/-95）：registry `"links"` 组整行删（kernelManualTool 退后组空）、`"secrets"` 组只剩 `http_request`；`internal/kernel/manual.go` 的 `kernelManualTool` 与 `internal/tools/secrets.go` 的 `SecretList` 整型删（`internal/manual` 包与 vault 链保）；`review.go` 61/76 两行表删、`breaker.go:249` `looseCall` 的 `list_secrets` 豁免删；`manual.Prompt()`/`Index()` 指引词改指 `sh xbot manual <section>`；atlas 三处（security/kernel/memory）同步。
+- TEST-ONLY b9245a90（6 testfiles）：kernel441+tools119+review30 PASS，`context_batch_c_test` 改写为 scripted `sh` 调 `xbot manual` 断言正文到达，vault/registry/review/http 守门断言迁移。
+- STATIC PASS 1456be04..a10d2056（9actualPROD），无实际不一致。
+- 独立业务：entry-red aa0877fd FAIL .93s/pkg2.333s（door `unknown tool`）→merge bcc3f95d GREEN 2.661s（`unknown tool`+describe 拒+`xbot manual`/`xbot secret list` CLI 守门）。
+- 当前级别：所测独立端到端分阶段通过+STATIC PASS+作者 checks，产品9冻结a10d2056，**待集成main**、未日用。本刀是最简形态：无 prepared ctx/runtime endpoint/`--self`，纯退注册+离线等价。Not run：kernel3/旧族/真模型外网/性能p95/主人日用/rootmain/push/release/guard。Pre-existing fails 无关（TestCardText delete_bot/EnvStream/ForkMarkers）。
+
 ## 2026-11-02 links 安装移除沿原 owner 卡 secrets stage CLI 并退役 links 工具（所测独立端到端分阶段通过，待集成）
 
 - L档，基线 worktree `641ff57c`（links search/load 产品冻结fe6952b5待集成）后迁linksTool仅剩的`install`/`remove`两动作并整门退工具（connectors-install-remove-inventory-20261102候选A）。合同 fc9ef812 [ADR0063](adr/0063-links-install-remove-cli.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS→ab29fc0f Accepted（permissive不短路差异写准、验收十点全对，summary secrets逗号分隔注记不阻塞）。选B同K owner重绑：`CallLinksInstall`/`CallLinksRemove`携mandatory X-XBot-Call-ID→`POST /v1/links/install|remove`→holdOperations→**runtimeApprovalSource**（`WithValue(turnKey{},source.owner)`重绑走owner动态fork分支，child时owner=nil）→原Shell args嵌`_xbot_links:{action,id}` canonical blob→`approveRuntimeIntent`发原Confirm同构卡→原`install`/`installConnector`/`remove`/`removeConnector` helper→`Reconcile(callCtx)`；A离线Load-newK落选（无prepared ctx发卡、写盘后运行中Manager/k.Links不感知，与「卡填完即安装生效」原语义不等价）。secrets-stage最小解：`approvalSecretNames`认`tool=="links"`原分支+Shell类tool且args含`_xbot_links` blob且action=="install"（按args判不按文案），值仍经filterSecrets白名单→StageSecrets→takeSecrets同id取出，模型永不接触。现状提炼 [API](API.md#links-目录搜索加载与安装移除运行时-cli)、[生态](atlas/ecosystem.md)、[安全](atlas/security.md#links-目录搜索加载与安装移除-cli)。

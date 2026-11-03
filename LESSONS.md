@@ -56,6 +56,7 @@
 - **写下的状态要有人读，没人读就删；记忆冲突就按最新的赢，不加信任级别的特例。** 原因：#33 写了每个 Bot 的 `.memory-migrated` 标记却从不读；`newest()` 让旧的可信 Bot 事实压过更新的 person 事实，用户的更正被藏住，第三轮 review 才发现。证据：`966d9f8`（#33）最后一个提交，两条复现测试。Seen 1×（2026-10-17）
 - **合并草稿 PR 前先 `gh pr ready`。** 原因：草稿状态下合并会被拒，合并流程卡在半路。证据：2026-10-17 合 #33。Seen 1×（2026-10-17）
 - **升级脚本用 flock 拿的锁，要在启动 serve 之前关掉文件描述符。** 原因：serve 会继承这个描述符，一直攥着 `.upgrade.lock`，下一次升级或回退报「another upgrade holds .upgrade.lock」。证据：线上 `backups/rollback-m6.sh` 的 `exec 9>&-`。Seen 1×（2026-10-17）
+- **退役工具时守门 want 列表、looseCall 豁免和 manual 指引词要一起查。** 退役 kernel_manual/list_secrets 时断言散在 registry/review/vault/http 各 want 列表、breaker 的 `looseCall` 豁免和 `manual.Prompt()`/`Index()` 的入口指引词；少迁一处测试或文档就过时。守护：`registry_test`/`review_test`/`vault_test`/`http_test` 的退役断言与 `context_batch_c_test` 的 `sh xbot manual` 断言随产品同刀迁移。Seen 1×（2026-11-02）
 
 ## 做对了
 - 盒子回归用假模型和回显服务，真值只在服务端出现，transcript 和模型输入里 0 处（M7，2026-10-16）。

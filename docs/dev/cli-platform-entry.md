@@ -1,6 +1,6 @@
 # Agent 通过 CLI 操作 XBot：MCP 接入与 Link 退役路线
 
-档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall三项所测独立端到端按精确phase通过并已合main1053d0a9；transcript三读三项所测独立端到端按精确phase通过并已合mainc4b368bf；compact具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结dcbf05fd待集成main；links search/load两无审批子集具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结fe6952b5待集成main；links install/remove整门退具体合同已SINGLE PASS按Accepted ADR0063实施完毕、所测独立端到端分阶段通过并已合main9277f5c2（links/connectors家族完成，linksTool全退四动作走CLI）；kernel_manual+list_secrets两读类离线等价退注册具体合同已SINGLE PASS按Accepted ADR0064可实施（research措辞修正为readOnlyShell解释器前硬拒）；剩余目录管理、Event/Link解耦与基础工具去留继续按路线推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
+档位：**L**（跨 CLI、内核、上下文、运行时与连接器）。状态：**profile完整族、MCP、skills与routine已合本地main；Bot四操作五项所测独立端到端分阶段通过并已合main ac519c8d；pin/primary四项所测独立端到端分阶段通过并已合main6291fae1；persona self四项所测独立端到端按精确phase通过并已合mainbddaf2e4；chat-group成员群五项所测独立端到端按精确phase通过并已合main8caacdca；peer-message六项所测独立端到端按精确phase通过并已合main98fba5e8；bot-fork七项所测独立端到端按精确phase通过并已合main06daa397；experience record/search三项所测独立端到端按精确phase通过并已合maind632e7a3；memory-recall三项所测独立端到端按精确phase通过并已合main1053d0a9；transcript三读三项所测独立端到端按精确phase通过并已合mainc4b368bf；compact具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结dcbf05fd待集成main；links search/load两无审批子集具体合同已SINGLE PASS按Accepted实施完毕、所测独立端到端分阶段通过并产品冻结fe6952b5待集成main；links install/remove整门退具体合同已SINGLE PASS按Accepted ADR0063实施完毕、所测独立端到端分阶段通过并已合main9277f5c2（links/connectors家族完成，linksTool全退四动作走CLI）；kernel_manual+list_secrets两读类离线等价退注册具体合同已SINGLE PASS按Accepted ADR0064实施完毕、所测独立端到端分阶段通过并已合mainb9245a90（links组整组退、secrets组只http_request，模型经sh走xbot manual/secret list离线等价）；剩余目录管理、Event/Link解耦与基础工具去留继续按路线推进**。2026-11-01 政东确认方向、要求直接放进 dev，并授权派子 Agent 按路线实施；不另建 Obsidian 设计副本。
 
 ## 已确定的方向
 
@@ -722,7 +722,7 @@ A离线Load+新Kernel：install/remove要owner卡+卡填secrets stage+live Recon
 
 **最窄验收**：①install --self catalog-id出owner卡（tool=sh、summary带secrets行、卡payload含字段名）→填值→StageSecrets→takeSecrets→storeSecrets→GrantLink→Reconcile→`installed <id>`；②install --self store-connector走connectorCard+EnableConnector写global mcp.json；③remove --self幂等（RevokeLink/dropSecrets/RemoveMCP ErrMCPMissing吞+snapshotLinks）；④secrets值经filterSecrets白名单才stage，不出现在transcript/工具结果/CLI/HTTP；⑤拒→`denied by user`、超时→retireExpired自动allow、deniedBefore/parkable/grant按`(sh,嵌blob)`键控A→B不吃A；⑥approvalSecretNames扩展后install卡带secrets字段，remove/无secrets条目不带；⑦linksTool退后search/load/install/remove全走CLI无双入口（registry/review表/NeedsOwner/cardtext/notable/todo无links残留，tools door不见links）；⑧connectors.md指路保、mcp:仍指`mcp tools`；⑨readonly不放install/remove --self；⑩CallID缺失报`requires XBOT_CALL_ID from an active XBot shell`+双32KiB/HTTP64KiB。复用secrets-hiding/catalog原证据与前序已绿族，只new+必要affected最小once，不整longrun/真模型/性能矩阵。
 
-## 批 manualsecrets：两读类离线等价退注册具体合同
+## 批 manualsecrets：两读类离线等价退注册具体合同（已实施，已合 main b9245a90）
 
 **本刀定位**：批 5 收口前最窄一刀——`kernel_manual` + `list_secrets` 两个 Readonly/零卡/零 ctx 工具退注册，离线等价 CLI 已在（`xbot manual`/`xbot secret list`），**不需要** runtimeSourceCall/prepared ctx/`/v1/*` endpoint/`--self`/XBOT_CALL_ID——与 6a/6b 的「同 K prepared ctx」形态不同，本刀就是「退注册 + 模型经 sh 走离线 CLI」。
 
@@ -753,7 +753,7 @@ xbot secret list <bot>         # 离线读 global vault，secret.go:90-106
 - 批 0 的后续实际操作及入站依赖清单、尚未迁族的 research 业务只读分类、远端 runner 回连；本批实例/二进制/root/本机当前 Bot 身份和离线帮助通路已建立，不能等同人用 PATH 安装。
 - profile 完整组合、头像原字节上传/clear、原运行态连续及模型门退旧已提炼 atlas，固定五项独立所测端到端按各自精确版本通过，证据见 MILESTONES；原 chat loop 下一输入/Timer handle 及其 recover、回放、通知实际消费者也已以局部红绿和 reviewer24 至 `63762ae5` 连续增量 PASS 收口，已合入本地 main，尚未日用；合并时与主线持久选择的交叠补单项真实浏览器红绿，不重跑固定五项。已通过的普通字段、avatar_seed、MCP 和本刀五项不重复整批验收，母路线其它族继续在本 dev 中推进。
 - 后续各平台族继续按实际增量迁移；已合入的 MCP CLI 不重复本刀审批或精确已绿证据。主机日用仍待用户实际使用，现状见 atlas。
-- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search已合maind632e7a3；memory-recall已合main1053d0a9，transcript三读已合mainc4b368bf，compact模型与State写已按上方Accepted合同实施完毕（dcbf05fd产品冻结，待集成main）；links search/load已按上方Accepted合同实施完毕（fe6952b5产品冻结，待集成main），links install/remove整门退亦已按上方Accepted ADR0063实施完毕并已合main9277f5c2（links/connectors家族完成，linksTool全退四动作走CLI）；剩余目录管理等平台能力继续逐族迁移。
+- skills read/write、routine、Bot四操作/control/persona与chat-group已提炼现状并合main；peer-message已合main98fba5e8。bot-fork已合main06daa397；经历record/search已合maind632e7a3；memory-recall已合main1053d0a9，transcript三读已合mainc4b368bf，compact模型与State写已按上方Accepted合同实施完毕（dcbf05fd产品冻结，待集成main）；links search/load已按上方Accepted合同实施完毕（fe6952b5产品冻结，待集成main），links install/remove整门退亦已按上方Accepted ADR0063实施完毕并已合main9277f5c2（links/connectors家族完成，linksTool全退四动作走CLI）；kernel_manual+list_secrets两读类离线等价退注册已按上方Accepted ADR0064实施完毕并已合mainb9245a90（links组整组退、secrets组只http_request）；剩余目录管理等平台能力继续逐族迁移。
 - 事件结构与投递摆脱 Link 包依赖，删除 Link 装配与旧入口。
 - 基础模型工具集合和代理门的最终去留；同步规则、手册、评测、atlas。
 - 各批独立冒烟、相关旅程回归、性能与上下文收益测量、主人日用验收。
