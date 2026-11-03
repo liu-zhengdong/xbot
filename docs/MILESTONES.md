@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-11-02 批5小工具收口决策（最终边界定形，决策冻结）
+
+- 合同 b740e854 [ADR0071](adr/0071-batch5-small-tools-closeout.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS（24 shape，最终边界确认：六候选全保 + sender 独立否决 + turn 语义 + 厂商协议二分完整覆盖全部剩余候选，无遗漏；2 非阻断观察已记入 ADR 接受记：①决策表格略简化——`steer`/`queue`/`cancel` 同样带固定 sender，descriptor 分支经 `MessageSubagent` 得 `"owner"`、非 descriptor 分支 `ensureExec().Control` 硬编 `"owner"`；②`continuable_subagents.go:234` `MessageSubagent` 是第三处 sender 解析点）→Accepted。
+- 决策：批 4 留下的收口候选逐族落「留」，六候选全部保现状——subagent 六控制动词（`steer`/`queue`/`interrupt`/`cancel`/`agent_message`/`agent_stop`）不开 `xbot subagent <verb> --self`，`code_show` 不开 `code` noun，`generate_image`/`listen`/`tts`/`todo` 保 kernel 行，`mcp call` 写端在 research 下继续拒；零新 CLI 面、零新 `allowReadOnlyPlatform` 分支、零产品/test 改动。两条独立否决依据：(a) 六动词写终点是本实例 executor 活表（descriptor 二分→`exec.Continuable.Message`/`exec.Local.Stop`/`executor.Control`），CLI 化后 handler 仍复用同一 `k.control`/`messageSubagent`/`StopSubagent`——领域真源不移动，且 sender 无源可判（模型侧硬编 `"bot:"+currentName`、人侧 `"owner"`，CLI 入口无法区分经 sh 的人与 bot 孩子）；(b) todo 的 `UpdatedStep`/`todoTouched` 是当轮语义，`--self` 调用无 turn 归属，保语义须造 prepared ctx 依赖——方向相反。
+- 最终二分定形：**runtime CLI = 读投影 + 无 turn 依赖的领域动作**（已迁 19 组：profile/skills/routine/bot/pin/primary/persona/chat-group/peer-message/bot-fork/experience/memory-recall/transcript/compact/links/manual/secret/subagent 三读/jobs/restart/http/mcp）；**模型工具 = turn 语义、Event 入口、厂商协议与活表写**。后续新工具按此二分入位，不再逐批开决策。
+- Event/Inbox 保留链全留完整（`link.Event`/`NewEvent`/`inbox` Post/Ack/Wait/`wakers`/`InterjectInternal`/`forwardExec`/`code.Link.post` 不动）。人侧经终端控制孩子的 `xbot subagent steer --self` 是新用户面，如要开按人侧新功能另行设计（sender/身份判定单算），与模型工具迁移无关。
+- docs only，无代码动作。Not run：产品测试/真模型/p95/主人日用/push。
+
 ## 2026-11-02 Event/Link 绑写决策（战略边界确认，决策冻结）
 
 - 合同 6ce016d9 [ADR0070](adr/0070-event-link-bind-write-decision.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS（24 shape，战略边界确认；三处引用行号瑕疵已核并修正：`questions.go` 回投链实为 219-233 非 interject.go:129、`agents.go` Event Post 实为 299 非 284-306、dispatch fork Event 装配实在 `continuable_subagents.go:37-106` 非 dispatch.go）→Accepted。

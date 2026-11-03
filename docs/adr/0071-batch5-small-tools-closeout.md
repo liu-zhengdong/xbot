@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Proposed
+status: Accepted
 date: 2026-11-02
 ---
 # 0071 批 5 小工具收口：剩余模型工具全部保 kernel/link 侧，零新 CLI 面，mcp readonly 不开写
@@ -88,5 +88,9 @@ todo 另有一条独立的 turn 归属判据：`todoTouched`/`UpdatedStep` 靠 `
 - 批 4「剩余写类全保」的战略边界在批 5 落地为「候选逐族否决」：六控制动词技术可达但领域真源不移动（executor 活表一份也没少）+ sender 无源可判；`code_show` 单工具 noun 收益窄且劈同族；厂商三件与 todo 分别绑登录态/落盘与当轮步进；mcp readonly 写端保持拒。
 - sender 判据是六动词否决的独立依据：`k.control` 非 descriptor 分支硬编 `Sender:"owner"`、`agentMessageTool` 硬编 `"bot:"+currentName`——CLI 入口无 turn/身份判调用者，任选一值都改变现语义。
 - todo 判据独立于其他五族：`UpdatedStep`/`todoTouched` 是当轮语义，runtime 调用无 turn 归属，保语义须造 prepared ctx 依赖——方向与「为迁而造依赖」相反。
+
+## 接受记
+
+经 SINGLE ACTUAL CONCRETE SHAPE PASS（24 shape）确认最终边界：六候选全保模型侧 + sender 独立否决 + turn 语义 + 厂商协议二分完整覆盖全部剩余候选，无遗漏。两条非阻断观察记此不改决策：①决策表格略简化——sender 不只是 `agent_message`/`agent_stop` 的判据，`k.control` 的 `steer`/`queue`/`cancel` 经 descriptor 分支落 `MessageSubagent`/`StopSubagent`、经非 descriptor 分支落 `ensureExec().Control(... Sender:"owner")`，四动词同样带固定 sender；②`continuable_subagents.go:234` `MessageSubagent` 人侧 authenticated 入口是第三处 sender 解析点（硬编 `"owner"`），与 `agentMessageTool`（:335，`"bot:"+currentName`）、`k.control` 非 descriptor 分支（`agents.go:451`，`"owner"`）并列——三处共同印证「CLI 入口无源判 sender」。
 
 本刀 docs only；产品代码、测试、e2e 零改动。Not run: 产品测试（无代码面）。
