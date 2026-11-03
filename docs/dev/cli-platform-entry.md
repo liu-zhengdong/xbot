@@ -833,6 +833,10 @@ A 离线读 `shell-jobs/` 目录（`bot.Load`+`NewJobs(dir).Load()`）：落选�
 
 合同 [ADR0070](../adr/0070-event-link-bind-write-decision.md) Proposed→经 SINGLE ACTUAL CONCRETE SHAPE PASS（24 shape，战略边界确认）→Accepted：批 4「出入站解耦」的模型工具面收口——剩余写类工具（send_message_to_user/ask_user/dispatch/spawn/agent 六控制/code_* 六件/厂商三件/todo）**全部保留模型侧注册，零新 CLI 面**。关键判定：六族里没有「纯 domain 动作」——send/ask/dispatch/code 的写终点本就是 `box.Post` 或本实例活表（Event 生产链的入口侧），`send_message_to_user` 的回执原文本身是 `pushFindings`/`sentToChat`/`chatSay`/SSE `result` 五处领域判据；subagent 六控制动词与 `code_show` 是批 5 收口候选（`xbot subagent <verb> --self` 同 noun 候选），本刀不预留 noun、不写合同。Event/Inbox 保留线全链（`link.Event`/`NewEvent`/`inbox` Post/Ack/Wait/`wakers`/`InterjectInternal`/`forwardExec`/`code.Link.post`）不动；`link` 包瘦身与 Event 上移、Link 装配合一（`mountGrantLocked`/`snapshotLinks`/`cmd_serve mount()`）是批 4 后续实现切片，本刀是决策冻结不是代码动作。
 
+## 批 smallcloseout：批 5 小工具收口决策（Proposed，docs only）
+
+合同 [ADR0071](../adr/0071-batch5-small-tools-closeout.md) Proposed：批 4 留下的收口候选逐族落「留」——subagent 六控制动词（steer/queue/interrupt/cancel/agent_message/agent_stop）**不开** `xbot subagent <verb> --self`，`code_show` 不开 `code` noun，generate_image/listen/tts/todo 保 kernel 行，`mcp call` 写端在 research 下继续拒；批 5 零新 CLI 面、零新 `allowReadOnlyPlatform` 分支、零产品/test 改动。两条独立否决依据：(a) 六动词写终点是本实例 executor 活表（descriptor 二分→`exec.Continuable.Message`/`exec.Local.Stop`/`executor.Control`），CLI 化后 handler 仍复用同一 `k.control`/`messageSubagent`/`StopSubagent`——领域真源不移动，且 sender 无源可判（模型侧硬编 `"bot:"+currentName`、人侧 `"owner"`，CLI 入口无法区分经 sh 的人与 bot 孩子）；(b) todo 的 `UpdatedStep`/`todoTouched` 是当轮语义，`--self` 调用无 turn 归属，保语义须造 prepared ctx 依赖——方向相反。runtime CLI 与模型工具的边界由此定形：CLI = 读投影 + 无 turn 依赖的领域动作；模型 = turn 语义、Event 入口、厂商协议与活表写。人侧经终端控制孩子（`xbot subagent steer --self` 作为新用户面）如要开按人侧新功能另算，不在收口范围。
+
 
 
 - 主人日用验收尚未开始。普通资料首刀的独立审计、真入口验证与合入已完成；后续不重复该刀设计审批，按新切片复核实际增量。
