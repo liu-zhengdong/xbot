@@ -35,7 +35,6 @@ const (
 // machine switch, not installation, keeps a dangerous one quiet.
 var organs = []App{
 	{ID: "terminal", Title: "terminal", Grant: "terminal", Kind: AppNative},
-	{ID: "tools", Title: "tools", Grant: "tools", Kind: AppNative},
 	{ID: "timer", Title: "timer", Grant: "timer", Kind: AppNative},
 	{ID: "memory", Title: "memory", Grant: "memory", Kind: AppNative},
 	{ID: "persona", Title: "persona", Grant: "persona", Kind: AppNative},
