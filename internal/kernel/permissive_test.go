@@ -82,7 +82,7 @@ func linksIntentAsks(t *testing.T, action, id string) bool {
 // calls run without permission cards; the links install/remove owner card
 // still goes out because secrets reach the bot only through it.
 func TestPermissiveAsksOnlyWhereACardIsNeeded(t *testing.T) {
-	k := &Kernel{Bot: testBot(t, link.NameTools), Permissive: true}
+	k := &Kernel{Bot: testBot(t), Permissive: true}
 	k.ensureTurn().turnTrusted = true
 	checked := 0
 	for _, tool := range []string{"mcp_x_send", "delete_file", "secret_rm"} {
@@ -231,7 +231,7 @@ func TestConfirmTableSwitch(t *testing.T) {
 // With the cards off the model is not told to ask before a step the owner
 // named; with them on it still is.
 func TestPermissiveRuleDropsTheSecondQuestion(t *testing.T) {
-	k := &Kernel{Bot: testBot(t, link.NameTools), Permissive: true}
+	k := &Kernel{Bot: testBot(t), Permissive: true}
 	rules, err := k.rulesText()
 	if err != nil {
 		t.Fatal(err)
@@ -251,7 +251,7 @@ func TestPermissiveRuleDropsTheSecondQuestion(t *testing.T) {
 // Production always-allow kernels, including existing subagent approvers,
 // cannot be switched back to permission cards by permissions.json.
 func TestLivePermissionSwitch(t *testing.T) {
-	b := testBot(t, link.NameTools)
+	b := testBot(t)
 	k := &Kernel{Bot: b, Permissive: true, PermissionsOn: func() bool { return permissions.On(b.Root) }}
 	k.ensureTurn().turnTrusted = true
 	asked := 0

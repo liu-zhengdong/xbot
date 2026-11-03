@@ -70,7 +70,7 @@ func parkServer(t *testing.T, permissive bool, wait ...time.Duration) (*httptest
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb, link.NameTools})
+	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func parkServer(t *testing.T, permissive bool, wait ...time.Duration) (*httptest
 		return &kernel.Kernel{
 			Bot: b, Provider: parkModel{}, Inbox: box, Memory: memory.NopStore{}, MaxSteps: 8,
 			Budget:        compact.DefaultBudget(),
-			Links:         []link.Link{link.Web{}, link.NewToolsLinkAt(work, "")},
+			Links:         []link.Link{link.Web{}},
 			WorkDir:       work,
 			Permissive:    permissive,
 			PermissionsOn: func() bool { return true },

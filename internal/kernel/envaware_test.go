@@ -19,12 +19,12 @@ import (
 
 func workBot(t *testing.T, dir string) (*Kernel, *scripted, *time.Time) {
 	t.Helper()
-	b := testBot(t, link.NameTerminal, link.NameTools)
+	b := testBot(t, link.NameTerminal)
 	p := &scripted{}
 	now := time.Unix(1_700_000_000, 0).UTC()
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 8,
-		Links:   []link.Link{link.Terminal{}, link.NewToolsLinkAt(dir, "")},
+		Links:   []link.Link{link.Terminal{}},
 		Now:     func() time.Time { return now },
 		WorkDir: dir,
 	}

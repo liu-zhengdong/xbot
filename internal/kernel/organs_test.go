@@ -14,7 +14,7 @@ func TestOrgansMountAndRegisterWithoutGrants(t *testing.T) {
 		t.Fatal(err)
 	}
 	k := &Kernel{Bot: b}
-	for _, name := range []string{link.NameTerminal, link.NameTools, link.NameTimer, link.NameMemory, link.NamePersona, link.NameContext, link.NameAgents, link.NameSkills, link.NameWebhook, link.NameWatch, link.NameWeb, link.NamePeers, link.NameDesktop, link.NameCoding} {
+	for _, name := range []string{link.NameTerminal, link.NameTimer, link.NameMemory, link.NamePersona, link.NameContext, link.NameAgents, link.NameSkills, link.NameWebhook, link.NameWatch, link.NameWeb, link.NamePeers, link.NameDesktop, link.NameCoding} {
 		if _, ok := link.LookupOrgan(name); !ok {
 			t.Errorf("native capability %s is not in Organs", name)
 		}

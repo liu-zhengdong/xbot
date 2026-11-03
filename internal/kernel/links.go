@@ -18,7 +18,6 @@ import (
 	"xbot/internal/provider"
 	"xbot/internal/tools"
 	"xbot/internal/vault"
-	"xbot/internal/work"
 )
 
 // linksTool carries the links domain helpers. It is no longer a model tool:
@@ -447,8 +446,6 @@ func (k *Kernel) mountGrantLocked(name string) link.Link {
 	switch name {
 	case link.NameTerminal:
 		return link.Terminal{}
-	case link.NameTools:
-		return link.NewToolsLinkAt(work.BotDir(k.Bot.Root, k.currentName()), work.SharedDir(k.Bot.Root))
 	case link.NameTimer:
 		sender := "timer"
 		if owners := k.Bot.Config().Owners; len(owners) > 0 {

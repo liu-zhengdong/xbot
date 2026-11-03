@@ -27,7 +27,7 @@ import (
 // picture. Switching it off removes the tool on the next request without
 // rebuilding the kernel; hosted search being off does not matter.
 func TestHostedImageGenerationLandsInWorkspace(t *testing.T) {
-	b := testBot(t, link.NameTools, link.NameTerminal)
+	b := testBot(t, link.NameTerminal)
 	png := sizedPNG(t, 16, 16)
 	b64 := base64.StdEncoding.EncodeToString(png)
 	var mu sync.Mutex
@@ -175,7 +175,7 @@ func TestImageGenGlobalGate(t *testing.T) {
 		{"api key only", "openai", "", true, true, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			b := testBot(t, link.NameTools, link.NameTerminal)
+			b := testBot(t, link.NameTerminal)
 			keyEnv := ""
 			if tc.oauth == "" {
 				keyEnv = "FAKE"

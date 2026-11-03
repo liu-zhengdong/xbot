@@ -37,7 +37,7 @@ func TestWebApprovalAllowAndDeny(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb, link.NameTools})
+	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestWebApprovalAllowAndDeny(t *testing.T) {
 	s.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		return &kernel.Kernel{
 			Bot: b, Provider: client, MaxSteps: 4, Budget: compact.DefaultBudget(),
-			Links:   []link.Link{link.Web{}, link.NewToolsLinkAt(work, "")},
+			Links:   []link.Link{link.Web{}},
 			WorkDir: work,
 			Machine: func() (string, error) { return "ask", nil },
 		}, nil
@@ -194,7 +194,7 @@ func TestWebApprovalTimeoutAutomaticallyAllows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb, link.NameTools})
+	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestWebApprovalTimeoutAutomaticallyAllows(t *testing.T) {
 	s.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		return &kernel.Kernel{
 			Bot: b, Provider: client, MaxSteps: 4, Budget: compact.DefaultBudget(),
-			Links:   []link.Link{link.Web{}, link.NewToolsLinkAt(work, "")},
+			Links:   []link.Link{link.Web{}},
 			WorkDir: work,
 			Machine: func() (string, error) { return "ask", nil },
 		}, nil

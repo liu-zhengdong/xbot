@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"xbot/internal/tools"
 )
 
 func TestNewEventIsUntrusted(t *testing.T) {
@@ -96,10 +98,13 @@ func TestTerminalAccount(t *testing.T) {
 	}
 }
 
-func TestToolsLinkNames(t *testing.T) {
+func TestBaseToolNames(t *testing.T) {
 	names := map[string]bool{}
-	for _, tool := range NewToolsLink().Tools() {
-		names[tool.Name()] = true
+	for _, sh := range tools.NewShells() {
+		names[sh.Name()] = true
+	}
+	for _, f := range []tools.Tool{&tools.ReadFile{}, &tools.WriteFile{}, &tools.EditFile{}} {
+		names[f.Name()] = true
 	}
 	for _, want := range []string{"sh", "read_file", "write_file", "edit_file"} {
 		if !names[want] {

@@ -29,15 +29,14 @@ func TestScrubEntryUsesRedact(t *testing.T) {
 // the kernel for the runtime handler, but no vault tool name may reach the
 // model whether a vault exists or not.
 func TestModelToolsNeverListRetiredVaultTools(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTools)
+	b := testBot(t, link.NameTerminal)
 	store, err := vault.Open(b.VaultDir(), b.VaultKeyPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	toolsLink := link.NewToolsLink()
 	for label, k := range map[string]*Kernel{
-		"vault":    {Bot: b, Links: []link.Link{toolsLink}, Vault: store},
-		"no-vault": {Bot: b, Links: []link.Link{toolsLink}},
+		"vault":    {Bot: b, Vault: store},
+		"no-vault": {Bot: b},
 	} {
 		list, err := k.modelTools()
 		if err != nil {

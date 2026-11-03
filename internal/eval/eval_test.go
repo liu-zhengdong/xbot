@@ -692,7 +692,7 @@ func (p *toolListProvider) Chat(_ context.Context, req provider.Request, _ func(
 // The eval jail link is named tools, but its shell has no job table. The model
 // must not see background job controls; ordinary discovery remains available.
 func TestEvalToolListOmitsBackgroundShell(t *testing.T) {
-	b, err := bot.Create(t.TempDir(), "ada", "Be brief.", []string{link.NameTerminal, link.NameTools})
+	b, err := bot.Create(t.TempDir(), "ada", "Be brief.", []string{link.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -701,8 +701,9 @@ func TestEvalToolListOmitsBackgroundShell(t *testing.T) {
 	when := time.Unix(1_700_000_000, 0).UTC()
 	k := &kernel.Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 2,
-		Links: []link.Link{link.Terminal{}, sandboxLink{list: caseTools(work, false)}},
-		Now:   func() time.Time { return when },
+		SkipBaseTools: true,
+		Links:         []link.Link{link.Terminal{}, sandboxLink{list: caseTools(work, false)}},
+		Now:           func() time.Time { return when },
 	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hi", when)); err != nil {
 		t.Fatal(err)

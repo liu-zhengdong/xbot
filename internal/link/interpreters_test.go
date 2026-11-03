@@ -9,7 +9,7 @@ import (
 
 func TestLocalToolCatalogUsesInstalledInterpreters(t *testing.T) {
 	got := map[string]tools.Tool{}
-	for _, tool := range NewToolsLink().Tools() {
+	for _, tool := range tools.NewShells() {
 		got[tool.Name()] = tool
 	}
 	if got["shell"] != nil {

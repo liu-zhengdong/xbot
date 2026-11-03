@@ -140,11 +140,11 @@ func TestReferenceBudgetsArePerSource(t *testing.T) {
 
 func TestReferenceWrittenByOneBotAppearsForAnother(t *testing.T) {
 	root := t.TempDir()
-	first, err := bot.Create(root, "first", "brief", []string{link.NameTerminal, link.NameTools})
+	first, err := bot.Create(root, "first", "brief", []string{link.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := bot.Create(root, "second", "brief", []string{link.NameTerminal, link.NameTools})
+	second, err := bot.Create(root, "second", "brief", []string{link.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestReferenceWrittenByOneBotAppearsForAnother(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{toolCall("write", "write_file", string(args)), {Role: provider.RoleAssistant, Content: provider.TextContent("saved")}}}
-	k := &Kernel{Bot: first, Provider: p, Memory: memory.Open(root), Links: []link.Link{link.NewToolsLinkAt(root, "")}, Permissive: true, MaxSteps: 4}
+	k := &Kernel{Bot: first, Provider: p, Memory: memory.Open(root), WorkDir: root, Permissive: true, MaxSteps: 4}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "save the agreement", time.Now())); err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestReferenceWrittenByOneBotAppearsForAnother(t *testing.T) {
 		t.Fatal(err)
 	}
 	p2 := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("ok")}}}
-	k2 := &Kernel{Bot: second, Provider: p2, Memory: memory.Open(root), Links: []link.Link{link.NewToolsLinkAt(root, "")}, Permissive: true, MaxSteps: 4}
+	k2 := &Kernel{Bot: second, Provider: p2, Memory: memory.Open(root), WorkDir: root, Permissive: true, MaxSteps: 4}
 	if err := k2.Handle(context.Background(), link.TerminalEvent("u1", "what agreements?", time.Now())); err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestReferenceOverBudgetOmitsWholeIndex(t *testing.T) {
 }
 
 func TestReferenceRemindersThroughTurn(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTools)
+	b := testBot(t, link.NameTerminal)
 	dir := filepath.Join(bot.Dir(b.Root, b.Name()), "memory")
 	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0700); err != nil {
 		t.Fatal(err)
@@ -237,7 +237,7 @@ func TestReferenceRemindersThroughTurn(t *testing.T) {
 	first := toolCall("c1", "read_file", `{"path":"/no-such-file"}`)
 	first.SetText("I will check LATER")
 	p := &scripted{resps: []provider.Message{first, toolCall("c2", "read_file", `{"path":"/no-such-file"}`), {Role: provider.RoleAssistant, Content: provider.TextContent("done")}}}
-	k := &Kernel{Bot: b, Provider: p, Memory: memory.Open(b.Root), Links: []link.Link{link.NewToolsLinkAt(b.Root, "")}, Permissive: true, MaxSteps: 5}
+	k := &Kernel{Bot: b, Provider: p, Memory: memory.Open(b.Root), WorkDir: b.Root, Permissive: true, MaxSteps: 5}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "ALPHA 中文", time.Now())); err != nil {
 		t.Fatal(err)
 	}
@@ -395,14 +395,14 @@ func TestReferenceKeywordsAcrossPrivateAndShared(t *testing.T) {
 
 func TestReferencePrivateWrittenByBot(t *testing.T) {
 	root := t.TempDir()
-	b, err := bot.Create(root, "private", "brief", []string{link.NameTerminal, link.NameTools})
+	b, err := bot.Create(root, "private", "brief", []string{link.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(bot.Dir(root, b.Name()), "memory", "project.md")
 	args, _ := json.Marshal(map[string]string{"path": path, "content": "---\ndescription: private agreement\n---\nprivate details"})
 	p := &scripted{resps: []provider.Message{toolCall("write", "write_file", string(args)), {Role: provider.RoleAssistant, Content: provider.TextContent("saved")}}}
-	k := &Kernel{Bot: b, Provider: p, Memory: memory.Open(root), Links: []link.Link{link.NewToolsLinkAt(root, "")}, Permissive: true, MaxSteps: 4}
+	k := &Kernel{Bot: b, Provider: p, Memory: memory.Open(root), WorkDir: root, Permissive: true, MaxSteps: 4}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "save this", time.Now())); err != nil {
 		t.Fatal(err)
 	}

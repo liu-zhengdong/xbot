@@ -182,7 +182,7 @@ func pasteTestServer(t *testing.T, vision bool) (string, *httptest.Server, *http
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb, link.NameTools})
+	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func pasteTestServer(t *testing.T, vision bool) (string, *httptest.Server, *http
 		return &kernel.Kernel{
 			Bot: b, Provider: client, Memory: memory.Open(root), MaxSteps: 2,
 			Budget: compact.DefaultBudget(), WorkDir: dir,
-			Links: []link.Link{link.Web{}, link.NewToolsLinkAt(dir, "")},
+			Links: []link.Link{link.Web{}},
 			// The bound model is what decides whether a picture is sent.
 			Machine:  func() (string, error) { return "allow", nil },
 			Selector: provider.FixedSelector{P: client},

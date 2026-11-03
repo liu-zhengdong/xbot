@@ -44,7 +44,7 @@ func botForkRuntimeFixture(t *testing.T, routed bool) (*Kernel, string, string) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "source", "SOURCE-PERSONA ship the notes project", []string{link.NameTerminal, link.NameTools, link.NameMemory})
+	b, err := bot.Create(root, "source", "SOURCE-PERSONA ship the notes project", []string{link.NameTerminal, link.NameMemory})
 	if err != nil {
 		t.Fatal(err)
 	}

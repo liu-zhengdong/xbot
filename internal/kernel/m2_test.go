@@ -62,7 +62,7 @@ func TestOwnerTerminalIsNotWrapped(t *testing.T) {
 }
 
 func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTools)
+	b := testBot(t, link.NameTerminal)
 	tz := "UTC"
 	if err := b.ApplyProfile(bot.ProfileUpdate{Timezone: &tz}); err != nil {
 		t.Fatal(err)
@@ -76,7 +76,7 @@ func TestStablePrefixIdenticalAcrossWakes(t *testing.T) {
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, MaxSteps: 2,
-		Links: []link.Link{link.Terminal{}, link.NewToolsLink()},
+		Links: []link.Link{link.Terminal{}},
 		Now:   func() time.Time { return now },
 	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", t0)); err != nil {

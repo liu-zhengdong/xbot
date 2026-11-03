@@ -38,12 +38,12 @@ func indexHas(e environment, name string) bool {
 
 func doorKernel(t *testing.T, p provider.Provider) (*Kernel, *bot.Bot) {
 	t.Helper()
-	b := testBot(t, link.NameTerminal, link.NameTools, link.NamePersona, link.NameMemory, link.NameTimer, link.NameBrowser)
+	b := testBot(t, link.NameTerminal, link.NamePersona, link.NameMemory, link.NameTimer, link.NameBrowser)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 12, WorkDir: t.TempDir(),
-		Links:   []link.Link{link.Terminal{}, link.NewToolsLink(), link.Persona{}, link.Memory{}, &link.Timer{Dir: b.RoutineDir(), Sender: "u1"}},
+		Links:   []link.Link{link.Terminal{}, link.Persona{}, link.Memory{}, &link.Timer{Dir: b.RoutineDir(), Sender: "u1"}},
 		Approve: func(context.Context, string, string) (bool, error) { return true, nil },
 	}
 	return k, b
@@ -62,7 +62,7 @@ func TestRegistryListsEveryToolOnceWithSource(t *testing.T) {
 		seen[e.tool.Name()] = true
 	}
 	for name, source := range map[string]string{
-		"read_file":            "organ",
+		"read_file":            "kernel",
 		"send_message_to_user": "kernel",
 		"listen":               "kernel",
 		"desktop_click":        "organ",

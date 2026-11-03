@@ -32,7 +32,7 @@ func newApprovalHarness(t *testing.T, wait time.Duration) (*Server, *httptest.Se
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb, link.NameTools})
+	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func newApprovalHarness(t *testing.T, wait time.Duration) (*Server, *httptest.Se
 	s.NewKernel = func(b *bot.Bot, _ *kernel.BotResources) (*kernel.Kernel, error) {
 		return &kernel.Kernel{
 			Bot: b, Provider: client, MaxSteps: 4, Budget: compact.DefaultBudget(),
-			Links:   []link.Link{link.Web{}, link.NewToolsLinkAt(work, "")},
+			Links:   []link.Link{link.Web{}},
 			WorkDir: work,
 			Machine: func() (string, error) { return "ask", nil },
 		}, nil

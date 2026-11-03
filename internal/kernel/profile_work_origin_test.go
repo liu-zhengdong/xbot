@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"xbot/internal/bot"
-	"xbot/internal/link"
 	"xbot/internal/mcp"
 	"xbot/internal/tools"
 	"xbot/internal/work"
@@ -69,14 +68,10 @@ func TestProfileCachedUseBotKeepsWorkspaceAndScopedProcessDirectory(t *testing.T
 		t.Fatalf("new-turn cwd=%q notice=%q want=%q", got, notice, expected)
 	}
 	var main tools.Tool
-	for _, mounted := range k.snapshotLinks() {
-		if mounted.Name() == link.NameTools {
-			for _, tool := range mounted.Tools() {
-				if tool.Name() == "sh" {
-					main = tool
-					break
-				}
-			}
+	for _, tool := range k.baseTools().shells {
+		if tool.Name() == "sh" {
+			main = tool
+			break
 		}
 	}
 	if main == nil {

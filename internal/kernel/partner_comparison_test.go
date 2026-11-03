@@ -65,7 +65,7 @@ func TestBatchCPartnerBehaviorComparison(t *testing.T) {
 					}
 					p := &scripted{resps: variant.responses}
 					b := testBot(t)
-					k := &Kernel{Bot: b, Provider: p, WorkDir: dir, Links: []link.Link{link.NewToolsLinkAt(dir, "")}, Permissive: true, MaxSteps: 4}
+					k := &Kernel{Bot: b, Provider: p, WorkDir: dir, Permissive: true, MaxSteps: 4}
 					if err := k.Handle(context.Background(), link.TerminalEvent("u1", tc.input, time.Now())); err != nil {
 						t.Fatal(err)
 					}

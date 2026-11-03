@@ -26,7 +26,6 @@ import (
 
 const (
 	NameTerminal = "terminal"
-	NameTools    = "tools"
 	NameTimer    = "timer"
 	NameMemory   = "memory"
 	NamePersona  = "persona"

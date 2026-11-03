@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"xbot/internal/link"
 	"xbot/internal/tools"
 	"xbot/internal/vault"
 )
@@ -55,15 +54,12 @@ func TestLocalSudoMountedAndScopedShells(t *testing.T) {
 		t.Fatal(err)
 	}
 	k.Vault = store
-	k.Links = []link.Link{link.NewToolsLinkAt(k.WorkDir, "")}
 	k.attachShell()
 	defer k.shellJobs().Shutdown()
 	var shells []*tools.Shell
-	for _, l := range k.snapshotLinks() {
-		for _, tool := range l.Tools() {
-			if sh, ok := tool.(*tools.Shell); ok {
-				shells = append(shells, sh)
-			}
+	for _, tool := range k.baseTools().shells {
+		if sh, ok := tool.(*tools.Shell); ok {
+			shells = append(shells, sh)
 		}
 	}
 	for _, tool := range k.toolsForScope("sudo-scope") {

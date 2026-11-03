@@ -18,7 +18,7 @@ import (
 )
 
 func TestGlobalSearchPolicyUpdatesExistingKernelAndExecutor(t *testing.T) {
-	b := testBot(t, link.NameTools)
+	b := testBot(t)
 	k := &Kernel{Bot: b, Links: []link.Link{bindingSearchLink{}}, Provider: &provider.Responses{Client: provider.Client{Thinking: provider.ThinkingOn, ReasoningEffort: "high"}, WebSearch: true}}
 	// This provider is cached by Local exactly like ensureExec; no reconstruction.
 	cached := k.boundProvider()
@@ -71,7 +71,7 @@ func TestGlobalSearchPolicyUpdatesExistingKernelAndExecutor(t *testing.T) {
 }
 
 func TestConfiguredSearchReadsNewSelectionAndOff(t *testing.T) {
-	b := testBot(t, link.NameTools)
+	b := testBot(t)
 	// Even an old tool reference must not call the network after switching off.
 	search := configuredSearch{root: b.Root}
 	if err := config.SetWebSearch(b.Root, false, "auto", "ddg"); err != nil {
@@ -101,7 +101,7 @@ func (p *searchCapture) Chat(_ context.Context, r provider.Request, _ func(strin
 	return provider.Message{}, nil
 }
 func TestSearchPolicyFiltersStaleExecutorTools(t *testing.T) {
-	b := testBot(t, link.NameTools)
+	b := testBot(t)
 	p := &searchCapture{}
 	k := &Kernel{Bot: b, Provider: p}
 	cached := k.boundProvider()

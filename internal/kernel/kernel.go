@@ -111,7 +111,11 @@ type Kernel struct {
 	// AllowBackground auto-approves confirm-needed tools inside a subagent.
 	// The main chat approver is not used: a background step cannot block on a prompt.
 	AllowBackground bool
-	WorkDir         string
+	// SkipBaseTools drops the shell/files/web/vision kernel rows. The eval
+	// harness sets it so a sandbox link can offer its jailed tool set under
+	// the same names without a duplicate registration.
+	SkipBaseTools bool
+	WorkDir       string
 	// workOrigin is the immutable directory component associated with WorkDir.
 	// UseBot may refresh configuration between turns without changing this path fact.
 	workOrigin string
@@ -177,6 +181,10 @@ type Kernel struct {
 	shellOnce sync.Once
 	shell     *tools.Jobs
 	shellMu   sync.Mutex
+	// base is this kernel's held set of the six base tools (ADR 0069). Built
+	// once by baseTools; kernelTools rows and attachShell share these handles.
+	baseOnce sync.Once
+	base     *toolsSet
 	// forms cache: redactable vault forms, invalidated when a vault generation
 	// changes. Staged secrets are read on each call; they are few and short.
 	formsOK   bool
@@ -744,13 +752,9 @@ func (k *Kernel) memoryText(ctx context.Context, personID string) (string, error
 	paths := map[memory.Scope]string{}
 	if k.Bot != nil {
 		shown := func(path string) string {
-			for _, l := range k.snapshotLinks() {
-				if l != nil {
-					for _, tool := range l.Tools() {
-						if tool.Name() == "write_file" {
-							return modelPath(tool, path)
-						}
-					}
+			for _, tool := range k.baseTools().list() {
+				if tool.Name() == "write_file" {
+					return modelPath(tool, path)
 				}
 			}
 			return path

@@ -28,13 +28,13 @@ func (bindingSearchTool) Run(context.Context, json.RawMessage) (string, error) {
 
 type bindingSearchLink struct{}
 
-func (bindingSearchLink) Name() string { return link.NameTools }
+func (bindingSearchLink) Name() string { return "fixture" }
 func (bindingSearchLink) Tools() []tools.Tool {
 	return []tools.Tool{bindingSearchTool("web_search"), bindingSearchTool("web_fetch")}
 }
 
 func TestBindingSearchExclusionReplayEnvironmentAndJobs(t *testing.T) {
-	b := testBot(t, link.NameTools, link.NameTerminal)
+	b := testBot(t, link.NameTerminal)
 	var requests []struct {
 		Model string `json:"model"`
 		Tools []struct {
@@ -189,7 +189,7 @@ func reflectToolsEqual(a, b environment) bool {
 }
 
 func TestHostedSearchScopedTools(t *testing.T) {
-	b := testBot(t, link.NameTools)
+	b := testBot(t)
 	k := &Kernel{Bot: b, WorkDir: t.TempDir(), Provider: &provider.Responses{WebSearch: true}}
 	for label, list := range map[string][]tools.Tool{"scoped": k.toolsForScope("scope-test"), "subagent": k.subagentBase("scope-test")} {
 		names := toolNames(list)
@@ -200,7 +200,7 @@ func TestHostedSearchScopedTools(t *testing.T) {
 }
 
 func TestHostedSearchToolFreeSummary(t *testing.T) {
-	b := testBot(t, link.NameTools)
+	b := testBot(t)
 	k := &Kernel{Bot: b, Provider: &provider.Responses{WebSearch: true}}
 	r := &turnRun{k: k, p: k.Provider}
 	req, err := r.requestContext(provider.Request{})

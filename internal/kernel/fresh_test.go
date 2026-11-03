@@ -34,12 +34,12 @@ func mustArgs(t *testing.T, v any) string {
 
 func freshBot(t *testing.T) (*Kernel, *scripted, *time.Time) {
 	t.Helper()
-	b := testBot(t, link.NameTerminal, link.NameTools)
+	b := testBot(t, link.NameTerminal)
 	p := &scripted{}
 	now := time.Unix(1_700_000_000, 0).UTC()
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 8,
-		Links: []link.Link{link.Terminal{}, link.NewToolsLink()},
+		Links: []link.Link{link.Terminal{}},
 		Now:   func() time.Time { return now },
 	}
 	return k, p, &now
@@ -481,7 +481,7 @@ func TestDenialClearsOnNextOwnerTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	k, _, now := freshBot(t)
-	k.Links = []link.Link{link.Terminal{}, link.NewToolsLinkAt(dir, "")}
+	k.Links = []link.Link{link.Terminal{}}
 	k.WorkDir = dir
 	asked := 0
 	answer := false

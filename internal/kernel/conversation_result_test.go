@@ -43,7 +43,7 @@ func TestSimultaneousResultsStayInNormalConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{toolCall("read", "read_file", mustArgs(t, map[string]string{"path": path})), {Role: provider.RoleAssistant, Content: provider.TextContent("A结论731，B结论951。")}, {Role: provider.RoleAssistant, Content: provider.TextContent("两个限制仍是42和63。")}}}
-	k := &Kernel{Bot: b, Inbox: in, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4, Links: []link.Link{link.Terminal{}, link.NewToolsLinkAt(work, "")}, WorkDir: work}
+	k := &Kernel{Bot: b, Inbox: in, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4, Links: []link.Link{link.Terminal{}}, WorkDir: work}
 	if err := k.Handle(context.Background(), a); err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +215,7 @@ func TestDSMLExplanationIsOrdinaryText(t *testing.T) {
 	}
 }
 func TestLaterResultStillNotifiesAfterAnEarlierExplicitNotification(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTools, link.NameTimer)
+	b := testBot(t, link.NameTerminal, link.NameTimer)
 	in, err := inbox.Open(b.InboxPath())
 	if err != nil {
 		t.Fatal(err)

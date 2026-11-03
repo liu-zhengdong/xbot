@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"xbot/internal/config"
-	"xbot/internal/link"
 	"xbot/internal/provider"
 	"xbot/internal/review"
 	"xbot/internal/vault"
@@ -57,7 +56,7 @@ func TestImageGenResolution(t *testing.T) {
 		{"forced off", "local", "xai", "xai", false, true, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			b := testBot(t, link.NameTools)
+			b := testBot(t)
 			for _, kind := range []string{"chatgpt", "xai"} {
 				if err := config.Add(b.Root, config.Provider{Name: kind, OAuth: kind, Protocol: config.Responses, BaseURL: "http://127.0.0.1:1"}, config.ModelSpec{Name: "model", Context: 10000}); err != nil {
 					t.Fatal(err)

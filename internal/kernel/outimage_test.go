@@ -28,7 +28,7 @@ import (
 
 func outImageKernel(t *testing.T, resps ...provider.Message) (*Kernel, string, *scripted) {
 	t.Helper()
-	b := testBot(t, link.NameTerminal, link.NameTools, link.NameTimer)
+	b := testBot(t, link.NameTerminal, link.NameTimer)
 	dir, _, err := work.Open(b.Root, b.Name())
 	if err != nil {
 		t.Fatal(err)

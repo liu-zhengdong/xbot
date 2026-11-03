@@ -17,7 +17,7 @@ import (
 // most frequent such line. The interface decides what to show by the origin
 // field and never by the text, so the kernel has to write it.
 func TestEnvironmentUpdateIsMarkedInternal(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTools)
+	b := testBot(t, link.NameTerminal)
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("好")}}}
 	now := time.Unix(1_700_000_000, 0).UTC()
 	k := &Kernel{Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 4,

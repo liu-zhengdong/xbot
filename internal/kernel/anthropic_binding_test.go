@@ -18,7 +18,7 @@ import (
 )
 
 func TestAnthropicBindingToolRoundTripAndSwitch(t *testing.T) {
-	b := testBot(t, link.NameTools, link.NameTerminal)
+	b := testBot(t, link.NameTerminal)
 	claudeRequests, localResults := 0, 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)

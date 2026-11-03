@@ -37,7 +37,7 @@ func (pingTool) Run(context.Context, json.RawMessage) (string, error) {
 
 type roLink struct{}
 
-func (roLink) Name() string        { return link.NameTools }
+func (roLink) Name() string        { return "fixture" }
 func (roLink) Tools() []tools.Tool { return []tools.Tool{roTool{}} }
 
 type roTool struct{}

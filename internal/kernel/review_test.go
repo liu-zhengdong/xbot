@@ -167,7 +167,7 @@ func TestKernelReadOnlyDoesNotAsk(t *testing.T) {
 	if err := os.WriteFile(path, []byte("hello\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	b := testBot(t, link.NameTerminal, link.NameTools)
+	b := testBot(t, link.NameTerminal)
 	p := &scripted{resps: []provider.Message{
 		{Role: provider.RoleAssistant, Content: provider.ToolContent([]provider.ToolCall{{
 			ID: "c1", Type: "function",
@@ -178,7 +178,7 @@ func TestKernelReadOnlyDoesNotAsk(t *testing.T) {
 	asked := 0
 	k := &Kernel{
 		Bot: b, Provider: p, MaxSteps: 4,
-		Links:   []link.Link{link.Terminal{}, link.NewToolsLinkAt(dir, "")},
+		Links:   []link.Link{link.Terminal{}},
 		Approve: func(context.Context, string, string) (bool, error) { asked++; return true, nil },
 	}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "read", time.Unix(1, 0).UTC())); err != nil {
@@ -246,9 +246,9 @@ func TestReviewedToolDoesNotForceNormalTool(t *testing.T) {
 // still asks in allow mode, while an ordinary path does not. The tool only
 // reports the path; the kernel review path decides.
 func TestWriteEditSelfEditStillAsks(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTools)
+	b := testBot(t, link.NameTerminal)
 	k := &Kernel{
-		Bot: b, Links: []link.Link{link.NewToolsLink()},
+		Bot:     b,
 		Machine: func() (string, error) { return "allow", nil },
 	}
 	list, err := k.modelTools()
@@ -301,7 +301,7 @@ func (fakeMCPTool) Run(context.Context, json.RawMessage) (string, error) { retur
 // every link the product can mount, then fails if a registered tool has no
 // explicit policy-table entry or if that tool's own Confirm asks for the owner.
 func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTools, link.NameTimer, link.NameMemory, link.NamePersona,
+	b := testBot(t, link.NameTerminal, link.NameTimer, link.NameMemory, link.NamePersona,
 		link.NameContext, link.NameAgents, link.NameSkills, link.NameWeb, link.NamePeers,
 		link.NameWebhook, link.NameWatch, link.NameTelegram, link.NameLark,
 		link.NameCoding, link.NameDesktop, link.NameBrowser)
@@ -315,7 +315,7 @@ func TestEveryRegisteredToolHasATableEntryAndNeverConfirms(t *testing.T) {
 	dir := bot.Dir(b.Root, b.Name())
 	k := &Kernel{
 		Bot:   b,
-		Links: []link.Link{link.Terminal{}, &link.Timer{Dir: b.RoutineDir()}, link.Memory{}, link.Persona{}, link.Context{}, link.Agents{}, link.Skills{}, link.Web{}, link.Peers{}, link.Webhook{}, link.Watch{}, link.NewToolsLinkAt(t.TempDir(), "")},
+		Links: []link.Link{link.Terminal{}, &link.Timer{Dir: b.RoutineDir()}, link.Memory{}, link.Persona{}, link.Context{}, link.Agents{}, link.Skills{}, link.Web{}, link.Peers{}, link.Webhook{}, link.Watch{}},
 		Vault: store,
 	}
 	k.Links = append(k.Links,

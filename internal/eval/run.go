@@ -275,7 +275,7 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 		}
 		seeded[f.Path] = f.Text
 	}
-	grants := []string{link.NameTerminal, link.NameTools}
+	grants := []string{link.NameTerminal}
 	if c.Memory {
 		grants = append(grants, link.NameMemory)
 	}
@@ -419,10 +419,11 @@ func runCaseFor(c Case, level string, script Script, real provider.Provider, mod
 	k := &kernel.Kernel{
 		Bot: b, Provider: meter, Memory: mem, MaxSteps: steps,
 		OnTool: meter.toolStart, OnResult: meter.toolEnd,
-		WorkDir: work,
-		Links:   links,
-		Now:     func() time.Time { return when },
-		Approve: func(context.Context, string, string) (bool, error) { return allow, nil },
+		WorkDir:       work,
+		SkipBaseTools: true,
+		Links:         links,
+		Now:           func() time.Time { return when },
+		Approve:       func(context.Context, string, string) (bool, error) { return allow, nil },
 	}
 	if c.Dispatch {
 		k.Dispatch = true

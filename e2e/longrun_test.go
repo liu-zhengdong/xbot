@@ -622,7 +622,7 @@ func newJourney(t *testing.T, compaction bool) (*kernel.Kernel, *bot.Bot, *journ
 	root := t.TempDir()
 	work := t.TempDir()
 	b, err := bot.Create(root, "longrun", "You are a long-run test bot.", []string{
-		link.NameTerminal, link.NameTools, link.NameContext, link.NameMemory,
+		link.NameTerminal, link.NameContext, link.NameMemory,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -641,7 +641,8 @@ func newJourney(t *testing.T, compaction bool) (*kernel.Kernel, *bot.Bot, *journ
 		Memory:   memory.Open(root),
 		MaxSteps: 4,
 		Inbox:    box,
-		Links:    []link.Link{link.Terminal{}, link.NewToolsLinkAt(work, ""), link.Context{}, link.Memory{}},
+		Links:    []link.Link{link.Terminal{}, link.Context{}, link.Memory{}},
+		WorkDir:  work,
 		Approve:  func(context.Context, string, string) (bool, error) { return true, nil },
 		Budget:   kernel.BudgetFor(b.Config()),
 	}

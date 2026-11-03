@@ -123,7 +123,7 @@ func TestBusyDispatchSeedCanBeInspectedBeforeSteering(t *testing.T) {
 	for _, c := range cases {
 		if c.Name == "dispatch-busy-steer" {
 			root := t.TempDir()
-			b, err := bot.Create(root, "ada", "Be brief.", []string{link.NameTerminal, link.NameTools, link.NameAgents})
+			b, err := bot.Create(root, "ada", "Be brief.", []string{link.NameTerminal, link.NameAgents})
 			if err != nil {
 				t.Fatal(err)
 			}

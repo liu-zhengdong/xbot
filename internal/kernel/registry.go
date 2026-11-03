@@ -122,6 +122,16 @@ var kernelTools = []struct {
 	{"chat", always, func(k *Kernel) []tools.Tool { return []tools.Tool{sendMessageTool{k}} }, nil},
 	{"chat", always, func(k *Kernel) []tools.Tool { return []tools.Tool{askTool{k}} }, nil},
 	{"todo", func(k *Kernel, _ []link.Link) bool { return k.todoToolOn() }, func(k *Kernel) []tools.Tool { return []tools.Tool{todoTool{k}} }, nil},
+	// The six base tools are kernel-held handles (baseTools), registered once
+	// per kernel. Empty NewShells() probes return an empty row. SkipBaseTools
+	// drops the whole set (the eval harness offers a jailed set instead).
+	{"shell", baseRowsOn, func(k *Kernel) []tools.Tool { return k.baseTools().shells }, nil},
+	{"files", baseRowsOn, func(k *Kernel) []tools.Tool {
+		return []tools.Tool{k.baseTools().read, k.baseTools().write, k.baseTools().edit}
+	}, nil},
+	{"web", baseRowsOn, func(k *Kernel) []tools.Tool { return []tools.Tool{k.baseTools().fetch} }, nil},
+	{"web", func(k *Kernel, _ []link.Link) bool { return !k.SkipBaseTools && k.webSearchOn() }, func(k *Kernel) []tools.Tool { return []tools.Tool{k.baseTools().search} }, nil},
+	{"vision", baseRowsOn, func(k *Kernel) []tools.Tool { return []tools.Tool{k.baseTools().view} }, nil},
 	{"agents", always, func(k *Kernel) []tools.Tool {
 		var start tools.Tool = spawnTool{k}
 		if k.Dispatch {
@@ -136,11 +146,14 @@ var kernelTools = []struct {
 
 func always(*Kernel, []link.Link) bool { return true }
 
+// baseRowsOn registers the six base tools unless the kernel is told to drop
+// them (eval sandboxes provide their own set).
+func baseRowsOn(k *Kernel, _ []link.Link) bool { return !k.SkipBaseTools }
+
 // toolRegistry registers what the mounted links offer and the kernel rows.
 func (k *Kernel) toolRegistry() *toolRegistry {
 	k.attachShell()
 	links := k.snapshotLinks()
-	search := k.webSearchOn()
 	r := &toolRegistry{}
 	for _, l := range links {
 		if l == nil {
@@ -149,9 +162,6 @@ func (k *Kernel) toolRegistry() *toolRegistry {
 		source := linkSource(l)
 		deferred := lazyUntilLoad(l.Name()) && !k.isLoaded(l.Name())
 		for _, t := range l.Tools() {
-			if t.Name() == "web_search" && !search {
-				continue
-			}
 			r.Register(t, source, l.Name(), deferred)
 		}
 	}

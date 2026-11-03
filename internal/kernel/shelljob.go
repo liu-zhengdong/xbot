@@ -50,47 +50,89 @@ func (k *Kernel) shellJobs() *tools.Jobs {
 	return k.liveShell()
 }
 
-// attachShellJobs points every shell tool on a mounted link at this bot's jobs.
-// The pointer is written once per shell, so a running Shell.Run does not race
-// with a later modelTools refresh.
+// toolsSet is the kernel-held set of the six base tools ADR 0069 moved off
+// ToolsLink: shells, file read/write/edit, web fetch/search, and view_image.
+// The kernel keeps these handles for its whole life: attachShell writes the
+// Jobs, session, cwd, IO, and vault bindings onto them, so handing the same
+// instances to the registry is what makes a shell call see this bot's state.
+// A nil k or a kernel without a bot root still builds: Dir/Root fall back to
+// the process working directory, and every bind call tolerates a nil kernel.
+type toolsSet struct {
+	shells []tools.Tool
+	read   *tools.ReadFile
+	write  *tools.WriteFile
+	edit   *tools.EditFile
+	fetch  *tools.WebFetch
+	search *tools.WebSearch
+	view   *tools.ViewImage
+}
+
+// list returns the shells then the file, web, and vision tools.
+func (s *toolsSet) list() []tools.Tool {
+	out := append([]tools.Tool(nil), s.shells...)
+	return append(out, s.read, s.write, s.edit, s.fetch, s.search, s.view)
+}
+
+// baseTools builds the kernel's six base tools once and binds this bot's
+// state onto them. The set is stable: kernelTools rows return these handles.
+func (k *Kernel) baseTools() *toolsSet {
+	k.baseOnce.Do(func() {
+		dir := ""
+		if k != nil {
+			dir = k.WorkDir
+		}
+		shared := ""
+		if k != nil {
+			shared = k.SharedDir
+		}
+		s := &toolsSet{
+			read:   &tools.ReadFile{Root: dir},
+			write:  &tools.WriteFile{Root: dir},
+			edit:   &tools.EditFile{Root: dir},
+			fetch:  &tools.WebFetch{},
+			search: &tools.WebSearch{},
+			view:   &tools.ViewImage{Root: dir},
+		}
+		for _, sh := range tools.NewShells() {
+			sh.Dir = dir
+			sh.Shared = shared
+			s.shells = append(s.shells, sh)
+		}
+		k.base = s
+	})
+	return k.base
+}
+
+// attachShellJobs points every base shell at this bot's jobs. The pointer is
+// written once per shell, so a running Shell.Run does not race with a later
+// modelTools refresh.
 func (k *Kernel) attachShellJobs() {
 	jobs := k.shellJobs()
 	if jobs == nil {
 		return
 	}
-	for _, l := range k.snapshotLinks() {
-		if l == nil {
-			continue
-		}
-		for _, t := range l.Tools() {
-			sh, ok := t.(*tools.Shell)
-			if ok {
-				sh.BindJobs(jobs)
-			}
+	for _, sh := range k.baseTools().shells {
+		if s, ok := sh.(*tools.Shell); ok {
+			s.BindJobs(jobs)
 		}
 	}
 }
 
-// attachShell points every shell at this bot's job table and persistent cwd.
+// attachShell points every base shell at this bot's job table and persistent
+// cwd, and fills file, web, and vision configuration on the same held set.
 func (k *Kernel) attachShell() {
 	k.attachShellJobs()
 	if k == nil {
 		return
 	}
-	for _, l := range k.snapshotLinks() {
-		if l == nil {
-			continue
+	for _, t := range k.baseTools().list() {
+		if sh, ok := t.(*tools.Shell); ok {
+			sh.BindSession(k.shellStartDir, k.shellAfterDir)
+			sh.SetMarkerDir(k.shellMarkerDir())
+			k.bindShellRuntime(sh)
 		}
-		for _, t := range l.Tools() {
-			sh, ok := t.(*tools.Shell)
-			if ok {
-				sh.BindSession(k.shellStartDir, k.shellAfterDir)
-				sh.SetMarkerDir(k.shellMarkerDir())
-				k.bindShellRuntime(sh)
-			}
-			k.bindFileCwd(t)
-			k.configureWeb(t)
-		}
+		k.bindFileCwd(t)
+		k.configureWeb(t)
 	}
 }
 

@@ -245,7 +245,7 @@ func TestMemoryDiffAppendedForOutsideWrite(t *testing.T) {
 
 // TestMemoryDiffSkipsOwnWrite: the bot's own file write is not reported back.
 func TestMemoryDiffSkipsOwnWrite(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameMemory, link.NameTools)
+	b := testBot(t, link.NameTerminal, link.NameMemory)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestMemoryDiffSkipsOwnWrite(t *testing.T) {
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: store, MaxSteps: 4,
-		Links: []link.Link{link.Terminal{}, link.Memory{}, link.NewToolsLinkAt(b.Root, "")},
+		Links: []link.Link{link.Terminal{}, link.Memory{}},
 		Now:   func() time.Time { return t0 },
 	}
 	reqs := memDiffRun(t, k, 2, nil)
@@ -430,7 +430,7 @@ func (h *hookProvider) Chat(ctx context.Context, req provider.Request, onDelta f
 // TestMemoryDiffKeepsOutsideEditDuringOwnWrite: an outside edit landing in the
 // same turn as the bot's own file edit is still reported; only the own line is skipped.
 func TestMemoryDiffKeepsOutsideEditDuringOwnWrite(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameMemory, link.NameTools)
+	b := testBot(t, link.NameTerminal, link.NameMemory)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -455,7 +455,7 @@ func TestMemoryDiffKeepsOutsideEditDuringOwnWrite(t *testing.T) {
 	}}
 	k := &Kernel{
 		Bot: b, Provider: hp, Memory: store, MaxSteps: 4,
-		Links: []link.Link{link.Terminal{}, link.Memory{}, link.NewToolsLinkAt(b.Root, "")},
+		Links: []link.Link{link.Terminal{}, link.Memory{}},
 		Now:   func() time.Time { return t0 },
 	}
 	memDiffRun(t, k, 2, nil)
@@ -502,7 +502,7 @@ func TestBranchMemoryReceiptReplaysFromConversation(t *testing.T) {
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: store, MaxSteps: 4,
-		Links: []link.Link{link.Terminal{}, link.Memory{}, link.NewToolsLinkAt(b.Root, "")},
+		Links: []link.Link{link.Terminal{}, link.Memory{}},
 	}
 	ev := link.TerminalEvent("u1", "做个长任务", time.Unix(10, 0).UTC())
 	if err := k.Handle(context.Background(), ev); err != nil {
@@ -596,7 +596,7 @@ func TestMemoryTimerWakeKeepsView(t *testing.T) {
 // TestMemoryOwnWriteAcrossViews: the owner's bot-scope write is not reported to
 // the shared view, and the owner's person-scope write never reaches it at all.
 func TestMemoryOwnWriteAcrossViews(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameMemory, link.NameTools)
+	b := testBot(t, link.NameTerminal, link.NameMemory)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -614,7 +614,7 @@ func TestMemoryOwnWriteAcrossViews(t *testing.T) {
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: store, MaxSteps: 4,
-		Links: []link.Link{link.Terminal{}, link.Memory{}, link.NewToolsLinkAt(b.Root, "")},
+		Links: []link.Link{link.Terminal{}, link.Memory{}},
 		Now:   func() time.Time { return t0 },
 	}
 	// u1 speaks twice, so the own writes are drained into the parked u2 view.
@@ -719,7 +719,7 @@ func TestMemorySubagentWakeKeepsView(t *testing.T) {
 // TestMemoryDiffReportsUndoneOwnWrite: the bot remembers X, someone removes X
 // before the next wake; live equals what was seen, but the removal is reported.
 func TestMemoryDiffReportsUndoneOwnWrite(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameMemory, link.NameTools)
+	b := testBot(t, link.NameTerminal, link.NameMemory)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -732,7 +732,7 @@ func TestMemoryDiffReportsUndoneOwnWrite(t *testing.T) {
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: store, MaxSteps: 4,
-		Links: []link.Link{link.Terminal{}, link.Memory{}, link.NewToolsLinkAt(b.Root, "")},
+		Links: []link.Link{link.Terminal{}, link.Memory{}},
 		Now:   func() time.Time { return t0 },
 	}
 	memDiffRun(t, k, 2, func(i int) {

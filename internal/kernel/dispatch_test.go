@@ -67,7 +67,7 @@ func (m *roleModel) Chat(_ context.Context, req provider.Request, _ func(string)
 
 func dispatchKernel(t *testing.T, p provider.Provider) (*Kernel, *bot.Bot, *inbox.Inbox) {
 	t.Helper()
-	b := testBot(t, link.NameTerminal, link.NameTools, link.NameAgents)
+	b := testBot(t, link.NameTerminal, link.NameAgents)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func dispatchKernel(t *testing.T, p provider.Provider) (*Kernel, *bot.Bot, *inbo
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, Inbox: box, MaxSteps: 8,
 		Dispatch: true, WorkDir: dir,
-		Links: []link.Link{link.Terminal{}, link.NewToolsLinkAt(dir, ""), link.Agents{}},
+		Links: []link.Link{link.Terminal{}, link.Agents{}},
 	}
 	return k, b, box
 }
@@ -362,7 +362,7 @@ func (workLink) Tools() []tools.Tool {
 // the tools that hand work out; a narrower type still narrows it, and no
 // subagent can hand work out again.
 func TestMainLineAndSubagentsReachTheMountedTools(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTools, link.NameAgents,
+	b := testBot(t, link.NameTerminal, link.NameAgents,
 		link.NameCoding, link.NameDesktop, link.NameBrowser)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
@@ -380,7 +380,7 @@ func TestMainLineAndSubagentsReachTheMountedTools(t *testing.T) {
 		Bot: b, Provider: &roleModel{}, Memory: memory.NopStore{}, Inbox: box, MaxSteps: 8,
 		Dispatch: true, WorkDir: t.TempDir(), Vault: store,
 		Links: []link.Link{
-			link.Terminal{}, link.NewToolsLinkAt(dir, ""), link.Agents{}, link.Memory{}, link.Context{},
+			link.Terminal{}, link.Agents{}, link.Memory{}, link.Context{},
 			link.NewConnector(dir, b.SecretPath(), link.NameTelegram),
 			code.Open(dir, b.InboxPath()), desktop.Open(b.Root), browser.Open(b.Root),
 			workLink{}, fakeMCPLink{},
@@ -548,7 +548,7 @@ func TestSubagentCallsWhatItLoadsMidTask(t *testing.T) {
 			{Role: provider.RoleAssistant, Content: provider.TextContent("Done\nnone")},
 		},
 	}
-	b := testBot(t, link.NameTerminal, link.NameTools, link.NameAgents, link.NameTelegram)
+	b := testBot(t, link.NameTerminal, link.NameAgents, link.NameTelegram)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -561,7 +561,7 @@ func TestSubagentCallsWhatItLoadsMidTask(t *testing.T) {
 		Bot: b, Provider: m, Memory: memory.NopStore{}, Inbox: box, MaxSteps: 8,
 		Dispatch: true, WorkDir: t.TempDir(),
 		Links: []link.Link{
-			link.Terminal{}, link.NewToolsLinkAt(dir, ""), link.Agents{},
+			link.Terminal{}, link.Agents{},
 			link.NewConnector(dir, b.SecretPath(), link.NameTelegram),
 		},
 	}

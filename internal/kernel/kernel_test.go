@@ -54,7 +54,7 @@ func (s *scripted) Chat(_ context.Context, req provider.Request, onDelta func(st
 func testBot(t *testing.T, links ...string) *bot.Bot {
 	t.Helper()
 	if len(links) == 0 {
-		links = []string{link.NameTerminal, link.NameTools}
+		links = []string{link.NameTerminal}
 	}
 	b, err := bot.Create(t.TempDir(), "ada", "Be brief.", links)
 	if err != nil {
@@ -299,9 +299,9 @@ func TestToolsComeFromGrantedLink(t *testing.T) {
 		}})},
 		{Role: provider.RoleAssistant, Content: provider.TextContent("wrote it")},
 	}}
-	b := testBot(t, link.NameTerminal, link.NameTools)
+	b := testBot(t, link.NameTerminal)
 	k := &Kernel{
-		Bot: b, Provider: p, Links: []link.Link{link.Terminal{}, link.NewToolsLink()},
+		Bot: b, Provider: p, Links: []link.Link{link.Terminal{}},
 		Approve: func(context.Context, string, string) (bool, error) { return true, nil },
 	}
 	ev := link.TerminalEvent("u1", "write", time.Unix(1, 0).UTC())
@@ -345,7 +345,7 @@ func TestDeniedWrite(t *testing.T) {
 	}}
 	b := testBot(t)
 	k := &Kernel{
-		Bot: b, Provider: p, Links: []link.Link{link.NewToolsLink()},
+		Bot: b, Provider: p,
 		Machine: func() (string, error) { return "ask", nil },
 		Approve: func(context.Context, string, string) (bool, error) { return false, nil },
 	}

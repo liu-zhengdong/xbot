@@ -30,7 +30,7 @@ func TestMultiStepAgainstMock(t *testing.T) {
 	defer srv.Close()
 
 	root := t.TempDir()
-	b, err := bot.Create(root, "demo", "You are a test bot.", []string{link.NameTerminal, link.NameTools})
+	b, err := bot.Create(root, "demo", "You are a test bot.", []string{link.NameTerminal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestMultiStepAgainstMock(t *testing.T) {
 	k := &kernel.Kernel{
 		Bot:       b,
 		Provider:  client,
-		Links:     []link.Link{link.Terminal{}, link.NewToolsLink()},
+		Links:     []link.Link{link.Terminal{}},
 		Compactor: compact.LLM{P: client},
 		Approve:   func(context.Context, string, string) (bool, error) { return true, nil },
 		Memory:    memory.NopStore{},

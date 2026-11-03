@@ -70,7 +70,7 @@ func TestDeepSeekBindingUsesItsOverlay(t *testing.T) {
 }
 
 func TestSubagentReportsUseNormalConversation(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTools)
+	b := testBot(t, link.NameTerminal)
 	p := &scripted{resps: []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("结果到了。")}, {Role: provider.RoleAssistant, Content: provider.TextContent("记得这个结果。")}}}
 	k := &Kernel{Bot: b, Provider: p, MaxSteps: 2}
 	ev := link.NewEvent(link.SourceSubagent, exec.EvDone, "A完成，验收值731010", "sa_a", time.Now())

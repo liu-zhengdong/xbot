@@ -327,7 +327,7 @@ type sandboxLink struct {
 	list []tools.Tool
 }
 
-func (sandboxLink) Name() string { return "tools" }
+func (sandboxLink) Name() string { return "sandbox" }
 
 func (s sandboxLink) Tools() []tools.Tool { return s.list }
 

@@ -63,7 +63,7 @@ func TestShellJobSurvivesTurns(t *testing.T) {
 }
 
 func TestShellNoticeWaitsUntilToolReturns(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTools)
+	b := testBot(t, link.NameTerminal)
 	in, err := inbox.Open(b.InboxPath())
 	if err != nil {
 		t.Fatal(err)
@@ -73,7 +73,7 @@ func TestShellNoticeWaitsUntilToolReturns(t *testing.T) {
 	release := make(chan struct{})
 	k := &Kernel{
 		Bot: b, Provider: p, Inbox: in, Memory: memory.NopStore{}, MaxSteps: 4,
-		Links: []link.Link{link.Terminal{}, link.NewToolsLink(), shellHoldLink{entered: entered, release: release}},
+		Links: []link.Link{link.Terminal{}, shellHoldLink{entered: entered, release: release}},
 		Now:   func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
 	}
 	p.resps = []provider.Message{
@@ -144,7 +144,7 @@ func TestShellNoticeWaitsUntilToolReturns(t *testing.T) {
 }
 
 func TestIdleShellJobWakesAndStaysANormalTurn(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTools)
+	b := testBot(t, link.NameTerminal)
 	in, err := inbox.Open(b.InboxPath())
 	if err != nil {
 		t.Fatal(err)
@@ -158,7 +158,7 @@ func TestIdleShellJobWakesAndStaysANormalTurn(t *testing.T) {
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Inbox: in, Memory: memory.NopStore{}, MaxSteps: 8,
-		Links: []link.Link{link.Terminal{}, link.NewToolsLink()},
+		Links: []link.Link{link.Terminal{}},
 		Now:   func() time.Time { return time.Unix(1_700_000_100, 0).UTC() },
 	}
 	out, err := k.shellJobs().Run(context.Background(), tools.RunRequest{
@@ -218,7 +218,7 @@ func TestIdleShellJobWakesAndStaysANormalTurn(t *testing.T) {
 }
 
 func TestShellJobFileUsesKernelRedactor(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTools)
+	b := testBot(t, link.NameTerminal)
 	k := &Kernel{
 		Bot: b,
 		Redact: func(s string) string {
@@ -447,30 +447,28 @@ func TestAttachShellJobsOnce(t *testing.T) {
 	wg.Wait()
 }
 
-type plainShellLink struct{}
-
-func (plainShellLink) Name() string { return link.NameTools }
-func (plainShellLink) Tools() []tools.Tool {
-	return []tools.Tool{tools.NewShell(), &tools.ReadFile{}, &tools.WriteFile{}, &tools.EditFile{}}
-}
-
-func TestEvalNamedToolsLinkOmitsShellJobTools(t *testing.T) {
+// The kernel-held shells are always bound to this bot's jobs table before
+// they register, so backgrounding and the retired job tools are never half
+// available: either a shell names them or it is not this bot's shell.
+func TestBaseShellsCarryJobsBinding(t *testing.T) {
 	k, p, _ := freshBot(t)
-	k.Links = []link.Link{link.Terminal{}, plainShellLink{}}
 	p.resps = []provider.Message{{Role: provider.RoleAssistant, Content: provider.TextContent("hi")}}
 	if err := k.Handle(context.Background(), link.TerminalEvent("u1", "hello", time.Unix(1_700_000_500, 0).UTC())); err != nil {
 		t.Fatal(err)
 	}
-	var names []string
 	for _, tool := range p.reqs[0].Tools {
-		names = append(names, tool.Name)
-		if tool.Name == "sh" && strings.Contains(tool.Description, "run_in_background") {
-			t.Fatal("shell without a job table offers backgrounding")
+		if tool.Name == "sh" && !strings.Contains(tool.Description, "run_in_background") {
+			t.Fatal("bound shell lost its jobs table")
 		}
 	}
-	got := strings.Join(names, ",")
-	if strings.Contains(got, "shell_output") || strings.Contains(got, "shell_status") || strings.Contains(got, "shell_cancel") {
-		t.Fatalf("retired job tool still offered on a shell with no job table: %s", got)
+	got := ""
+	for _, tool := range p.reqs[0].Tools {
+		got += tool.Name + ","
+	}
+	for _, name := range []string{"shell_output", "shell_status", "shell_cancel"} {
+		if strings.Contains(got, name) {
+			t.Fatalf("retired job tool still offered: %s", got)
+		}
 	}
 }
 
@@ -765,7 +763,7 @@ func TestRenameKeepsToolJobsWorking(t *testing.T) {
 	p := &scripted{}
 	k2 := &Kernel{
 		Bot: loaded, Provider: p, Memory: memory.NopStore{}, MaxSteps: 8,
-		Links: []link.Link{link.Terminal{}, link.NewToolsLink()},
+		Links: []link.Link{link.Terminal{}},
 		Now:   func() time.Time { return *now },
 	}
 	next := *now
@@ -835,7 +833,7 @@ func TestShellJobsFollowRename(t *testing.T) {
 // moves the bot. Its completion lands in the new directory,
 // the old bot directory is not recreated, and the same turn keeps working.
 func TestProfileRenameDoesNotRecreateOldDir(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTools, link.NamePersona)
+	b := testBot(t, link.NameTerminal, link.NamePersona)
 	root := b.Root
 	now := time.Unix(1_700_000_000, 0).UTC()
 	p := &scripted{resps: []provider.Message{
@@ -844,7 +842,7 @@ func TestProfileRenameDoesNotRecreateOldDir(t *testing.T) {
 	}}
 	k := &Kernel{
 		Bot: b, Provider: p, Memory: memory.NopStore{}, MaxSteps: 8,
-		Links: []link.Link{link.Terminal{}, link.NewToolsLink(), link.Persona{}},
+		Links: []link.Link{link.Terminal{}, link.Persona{}},
 		Now:   func() time.Time { return now },
 	}
 	k.Approve = func(context.Context, string, string) (bool, error) { return true, nil }

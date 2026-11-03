@@ -209,7 +209,7 @@ func TestEnvStreamCancelledCallIsCounted(t *testing.T) {
 
 type streamTool struct{ run func() }
 
-func (streamTool) Name() string                                  { return "read_file" }
+func (streamTool) Name() string                                  { return "stream_probe" }
 func (streamTool) Description() string                           { return "read" }
 func (streamTool) Parameters() any                               { return map[string]any{"type": "object"} }
 func (streamTool) Confirm(json.RawMessage) (bool, string, error) { return false, "read", nil }
@@ -220,11 +220,11 @@ func (t streamTool) Run(context.Context, json.RawMessage) (string, error) {
 
 type streamLink struct{ tool tools.Tool }
 
-func (streamLink) Name() string          { return link.NameTools }
+func (streamLink) Name() string          { return "fixture" }
 func (l streamLink) Tools() []tools.Tool { return []tools.Tool{l.tool} }
 
 func TestEnvStreamLiveAndReassembledToolOrder(t *testing.T) {
-	b := testBot(t, link.NameTerminal, link.NameTools)
+	b := testBot(t, link.NameTerminal)
 	if err := b.SetOwners([]string{"u1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestEnvStreamLiveAndReassembledToolOrder(t *testing.T) {
 	k.Provider = providerFunc(func(_ context.Context, req provider.Request, _ func(string)) (provider.Message, error) {
 		calls++
 		if calls == 1 {
-			return toolCall("read1", "read_file", "{}"), nil
+			return toolCall("read1", "stream_probe", "{}"), nil
 		}
 		st, err := b.LoadState()
 		if err != nil {
@@ -350,7 +350,7 @@ func TestEnvStreamTaskRecoveryAndCodingState(t *testing.T) {
 }
 
 func TestEnvStreamResultFileIsReadable(t *testing.T) {
-	b := testBot(t, link.NameTools)
+	b := testBot(t)
 	text := strings.Repeat("detail\n", 1800) + "FINAL_NUMBER_8128"
 	dir := b.AgentDir("sa_0123456789abcdef")
 	if err := os.MkdirAll(dir, 0700); err != nil {

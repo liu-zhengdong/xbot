@@ -17,7 +17,7 @@ import (
 // on disk, so a direct vault read must still ask.
 func protectedKernel(t *testing.T) (*Kernel, string) {
 	t.Helper()
-	b := testBot(t, link.NameTerminal, link.NameTools)
+	b := testBot(t, link.NameTerminal)
 	workDir := filepath.Join(b.Root, "work", b.Name())
 	if err := os.MkdirAll(workDir, 0700); err != nil {
 		t.Fatal(err)

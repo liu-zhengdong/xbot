@@ -21,7 +21,7 @@ func TestShellSelfEditIsNotAnExternalChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	k, p, now := freshBot(t)
-	k.Links = []link.Link{link.Terminal{}, link.NewToolsLinkAt(dir, "")}
+	k.Links = []link.Link{link.Terminal{}}
 	k.WorkDir = dir
 	k.Approve = func(context.Context, string, string) (bool, error) { return true, nil }
 	runTurn(t, k, now, "edit",

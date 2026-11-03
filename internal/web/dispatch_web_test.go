@@ -71,7 +71,7 @@ func TestDispatchKeepsTheForegroundFree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb, link.NameTools, link.NameAgents})
+	b, err := bot.Create(root, "ada", "persona", []string{link.NameWeb, link.NameAgents})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestDispatchKeepsTheForegroundFree(t *testing.T) {
 		return &kernel.Kernel{
 			Bot: b, Provider: m, Inbox: box, Memory: memory.NopStore{}, MaxSteps: 8,
 			Dispatch: true, Permissive: true, WorkDir: work,
-			Links: []link.Link{link.Web{}, link.NewToolsLinkAt(work, ""), link.Agents{}},
+			Links: []link.Link{link.Web{}, link.Agents{}},
 		}, nil
 	}
 	ui := httptest.NewServer(muxOf(s))
