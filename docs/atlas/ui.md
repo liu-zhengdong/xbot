@@ -2,12 +2,12 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-04 @ da1b873f (account device management and message target)
+verified: 2026-11-04 @ 5d847ebd (Bot skills tab, account device management and message target)
 
 ---
 # 网页界面
 
-> **30 秒版**：网页和桌面版用同一套界面：左侧列出 Bot，主区顶部两层分别是身份操作和页面标签；聊天、记忆、轨迹、子代理、任务、上下文、收件箱共用主区。对话里只有用户的话和 Bot 用 `send_message_to_user` 说的话，工具原文、任务与上下文分别放在对应标签里。主体是黑白灰，靠底色深浅分层、不画线；轨迹类型用蓝、绿、紫、橙作小面积标识，其他语义颜色沿既有约定。以后改界面要守的规矩在 [guard/界面.md](../guard/界面.md)。
+> **30 秒版**：网页和桌面版用同一套界面：左侧列出 Bot，主区顶部两层分别是身份操作和页面标签；聊天、记忆、轨迹、子代理、任务、上下文、收件箱、技能共用主区。对话里只有用户的话和 Bot 用 `send_message_to_user` 说的话，工具原文、任务与上下文分别放在对应标签里。主体是黑白灰，靠底色深浅分层、不画线；轨迹类型用蓝、绿、紫、橙作小面积标识，其他语义颜色沿既有约定。以后改界面要守的规矩在 [guard/界面.md](../guard/界面.md)。
 
 命令行 `xbot [--root DIR] message <bot> <text...>` 向已运行的本机 serve 发送主人消息：`--http` 默认 `127.0.0.1:8788`，`--timeout` 默认 2 分钟，`--text` 或 `-`/省略正文可提供文本或读 stdin。先通过回环 `/api/session` 获取会话，再调用现有 messages SSE；只输出 `done.text`，没有可见回复、转交、错误或超时返回非零。
 
@@ -16,6 +16,8 @@ verified: 2026-11-04 @ da1b873f (account device management and message target)
 主视图「记忆」由 `GET /api/bots/{name}` 的 `memory` DTO 装配：桌面与窄屏均为单栏，上方「关于本 Bot」、下方经历；不显示「关于你」，person 的存储及模型注入不变。常驻预览前两条带日期条目（手机一条），「展开全部」读取原文的完整 Markdown 投影；复用气泡渲染和打开文件入口，不经 Recall 拆卡。经历来自当前 Bot 的 `experience.sqlite`，带时间、新到旧，点开关注点与提纲；正常 user/assistant 片段按「你／Bot 名」分段、限制阅读行宽，工具完成回报与截断标记只留在默认折叠的「原始提纲」里。原始内容仍逐字可读、可选中复制并保留搜索命中，不改经历库。首屏 40 条，可加载更早内容。标题旁「搜索经历」通过 `GET /api/bots/{name}/experiences?q=…&before=…` 搜整个库的摘要、关注点、提纲；字面包含、英文忽略大小写，沿相同顺序分页，命中用中性底突出。输入法选词期间不查询，快速换词或切 Bot 丢弃旧回包；轮询保留输入、焦点与展开态，清除恢复已加载的普通列表。失败保留查询并可重试，无匹配单独提示。页脚只在本月有流水时给打开入口，不进主列表。浏览器打开只读原文件，桌面交给默认应用；不提供编辑器。守护为 `memory_panel_test.go`、`memory_panel_search_test.go` 的数据与搜索回归，`memory_panel_browser_test.go`、`memory_search_browser_test.go`、`memory_detail_browser_test.go` 的 Chrome 行为，以及真实 serve 的 `TestChatTabsJourney`。
 
 主视图的收件箱位于上下文右侧：只读展示该 Bot 的入站叫醒事件，按时间新到旧，可展开摘要；待处理数量弱显，窄屏顶部标签横滚。数据来自 `GET /api/bots/{name}/inbox`，Webhook 和文件监听来源按前缀识别，摘要展示事件正文而非外壳，routine 只取标签内正文；与聊天和全局通知分开。
+
+主视图「技能」位于收件箱右侧。列表从 `GET /api/bots/{name}/skills` 仅投影未停用项，沿用全局设置的 title/name/slug 名称规则；搜索覆盖名称、说明和 slug，英文忽略大小写，输入法组合期间不筛选。点击读取既有详情接口，正文复用 Markdown 渲染，折叠原文使用纯文本。宽屏列表与详情并列，主区不足时改为单页详情；返回保留查询和阅读位置。进入标签与关闭设置时重读，不增加轮询。技能设置的启停、导入和删除成功后也通知当前技能页，保存晚于关闭设置时仍能刷新。详情回包保留标题与控件的焦点，切 Bot 释放视图并忽略旧请求。管理入口复用全局技能设置，聊天 DOM、草稿和阅读位置沿原工作区保存。模块为 `bot-skills.js/css`；行为由 `bot_skills_browser_test.go`、`bot_skills_settings_browser_test.go` 和真实二进制 `TestBotSkillsJourney` 守护。
 
 任务 Tab 的例程技能入口装配在 `routineCard` / `updateRoutineCard` 的现有 `.task-routine` 内：行头保持 36px 密度、14px 图标、34×20px 开关与 6×10px 内边距；正文起点下方一整行 12px 灰字显示有序技能引用或「添加技能」。点击展开逗号编辑，取消或 Escape 丢弃草稿并返回入口，保存仅 PATCH 现有例程接口的 `skills`；留空提交 `[]`，失败保留输入与扁平错误。轮询复用卡片和输入节点，不覆盖草稿或抢焦点。输入使用 `--x-input`，取消用次级底、保存用 primary，卡片仍透明跟页；不读技能库映射名称或增加选择器。行为守护在 `routine_skills_browser_test.go`，接口契约见 [API](../API.md)。
 
