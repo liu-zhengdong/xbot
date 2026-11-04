@@ -2680,7 +2680,6 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 #settings-owner-clear{flex:none;font-size:var(--ui-action);padding:var(--x-s2) 0;color:var(--x-muted)}
 #settings-owner-error:empty{display:none}
 .settings-appearance{margin-top:var(--settings-section)}
-.settings-theme-label{font-weight:500;margin-bottom:var(--x-s5)}
 .theme-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--x-s5);margin:0;padding:0;border:0;min-width:0}
 .theme-option{position:relative;min-width:0;cursor:pointer;font-size:var(--x-fs-ui)}
 .theme-option>input,.set-segments input{position:absolute;opacity:0;width:1px;height:1px}
