@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-03 @ b15f6a6b (approved image settings layout; existing chat and desktop contracts retained)
+verified: 2026-11-03 @ 2e80df90 (near-bottom reply follow and accepted-send shrink regressions; existing settings and desktop contracts retained)
 
 ---
 # 网页界面
@@ -28,7 +28,7 @@ verified: 2026-11-03 @ b15f6a6b (approved image settings layout; existing chat a
 
 打开/切 Bot 清空旧主列，等待中仅挂页色半透明遮罩和当前Bot圆头像（复用生成/上传头像）叠随机闲话；长等待轮换、轻弹入与字偶轻抖，reduced-motion 全静态。尾窗 JSON 完整到齐后离屏拼完整消息 DOM，一次替换，遮罩约320ms散去；失败留在遮罩内显示「对话加载失败」并重试，不冒充整机离线。设计交接在用户本机 `~/agent-tools/chat-window-search/`，当前功能验收见 [dev](../dev/transcript-window.md)。
 
-列顶居中「更早的消息」chip 与上滑入口走同一before请求，加载时只改chip，不重置已有消息；prepend保留可见泡节点和视觉锚。主列缓存最多800条 chat 送达行，合并统一从旧端裁，不丢打开时的最新消息；满窗后不能继续向旧端扩展时，现有提示行说明用搜索定位更早历史。分页按钮的加载态、到达最老页的提示先更新，再校正可见锚点；最老页提示不再定时消失引起二次位移。主列滚动由 `threadStick` 统一持有 stick 状态、rAF 贴底、ResizeObserver（当前 `.thread-inner` 与滚动容器）和视觉锚；打开/首次/latest 进入 stick，上翻离开 120px 阈值解除，主动下滚回底部恢复。布局增高不解除 stick，追加、SSE、临时发送与历史控件改高都经此缝跟尾；解除后不被观察者或新尾拉回。分页和轮询的控件／失败提示变更完成后恢复可见消息的视觉锚；引用与搜索定位显式解除 stick。回复收工单独对账，不受历史轮询冻结限制，保留连续的已加载历史和阅读位置；SSE 送达时即使用正式气泡布局，避免收工补头像／名字造成正文位移。历史轮询按 stick 状态冻结，重新 stick 或回最新可读取服务器真尾，尾窗有缺口时 stick 直接换新尾窗、不拼接断层。回归为 `chat_stick_browser_test.go`（墙钟 Chrome 帧循环，避免虚拟时间跳过 ResizeObserver/rAF）。搜索由顶栏右放大镜打开白纸浮层，摘录与时间来自同Bot FTS；点命中关闭浮层、按chat ID开附近窗并短高亮，前后都能继续翻、能回到最新。搜索只命中chat FTS的可见正文，内部/工具行仍由Agent的transcript搜索负责。历史位置不被轮询抢走，尾窗变化继续走chat条件请求与按chat ID补丁；窗口有缺口时保留旧窗并提供更新入口，不静默拼断层。失败保留已有消息并可重试。接口契约见 [API](../API.md)。
+列顶居中「更早的消息」chip 与上滑入口走同一before请求，加载时只改chip，不重置已有消息；prepend保留可见泡节点和视觉锚。主列缓存最多800条 chat 送达行，合并统一从旧端裁，不丢打开时的最新消息；满窗后不能继续向旧端扩展时，现有提示行说明用搜索定位更早历史。分页按钮的加载态、到达最老页的提示先更新，再校正可见锚点；最老页提示不再定时消失引起二次位移。主列滚动由 `threadStick` 统一持有 stick 状态、rAF 贴底、ResizeObserver（当前 `.thread-inner` 与滚动容器）和视觉锚；打开/首次/latest 进入 stick，上翻离开 120px 阈值解除，主动下滚回底部恢复。各消息与控件更新入口先用更新前的几何读取滚动意图，再修改 DOM 并按 stick 状态跟尾。近底部的小幅上滚即使尚未收到原生 scroll 事件，也继续跟随长回复；超出阈值的上滚保留阅读位置。布局增高不解除 stick，发送状态行收缩后立即同步位置；追加、SSE、临时发送与历史控件改高都经此缝跟尾，解除后不被观察者或新尾拉回。分页和轮询的控件／失败提示变更完成后恢复可见消息的视觉锚；引用与搜索定位显式解除 stick。回复收工单独对账，不受历史轮询冻结限制，保留连续的已加载历史和阅读位置；SSE 送达时即使用正式气泡布局，避免收工补头像／名字造成正文位移。历史轮询按 stick 状态冻结，重新 stick 或回最新可读取服务器真尾，尾窗有缺口时 stick 直接换新尾窗、不拼接断层。回归为 `chat_stick_browser_test.go`（墙钟 Chrome 帧循环，避免虚拟时间跳过 ResizeObserver/rAF）。搜索由顶栏右放大镜打开白纸浮层，摘录与时间来自同Bot FTS；点命中关闭浮层、按chat ID开附近窗并短高亮，前后都能继续翻、能回到最新。搜索只命中chat FTS的可见正文，内部/工具行仍由Agent的transcript搜索负责。历史位置不被轮询抢走，尾窗变化继续走chat条件请求与按chat ID补丁；窗口有缺口时保留旧窗并提供更新入口，不静默拼断层。失败保留已有消息并可重试。接口契约见 [API](../API.md)。
 
 ## 语音交流
 
