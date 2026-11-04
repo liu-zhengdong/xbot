@@ -16,7 +16,21 @@ import (
 	"xbot/internal/inbox"
 	"xbot/internal/link"
 	"xbot/internal/provider"
+	"xbot/internal/tools"
 )
+
+// The fixture follows the production base-tool palette for each provider binding.
+// Explicit test Links do not pass through the base webSearchOn gate.
+type bindingHostedFixture struct{ local bool }
+
+func (*bindingHostedFixture) Name() string { return "fixture" }
+func (f *bindingHostedFixture) Tools() []tools.Tool {
+	out := []tools.Tool{bindingSearchTool("web_fetch")}
+	if f.local {
+		out = append(out, bindingSearchTool("web_search"))
+	}
+	return out
+}
 
 func TestAnthropicBindingToolRoundTripAndSwitch(t *testing.T) {
 	b := testBot(t, inbox.NameTerminal)
@@ -118,11 +132,12 @@ func TestAnthropicBindingToolRoundTripAndSwitch(t *testing.T) {
 		}
 	}
 	fetch := 0
+	fixture := &bindingHostedFixture{}
 	k := &Kernel{OnTool: func(name, summary string) {
 		if name == "web_fetch" {
 			fetch++
 		}
-	}, Bot: b, Links: []link.Link{bindingSearchLink{}}, MaxSteps: 3, Now: func() time.Time { return time.Unix(1000, 0) }}
+	}, Bot: b, SkipBaseTools: true, Links: []link.Link{fixture}, MaxSteps: 3, Now: func() time.Time { return time.Unix(1000, 0) }}
 	for _, binding := range []struct {
 		Name, Model string
 		Window      int
@@ -138,6 +153,7 @@ func TestAnthropicBindingToolRoundTripAndSwitch(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		fixture.local = binding.Name == "deepseek"
 		start := time.Now()
 		if err := k.Handle(context.Background(), inbox.TerminalEvent("owner", "search", time.Unix(1000, 0))); err != nil {
 			t.Fatal(err)

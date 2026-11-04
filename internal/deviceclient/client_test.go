@@ -60,7 +60,7 @@ func TestCallPreservesTaskPaginationAndStoresRawArtifact(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"tasks":[],"offset":7,"next_offset":9,"has_more":true}`))
-		case "/api/device-execution/tasks/ref/artifacts/file":
+		case "/api/device-execution/tasks/batch/a?x=1/artifacts/file":
 			if r.URL.Query().Get("offset") != "11" || r.URL.Query().Get("limit") != "6" {
 				t.Errorf("artifact range lost: %s", r.URL.RawQuery)
 			}
@@ -93,7 +93,7 @@ func TestCallPreservesTaskPaginationAndStoresRawArtifact(t *testing.T) {
 	if json.Unmarshal(reply, &page) != nil || page.NextOffset != 9 || !page.HasMore {
 		t.Fatalf("pagination receipt %s", reply)
 	}
-	reply, err = client.Call(ctx, identity, cliops.DeviceRequest{Action: "artifact", DeviceID: target.DeviceID, Ref: "ref", ArtifactID: "file", Offset: 11, Limit: 6})
+	reply, err = client.Call(ctx, identity, cliops.DeviceRequest{Action: "artifact", DeviceID: target.DeviceID, Ref: "batch/a?x=1", ArtifactID: "file", Offset: 11, Limit: 6})
 	if err != nil {
 		t.Fatal(err)
 	}

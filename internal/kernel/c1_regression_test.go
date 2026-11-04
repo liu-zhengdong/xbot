@@ -70,7 +70,7 @@ func c1Fixture(t *testing.T, tool tools.Tool) (*Kernel, *scripted) {
 		t.Fatal(err)
 	}
 	p := &scripted{}
-	k := &Kernel{Bot: b, Inbox: in, Provider: p, Memory: memory.NopStore{}, Permissive: true, WorkDir: t.TempDir(), MaxSteps: 4, Links: []link.Link{link.Terminal{}, c1Link{tool: tool}}}
+	k := &Kernel{Bot: b, Inbox: in, Provider: p, Memory: memory.NopStore{}, SkipBaseTools: true, Permissive: true, WorkDir: t.TempDir(), MaxSteps: 4, Links: []link.Link{link.Terminal{}, c1Link{tool: tool}}}
 	return k, p
 }
 
@@ -247,7 +247,7 @@ func TestC1MemoryWriteDoesNotBlockNewInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &scripted{resps: []provider.Message{toolCall("read", "read_file", mustArgs(t, map[string]string{"path": path})), toolCall("write", "write_file", mustArgs(t, map[string]string{"path": path, "content": "INVALID_MEMORY_LINE"})), {Role: provider.RoleAssistant, Content: provider.TextContent("新话收到了")}}}
-	k := &Kernel{Bot: b, Inbox: in, Provider: p, Memory: memory.Open(b.Root), Permissive: true, WorkDir: t.TempDir(), MaxSteps: 5, Links: []link.Link{link.Terminal{}, c1Link{tool: w}, freshReadLink{}}}
+	k := &Kernel{Bot: b, Inbox: in, Provider: p, Memory: memory.Open(b.Root), SkipBaseTools: true, Permissive: true, WorkDir: t.TempDir(), MaxSteps: 5, Links: []link.Link{link.Terminal{}, c1Link{tool: w}, freshReadLink{}}}
 	var once sync.Once
 	var handles sync.WaitGroup
 	defer func() { once.Do(func() { close(w.release) }); handles.Wait(); _ = k.Close() }()
@@ -326,7 +326,7 @@ func TestC1BackgroundMemoryWriteDoesNotBlockNextTurn(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: provider.TextContent("写入在后台继续")},
 		{Role: provider.RoleAssistant, Content: provider.TextContent("下一句话已收到")},
 	}}
-	k := &Kernel{Bot: b, Inbox: in, Provider: p, Memory: memory.Open(b.Root), Permissive: true, WorkDir: t.TempDir(), MaxSteps: 5, Links: []link.Link{link.Terminal{}, c1Link{tool: w}, freshReadLink{}}}
+	k := &Kernel{Bot: b, Inbox: in, Provider: p, Memory: memory.Open(b.Root), SkipBaseTools: true, Permissive: true, WorkDir: t.TempDir(), MaxSteps: 5, Links: []link.Link{link.Terminal{}, c1Link{tool: w}, freshReadLink{}}}
 	var once sync.Once
 	var handles sync.WaitGroup
 	defer func() { once.Do(func() { close(w.release) }); handles.Wait(); _ = k.Close() }()

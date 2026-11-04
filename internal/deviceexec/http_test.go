@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -115,6 +116,29 @@ func TestHandlerRangesAndBoundedArtifactTransfer(t *testing.T) {
 	}
 	if len(m.List(nil)) != 1 {
 		t.Fatal("invalid requests created jobs")
+	}
+}
+
+func TestHandlerReadsCallerReferenceAsOneEscapedSegment(t *testing.T) {
+	m := testManager(t)
+	s := testSource()
+	ref := "batch/a?x=1 #中文"
+	c := testCall(ref, "write", "write_file", map[string]any{"path": "escaped-ref", "content": "result"})
+	submit(t, m, s, c)
+	waitDetail(t, m, s, ref)
+	path := "/tasks/" + url.PathEscape(ref)
+	w := request(m, &s, http.MethodGet, path+"?offset=0&limit=16", nil)
+	var d Detail
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &d) != nil || d.Task.Ref != ref {
+		t.Fatalf("escaped task: %d %s", w.Code, w.Body.String())
+	}
+	w = request(m, &s, http.MethodGet, path+"/artifacts/a1?offset=1&limit=3", nil)
+	if w.Code != 200 || w.Body.String() != "esu" {
+		t.Fatalf("escaped artifact: %d %s", w.Code, w.Body.String())
+	}
+	w = request(m, &s, http.MethodPost, path+"/stop", nil)
+	if w.Code != 200 {
+		t.Fatalf("escaped stop: %d %s", w.Code, w.Body.String())
 	}
 }
 

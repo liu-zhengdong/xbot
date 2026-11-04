@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -29,7 +30,15 @@ func (m *Manager) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "trusted device source required", http.StatusUnauthorized)
 		return
 	}
-	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	parts := strings.Split(strings.Trim(r.URL.EscapedPath(), "/"), "/")
+	for i, part := range parts {
+		decoded, err := url.PathUnescape(part)
+		if err != nil {
+			http.Error(w, "invalid route encoding", http.StatusBadRequest)
+			return
+		}
+		parts[i] = decoded
+	}
 	var result any
 	var err error
 	status := http.StatusOK

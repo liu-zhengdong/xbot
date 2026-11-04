@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,12 +129,12 @@ func (c Client) Call(ctx context.Context, source deviceexec.Source, in cliops.De
 	case "tasks":
 		path += fmt.Sprintf("?offset=%d&limit=%d", in.Offset, in.Limit)
 	case "task":
-		path += "/" + in.Ref + fmt.Sprintf("?offset=%d&limit=%d", in.Offset, in.Limit)
+		path += "/" + url.PathEscape(in.Ref) + fmt.Sprintf("?offset=%d&limit=%d", in.Offset, in.Limit)
 	case "stop":
 		method = "POST"
-		path += "/" + in.Ref + "/stop"
+		path += "/" + url.PathEscape(in.Ref) + "/stop"
 	case "artifact":
-		path += "/" + in.Ref + "/artifacts/" + in.ArtifactID + fmt.Sprintf("?offset=%d&limit=%d", in.Offset, in.Limit)
+		path += "/" + url.PathEscape(in.Ref) + "/artifacts/" + url.PathEscape(in.ArtifactID) + fmt.Sprintf("?offset=%d&limit=%d", in.Offset, in.Limit)
 	default:
 		return nil, errors.New("device: unknown operation")
 	}
