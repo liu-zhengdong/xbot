@@ -1613,3 +1613,9 @@ Bot 改名后所有工具回执 `tool job storage unavailable`（裸文本进 tr
 `gofmt -l .`、JS 语法、`go vet ./...` 与 diff 检查通过；atlas audit 退出 0，保留已有告警。全量测试及 Web 整包三遍未绿：kernel 的 `TestLongTurnStaysUnderTheCeiling`／`TestMemoryFileLogGuard`、memory 的 `TestMonthlyGuardAndRoundTrip`、work 的 `TestShellUsesBotDir`，以及 Web 的旧头像静态断言与 `TestAskOnlyMessageDoesNotLeaveEmptyRow` 源码切片 panic 均在基线复现；扩大浏览器组的 `TestChatStreamBrowser` 布局断言也在基线复现。六条基础旅程冒烟仍在旧送达文本／delta 期望处失败，语音二进制冒烟通过。完整日志在 `~/.xbot-build/chat-voice-cluster-v4/`。
 
 级别：已提交功能分支、本机渲染与原生语音验证通过，未合 main、未 push，未宣称整套旅程通过。Not run: 真模型、真实麦克风／扬声器、Linux CI、真实网络交互／IPC p95、FPS、后台减速专项、设计师截图验收与用户日用。
+
+## 2026-11-04 供应商图标恢复与已启用置顶（功能分支）
+
+设置「模型与供应商」改为「已启用 / 添加供应商」两区：已启用从 `key_configured` 推导集中置顶，目录分订阅组与 API 接入组；OAuth 条目不再重复进入 API 网格，xAI 订阅与 xAI API 密钥两个真实接入并存。名称下增加接入方式副行（订阅 / API 密钥 / 自定义 API）。普通条目透明跟页，hover/current 用 `--x-fill-2`。搜索占内容宽度、覆盖各组，支持清除按钮与 Esc，无匹配给清除入口。图标根因取证：本 worktree 内全部 18 个 `/provider-icons/*.svg` 均 200 + `image/svg+xml`，运行页 img `naturalWidth=150`、渲染 22px，ChatGPT mask 正常；未复现失效，疑似旧二进制或 Service Worker 缓存旧静态资源（`xbot-ui-v15`）。
+
+验证：`go test ./internal/web -run 'Provider|Vendor|OAuth|Catalog|Settings' -count=1` 全绿；真实入口 `xbot serve` + headless Chrome 截图浅/深色 1280 与 390px、无结果态，无横向溢出、图标全部渲染、已启用置顶 2 条、目录非订阅 xAI 恰 1 条。级别：已提交本分支，未合 main、未 push，未做真模型与日常使用验收。Not run: 全仓测试、Linux CI、真模型、Windows 实机。

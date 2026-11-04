@@ -71,7 +71,7 @@
     const key = p => p.name ?? p.brand;
     const vendorOf = brand => ((data && data.vendors) || []).find(v => v.brand === brand);
     function entries() {
-      const rows = data.providers.filter(p => p.oauth !== "chatgpt").map(p => {
+      const rows = data.providers.filter(p => !p.oauth).map(p => {
         const brand = p.brand || (brands[p.name.toLowerCase()] ? p.name.toLowerCase() : "");
         return { ...p, brand, title: p.custom ? displayName(p) : brands[brand] || vendorOf(brand)?.title || "自定义供应商" };
       });
@@ -148,16 +148,13 @@
       const box = node("div", "provider-empty"); box.setAttribute("role", "status"); box.append(node("p", "", message));
       if (retry) box.append(button("重试", "btn", retry)); return box;
     }
-    function section(title, subtitle) {
-      const part = node("section", "provider-section"), h = node("h3", "", title);
-      part.append(h, node("p", "provider-section-note", subtitle)); return part;
-    }
     function paint(focusKey) {
       if (!alive()) return; ++revision;
-      host.replaceChildren(node("h2", "provider-title", "模型与供应商"), node("p", "setlead", "管理密钥与可用模型。每个 Bot 绑定一对「供应商 + 模型」。"));
+      host.replaceChildren(node("h2", "provider-title", "模型与供应商"));
       const tools = node("div", "provider-tools"), search = node("label", "provider-search"); search.append(lineIcon("search"));
-      const input = node("input"); input.type = "search"; input.placeholder = "查找供应商…"; input.setAttribute("aria-label", "查找供应商"); input.value = query; search.append(input); tools.append(search); host.append(tools);
-      const subscription = section("订阅", "登录即可，无需密钥"), subgrid = node("div", "provider-grid");
+      const input = node("input"); input.type = "search"; input.placeholder = "查找供应商…"; input.setAttribute("aria-label", "查找供应商"); input.value = query;
+      const clear = button("×", "provider-search-clear", () => { query = ""; input.value = ""; filter(); input.focus(); }); clear.setAttribute("aria-label", "清除搜索"); clear.hidden = !query;
+      search.append(input, clear); tools.append(search); host.append(tools);
       const local = {};
       for (const kind of ["chatgpt", "xai"]) {
         api(`/api/providers/oauth/${kind}/local`).then(async r => {
@@ -182,7 +179,8 @@
         card.setAttribute("aria-current", String(selected === "subscription:" + kind));
         function updateSubscription() {
           const p = subscriptionEntry(kind);
-          card.replaceChildren(kind === "chatgpt" ? node("span", "provider-glyph provider-chatgpt-glyph") : glyph("xai"), node("strong", "", p.title));
+          const copy = node("span", "provider-copy"); copy.append(node("strong", "", p.title), node("span", "provider-method", "订阅"));
+          card.replaceChildren(kind === "chatgpt" ? node("span", "provider-glyph provider-chatgpt-glyph") : glyph("xai"), copy);
           if (p.key_configured) {
             const dot = node("span", "sdot ok"); dot.setAttribute("role", "img"); dot.setAttribute("aria-label", "已登录"); card.append(dot);
           } else {
@@ -193,24 +191,66 @@
             }
           }
         }
-        updateSubscription(); wrap.append(card); subgrid.append(wrap);
+        updateSubscription(); wrap.append(card);
         return { kind, card, wrap };
       });
-      subscription.append(subgrid);
-      const vendors = section("供应商", "模型厂商的 API"), grid = node("div", "provider-grid"); vendors.append(grid); host.append(subscription, vendors);
+      const enabledHead = node("div", "provider-section-head"), enabledTitle = node("h3", "", "已启用"), count = node("span", "provider-count");
+      enabledHead.append(enabledTitle, count);
+      const enabled = node("section", "provider-section provider-enabled"), enabledGrid = node("div", "provider-grid");
+      enabled.append(enabledHead, enabledGrid);
+      const directoryHead = node("div", "provider-section-head"), directoryTitle = node("h3", "", "添加供应商");
+      directoryHead.append(directoryTitle);
+      const directory = node("section", "provider-section provider-directory");
+      const subHead = node("div", "provider-subhead"); subHead.append(node("strong", "", "订阅"), node("span", "", "登录即可，无需密钥"));
+      const subscriptionGroup = node("div", "provider-group"), subgrid = node("div", "provider-grid provider-catalog");
+      subscriptionGroup.append(subHead, subgrid);
+      for (const { wrap } of subscriptions) subgrid.append(wrap);
+      const apiHead = node("div", "provider-subhead"); apiHead.append(node("strong", "", "API 接入"));
+      const apiGroup = node("div", "provider-group"), grid = node("div", "provider-grid provider-catalog");
+      apiGroup.append(apiHead, grid);
+      directory.append(directoryHead, subscriptionGroup, apiGroup);
+      host.append(enabled, directory);
       function filter() {
         const term = query.trim().toLowerCase();
-        for (const {kind, card, wrap} of subscriptions) { const hide = !subscriptionEntry(kind).title.toLowerCase().includes(term); card.hidden = hide; wrap.hidden = hide; }
-        subscription.hidden = subscriptions.every(({card}) => card.hidden); grid.replaceChildren();
-        for (const p of entries().filter(p => p.title.toLowerCase().includes(term))) {
-          const card = button("", "provider-card", () => { selected = key(p); return p.custom ? customDetail(p) : capability(p); }); card.setAttribute("aria-current", String(selected === key(p))); card.append(glyph(p.custom ? "" : p.brand), node("strong", "", p.title));
-          if (p.key_configured) { const dot = node("span", "sdot ok"); dot.setAttribute("role", "img"); dot.setAttribute("aria-label", "已配置"); card.append(dot); }
+        clear.hidden = !term;
+        for (const {kind, card, wrap} of subscriptions) {
+          const hay = (subscriptionEntry(kind).title + " 订阅").toLowerCase();
+          const hide = !!term && !hay.includes(term); card.hidden = hide; wrap.hidden = hide;
+        }
+        subscriptionGroup.hidden = subscriptions.every(({card}) => card.hidden);
+        grid.replaceChildren(); enabledGrid.replaceChildren();
+        const all = entries();
+        const on = all.filter(p => p.key_configured);
+        const off = all.filter(p => !p.key_configured && (!term || (p.title + " api 密钥").toLowerCase().includes(term)));
+        for (const {kind, card, wrap} of subscriptions) if (!card.hidden && subscriptionEntry(kind).key_configured) enabledGrid.append(wrap);
+        for (const p of on.filter(p => !term || (p.title + " api 密钥").toLowerCase().includes(term))) {
+          const card = button("", "provider-card", () => { selected = key(p); return p.custom ? customDetail(p) : capability(p); }); card.setAttribute("aria-current", String(selected === key(p)));
+          const copy = node("span", "provider-copy"); copy.append(node("strong", "", p.title), node("span", "provider-method", p.custom ? "自定义 API" : "API 密钥"));
+          card.append(glyph(p.custom ? "" : p.brand), copy);
+          const dot = node("span", "sdot ok"); dot.setAttribute("role", "img"); dot.setAttribute("aria-label", "已配置"); card.append(dot);
+          enabledGrid.append(card); if (focusKey === key(p)) { card.focus(); focusKey = undefined; }
+        }
+        for (const p of off) {
+          const card = button("", "provider-card", () => { selected = key(p); return p.custom ? customDetail(p) : capability(p); }); card.setAttribute("aria-current", String(selected === key(p)));
+          const copy = node("span", "provider-copy"); copy.append(node("strong", "", p.title)); if (p.custom) copy.append(node("span", "provider-method", "自定义 API"));
+          card.append(glyph(p.custom ? "" : p.brand), copy);
           grid.append(card); if (focusKey === key(p)) { card.focus(); focusKey = undefined; }
         }
-        if (!grid.children.length) grid.append(state("没有匹配的供应商"));
         if (!term) { const add = button("", "provider-card provider-add", () => customDetail()); add.append(lineIcon("plus"), node("strong", "", "添加自定义")); grid.append(add); }
+        count.textContent = enabledGrid.children.length ? String(enabledGrid.children.length) : "";
+        enabled.hidden = !enabledGrid.children.length;
+        directory.hidden = subscriptionGroup.hidden && !grid.children.length;
+        directory.classList.toggle("provider-directory-divided", !enabled.hidden);
+        apiHead.hidden = subscriptionGroup.hidden;
+        apiGroup.hidden = !grid.children.length && !(!term && subscriptionGroup.hidden);
+        if (term && !enabledGrid.children.length && !grid.children.length && subscriptionGroup.hidden) {
+          const empty = state(`没有找到“${query.trim()}”`); empty.append(button("清除搜索", "btn", () => { query = ""; input.value = ""; filter(); input.focus(); }));
+          grid.append(empty); apiGroup.hidden = false; directory.hidden = false;
+        }
       }
-      input.oninput = () => { query = input.value; filter(); }; filter();
+      input.oninput = () => { query = input.value; filter(); };
+      input.onkeydown = e => { if (e.key === "Escape" && input.value) { query = ""; input.value = ""; filter(); e.stopPropagation(); } };
+      filter();
       const focusSubscription = subscriptions.find(({kind, card}) => !card.hidden && (focusKey === "subscription:" + kind || focusKey === key(subscriptionEntry(kind))));
       if (focusSubscription) focusSubscription.card.focus();
     }

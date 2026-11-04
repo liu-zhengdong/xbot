@@ -13,7 +13,7 @@ func TestProvidersSettingsCatalogStatesAndLateReplies(t *testing.T) {
 	const script = `
 const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
 class Element {
- constructor(tag){this.tag=tag;this.children=[];this.attrs={};this.classList={add(){}};this.textContent='';}
+ constructor(tag){this.tag=tag;this.children=[];this.attrs={};this.classList={add(){},toggle(){}};this.textContent='';}
  append(...nodes){this.children.push(...nodes)} replaceChildren(...nodes){this.children=nodes}
  setAttribute(k,v){this.attrs[k]=v} focus(){} get innerText(){return this.textContent+this.children.map(n=>n.innerText).join(' ')}
 }
@@ -29,7 +29,7 @@ const api=async path=>{calls.push(path);if(path==='/api/providers')return {provi
 const result={models:[{model:'runtime-only',context:128000,vision:false,hosted_web_search:false}]};
 (async()=>{
  await window.XBotProviders.settings({api,host,isCurrent:()=>current});
- assert(find('button','constructor'));assert(find('button','__proto__'));assert(!find('button','ChatGPT').disabled);assert(!calls.some(p=>p.includes('/oauth/')));
+ assert(find('button','constructor'));assert(find('button','__proto__'));assert(!find('button','ChatGPT').disabled);assert(!calls.some(p=>/oauth\/(chatgpt|xai)\/(start|status|cancel|logout)/.test(p)));
  const input=find('input','');input.value='OpenAI';input.oninput();assert(!find('button','DeepSeek'));
  let request=find('button','OpenAI').onclick();assert(host.innerText.includes('正在拉取'));
  find('button','模型与供应商').onclick();assert.equal(find('input','').value,'OpenAI');
