@@ -21,7 +21,7 @@ func TestAccountSharedDevicesLocalBrowser(t *testing.T) {
 const accountSharedDevicesFixture = `
 localStorage.removeItem('xbot.side');bots.forEach(b=>b.pinned=false);
 if(new URLSearchParams(location.search).get('theme')==='dark')localStorage.setItem('xbot-theme','dark');
-const accountFixture={reads:0,detailReads:0,taskReads:0,unavailable:[],failList:false,failRename:false,failDelete:false,failSend:false,failStop:false,holdDetail:false,releaseDetail:null,writes:[],sends:[],artifactReads:[],devices:[
+const accountFixture={reads:0,detailReads:0,taskReads:0,unavailable:[],tasksTruncated:false,detailTruncated:false,failList:false,failRename:false,failDelete:false,failSend:false,failStop:false,holdDetail:false,releaseDetail:null,writes:[],sends:[],artifactReads:[],devices:[
  {id:'mini',name:'Mac mini',online:true,self:true,bots:[],os:'darwin',capabilities:['read','write','exec','exec:zsh','exec:bash','exec:sh','browser','desktop'],last_seen:'2026-11-04T12:00:00Z',running_count:2},
  {id:'windows',name:'Windows 工作站',online:true,self:false,bots:[],os:'windows',capabilities:['read','write','exec','exec:powershell','exec:cmd'],running_count:0},
  {id:'offline',name:'离线长名称 MacBook Pro 工作电脑',online:false,self:false,bots:[],os:'darwin',capabilities:['read'],running_count:0}
@@ -52,12 +52,12 @@ window.fetch=async(path,opts={})=>{
   }
   accountFixture.detailReads++;
   if(accountFixture.holdDetail)await new Promise(resolve=>accountFixture.releaseDetail=resolve);
-  return json({device:{...d},tasks:accountFixture.tasks.filter(t=>t.device_id===id).map(t=>({...t}))});
+  return json({device:{...d},tasks:accountFixture.tasks.filter(t=>t.device_id===id).map(t=>({...t})),tasks_truncated:accountFixture.detailTruncated});
  }
  const tasks=url.match(/^\/api\/bots\/([^/]+)\/device-tasks$/);
  if(tasks){
   accountFixture.taskReads++;
-  return json({tasks:accountFixture.tasks.filter(t=>t.bot===decodeURIComponent(tasks[1])&&!accountFixture.unavailable.some(d=>d.id===t.device_id)).map(t=>({...t})),unavailable_devices:accountFixture.unavailable.map(d=>({...d}))});
+  return json({tasks:accountFixture.tasks.filter(t=>t.bot===decodeURIComponent(tasks[1])&&!accountFixture.unavailable.some(d=>d.id===t.device_id)).map(t=>({...t})),unavailable_devices:accountFixture.unavailable.map(d=>({...d})),tasks_truncated:accountFixture.tasksTruncated});
  }
  const task=url.match(/^\/api\/account\/devices\/([^/]+)\/tasks\/([^/?]+)(.*)$/);
  if(task){
@@ -123,7 +123,9 @@ const keyEscape=()=>document.activeElement.dispatchEvent(new KeyboardEvent('keyd
  const row=$('[data-shared=detail]'),reads=accountFixture.reads;row.focus();
  await until(()=>accountFixture.reads>=reads+2,'list polls');
  assert($('[data-shared=detail]')===row&&document.activeElement===row,'unchanged poll replaced row/focus');
- click('[data-shared=detail]');await until(()=>document.querySelectorAll('[data-detail-tasks] button').length===2,'shared tasks');
+ accountFixture.detailTruncated=true;click('[data-shared=detail]');await until(()=>document.querySelectorAll('[data-detail-tasks] button').length===2,'shared tasks');
+ assert(!$('[data-detail-task-note]').hidden,'truncated detail claimed a complete list');
+ accountFixture.detailTruncated=false;await until(()=>$('[data-detail-task-note]').hidden,'untruncated detail kept stale warning');
  assert(accountFixture.detailReads>0,'detail not requested');
  assert($('[data-detail-os]').textContent==='macOS','runtime OS was not projected');
  assert(JSON.stringify([...document.querySelectorAll('[data-detail-caps] .account-device-cap')].map(n=>n.textContent))===JSON.stringify(['读取文件','写入文件','终端','浏览器','电脑操作']),'backend capabilities were not projected or exec was duplicated');
@@ -175,11 +177,13 @@ const accountSharedDeviceAvailabilityDriver = `
  await until(()=>!$('#shell').hidden&&$('#account-device-task-status')?.textContent.includes('检查界面组件')&&!$('#account-device-task-status').hidden,'running task');
  const entry=$('#account-device-task-status'),task=accountFixture.tasks[0];
  accountFixture.tasks.push({...task,id:'t3',ref:'job/ref-3',device_id:'windows',device_name:'Windows 工作站',description:'处理另一份文档'});
- accountFixture.unavailable=[{id:'mini',name:'Mac mini',error:'device offline'}];
+ accountFixture.unavailable=[{id:'mini',name:'Mac mini',error:'device offline'}];accountFixture.tasksTruncated=true;
  await until(()=>entry.textContent.includes('部分设备状态待确认'),'unavailable metadata');
  assert(!entry.hidden&&task.status==='running','offline marked task finished or erased entry');
  entry.focus();entry.click();
  await until(()=>document.querySelectorAll('[data-current-device-tasks] [data-shared=task]').length===2,'known and reachable tasks');
+ assert(!$('[data-current-task-note]').hidden,'truncated aggregate claimed complete tasks');
+ accountFixture.tasksTruncated=false;await until(()=>$('[data-current-task-note]').hidden,'aggregate truncation notice did not clear');
  const old=$('[data-current-device-tasks] [data-ref="job/ref-1"]'),reachable=$('[data-current-device-tasks] [data-ref="job/ref-3"]');
  assert(old.textContent.includes('状态待确认')&&reachable.textContent.includes('正在执行'),'availability was not per device');
  old.focus();old.click();await until(()=>$('[data-shared-error]')?.textContent.includes('设备已离线'),'offline detail request');

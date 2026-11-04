@@ -456,7 +456,7 @@
 
   // Account execution uses account membership. Legacy pairing below only owns Bot messaging.
   const shared = {
-    devices: null, error: "", bot: "", targets: new Map(), tasks: [], tasksError: "", unavailable: new Map(),
+    devices: null, error: "", bot: "", targets: new Map(), tasks: [], tasksError: "", unavailable: new Map(), tasksTruncated: false,
     detailID: "", detail: null, detailError: "", detailGeneration: 0, mountGeneration: 0,
     legacy: false, modal: null, modalGeneration: 0, opener: null, listRequest: null, taskRequest: null, scroll: new Map(),
   };
@@ -579,7 +579,7 @@
       return;
     }
     if (!body.querySelector('[data-detail-config]')) {
-      body.innerHTML = `<div class="setrows settings-configuration" data-detail-config><div class="setrow"><b>设备名称</b><div class="account-device-value"><span data-detail-name></span><button class="text-btn" type="button" data-shared="rename">改名</button></div></div><div class="setrow"><b>系统</b><span class="account-device-note" data-detail-os></span></div></div><section class="account-device-section"><h3>能力</h3><div class="account-device-caps" data-detail-caps></div></section><section class="account-device-section"><h3 data-detail-tasks-title></h3><div data-detail-tasks></div></section><div data-detail-desktop></div><button class="text-btn account-device-unbind" type="button" data-shared="unbind">解除绑定</button>`;
+      body.innerHTML = `<div class="setrows settings-configuration" data-detail-config><div class="setrow"><b>设备名称</b><div class="account-device-value"><span data-detail-name></span><button class="text-btn" type="button" data-shared="rename">改名</button></div></div><div class="setrow"><b>系统</b><span class="account-device-note" data-detail-os></span></div></div><section class="account-device-section"><h3>能力</h3><div class="account-device-caps" data-detail-caps></div></section><section class="account-device-section"><h3 data-detail-tasks-title></h3><p class="account-device-note" data-detail-task-note hidden></p><div data-detail-tasks></div></section><div data-detail-desktop></div><button class="text-btn account-device-unbind" type="button" data-shared="unbind">解除绑定</button>`;
     }
     textAt(body, '[data-detail-name]', d.name); textAt(body, '[data-detail-os]', deviceOS(d.os) || "未报告");
     const capNames = {read:"读取文件", write:"写入文件", exec:"终端", browser:"浏览器", desktop:"电脑操作"};
@@ -589,6 +589,8 @@
     patchRows(caps, capabilities, c => c, c => `<span class="account-device-cap">${esc(capNames[c] || c)}</span>`);
     const tasks = detail.tasks || [];
     textAt(body, '[data-detail-tasks-title]', tasks.length ? "当前任务 · " + tasks.length : "当前没有任务");
+    textAt(body, '[data-detail-task-note]', detail.tasks_truncated ? "仅显示最近的任务记录" : "");
+    body.querySelector('[data-detail-task-note]').hidden = !detail.tasks_truncated;
     patchRows(body.querySelector('[data-detail-tasks]'), tasks, t => t.ref, taskRow);
     const desktop = body.querySelector('[data-detail-desktop]');
     if (d.self && !desktop.firstChild) {
@@ -706,6 +708,7 @@
         const result = await api("GET", "/api/bots/" + encodeURIComponent(bot) + "/device-tasks");
         if (bot !== shared.bot) return;
         if (!Array.isArray(result.tasks)) throw new Error("任务状态读取失败");
+        shared.tasksTruncated = !!result.tasks_truncated;
         shared.unavailable = new Map((result.unavailable_devices || []).map(device => [device.id, device]));
         const known = shared.tasks.filter(task => shared.unavailable.has(task.device_id) && !result.tasks.some(fresh => fresh.device_id === task.device_id && fresh.ref === task.ref));
         shared.tasks = [...result.tasks, ...known]; shared.tasksError = "";
@@ -724,13 +727,19 @@
     if (row.textContent !== label && !selectedText(row)) row.textContent = label;
     row.onclick = () => {
       if (active.length > 1) {
-        const dialog = sharedModal("tasks", "设备任务", '<div data-current-device-tasks></div>');
+        const dialog = sharedModal("tasks", "设备任务", '<p class="account-device-note" data-current-task-note hidden></p><div data-current-device-tasks></div>');
+        textAt(dialog, '[data-current-task-note]', shared.tasksTruncated ? "仅显示最近的任务记录" : "");
+        dialog.querySelector('[data-current-task-note]').hidden = !shared.tasksTruncated;
         patchRows(dialog.querySelector('[data-current-device-tasks]'), active, t => t.device_id + ":" + t.ref, taskRow);
       } else if (task) openTask(task);
       else readBotDeviceTasks();
     };
     row.title = shared.tasksError ? "状态读取失败，点击重试" : "查看执行详情";
-    if (shared.modal === "tasks") patchRows(sharedLayer.querySelector('[data-current-device-tasks]'), active, t => t.device_id + ":" + t.ref, taskRow);
+    if (shared.modal === "tasks") {
+      textAt(sharedLayer, '[data-current-task-note]', shared.tasksTruncated ? "仅显示最近的任务记录" : "");
+      sharedLayer.querySelector('[data-current-task-note]').hidden = !shared.tasksTruncated;
+      patchRows(sharedLayer.querySelector('[data-current-device-tasks]'), active, t => t.device_id + ":" + t.ref, taskRow);
+    }
   }
   async function openTask(task) {
     const fromTaskList = shared.modal === "tasks";
