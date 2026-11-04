@@ -7,6 +7,7 @@ import (
 
 	"xbot/internal/agent"
 	"xbot/internal/bot"
+	"xbot/internal/deviceexec"
 	"xbot/internal/exec"
 	"xbot/internal/inbox"
 	"xbot/internal/review"
@@ -43,9 +44,19 @@ func (k *Kernel) runToolCall(ctx context.Context, t tools.Tool, args json.RawMes
 	child, _ := ctx.Value(routineChildPolicyKey{}).(bool)
 	owner := k.turnFor(ctx)
 	owner.mu.Lock()
-	frozen := &turn{turnSender: owner.turnSender, turnKind: owner.turnKind, turnTrusted: owner.turnTrusted, turnSource: owner.turnSource, turnHops: owner.turnHops, turnChain: owner.turnChain, branch: owner.branch, fromSeq: owner.fromSeq}
+	frozen := &turn{turnSender: owner.turnSender, turnKind: owner.turnKind, turnTrusted: owner.turnTrusted, turnSource: owner.turnSource, turnHops: owner.turnHops, turnChain: owner.turnChain, branch: owner.branch, fromSeq: owner.fromSeq, turnDevice: owner.turnDevice}
 	replyGen := owner.replyGen
 	owner.mu.Unlock()
+	identity := deviceexec.Source{Bot: k.currentName(), ContextID: "main"}
+	if child {
+		bound, ok := ctx.Value(deviceChildKey{}).(deviceChildContext)
+		if ok {
+			identity.ContextID, identity.Readonly = bound.ID, bound.Readonly
+			frozen.turnDevice = bound.DeviceID
+		} else {
+			identity.ContextID = ""
+		}
+	}
 	return jobs.RunCall(ctx, tools.CallRequest{Redact: func(text string) string { return scrubSecrets(k.redactor()(text), k.secretValues()) }, Forms: k.shellForms, Name: t.Name(), Command: summary, Dir: k.cwdFor(ctx), Wait: wait, Background: bg, Run: run, Finalize: func(job tools.Job, res tools.CallResult) (tools.Job, error) {
 		return exec.ToolJobReport(k.workspace(), job, res)
 	},
@@ -54,7 +65,7 @@ func (k *Kernel) runToolCall(ctx context.Context, t tools.Tool, args json.RawMes
 			if review.IsShellTool(t.Name()) {
 				server, held := k.holdSourceOperations()
 				release = held
-				source := routineCallSource{listener: server, owner: originalOwner, child: child}
+				source := routineCallSource{listener: server, owner: originalOwner, child: child, device: identity}
 				if !child && originalOwner != nil {
 					source.trusted, source.person = frozen.turnTrusted, k.memoryPersonOf(frozen)
 				}

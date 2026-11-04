@@ -36,6 +36,7 @@ package kernel
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -44,7 +45,9 @@ import (
 
 	"xbot/internal/agent"
 	"xbot/internal/bot"
+	"xbot/internal/cliops"
 	"xbot/internal/compact"
+	"xbot/internal/deviceexec"
 	"xbot/internal/envprompt"
 	"xbot/internal/exec"
 	"xbot/internal/inbox"
@@ -102,6 +105,9 @@ type Kernel struct {
 	// Restart requests a graceful process restart after persisting its continuation.
 	// Nil means this kernel is not running in a restart-capable service.
 	Restart func(hint string) error
+	// DeviceCall reaches the source installation's device service. The kernel
+	// supplies Bot, actual execution context and readonly policy from prepared Shell.
+	DeviceCall func(context.Context, deviceexec.Source, cliops.DeviceRequest) (json.RawMessage, error)
 	// Exec runs subagents. Nil uses in-process goroutines, or a Runner link when one is mounted.
 	Exec exec.Executor
 	// Statuses, when set, supplies the bot status across every same-owner bot
@@ -249,6 +255,7 @@ func (k *Kernel) Handle(ctx context.Context, ev inbox.Event) (handleErr error) {
 		turnChain:   ev.Chain,
 		turnSource:  ev.Source,
 		turnEvent:   ev.ID,
+		turnDevice:  ev.DeviceID,
 		turnTrusted: inbox.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners),
 	}
 	t.fromSeq = seq
@@ -511,6 +518,7 @@ func (k *Kernel) absorbInbox() ([]provider.Message, error) {
 			return nil, err
 		}
 		msg.Seq = seq
+		k.curTurn().selectDevice(ev)
 		out = append(out, msg)
 		if err := k.ackCurrentEvent(ev.ID); err != nil {
 			return nil, err

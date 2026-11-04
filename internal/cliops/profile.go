@@ -255,6 +255,9 @@ func Start(root string, handlers Handlers) (*Server, error) {
 	mux.HandleFunc("/v1/jobs/cancel", func(w http.ResponseWriter, r *http.Request) {
 		serveJobsCancel(w, r, handlers.Jobs)
 	})
+	mux.HandleFunc("/v1/device", func(w http.ResponseWriter, r *http.Request) {
+		serveDevice(w, r, handlers.Device)
+	})
 	guarded := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fail := func(code int, message string) {
 			w.Header().Set("Content-Type", "application/json")

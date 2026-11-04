@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"xbot/internal/account"
+	"xbot/internal/deviceidentity"
 )
 
 // Limits of the hub.
@@ -66,7 +67,12 @@ type Hub struct {
 	hookLoad  map[string]int // in-flight hooks per standby slot
 }
 
+// ExecutionIdentity is fixed by a bound source runtime when it requests a ticket.
+// BindingID identifies the membership generation, never a user console session.
+type ExecutionIdentity = deviceidentity.Identity
+
 type ticket struct {
+	execution           *ExecutionIdentity
 	id, account, device string
 	hash                [32]byte
 	expires             time.Time
@@ -95,12 +101,13 @@ type control struct {
 	Secret   string `json:"secret,omitempty"`
 	Error    string `json:"error,omitempty"`
 	// A forwarded webhook (hook) and the device's answer (hook_res).
-	ID     string            `json:"id,omitempty"`
-	Path   string            `json:"path,omitempty"`
-	Header map[string]string `json:"header,omitempty"`
-	Body   []byte            `json:"body,omitempty"`
-	Status int               `json:"status,omitempty"`
-	Hook   string            `json:"hook,omitempty"` // standby ack: this device's HookHandle
+	ID        string             `json:"id,omitempty"`
+	Path      string             `json:"path,omitempty"`
+	Header    map[string]string  `json:"header,omitempty"`
+	Body      []byte             `json:"body,omitempty"`
+	Status    int                `json:"status,omitempty"`
+	Hook      string             `json:"hook,omitempty"` // standby ack: this device's HookHandle
+	Execution *ExecutionIdentity `json:"execution,omitempty"`
 }
 
 // TicketOut is the POST /pipe/v1/ticket answer. The secret is shown once.
@@ -116,6 +123,7 @@ func (h *Hub) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	mux.HandleFunc("POST /pipe/v1/ticket", h.ticketCORS(h.serveTicket))
 	mux.HandleFunc("OPTIONS /pipe/v1/ticket", h.ticketCORS(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	mux.HandleFunc("POST /pipe/v1/execute-ticket", h.serveExecutionTicket)
 	mux.HandleFunc("GET /pipe/v1/ws", h.serveWS)
 	mux.HandleFunc(hookIngressPattern, h.serveHook)
 	return mux
@@ -208,14 +216,18 @@ func (h *Hub) serveTicket(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, status, err.Error())
 		return
 	}
+	h.issueTicket(w, r, key, in.DeviceID, nil)
+}
+
+func (h *Hub) issueTicket(w http.ResponseWriter, r *http.Request, key, deviceID string, execution *ExecutionIdentity) {
 	var secret [32]byte
 	_, _ = rand.Read(secret[:])
 	out := TicketOut{ID: randomHex(16), Secret: base64.RawURLEncoding.EncodeToString(secret[:]), Expires: h.now().Add(TicketTTL), Hub: h.Public}
-	t := &ticket{id: out.ID, account: key, device: in.DeviceID, hash: sha256.Sum256([]byte(out.Secret)), expires: out.Expires, done: make(chan struct{})}
+	t := &ticket{id: out.ID, account: key, device: deviceID, execution: execution, hash: sha256.Sum256([]byte(out.Secret)), expires: out.Expires, done: make(chan struct{})}
 
 	h.mu.Lock()
 	h.sweepLocked()
-	standby := h.standby[key+"/"+in.DeviceID]
+	standby := h.standby[key+"/"+deviceID]
 	mine := 0
 	for _, o := range h.tickets {
 		if o.account == key {
@@ -240,7 +252,7 @@ func (h *Hub) serveTicket(w http.ResponseWriter, r *http.Request) {
 
 	// The device learns the secret from its own signed-in standby socket; the
 	// hub keeps only its hash after this.
-	msg, _ := json.Marshal(control{T: "open", TicketID: out.ID, Secret: out.Secret})
+	msg, _ := json.Marshal(control{T: "open", TicketID: out.ID, Secret: out.Secret, Execution: execution})
 	if err := standby.WriteMessage(opText, msg); err != nil {
 		h.mu.Lock()
 		delete(h.tickets, t.id)
@@ -323,6 +335,11 @@ func keepalive(c *wsConn, stop <-chan struct{}) {
 // A newer standby for the same device replaces the older one.
 func (h *Hub) serveStandby(ctx context.Context, c *wsConn, in hello) {
 	key, _, err := h.ownDevice(ctx, in.Session, in.DeviceID)
+	if api, ok := h.Accounts.(bindingAccounts); ok {
+		if identity, authErr := api.AuthenticateBinding(ctx, in.Session); authErr == nil && identity.DeviceID == in.DeviceID {
+			key, err = identity.AccountKey, nil
+		}
+	}
 	if err != nil {
 		refuse(c, err.Error())
 		return

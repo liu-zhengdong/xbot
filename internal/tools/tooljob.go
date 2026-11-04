@@ -469,7 +469,7 @@ func (j *Jobs) runProcess(ctx context.Context, lv *live, req RunRequest) (text s
 	} else if req.CwdFile != "" {
 		lv.finalCwd = readCwdFile(req.CwdFile)
 	}
-	if !lv.detached && req.OnCwd != nil {
+	if (!lv.detached || req.persistCwd) && req.OnCwd != nil {
 		lv.onCwd = req.OnCwd
 	}
 	lv.mu.Unlock()

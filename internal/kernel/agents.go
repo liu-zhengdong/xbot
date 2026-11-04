@@ -12,6 +12,7 @@ import (
 	"xbot/internal/bot"
 
 	"xbot/internal/agent"
+	"xbot/internal/agenttype"
 	"xbot/internal/exec"
 	"xbot/internal/inbox"
 	"xbot/internal/link"
@@ -51,6 +52,16 @@ func (k *Kernel) ensureExec() exec.Executor {
 				loc.RunTool = func(req exec.StartRequest, ctx context.Context, t tools.Tool, args json.RawMessage, run func(context.Context) tools.CallResult) tools.CallResult {
 					ctx = context.WithValue(ctx, cwdScopeKey{}, req.ID)
 					ctx = context.WithValue(ctx, routineChildPolicyKey{}, true)
+					var ty agenttype.Type
+					bound := deviceChildContext{ID: req.ID}
+					if req.Descriptor != nil {
+						ty = agenttype.Type{Tools: req.Descriptor.Tools}
+						bound.DeviceID = req.Descriptor.DeviceID
+					} else if req.Type != "" {
+						ty, _ = agenttype.Find(k.agentTypes(), req.Type)
+					}
+					bound.Readonly = ty.Allows(agenttype.ShellReadOnly) && !ty.AllowsShell()
+					ctx = context.WithValue(ctx, deviceChildKey{}, bound)
 					return k.runToolCall(ctx, t, args, run)
 				}
 				loc.Prov = k.boundProvider()

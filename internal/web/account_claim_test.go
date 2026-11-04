@@ -8,11 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"xbot/internal/account"
 )
 
-// 认领本机把安装绑到登录着的账号：走真 bindIfFree + ReportDevice，落盘后
+// 认领本机把安装绑到登录着的账号：走真 bindIfFree + BindDevice，落盘后
 // 我的设备立刻列出这台电脑。隧道那头的请求没有属主证明，认领被拒。
 func TestAccountClaimBindsThisMachine(t *testing.T) {
 	e := newAcctEnv(t, false)
@@ -41,7 +42,7 @@ func TestAccountClaimBindsThisMachine(t *testing.T) {
 	}
 	raw, err := os.ReadFile(filepath.Join(e.root, "account-binding.json"))
 	if err != nil || !strings.Contains(string(raw), `"key"`) || strings.Contains(string(raw), "zhengdong") {
-		t.Fatalf("binding file %q %v", raw, err)
+		t.Fatalf("binding file missing account identity: %v", err)
 	}
 	code, devs := e.do(c, "GET", "/api/account/devices", nil, nil)
 	list, _ := devs["devices"].([]any)
@@ -82,10 +83,47 @@ func TestSessionMarksRemoteEntry(t *testing.T) {
 	}
 }
 
+type deviceViewClient struct {
+	account.Client
+	list []account.DeviceView
+}
+
+func (c deviceViewClient) Devices(context.Context, string) ([]account.DeviceView, error) {
+	return c.list, nil
+}
+
+func TestAccountDevicesPreservesAuthoritativeMetadata(t *testing.T) {
+	e := newAcctEnv(t, false)
+	c := e.browser()
+	if code, _ := e.do(c, "POST", "/api/account/register", map[string]string{"email": "owner@example.com", "password": "password 12"}, nil); code != 200 {
+		t.Fatal(code)
+	}
+	e.claim(c, nil)
+	binding, _ := e.s.readBinding()
+	seen := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+	e.s.acct.client = deviceViewClient{Client: e.s.acct.client, list: []account.DeviceView{{
+		ID: binding.DeviceID, Name: "Saved name", Online: false, Bots: []string{"stale-report"},
+		OS: "linux", Capabilities: []string{"shell", "files"}, LastSeen: seen, RunningCount: 3,
+	}}}
+	code, out := e.do(c, "GET", "/api/account/devices", nil, nil)
+	list, _ := out["devices"].([]any)
+	if code != 200 || len(list) != 1 {
+		t.Fatalf("device list: %d", code)
+	}
+	d := list[0].(map[string]any)
+	if d["self"] != true || d["online"] != false || d["name"] != "Saved name" || d["os"] != "linux" || d["last_seen"] != seen.Format(time.RFC3339) || d["running_count"] != float64(3) || len(d["capabilities"].([]any)) != 2 {
+		t.Fatalf("authoritative metadata changed: %v", d)
+	}
+	bots := d["bots"].([]any)
+	if len(bots) != 2 || bots[0].(map[string]any)["name"] == "stale-report" {
+		t.Fatal("self row did not use current owner bot list")
+	}
+}
+
 type failingReport struct{ account.Client }
 
-func (failingReport) Report(context.Context, string, string, string, []string) error {
-	return errors.New("report down")
+func (failingReport) BindDevice(context.Context, string, account.DeviceReport) (account.Binding, error) {
+	return account.Binding{}, errors.New("report down")
 }
 
 // 认领绑上了但账号设备登记失败：回包说没登记上，下一次页面请求重报，

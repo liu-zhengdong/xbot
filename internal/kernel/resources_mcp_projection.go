@@ -35,6 +35,10 @@ func (r *BotResources) mcpFailure(err error) error {
 
 // Decode with UseNumber so redaction cannot round integer arguments/results.
 func (r *BotResources) redactMCPJSON(raw []byte) (json.RawMessage, error) {
+	return redactRuntimeJSON(raw, r.mcpRedact)
+}
+
+func redactRuntimeJSON(raw []byte, scrub func(string) string) (json.RawMessage, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	var value any
@@ -45,7 +49,7 @@ func (r *BotResources) redactMCPJSON(raw []byte) (json.RawMessage, error) {
 	redact = func(value any) any {
 		switch v := value.(type) {
 		case string:
-			return r.mcpRedact(v)
+			return scrub(v)
 		case []any:
 			for i := range v {
 				v[i] = redact(v[i])

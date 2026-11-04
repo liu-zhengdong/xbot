@@ -34,6 +34,12 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("POST "+Prefix+"logout", s.hLogout)
 	mux.HandleFunc("GET "+Prefix+"devices", s.hDevices)
 	mux.HandleFunc("POST "+Prefix+"devices", s.hReport)
+	mux.HandleFunc("POST "+Prefix+"devices/bind", s.hBindDevice)
+	mux.HandleFunc("PATCH "+Prefix+"devices/{id}", s.hRenameDevice)
+	mux.HandleFunc("DELETE "+Prefix+"devices/{id}", s.hDeleteDevice)
+	mux.HandleFunc("GET "+Prefix+"binding", s.hBinding)
+	mux.HandleFunc("GET "+Prefix+"binding/devices", s.hBindingDevices)
+	mux.HandleFunc("POST "+Prefix+"binding/report", s.hReportMetadata)
 	mux.HandleFunc("GET "+Prefix+"health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -55,6 +61,12 @@ func ErrorCode(err error) (int, string) {
 		return http.StatusGone, "expired"
 	case errors.Is(err, ErrSession):
 		return http.StatusUnauthorized, "session"
+	case errors.Is(err, ErrBinding):
+		return http.StatusUnauthorized, "binding"
+	case errors.Is(err, ErrDevice):
+		return http.StatusNotFound, "device"
+	case errors.Is(err, ErrRevoked):
+		return http.StatusGone, "revoked"
 	default:
 		return http.StatusInternalServerError, "internal"
 	}
@@ -75,6 +87,12 @@ func CodeError(code string) error {
 		return ErrExpired
 	case "session":
 		return ErrSession
+	case "binding":
+		return ErrBinding
+	case "device":
+		return ErrDevice
+	case "revoked":
+		return ErrRevoked
 	default:
 		return errors.New("account: service error")
 	}
@@ -248,6 +266,74 @@ func (s *Service) hReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.ReportDevice(bearer(r), in.ID, in.Name, in.Bots); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Service) hBindDevice(w http.ResponseWriter, r *http.Request) {
+	var in DeviceReport
+	if err := readJSON(r, &in); err != nil {
+		writeErr(w, err)
+		return
+	}
+	out, err := s.BindDevice(bearer(r), in)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Service) hBinding(w http.ResponseWriter, r *http.Request) {
+	out, err := s.AuthenticateBinding(bearer(r))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Service) hBindingDevices(w http.ResponseWriter, r *http.Request) {
+	out, err := s.BindingDevices(bearer(r))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"devices": out})
+}
+
+func (s *Service) hReportMetadata(w http.ResponseWriter, r *http.Request) {
+	var in DeviceReport
+	if err := readJSON(r, &in); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := s.ReportMetadata(bearer(r), in); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Service) hRenameDevice(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Name string `json:"name"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := s.RenameDevice(bearer(r), r.PathValue("id"), in.Name); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Service) hDeleteDevice(w http.ResponseWriter, r *http.Request) {
+	if err := s.DeleteDevice(bearer(r), r.PathValue("id")); err != nil {
 		writeErr(w, err)
 		return
 	}

@@ -61,13 +61,19 @@ type Session struct {
 	Expires time.Time `json:"expires"`
 }
 
-// Device is one computer that reported itself for an account.
+// Device is an account member. Revoked records reject later heartbeats.
 type Device struct {
-	ID       string    `json:"id"`
-	Email    string    `json:"email"`
-	Name     string    `json:"name"`
-	Bots     []string  `json:"bots"`
-	LastSeen time.Time `json:"last_seen"`
+	ID           string    `json:"id"`
+	Email        string    `json:"email"`
+	Name         string    `json:"name"`
+	Bots         []string  `json:"bots"`
+	OS           string    `json:"os,omitempty"`
+	Capabilities []string  `json:"capabilities,omitempty"`
+	RunningCount int       `json:"running_count,omitempty"`
+	LastSeen     time.Time `json:"last_seen"`
+	BindingID    string    `json:"binding_id,omitempty"`
+	BindingHash  string    `json:"binding_hash,omitempty"`
+	RevokedAt    time.Time `json:"revoked_at,omitempty"`
 }
 
 // Store keeps State. Update runs fn under one lock and saves what it leaves;

@@ -51,6 +51,8 @@ Usage:
   xbot [--root DIR] subagent list --self [--limit N] [--json]
   xbot [--root DIR] subagent read --self <id> [--json]
   xbot [--root DIR] subagent expand --self <id> [--from N] [--to N] [--json]
+  xbot device --help
+  xbot [--root DIR] device list|exec|read|write|desktop|browser|tasks|task|stop|artifact --self [--device ID] [--json]
   xbot jobs --help
   xbot [--root DIR] jobs output --self <id> [--offset N] [--tail N] [--json]
   xbot [--root DIR] jobs status --self [<id>] [--json]
@@ -225,6 +227,9 @@ func run(argv []string) error {
 	}
 	if err != nil {
 		return err
+	}
+	if len(rest) > 0 && rest[0] == "device" {
+		return cmdDeviceRuntime(root, len(argv) > len(rest), rest[1:])
 	}
 	if len(rest) > 0 && rest[0] == "memory-recall" {
 		return cmdMemoryRecallRuntime(root, len(argv) > len(rest), rest[1:])

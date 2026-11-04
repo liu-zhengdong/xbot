@@ -59,7 +59,8 @@ func (k *Kernel) StartSubagent(ctx context.Context, in SubagentRequest) (exec.Ta
 		return exec.Task{}, err
 	}
 	d := exec.Descriptor{Version: 1, ID: id, Bot: k.currentName(), Type: ty.Name, Mode: mode,
-		CWD: k.cwdFor(ctx), Tools: append([]string(nil), ty.Tools...), MaxSteps: maxStepsGuard,
+		DeviceID: k.selectedDevice(ctx),
+		CWD:      k.cwdFor(ctx), Tools: append([]string(nil), ty.Tools...), MaxSteps: maxStepsGuard,
 		TimeoutSec: int(ty.Budget / time.Second)}
 	if err := k.selectSubagentRoute(&d, in); err != nil {
 		return exec.Task{}, err
@@ -75,6 +76,12 @@ func (k *Kernel) StartSubagent(ctx context.Context, in SubagentRequest) (exec.Ta
 		if guide := k.cliProfileGuide(); guide != "" {
 			persona += "\n\n" + guide
 		}
+	} else if k.cliProfileGuide() != "" {
+		persona += `
+设备只读入口："$XBOT_BIN" device --help；device list --self --json 查看真实设备，read --self --args '{"path":"file"}' 读取文件，tasks/task REF --self 查看任务，artifact REF --self --artifact-id ID 取有界产物。默认继承派发消息的设备选择，可用 --device ID 选择账号设备。exec、write、desktop 和 stop 均不可用。`
+	}
+	if d.DeviceID != "" {
+		persona += fmt.Sprintf("\n本任务继承的执行设备是 %q；使用 device --self CLI，普通Shell/文件工具仍作用对话主机。", d.DeviceID)
 	}
 	if mem := k.dispatchMemory(ctx); mem != "" {
 		persona += "\n\n你服务的人和这个 Bot 的已知情况（记忆的只读快照）：\n" + mem

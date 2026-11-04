@@ -170,7 +170,7 @@ func TestAccountSignUpOpensTheOwnerInterface(t *testing.T) {
 	}
 	raw, _ := os.ReadFile(filepath.Join(e.root, "account-binding.json"))
 	if strings.Contains(string(raw), "zhengdong") || !strings.Contains(string(raw), `"key"`) {
-		t.Fatalf("binding %s", raw)
+		t.Fatal("binding file missing opaque account identity")
 	}
 	// 我的设备: this computer with its bots.
 	code, devs := e.do(c, "GET", "/api/account/devices", nil, nil)

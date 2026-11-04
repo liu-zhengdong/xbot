@@ -46,6 +46,10 @@ func (k *Kernel) allowReadOnlyPlatform(interpreter string, args json.RawMessage)
 		parsed, err := cliops.ParseBotRuntime(argv)
 		return err == nil && (parsed.Help || parsed.Self && !parsed.Offline && (parsed.Action == "list" || parsed.Action == "info"))
 	}
+	if argv[0] == "device" {
+		parsed, err := cliops.ParseDeviceRuntime(argv[1:])
+		return err == nil && (parsed.Help || parsed.Self && (cliops.DeviceReadAction(parsed.Action) && (parsed.Action != "read" || parsed.Tool == "read_file") || parsed.Action == "browser" && parsed.Tool == "browser_snapshot"))
+	}
 	if argv[0] == "compact" {
 		parsed, err := cliops.ParseCompactRuntime(argv[1:])
 		return err == nil && parsed.Help

@@ -28,6 +28,7 @@ import (
 	"xbot/internal/code"
 	"xbot/internal/compact"
 	"xbot/internal/config"
+	"xbot/internal/deviceclient"
 	"xbot/internal/fsutil"
 	"xbot/internal/inbound"
 	"xbot/internal/inbox"
@@ -187,6 +188,7 @@ func openKernel(root string, b *bot.Bot, steps int, approve func(context.Context
 		_ = k.Close()
 		return nil, person.Person{}, err
 	}
+	k.DeviceCall = (deviceclient.Client{Root: root}).Call
 	if err := k.StartOperations(); err != nil {
 		_ = k.Close()
 		return nil, person.Person{}, err
@@ -708,6 +710,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	mux := http.NewServeMux()
 	hub.Register(mux)
 	ui.Register(mux)
+	ui.SetDeviceClient(deviceclient.Client{Root: root})
 	pipeHub := strings.TrimSpace(os.Getenv("XBOT_PIPE_HUB"))
 	if pipeHub == "" {
 		pipeHub = "https://pipe.babelgo.cn:8443"
@@ -725,7 +728,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		return localBase, gatewayPublic.Load().(string)
 	}
 	stopPipe := ui.StartAccountPipe(ctx, func(ctx context.Context, session, deviceID string) error {
-		d := &pipe.Device{Hub: pipeHub, Session: session, DeviceID: deviceID, Handler: mux, Authorize: ui.AuthorizeOwner, Hooks: hub.Handler(), Log: log.New(os.Stderr, "xbot: ", 0)}
+		d := &pipe.Device{Hub: pipeHub, Session: session, DeviceID: deviceID, Handler: mux, Authorize: func(r *http.Request) error { return ui.AuthorizeAccountPipe(session, r) }, Execution: ui.DeviceExecutionHandler(), ValidateExecution: ui.ValidateDeviceExecution, Hooks: hub.Handler(), Log: log.New(os.Stderr, "xbot: ", 0)}
 		d.Standby = func(hook string) {
 			if hook != "" {
 				gatewayPublic.Store(pipe.HookBase(pipeHub, hook))
@@ -735,6 +738,7 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		}
 		return d.Run(ctx)
 	})
+	defer ui.CloseDeviceExecution()
 	defer stopPipe()
 	fmt.Fprintf(os.Stderr, "listening on http://%s\n", ln.Addr())
 	publicURL := resolved.PublicURL

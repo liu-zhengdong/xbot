@@ -85,6 +85,7 @@ type RunRequest struct {
 	Dir         string
 	Env         []string
 	Background  bool
+	persistCwd  bool
 	CwdFile     string
 	CwdHandle   *os.File
 	CwdCleanup  func()

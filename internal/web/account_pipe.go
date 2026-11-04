@@ -11,11 +11,10 @@ import (
 	"time"
 
 	"xbot/internal/account"
-	"xbot/internal/fsutil"
 )
 
 type accountPipeChange struct {
-	session, only string
+	session, only string // installation credentials; never UI sessions
 	ack           chan error
 }
 type accountPipe struct {
@@ -23,32 +22,52 @@ type accountPipe struct {
 	done    chan struct{}
 }
 
+// accountSessionPath is the legacy UI session file, read only for migration.
 func (s *Server) accountSessionPath() string { return filepath.Join(s.Root, "account-session") }
 
-// keepPipeSession is called only after the binding has proved account ownership.
-func (s *Server) keepPipeSession(session string) error { return s.changePipeSession(session, "") }
-func (s *Server) forgetPipeSession(session string)     { _ = s.changePipeSession("", session) }
-
-func (s *Server) changePipeSession(session, only string) error {
-	s.acct.pipeMu.Lock()
-	p := s.acct.pipe
-	if p == nil {
-		defer s.acct.pipeMu.Unlock()
-		if session != "" {
-			return fsutil.WriteAtomic(s.accountSessionPath(), []byte(session), 0o600)
-		}
-		raw, _ := os.ReadFile(s.accountSessionPath())
-		if only != "" && string(raw) != only {
-			return nil
-		}
-		err := os.Remove(s.accountSessionPath())
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
+// keepPipeSession is called after UI account ownership has been proved. Only
+// the independent installation credential reaches the standby runner.
+func (s *Server) keepPipeSession(session string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	credential, err := s.boundCredential(ctx, session, false)
+	if errors.Is(err, account.ErrBinding) {
+		// Logging into the UI cannot restore a revoked installation member.
+		return s.changePipeSession("", "")
+	}
+	if err != nil {
 		return err
 	}
+	s.clearLegacySession(session)
+	return s.changePipeSession(credential, "")
+}
+
+// UI logout and session expiry leave installation membership and standby alone.
+// An empty session is the explicit stop used when this installation is unbound.
+func (s *Server) forgetPipeSession(session string) {
+	if session != "" {
+		s.clearLegacySession(session)
+		return
+	}
+	_ = s.changePipeSession("", "")
+}
+
+func (s *Server) clearLegacySession(only string) {
+	raw, err := os.ReadFile(s.accountSessionPath())
+	if err == nil && (only == "" || string(raw) == only) {
+		_ = os.Remove(s.accountSessionPath())
+	}
+}
+
+func (s *Server) changePipeSession(credential, only string) error {
+	s.acct.pipeMu.Lock()
+	p := s.acct.pipe
 	s.acct.pipeMu.Unlock()
-	c := accountPipeChange{session: session, only: only, ack: make(chan error, 1)}
+	if p == nil {
+		// The credential is already durable in the binding file.
+		return nil
+	}
+	c := accountPipeChange{session: credential, only: only, ack: make(chan error, 1)}
 	select {
 	case p.changes <- c:
 	case <-p.done:
@@ -62,9 +81,9 @@ func (s *Server) changePipeSession(session, only string) error {
 	}
 }
 
-// StartAccountPipe restores the bound owner's session and serializes standby
-// rotation, logout and expiry. run must exit when its context is cancelled.
-// Account checks and device reports continue even with no browser open.
+// StartAccountPipe restores installation identity without an open browser.
+// A legacy session can migrate once. Invalid binding tokens never auto-rebind.
+// run must exit when its context is cancelled.
 func (s *Server) StartAccountPipe(ctx context.Context, run func(context.Context, string, string) error) func() {
 	ctx, stop := context.WithCancel(ctx)
 	p := &accountPipe{changes: make(chan accountPipeChange), done: make(chan struct{})}
@@ -73,7 +92,7 @@ func (s *Server) StartAccountPipe(ctx context.Context, run func(context.Context,
 	s.acct.pipeMu.Unlock()
 	go func() {
 		defer close(p.done)
-		var session string
+		var credential string
 		var cancel context.CancelFunc
 		var ended chan error
 		halt := func() {
@@ -86,34 +105,44 @@ func (s *Server) StartAccountPipe(ctx context.Context, run func(context.Context,
 		}
 		defer halt()
 		start := func(next string) error {
-			if next == session && cancel != nil {
+			if next == credential && cancel != nil {
 				return nil
 			}
 			halt()
+			credential = ""
 			if next == "" {
-				session = ""
-				err := os.Remove(s.accountSessionPath())
-				if errors.Is(err, os.ErrNotExist) {
-					return nil
-				}
-				return err
+				return nil
 			}
 			if len(next) > 128 || strings.TrimSpace(next) != next {
-				return errors.New("invalid account session")
+				return account.ErrBinding
 			}
-			if err := fsutil.WriteAtomic(s.accountSessionPath(), []byte(next), 0o600); err != nil {
-				return err
-			}
-			session = next
+			credential = next
 			var child context.Context
 			child, cancel = context.WithCancel(ctx)
 			ended = make(chan error, 1)
 			go func(result chan error) { result <- s.runAccountPipe(child, next, run) }(ended)
 			return nil
 		}
-		if raw, err := os.ReadFile(s.accountSessionPath()); err == nil && len(raw) > 0 {
-			if err := start(string(raw)); err != nil {
-				log.Print("xbot: pipe: cannot restore account session")
+		if b, err := s.readBinding(); err == nil && b.Key != "" {
+			var next string
+			if b.Token != "" {
+				next = b.Token
+				s.clearLegacySession("")
+			} else if raw, err := os.ReadFile(s.accountSessionPath()); err == nil && len(raw) > 0 {
+				checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				next, err = s.boundCredential(checkCtx, string(raw), false)
+				cancel()
+				if err != nil {
+					log.Print("xbot: pipe: cannot migrate legacy account session")
+				}
+				if err == nil || errors.Is(err, account.ErrSession) || errors.Is(err, account.ErrBinding) {
+					s.clearLegacySession(string(raw))
+				}
+			}
+			if next != "" {
+				if err := start(next); err != nil {
+					log.Print("xbot: pipe: cannot restore account binding")
+				}
 			}
 		}
 		for {
@@ -121,7 +150,7 @@ func (s *Server) StartAccountPipe(ctx context.Context, run func(context.Context,
 			case <-ctx.Done():
 				return
 			case c := <-p.changes:
-				if c.only != "" && c.only != session {
+				if c.only != "" && c.only != credential {
 					c.ack <- nil
 					continue
 				}
@@ -130,10 +159,9 @@ func (s *Server) StartAccountPipe(ctx context.Context, run func(context.Context,
 				cancel()
 				cancel = nil
 				ended = nil
-				if errors.Is(err, account.ErrSession) {
-					_ = os.Remove(s.accountSessionPath())
-					session = ""
-					log.Print("xbot: pipe: account session expired; standby stopped")
+				credential = ""
+				if errors.Is(err, account.ErrBinding) {
+					log.Print("xbot: pipe: account binding revoked; standby stopped")
 				} else if ctx.Err() == nil {
 					log.Print("xbot: pipe: standby stopped")
 				}
@@ -143,7 +171,7 @@ func (s *Server) StartAccountPipe(ctx context.Context, run func(context.Context,
 	return func() { stop(); <-p.done }
 }
 
-func (s *Server) runAccountPipe(ctx context.Context, session string, run func(context.Context, string, string) error) error {
+func (s *Server) runAccountPipe(ctx context.Context, credential string, run func(context.Context, string, string) error) error {
 	var device string
 	runCtx, stopRun := context.WithCancel(ctx)
 	var done chan error
@@ -156,7 +184,7 @@ func (s *Server) runAccountPipe(ctx context.Context, session string, run func(co
 	check := func() error {
 		checkCtx, stop := context.WithTimeout(ctx, 10*time.Second)
 		defer stop()
-		me, err := s.acct.client.Me(checkCtx, session)
+		identity, err := s.acct.client.AuthenticateBinding(checkCtx, credential)
 		if err != nil {
 			return err
 		}
@@ -164,22 +192,22 @@ func (s *Server) runAccountPipe(ctx context.Context, session string, run func(co
 		if err != nil {
 			return err
 		}
-		if !me.Verified || b.Key == "" || b.Key != me.Key || b.DeviceID == "" {
-			return account.ErrSession
+		if b.Key == "" || identity.AccountKey != b.Key || identity.DeviceID != b.DeviceID || identity.ID != b.BindingID || b.Token != credential {
+			return account.ErrBinding
 		}
 		device = b.DeviceID
-		return s.reportDevice(checkCtx, session, b, true)
+		return s.acct.client.ReportMetadata(checkCtx, credential, s.deviceReport(device))
 	}
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	for {
 		err := check()
-		if errors.Is(err, account.ErrSession) {
-			return err
+		if errors.Is(err, account.ErrBinding) || errors.Is(err, account.ErrRevoked) {
+			return account.ErrBinding
 		}
 		if err == nil && done == nil {
 			done = make(chan error, 1)
-			go func(result chan error, id string) { result <- run(runCtx, session, id) }(done, device)
+			go func(result chan error, id string) { result <- run(runCtx, credential, id) }(done, device)
 		}
 		if err != nil && ctx.Err() == nil {
 			log.Print("xbot: pipe: account check/report unavailable; retrying")

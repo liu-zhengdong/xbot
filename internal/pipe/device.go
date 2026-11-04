@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"xbot/internal/deviceidentity"
 	"xbot/internal/pipe/limits"
 )
 
@@ -28,6 +29,10 @@ type Device struct {
 	// adds the owner's credential to each request before it runs.
 	Handler   http.Handler
 	Authorize func(*http.Request) error
+	// Execution handles only tickets issued to bound runtimes. Owner credentials
+	// are never attached to these requests.
+	Execution         http.Handler
+	ValidateExecution func(context.Context, ExecutionIdentity) error
 	// Hooks answers webhooks the hub forwards from its public ingress. It
 	// runs without the owner's credential; nil refuses every hook.
 	Hooks http.Handler
@@ -125,7 +130,7 @@ func (d *Device) standby(ctx context.Context) error {
 			sessions.Add(1)
 			go func() {
 				defer sessions.Done()
-				if err := d.Serve(ctx, m.TicketID, m.Secret); err != nil && ctx.Err() == nil {
+				if err := d.serve(ctx, m.TicketID, m.Secret, m.Execution); err != nil && ctx.Err() == nil {
 					d.logf("pipe: session %s: %v", short(m.TicketID), err)
 				}
 			}()
@@ -150,6 +155,13 @@ func cmpErr(err error, msg string) error {
 // Serve joins one ticket's session as the device and answers requests until
 // either side hangs up.
 func (d *Device) Serve(ctx context.Context, ticketID, secret string) error {
+	return d.serve(ctx, ticketID, secret, nil)
+}
+
+func (d *Device) serve(ctx context.Context, ticketID, secret string, execution *ExecutionIdentity) error {
+	if execution != nil {
+		ctx = deviceidentity.WithSource(ctx, *execution)
+	}
 	dctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	c, err := dialWS(dctx, wsURL(d.Hub), MaxFrame)
 	cancel()
@@ -217,13 +229,22 @@ func (d *Device) answer(ctx context.Context, req frame) frame {
 	r.Header.Set("Content-Type", req.CT)
 	r.Header.Set("If-None-Match", req.INM)
 	r.Host, r.RemoteAddr = "pipe.local", "pipe"
-	if d.Authorize != nil {
+	handler := d.Handler
+	if identity, execution := ExecutionSource(ctx); execution {
+		if d.Execution == nil || d.ValidateExecution == nil || !strings.HasPrefix(u.Path, "/api/device-execution/") {
+			return fail(http.StatusForbidden, "execution route required")
+		}
+		if err := d.ValidateExecution(ctx, identity); err != nil {
+			return fail(http.StatusForbidden, "device membership revoked or unavailable")
+		}
+		handler = d.Execution
+	} else if d.Authorize != nil {
 		if err := d.Authorize(r); err != nil {
 			return fail(http.StatusInternalServerError, "owner credential unavailable")
 		}
 	}
 	w := &capture{header: http.Header{}}
-	d.Handler.ServeHTTP(w, r)
+	handler.ServeHTTP(w, r)
 	if w.over {
 		return fail(http.StatusRequestEntityTooLarge, "response too large for the pipe")
 	}

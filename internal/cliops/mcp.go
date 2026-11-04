@@ -74,4 +74,5 @@ type Handlers struct {
 	Links         *LinksHandlers
 	Subagents     *SubagentHandlers
 	Jobs          *JobsHandlers
+	Device        DeviceHandler
 }

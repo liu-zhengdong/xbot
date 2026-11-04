@@ -1163,6 +1163,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		Images   []string `json:"images"`
 		Audios   []string `json:"audios"`
 		ClientID string   `json:"client_id"`
+		DeviceID string   `json:"device_id,omitempty"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, http.StatusBadRequest, "bad request")
@@ -1201,7 +1202,12 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		}
 		replyTo = *in.ReplyTo
 	}
+	if err := s.validateMessageDevice(r.Context(), in.DeviceID); err != nil {
+		writeErr(w, http.StatusConflict, err.Error())
+		return
+	}
 	ev := inbox.WebEvent(s.owner, text, time.Now())
+	ev.DeviceID = in.DeviceID
 	ev.ReplyTo = replyTo
 	ev.Images = images
 	ev.Audios = audios

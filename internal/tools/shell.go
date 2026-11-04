@@ -47,6 +47,10 @@ type Shell struct {
 	KeyEnv         []string
 	Jobs           *Jobs
 	jobsOnce       sync.Once
+	// PersistBackgroundCwd updates cwd when Shell runs inside a caller-owned
+	// detached RunCall. Configure it before execution. The default preserves
+	// foreground-only updates.
+	PersistBackgroundCwd bool
 
 	// startDir and afterDir persist the working directory for one execution
 	// context. Nil leaves every call in Dir. The mutex covers the func fields
@@ -405,6 +409,7 @@ func (s *Shell) Run(ctx context.Context, args json.RawMessage) (string, error) {
 			Env:         env,
 			OnExit:      cleanupSudo,
 			Background:  in.RunInBackground,
+			persistCwd:  s.PersistBackgroundCwd,
 			CwdFile:     marker,
 			CwdHandle:   markerHandle,
 			CwdCleanup:  markerCleanup,

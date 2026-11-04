@@ -7,6 +7,7 @@ import (
 
 	"xbot/internal/agent"
 	"xbot/internal/cliops"
+	"xbot/internal/deviceexec"
 	"xbot/internal/review"
 	"xbot/internal/tools"
 )
@@ -22,6 +23,7 @@ type routineCallSource struct {
 	child    bool
 	trusted  bool
 	person   string
+	device   deviceexec.Source
 }
 
 func (k *Kernel) cliCallEnvironment(ctx context.Context, base []string) []string {

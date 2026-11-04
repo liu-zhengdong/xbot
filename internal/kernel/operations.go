@@ -23,7 +23,8 @@ func (k *Kernel) cliProfileGuide() string {
 	if k.operations.server == nil {
 		return ""
 	}
-	return cliProfileGuide
+	return cliProfileGuide + `
+账号设备用 "$XBOT_BIN" device --help 查看用法，用 "$XBOT_BIN" device list --self --json 查看真实设备。执行示例："$XBOT_BIN" device exec --self --args '{"command":"pwd"}' --json；可加 --device ID 显式选设备。read/write/desktop/browser 同用 --args JSON（或 --args-file FILE|-）；tasks/task REF 查状态和有界输出，stop REF 请求停止，artifact REF --artifact-id ID 取本机有界产物文件。默认目标是当前消息的设备选择，来源Bot、main/子代理ID和research只读限制由真实运行入口确定。普通Shell/文件工具仍在对话主机执行。离线不切本机；未知结果按原ref查询，不重发副作用。`
 }
 
 type operationState struct {
@@ -64,7 +65,7 @@ func (k *Kernel) StartOperations() error {
 			coding.UseEnvironment(k.CLIEnvironment, k.closeIdleOperations)
 		}
 	}
-	handlers := cliops.Handlers{Profile: k.profileOperation, ProfileAvatar: k.profileAvatarOperation, Skills: k.SkillHandlers(), Routines: k.RoutineHandlers(), Bots: k.BotHandlers(), ChatGroups: k.ChatGroupHandlers(), PeerMessage: k.peerMessageRuntime, Experiences: k.ExperienceHandlers(), Recall: k.memoryRecallRuntime, Transcript: k.TranscriptHandlers(), Compact: k.compactRuntime, Restart: k.restartRuntime, HTTP: k.httpRuntime, Links: &cliops.LinksHandlers{Search: k.linksSearchRuntime, Load: k.linksLoadRuntime, Install: k.linksInstallRuntime, Remove: k.linksRemoveRuntime}, Subagents: k.SubagentHandlers(), Jobs: k.JobsHandlers()}
+	handlers := cliops.Handlers{Profile: k.profileOperation, ProfileAvatar: k.profileAvatarOperation, Skills: k.SkillHandlers(), Routines: k.RoutineHandlers(), Bots: k.BotHandlers(), ChatGroups: k.ChatGroupHandlers(), PeerMessage: k.peerMessageRuntime, Experiences: k.ExperienceHandlers(), Recall: k.memoryRecallRuntime, Transcript: k.TranscriptHandlers(), Compact: k.compactRuntime, Restart: k.restartRuntime, HTTP: k.httpRuntime, Links: &cliops.LinksHandlers{Search: k.linksSearchRuntime, Load: k.linksLoadRuntime, Install: k.linksInstallRuntime, Remove: k.linksRemoveRuntime}, Subagents: k.SubagentHandlers(), Jobs: k.JobsHandlers(), Device: k.deviceRuntime}
 	if k.Resources != nil {
 		mcpHandlers := k.Resources.MCPHandlers()
 		handlers.MCP = &mcpHandlers

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -24,6 +25,12 @@ type Client interface {
 	Logout(ctx context.Context, session string) error
 	Devices(ctx context.Context, session string) ([]DeviceView, error)
 	Report(ctx context.Context, session, id, name string, bots []string) error
+	BindDevice(ctx context.Context, session string, report DeviceReport) (Binding, error)
+	AuthenticateBinding(ctx context.Context, token string) (BindingIdentity, error)
+	BindingDevices(ctx context.Context, token string) ([]DeviceView, error)
+	ReportMetadata(ctx context.Context, token string, report DeviceReport) error
+	RenameDevice(ctx context.Context, session, id, name string) error
+	DeleteDevice(ctx context.Context, session, id string) error
 	// Hosted says the service is the remote one rather than the local stand-in.
 	Hosted() bool
 }
@@ -51,6 +58,25 @@ func (l Local) Devices(_ context.Context, t string) ([]DeviceView, error) {
 }
 func (l Local) Report(_ context.Context, t, id, name string, bots []string) error {
 	return l.S.ReportDevice(t, id, name, bots)
+}
+
+func (l Local) BindDevice(_ context.Context, session string, report DeviceReport) (Binding, error) {
+	return l.S.BindDevice(session, report)
+}
+func (l Local) AuthenticateBinding(_ context.Context, token string) (BindingIdentity, error) {
+	return l.S.AuthenticateBinding(token)
+}
+func (l Local) BindingDevices(_ context.Context, token string) ([]DeviceView, error) {
+	return l.S.BindingDevices(token)
+}
+func (l Local) ReportMetadata(_ context.Context, token string, report DeviceReport) error {
+	return l.S.ReportMetadata(token, report)
+}
+func (l Local) RenameDevice(_ context.Context, session, id, name string) error {
+	return l.S.RenameDevice(session, id, name)
+}
+func (l Local) DeleteDevice(_ context.Context, session, id string) error {
+	return l.S.DeleteDevice(session, id)
 }
 
 // Remote calls a hosted Account API at Base (such as https://account.example.com).
@@ -166,5 +192,40 @@ func (c Remote) Devices(ctx context.Context, t string) ([]DeviceView, error) {
 func (c Remote) Report(ctx context.Context, t, id, name string, bots []string) error {
 	in := map[string]any{"id": id, "name": name, "bots": bots}
 	_, err := c.call(ctx, "POST", "devices", t, in, nil)
+	return err
+}
+
+func (c Remote) BindDevice(ctx context.Context, session string, report DeviceReport) (Binding, error) {
+	var out Binding
+	_, err := c.call(ctx, "POST", "devices/bind", session, report, &out)
+	return out, err
+}
+
+func (c Remote) AuthenticateBinding(ctx context.Context, token string) (BindingIdentity, error) {
+	var out BindingIdentity
+	_, err := c.call(ctx, "GET", "binding", token, nil, &out)
+	return out, err
+}
+
+func (c Remote) BindingDevices(ctx context.Context, token string) ([]DeviceView, error) {
+	var out struct {
+		Devices []DeviceView `json:"devices"`
+	}
+	_, err := c.call(ctx, "GET", "binding/devices", token, nil, &out)
+	return out.Devices, err
+}
+
+func (c Remote) ReportMetadata(ctx context.Context, token string, report DeviceReport) error {
+	_, err := c.call(ctx, "POST", "binding/report", token, report, nil)
+	return err
+}
+
+func (c Remote) RenameDevice(ctx context.Context, session, id, name string) error {
+	_, err := c.call(ctx, "PATCH", "devices/"+url.PathEscape(id), session, map[string]string{"name": name}, nil)
+	return err
+}
+
+func (c Remote) DeleteDevice(ctx context.Context, session, id string) error {
+	_, err := c.call(ctx, "DELETE", "devices/"+url.PathEscape(id), session, nil, nil)
 	return err
 }

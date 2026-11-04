@@ -128,7 +128,7 @@ func (k *Kernel) receive(ev inbox.Event) (int, error) {
 			origin = bot.OriginInternal
 		}
 		seq, err = k.appendCurrentSeq(bot.Entry{Time: ev.Time, EventID: ev.ID, ReplyTo: ev.ReplyTo, Origin: origin, Images: ev.Images, Audios: ev.Audios,
-			Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(inbox.Render(ev, inbox.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners)))}})
+			Message: provider.Message{Role: provider.RoleUser, Content: provider.TextContent(inbox.Render(ev, inbox.OwnerTrusted(ev.Source, ev.Sender, k.Bot.Config().Owners)) + deviceSelectionNote(ev))}})
 		if err != nil {
 			return 0, err
 		}
@@ -161,6 +161,7 @@ func Interject(b *bot.Bot, ev inbox.Event, sink *Sink) bool {
 		return false
 	}
 	msg.Seq = seq
+	t.selectDevice(ev)
 	t.inter.queue = append(t.inter.queue, msg, interjectNote())
 	prev := t.inter.sink
 	t.inter.sink = sink
@@ -265,7 +266,7 @@ func (t *turn) finishSink(out Outcome) {
 // turn takes in.
 func (k *Kernel) eventMessage(ev inbox.Event) provider.Message {
 	owners := k.Bot.Config().Owners
-	raw := inbox.Render(ev, inbox.OwnerTrusted(ev.Source, ev.Sender, owners))
+	raw := inbox.Render(ev, inbox.OwnerTrusted(ev.Source, ev.Sender, owners)) + deviceSelectionNote(ev)
 	content := raw
 	if ev.ReplyTo > 0 {
 		if q := k.quotePrefix(ev.ReplyTo); q != "" {

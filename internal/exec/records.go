@@ -23,6 +23,7 @@ type Descriptor struct {
 	Type            string   `json:"type"`
 	Mode            string   `json:"mode"`
 	CWD             string   `json:"cwd"`
+	DeviceID        string   `json:"device_id,omitempty"`
 	Provider        string   `json:"provider"`
 	Model           string   `json:"model"`
 	Thinking        string   `json:"thinking,omitempty"`

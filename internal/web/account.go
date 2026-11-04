@@ -10,12 +10,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"xbot/internal/account"
 	"xbot/internal/bot"
+	"xbot/internal/deviceexec"
 	"xbot/internal/fsutil"
 	"xbot/internal/peer"
 	"xbot/internal/remote"
@@ -31,20 +33,25 @@ const accountCookie = "xbot_account"
 
 // accountState is the per-server account wiring, set up on Register.
 type accountState struct {
-	client account.Client
-	local  *account.Service // the stand-in, when no hosted service is configured
-	mu     sync.Mutex
-	report time.Time // last device report, to send at most once a minute
-	pipeMu sync.Mutex
-	pipe   *accountPipe
+	client    account.Client
+	local     *account.Service // the stand-in, when no hosted service is configured
+	mu        sync.Mutex
+	report    time.Time // last device report, to send at most once a minute
+	pipeMu    sync.Mutex
+	pipe      *accountPipe
+	deviceMu  sync.Mutex
+	execution *deviceexec.Manager
+	wire      deviceWire
 }
 
 // accountBinding is which account this install belongs to, by the service's
 // opaque key (no address is kept here), and this install's device id.
 type accountBinding struct {
-	Key      string    `json:"key,omitempty"`
-	DeviceID string    `json:"device_id"`
-	Bound    time.Time `json:"bound,omitzero"`
+	Key       string    `json:"key,omitempty"`
+	DeviceID  string    `json:"device_id"`
+	Bound     time.Time `json:"bound,omitzero"`
+	Token     string    `json:"binding_token,omitempty"`
+	BindingID string    `json:"binding_id,omitempty"`
 }
 
 func (s *Server) bindingPath() string { return filepath.Join(s.Root, "account-binding.json") }
@@ -93,6 +100,61 @@ func (s *Server) bindIfFree(key string, allowed bool) (accountBinding, error) {
 		return fsutil.WriteAtomic(s.bindingPath(), raw, 0o600)
 	})
 	return out, err
+}
+
+// boundCredential returns the installation credential, independent of UI login.
+// Only a valid owner session can migrate a legacy binding or explicitly rebind.
+func (s *Server) boundCredential(ctx context.Context, session string, allowRebind bool) (string, error) {
+	var token string
+	err := fsutil.WithLock(s.bindingPath()+".lock", func() error {
+		b, err := s.readBinding()
+		if err != nil {
+			return err
+		}
+		if b.Key == "" || b.DeviceID == "" {
+			return account.ErrBinding
+		}
+		if b.Token != "" {
+			identity, err := s.acct.client.AuthenticateBinding(ctx, b.Token)
+			if err == nil {
+				if identity.AccountKey != b.Key || identity.DeviceID != b.DeviceID || identity.ID != b.BindingID {
+					return account.ErrBinding
+				}
+				token = b.Token
+				return nil
+			}
+			if !allowRebind || !errors.Is(err, account.ErrBinding) {
+				return err
+			}
+		}
+		me, err := s.acct.client.Me(ctx, session)
+		if err != nil {
+			return err
+		}
+		if !me.Verified || me.Key != b.Key {
+			return account.ErrBinding
+		}
+		binding, err := s.acct.client.BindDevice(ctx, session, account.DeviceReport{
+			ID: b.DeviceID, Name: s.selfDeviceName(), OS: runtime.GOOS, Bots: s.ownerBotNames(),
+		})
+		if err != nil {
+			return err
+		}
+		if binding.AccountKey != b.Key || binding.DeviceID != b.DeviceID || binding.ID == "" || binding.Token == "" {
+			return account.ErrBinding
+		}
+		b.Token, b.BindingID = binding.Token, binding.ID
+		raw, err := fsutil.Marshal(b)
+		if err != nil {
+			return err
+		}
+		if err := fsutil.WriteAtomic(s.bindingPath(), raw, 0o600); err != nil {
+			return err
+		}
+		token = binding.Token
+		return nil
+	})
+	return token, err
 }
 
 // ownerProof says the request may claim an unbound install: it already holds
@@ -167,13 +229,16 @@ func (s *Server) accountClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	view := s.accountViewFor(r, me, b)
 	s.setCookie(w, s.loginToken())
-	if err := s.keepPipeSession(session); err != nil {
-		writeErr(w, 500, "account session persistence")
-		return
+	credential, bindErr := s.boundCredential(r.Context(), session, true)
+	if bindErr == nil {
+		s.clearLegacySession("")
+		if err := s.changePipeSession(credential, ""); err != nil {
+			writeErr(w, 500, "account binding persistence")
+			return
+		}
 	}
-	// The binding is on disk either way; reported tells the page whether the
-	// account's device list has this computer yet.
-	reported := s.reportDevice(r.Context(), session, b, true) == nil
+	// A failed service call can be retried without losing the local owner claim.
+	reported := bindErr == nil && s.reportDevice(r.Context(), session, b, true) == nil
 	writeJSON(w, http.StatusOK, map[string]any{"account": view, "bound": true, "reported": reported})
 }
 
@@ -203,6 +268,7 @@ func (s *Server) registerAccount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/account/devices", s.accountDevices)
 	mux.HandleFunc("GET /account.js", s.static("static/account.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /account.css", s.static("static/account.css", "text/css; charset=utf-8"))
+	s.registerAccountDevices(mux)
 }
 
 // accountCtx carries the address mail links should use when the stand-in runs.
@@ -503,7 +569,10 @@ func (s *Server) reportDevice(ctx context.Context, session string, b accountBind
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	err := s.acct.client.Report(ctx, session, b.DeviceID, s.selfDeviceName(), s.ownerBotNames())
+	credential, err := s.boundCredential(ctx, session, false)
+	if err == nil {
+		err = s.acct.client.ReportMetadata(ctx, credential, s.deviceReport(b.DeviceID))
+	}
 	if err != nil {
 		s.acct.mu.Lock()
 		s.acct.report = time.Time{}
@@ -547,11 +616,15 @@ type accountBot struct {
 }
 
 type accountDevice struct {
-	ID     string       `json:"id"`
-	Name   string       `json:"name"`
-	Online bool         `json:"online"`
-	Self   bool         `json:"self"`
-	Bots   []accountBot `json:"bots"`
+	ID           string       `json:"id"`
+	Name         string       `json:"name"`
+	Online       bool         `json:"online"`
+	Self         bool         `json:"self"`
+	Bots         []accountBot `json:"bots"`
+	OS           string       `json:"os"`
+	Capabilities []string     `json:"capabilities"`
+	LastSeen     time.Time    `json:"last_seen"`
+	RunningCount int          `json:"running_count"`
 }
 
 // accountDevices lists the account's devices. This computer's row, when it
@@ -588,9 +661,12 @@ func (s *Server) accountDevices(w http.ResponseWriter, r *http.Request) {
 	}
 	out := []accountDevice{}
 	for _, d := range list {
-		row := accountDevice{ID: d.ID, Name: d.Name, Online: d.Online, Bots: []accountBot{}}
+		row := accountDevice{
+			ID: d.ID, Name: d.Name, Online: d.Online, Bots: []accountBot{},
+			OS: d.OS, Capabilities: d.Capabilities, LastSeen: d.LastSeen, RunningCount: d.RunningCount,
+		}
 		if owner && d.ID == b.DeviceID {
-			row.Self, row.Online, row.Bots = true, true, s.localAccountBots()
+			row.Self, row.Bots = true, s.localAccountBots()
 		} else {
 			for _, n := range d.Bots {
 				row.Bots = append(row.Bots, accountBot{Name: n})

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/mail"
-	"sort"
 	"strings"
 	"time"
 )
@@ -22,6 +21,12 @@ var (
 	ErrExpired = errors.New("account: expired")
 	// ErrSession is a missing or ended session.
 	ErrSession = errors.New("account: no session")
+	// ErrBinding is a missing, replaced or revoked installation credential.
+	ErrBinding = errors.New("account: no binding")
+	// ErrDevice is a device outside the caller's account or an unknown device.
+	ErrDevice = errors.New("account: no device")
+	// ErrRevoked requires an explicit bind before this device can report again.
+	ErrRevoked = errors.New("account: device revoked")
 )
 
 const (
@@ -123,10 +128,15 @@ type Me struct {
 
 // DeviceView is one device of the account.
 type DeviceView struct {
-	ID     string   `json:"id"`
-	Name   string   `json:"name"`
-	Online bool     `json:"online"`
-	Bots   []string `json:"bots"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Online       bool      `json:"online"`
+	Bots         []string  `json:"bots"`
+	OS           string    `json:"os"`
+	Capabilities []string  `json:"capabilities"`
+	LastSeen     time.Time `json:"last_seen"`
+	RunningCount int       `json:"running_count"`
+	BindingID    string    `json:"binding_id,omitempty"`
 }
 
 // PollResult is a challenge's state. Session is set once, on the first poll after it finishes.
@@ -435,65 +445,6 @@ func (s *Service) Logout(token string) error {
 		delete(st.Sessions, hashOf(token))
 		return nil
 	})
-}
-
-// ReportDevice records this device for the session's account.
-func (s *Service) ReportDevice(token, id, name string, bots []string) error {
-	id, name = clip(id), clip(name)
-	if id == "" || name == "" {
-		return ErrInput
-	}
-	clean := make([]string, 0, len(bots))
-	for _, b := range bots {
-		if b = clip(b); b != "" && len(clean) < maxDeviceBots {
-			clean = append(clean, b)
-		}
-	}
-	return s.store.Update(func(st *State) error {
-		e, ok := s.sessionEmail(st, token)
-		if !ok {
-			return ErrSession
-		}
-		key := e + "/" + id
-		if _, ok := st.Devices[key]; !ok {
-			n := 0
-			for _, d := range st.Devices {
-				if d.Email == e {
-					n++
-				}
-			}
-			if n >= maxDevices {
-				return ErrBusy
-			}
-		}
-		st.Devices[key] = &Device{ID: id, Email: e, Name: name, Bots: clean, LastSeen: s.cfg.Now()}
-		return nil
-	})
-}
-
-// Devices lists the session account's devices, online ones first.
-func (s *Service) Devices(token string) ([]DeviceView, error) {
-	out := []DeviceView{}
-	err := s.store.View(func(st *State) error {
-		e, ok := s.sessionEmail(st, token)
-		if !ok {
-			return ErrSession
-		}
-		now := s.cfg.Now()
-		for _, d := range st.Devices {
-			if d.Email == e {
-				out = append(out, DeviceView{ID: d.ID, Name: d.Name, Online: now.Sub(d.LastSeen) < s.cfg.OnlineFor, Bots: append([]string{}, d.Bots...)})
-			}
-		}
-		return nil
-	})
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Online != out[j].Online {
-			return out[i].Online
-		}
-		return out[i].Name < out[j].Name
-	})
-	return out, err
 }
 
 func clip(s string) string {

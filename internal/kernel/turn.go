@@ -22,6 +22,7 @@ type turn struct {
 	turnTrusted bool
 	turnSource  string
 	turnEvent   string
+	turnDevice  string // message selection; prepared calls retain their own copy
 	replyTo     int
 
 	// useMu guards the completion tokens counted for this turn. It is not t.mu.

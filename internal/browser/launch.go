@@ -211,6 +211,17 @@ func allow(root string, approved bool) error {
 // ErrNoChrome means no Chrome binary was found on this machine.
 var ErrNoChrome = errors.New("browser: chrome not found; set XBOT_CHROME")
 
+// Available reports whether the configured Chrome executable can be resolved.
+// It does not launch a browser or change the current session.
+func Available() bool {
+	path, err := findChrome()
+	if err != nil {
+		return false
+	}
+	_, err = exec.LookPath(path)
+	return err == nil
+}
+
 func findChrome() (string, error) {
 	if p := strings.TrimSpace(os.Getenv("XBOT_CHROME")); p != "" {
 		return p, nil

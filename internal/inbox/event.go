@@ -54,6 +54,8 @@ type Event struct {
 	Audios []string `json:"audios,omitempty"`
 	// RoutineSkills holds ordered library references for a timer wake, never bodies.
 	RoutineSkills []string `json:"routine_skills,omitempty"`
+	// DeviceID freezes the execution device selected for this owner message.
+	DeviceID string `json:"device_id,omitempty"`
 }
 
 // NewEvent builds an event. Untrusted is always true.
