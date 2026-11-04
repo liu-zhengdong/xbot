@@ -6,6 +6,8 @@ date: 2026-10-18
 ---
 # 0012 退役「节点」，多台电脑只靠网关配对
 
+> 2026-11-04：[ADR 0075](0075-account-shared-device-execution.md) 调整消息以外的设备执行限制。旧 node 协议、身份和记忆自动同步仍退役。以下保留原决定。
+
 ## 背景
 旧的「节点」是一套独立的多设备机制：`xbot node serve/add/list/remove/call/pending/approve` 用 bearer token 在 tailnet 上互连（默认端口 18772），Bot 装上 `node` Link 后有 `node_list`/`node_call`，可以在另一台机器上跑 shell，`ask` 时命令进节点待批队列。`internal/nodesync` 在这些节点之间自动同步人的身份和人的记忆，另有 `xbot sync export/merge`。它和 [ADR 0010](0010-gateway-mailbox-relay.md) 定的"不做文件同步，每台安装各管自己的数据"冲突，ADR 0010 把它留成待定项。用户 2026-10-18 定了：整套退役。
 
