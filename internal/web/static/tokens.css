@@ -153,6 +153,7 @@ html[data-theme="dark"] .workspace :is(.chat, .dock) :where(.bubble,.send-state)
   --settings-radius:18px; --settings-nav-row:38px; --settings-avatar:60px;
   --settings-section:36px; --settings-preview-height:83px; --settings-button-height:34px;
   --settings-fill:#f4f4f6; --settings-selected:#e8e8ec;
+  --settings-divider-width:1px; --settings-divider:#e9e9ed; --settings-row-divider:#f0f0f3; --settings-radio-size:14px;
   --settings-mini-shell:#e8e8ec; --settings-mini-page:#ffffff;
   --settings-mini-line:#c6c6cd; --settings-mini-heading:#93939d;
   --settings-mini-bubble:#ededf1; --settings-mini-reply:#53535e;
@@ -160,7 +161,7 @@ html[data-theme="dark"] .workspace :is(.chat, .dock) :where(.bubble,.send-state)
   --settings-mini-dark-line:#54545e; --settings-mini-dark-bubble:#303037;
   --settings-mini-dark-reply:#b9b9c1;
 }
-html[data-theme="dark"] { --settings-fill:#26262c; --settings-selected:#303037; }
+html[data-theme="dark"] { --settings-fill:#26262c; --settings-selected:#303037; --settings-divider:#34343b; --settings-row-divider:#2a2a30; }
 
 /* Approved trace explorer: compact rows, semantic accents, neutral selection. */
 :root {

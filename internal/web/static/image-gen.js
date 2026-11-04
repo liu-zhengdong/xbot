@@ -8,28 +8,33 @@
     const current = () => alive && isCurrent();
     teardown = () => { alive = false; host.replaceChildren(); };
     host.className = "web-search-settings image-gen-settings";
-    host.replaceChildren(node("h2", "", "图片生成"), node("p", "setlead", "决定 Bot 用哪家画图。整台 XBot 共用一份。"));
+    host.replaceChildren(node("h2", "", "图片生成"), node("p", "ig-scope", "所有 Bot 共用这份设置"));
     const error = node("p", "ws-error"); error.setAttribute("role", "alert"); error.hidden = true; host.append(error);
     try { data = await api("/api/image-gen"); }
     catch { if (current()) { error.textContent = "没能读取图片生成设置，请重新打开试试。"; error.hidden = false; } return; }
     if (!current()) return;
     const box = node("div", "setrows"), row = node("div", "setrow"), tx = node("div", "tx"), hint = node("div", "hint");
     tx.append(node("b", "", "允许生成图片"), hint);
-    const toggle = button("tog", "", () => save({enabled:!data.enabled}));
-    toggle.setAttribute("role", "switch"); toggle.setAttribute("aria-label", "允许生成图片");
+    const toggle = node("fieldset", "set-segments");
+    toggle.setAttribute("aria-label", "允许生成图片");
+    for (const [value, text] of [["off", "关闭"], ["on", "开启"]]) {
+      const label = node("label", "", text), input = node("input");
+      input.type = "radio"; input.name = "image-gen-enabled"; input.value = value;
+      label.prepend(input); toggle.append(label);
+    }
+    toggle.onchange = e => save({enabled:e.target.value === "on"});
     row.append(tx, toggle); box.append(row); host.append(box);
-    const modeSec = node("div", "setsec"); modeSec.append(node("h4", "", "生图工具策略"));
-    const modes = node("div", "ws-choices"); modes.setAttribute("role", "radiogroup"); modes.setAttribute("aria-label", "生图工具策略");
+    const modeSec = node("div", "setsec"); modeSec.append(node("h4", "", "生图方式"));
+    const modes = node("div", "ws-choices"); modes.setAttribute("role", "radiogroup"); modes.setAttribute("aria-label", "生图方式");
     const modeButtons = [];
-    for (const [id, title, desc] of [["auto", "自动", "模型自带生图就用厂商的；没有就用设置里的家。"], ["local", "总用设置里的家", "一律用下面选的账号画，不用厂商自带生图。"]]) {
+    for (const [id, title, desc] of [["auto", "自动", "优先使用当前模型的生图能力，否则使用下方账号"], ["local", "始终使用下方账号", "跳过当前模型自带的生图能力"]]) {
       const b = button("ws-choice", "", () => save({mode:id})); b.dataset.mode = id; b.setAttribute("role", "radio");
       const body = node("span", "ws-body"), ttl = node("span", "ws-title", title);
-      if (id === "auto") ttl.append(node("span", "ws-tag", "默认"));
       body.append(ttl, node("span", "ws-desc", desc)); b.append(node("span", "ws-radio"), body); modes.append(b); modeButtons.push(b);
     }
     modeSec.append(modes); host.append(modeSec);
-    const section = node("div", "setsec"); section.append(node("h4", "", "生图工具"));
-    const list = node("div", "ws-list"); list.setAttribute("role", "radiogroup"); list.setAttribute("aria-label", "生图工具");
+    const section = node("div", "setsec ig-accounts"); section.append(node("h4", "", "生图账号"));
+    const list = node("div", "ws-list"); list.setAttribute("role", "radiogroup"); list.setAttribute("aria-label", "生图账号");
     const rows = [];
     for (const p of data.providers) {
       const select = button("ws-provider ig-provider", "", () => save({provider:p.id}));
@@ -49,12 +54,14 @@
       const next = rows[(i + (["ArrowDown","ArrowRight"].includes(e.key) ? 1 : rows.length - 1)) % rows.length];
       next.select.focus(); save({provider:next.id});
     };
-    section.append(list, node("p", "setfoot ws-provider-foot", "画好的图保存在工作区，由 Bot 主动挂到回复中。"));
-    host.append(section, node("p", "setfoot", "改完后，新开的对话按新设置来。"));
+    section.append(list);
+    const footer = node("p", "ig-footnote"), imageNote = node("span", "ws-provider-foot", "图片保存在工作区，由 Bot 挂到回复中。");
+    imageNote.append(node("br")); footer.append(imageNote, node("span", "", "修改从下一轮对话生效。"));
+    host.append(section, footer);
     function paint() {
-      toggle.classList.toggle("on", data.enabled); toggle.setAttribute("aria-checked", String(data.enabled)); toggle.disabled = saving;
-      hint.textContent = data.enabled ? "需要时 Bot 可以画图。" : "对话里不会去画图。";
-      modeSec.hidden = section.hidden = !data.enabled;
+      toggle.querySelector(`input[value="${data.enabled ? "on" : "off"}"]`).checked = true; toggle.disabled = saving;
+      hint.textContent = data.enabled ? "Bot 可以按需画图" : "对话里不会去画图";
+      modeSec.hidden = section.hidden = imageNote.hidden = !data.enabled;
       for (const b of modeButtons) {
         const selected = b.dataset.mode === data.mode;
         b.classList.toggle("on", selected); b.setAttribute("aria-checked", String(selected)); b.disabled = saving;
