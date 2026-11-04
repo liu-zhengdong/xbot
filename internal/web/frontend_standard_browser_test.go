@@ -7,6 +7,29 @@ func TestFrontendStandardGeometryBrowser(t *testing.T) {
 	runChatFramesBrowser(t, transcriptWindowFixture+memoryPanelFixture+skillsTitleFixture, frontendStandardGeometryDriver)
 }
 
+func TestFrontendStandardHeaderActionsBrowser(t *testing.T) {
+	t.Setenv("XBOT_STICK_VIEWPORT", "1440,900")
+	runChatFramesBrowser(t, panelFixture, `
+const $=s=>document.querySelector(s),assert=(v,m)=>{if(!v)throw Error(m)};
+const until=async(f,m)=>{for(let i=0;i<900;i++){if(f())return;await new Promise(r=>setTimeout(r,10))}throw Error(m)};
+(async()=>{
+ await until(()=>!$('#shell').hidden&&document.querySelector('[data-bot="2号小伙子"]'),'chat boot');
+ document.querySelector('[data-bot="2号小伙子"]').click();
+ await until(()=>$('#panel-actions [aria-label="编辑资料"]')&&$('#chat-search').checkVisibility(),'header actions');
+ const sizes=[];
+ for(const button of [$('#panel-actions [aria-label="编辑资料"]'),$('#workspace-theme'),$('#chat-search')]){
+  const label=button.getAttribute('aria-label'),glyph=button.querySelector('svg').getBoundingClientRect(),hit=button.getBoundingClientRect();
+  assert(Math.abs(glyph.width-16)<.1&&Math.abs(glyph.height-16)<.1,label+' icon: '+glyph.width+'×'+glyph.height+' != 16×16');
+  assert(hit.width>=36&&hit.height>=36,label+' click target: '+hit.width+'×'+hit.height);
+  assert(button.contains(document.elementFromPoint(hit.x+hit.width/2,hit.y+hit.height/2)),label+' is covered');
+  sizes.push({label,icon:glyph.width,target:hit.width});
+ }
+ assert(testErrors.length===0,testErrors.join('; '));
+ document.body.dataset.stickPerformance=JSON.stringify(sizes);document.body.dataset.testResult='passed';
+})().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
+`)
+}
+
 func TestFrontendStandardWeakActionBrowser(t *testing.T) {
 	runChatFramesBrowser(t, panelFixture, `
 const $=s=>document.querySelector(s),assert=(v,m)=>{if(!v)throw Error(m)};

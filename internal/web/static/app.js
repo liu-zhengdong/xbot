@@ -5213,7 +5213,7 @@
 
   // The info header has only edit; other actions belong to sidebar Bot rows.
   function panelAct(iconName, label, danger) {
-    const btn = el("button", "ghost panel-act" + (danger ? " danger" : ""));
+    const btn = el("button", "icon-btn panel-act" + (danger ? " danger" : ""));
     btn.type = "button";
     btn.setAttribute("aria-label", label);
     setTip(btn, label);

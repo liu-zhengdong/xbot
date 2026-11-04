@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-04 @ 9b5675c2 (+ workspace icon sizing: header 16px, tabs 14px)
+verified: 2026-11-04 @ 6ce890a5 (+ edit action shares icon-btn; real header geometry checked)
 
 ---
 # 网页界面
@@ -61,7 +61,7 @@ Composer 的 mic 在发送钮左侧：点按进入录音条，「发送」提交
 
 前端标准唯一入口是项目根 [design.md](../../design.md)。共享角色由现有 `tokens.css` 提供，普通文字按钮与嵌套弹窗由 `app.css` 提供。业务模块继续拥有数据、请求与生命周期。结构决定见 [ADR 0074](../adr/0074-frontend-standard.md)。
 
-普通控件 36px，单行列表最小 40px，双行列表最小 64px。工作区顶栏图标 16px、标签图标 14px，图标按钮和标签的 36px 点击区域保持独立。正文与导航 14px，普通操作 13px，辅助文字 12px；设置操作统一 14px。文字 Button 不配图标，专用图标控件和对象标识保留。普通行不铺斑马底。减少动态效果时，公共按钮不缩放。
+普通控件 36px，单行列表最小 40px，双行列表最小 64px。工作区顶栏图标 16px、标签图标 14px，图标按钮和标签的 36px 点击区域保持独立。编辑资料与主题、搜索共用 `icon-btn` 角色，真实页面的图形尺寸、点击区域与命中由 `TestFrontendStandardHeaderActionsBrowser` 守护。正文与导航 14px，普通操作 13px，辅助文字 12px；设置操作统一 14px。文字 Button 不配图标，专用图标控件和对象标识保留。普通行不铺斑马底。减少动态效果时，公共按钮不缩放。
 
 未保存拖宽值时，侧栏随窗口采用 256px／232px；已保存宽度优先。身份栏 56px，标签带 48px、标签按钮 36px；手机标签带 46px。记录页最大 960px，页面边距按桌面／中间宽度／手机采用 32／24／20px。聊天正文在桌面与手机均为 15px；输入框和语音保留专用尺寸。几何与弱文字操作由 `frontend_standard_browser_test.go` 检查。
 
