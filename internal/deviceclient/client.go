@@ -126,6 +126,7 @@ func (c Client) Call(ctx context.Context, source deviceexec.Source, in cliops.De
 		method, path = "POST", "/calls"
 		body, _ = json.Marshal(in.Call)
 	case "tasks":
+		path += fmt.Sprintf("?offset=%d&limit=%d", in.Offset, in.Limit)
 	case "task":
 		path += "/" + in.Ref + fmt.Sprintf("?offset=%d&limit=%d", in.Offset, in.Limit)
 	case "stop":

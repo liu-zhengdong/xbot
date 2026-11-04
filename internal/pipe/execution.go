@@ -60,7 +60,7 @@ func (h *Hub) serveExecutionTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	identity := &ExecutionIdentity{AccountKey: source.AccountKey, DeviceID: source.DeviceID, BindingID: source.ID, TargetBindingID: targetBindingID, Bot: in.Bot, ContextID: in.ContextID, Readonly: in.Readonly, Owner: in.Owner}
-	h.issueTicket(w, r, source.AccountKey, in.DeviceID, identity)
+	h.issueTicket(w, r, source.AccountKey, in.DeviceID, identity, "")
 }
 
 // NewExecutionTicket fixes source scope before any operation is sent.

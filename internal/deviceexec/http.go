@@ -54,18 +54,32 @@ func (m *Manager) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		}{task}
 		status = http.StatusAccepted
 	case r.Method == http.MethodGet && len(parts) == 1 && parts[0] == "tasks":
-		tasks := m.List(&source)
-		// Escaping can expand free text; enforce the encoded pipe budget too.
-		for len(tasks) > 0 {
-			body, _ := json.Marshal(tasks)
-			if len(body) <= MaxRequestBytes {
+		offset, limit, e := queryRange(r)
+		if e != nil {
+			err = e
+			break
+		}
+		filter := source
+		if source.Owner {
+			filter.DeviceID = r.URL.Query().Get("source_device_id")
+			filter.Bot = r.URL.Query().Get("bot")
+			filter.ContextID = ""
+		}
+		page := m.ListPage(&filter, offset, limit)
+		for {
+			body, _ := json.Marshal(page)
+			if len(body)+1 <= MaxTaskPageBytes {
 				break
 			}
-			tasks = tasks[1:]
+			if len(page.Tasks) <= 1 {
+				http.Error(w, "task identity exceeds page budget", http.StatusInternalServerError)
+				return
+			}
+			page.Tasks = page.Tasks[:len(page.Tasks)-1]
+			page.NextOffset = page.Offset + int64(len(page.Tasks))
+			page.HasMore = true
 		}
-		result = struct {
-			Tasks []Task `json:"tasks"`
-		}{tasks}
+		result = page
 	case len(parts) >= 2 && parts[0] == "tasks":
 		ref := parts[1]
 		switch {

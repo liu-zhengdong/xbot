@@ -134,9 +134,18 @@ func (s *Server) boundCredential(ctx context.Context, session string, allowRebin
 		if !me.Verified || me.Key != b.Key {
 			return account.ErrBinding
 		}
-		binding, err := s.acct.client.BindDevice(ctx, session, account.DeviceReport{
-			ID: b.DeviceID, Name: s.selfDeviceName(), OS: runtime.GOOS, Bots: s.ownerBotNames(),
-		})
+		report := account.DeviceReport{ID: b.DeviceID, Name: s.selfDeviceName(), OS: runtime.GOOS, Bots: s.ownerBotNames()}
+		if !allowRebind {
+			// The legacy heartbeat rejects tombstones. Missing credentials alone
+			// are not permission to restore a remotely revoked installation.
+			if err := s.acct.client.Report(ctx, session, report.ID, report.Name, report.Bots); err != nil {
+				if errors.Is(err, account.ErrRevoked) {
+					return account.ErrBinding
+				}
+				return err
+			}
+		}
+		binding, err := s.acct.client.BindDevice(ctx, session, report)
 		if err != nil {
 			return err
 		}

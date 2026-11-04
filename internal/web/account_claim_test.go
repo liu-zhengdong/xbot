@@ -122,6 +122,10 @@ func TestAccountDevicesPreservesAuthoritativeMetadata(t *testing.T) {
 
 type failingReport struct{ account.Client }
 
+func (failingReport) Report(context.Context, string, string, string, []string) error {
+	return errors.New("report down")
+}
+
 func (failingReport) BindDevice(context.Context, string, account.DeviceReport) (account.Binding, error) {
 	return account.Binding{}, errors.New("report down")
 }

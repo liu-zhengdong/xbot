@@ -100,8 +100,22 @@ func TestRunServeRestoresAccountPipe(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("serve did not stop")
 	}
-	if info, err := os.Stat(filepath.Join(root, "account-session")); err != nil || info.Mode().Perm() != 0600 {
-		t.Fatal("normal shutdown must preserve 0600 session for restart")
+	if info, err := os.Stat(filepath.Join(root, "account-binding.json")); err != nil || info.Mode().Perm() != 0600 {
+		t.Fatal("normal shutdown must preserve 0600 installation binding for restart")
+	}
+	var persisted struct {
+		Token     string `json:"binding_token"`
+		BindingID string `json:"binding_id"`
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "account-binding.json"))
+	if err != nil || json.Unmarshal(raw, &persisted) != nil || persisted.Token == "" || persisted.BindingID == "" {
+		t.Fatal("legacy session did not migrate to durable installation identity")
+	}
+	if _, err := acc.AuthenticateBinding(context.Background(), persisted.Token); err != nil {
+		t.Fatal("shutdown revoked installation identity")
+	}
+	if _, err := os.Stat(filepath.Join(root, "account-session")); !os.IsNotExist(err) {
+		t.Fatal("legacy UI session remains on disk")
 	}
 	requestCtx, stop := context.WithTimeout(context.Background(), time.Second)
 	defer stop()

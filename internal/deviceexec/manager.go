@@ -36,7 +36,6 @@ type Manager struct {
 	contexts       map[string]*executionContext
 	records        map[string]*record
 	closed         bool
-	desktopLock    chan struct{}
 	browserLock    chan struct{}
 }
 
@@ -74,7 +73,7 @@ func New(root, deviceID, deviceName string) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	m := &Manager{Root: root, DeviceID: deviceID, DeviceName: deviceName, targetDeviceID: deviceID, Desktop: desktop.Open(root), Browser: browser.Open(root), contexts: map[string]*executionContext{}, records: map[string]*record{}, desktopLock: make(chan struct{}, 1), browserLock: make(chan struct{}, 1)}
+	m := &Manager{Root: root, DeviceID: deviceID, DeviceName: deviceName, targetDeviceID: deviceID, Desktop: desktop.Open(root), Browser: browser.Open(root), contexts: map[string]*executionContext{}, records: map[string]*record{}, browserLock: make(chan struct{}, 1)}
 	entries, err := os.ReadDir(filepath.Join(root, "deviceexec", "calls"))
 	if errors.Is(err, os.ErrNotExist) {
 		return m, nil
@@ -363,9 +362,7 @@ func (m *Manager) Submit(ctx context.Context, source Source, call Call) (Task, e
 				return tools.CallResult{Err: prepareErr}
 			}
 			var lock chan struct{}
-			if call.Kind == "desktop" {
-				lock = m.desktopLock
-			} else if call.Kind == "browser" {
+			if call.Kind == "browser" {
 				lock = m.browserLock
 			}
 			if lock != nil {
@@ -378,26 +375,38 @@ func (m *Manager) Submit(ctx context.Context, source Source, call Call) (Task, e
 			}
 			var output strings.Builder
 			paths := append([]string(nil), call.Artifacts...)
-			for _, op := range ops {
-				if err := ctx.Err(); err != nil {
-					return tools.CallResult{Text: output.String(), Err: err}
-				}
-				text, err := available[op.Tool].Run(ctx, op.Args)
-				if output.Len() > 0 {
-					output.WriteByte('\n')
-				}
-				output.WriteString(text)
-				if err != nil {
-					return tools.CallResult{Text: output.String(), Err: err}
-				}
-				switch op.Tool {
-				case "desktop_screenshot":
-					paths = append(paths, strings.TrimSpace(text))
-				case "write_file", "edit_file":
-					if p, ok := available[op.Tool].(tools.PathContext); ok {
-						paths = append(paths, p.ResolvedPathContext(ctx, op.Args))
+			runOperations := func(operationCtx context.Context) error {
+				for _, op := range ops {
+					if err := operationCtx.Err(); err != nil {
+						return err
+					}
+					text, err := available[op.Tool].Run(operationCtx, op.Args)
+					if output.Len() > 0 {
+						output.WriteByte('\n')
+					}
+					output.WriteString(text)
+					if err != nil {
+						return err
+					}
+					switch op.Tool {
+					case "desktop_screenshot":
+						paths = append(paths, strings.TrimSpace(text))
+					case "write_file", "edit_file":
+						if p, ok := available[op.Tool].(tools.PathContext); ok {
+							paths = append(paths, p.ResolvedPathContext(operationCtx, op.Args))
+						}
 					}
 				}
+				return nil
+			}
+			var operationErr error
+			if call.Kind == "desktop" {
+				operationErr = desktop.Sequence(ctx, runOperations)
+			} else {
+				operationErr = runOperations(ctx)
+			}
+			if operationErr != nil {
+				return tools.CallResult{Text: output.String(), Err: operationErr}
 			}
 			artifacts := make([]artifactFile, 0, len(paths))
 			seen := map[string]bool{}
@@ -584,7 +593,9 @@ func (m *Manager) Detail(source Source, ref string, offset int64, limit int) (De
 	if offset < int64(job.Dropped) {
 		offset = int64(job.Dropped)
 	}
-	chunk, err := readChunk(job.Output, offset-int64(job.Dropped), limit)
+	fileOffset := offset - int64(job.Dropped)
+	lookbehind := min(fileOffset, int64(utf8.UTFMax-1))
+	chunk, err := readChunk(job.Output, fileOffset-lookbehind, limit+utf8.UTFMax+int(lookbehind))
 	if errors.Is(err, os.ErrNotExist) {
 		detail.OutputExpired = true
 		return detail, nil
@@ -592,14 +603,38 @@ func (m *Manager) Detail(source Source, ref string, offset int64, limit int) (De
 	if err != nil {
 		return Detail{}, err
 	}
-	detail.NextOffset = offset + int64(len(chunk.Data))
-	detail.Total = max(detail.Total, int64(job.Dropped)+chunk.Total)
-	detail.Output = strings.ToValidUTF8(vault.Redact(string(chunk.Data)), "�")
-	// Preserve the wire cap even when UTF-8 replacement expands a split byte.
-	for len(detail.Output) > limit {
-		_, n := utf8.DecodeLastRuneInString(detail.Output)
-		detail.Output = detail.Output[:len(detail.Output)-n]
+	start := min(int(lookbehind), len(chunk.Data))
+	for i := 0; i < start; i++ {
+		_, size := utf8.DecodeRune(chunk.Data[i:])
+		if size > 1 && i+size > start {
+			return Detail{}, fmt.Errorf("%w: output offset splits a UTF-8 code point", ErrInvalid)
+		}
 	}
+	raw := chunk.Data[start:]
+	consumed := 0
+	var normalized strings.Builder
+	for consumed < len(raw) {
+		r, size := utf8.DecodeRune(raw[consumed:])
+		if normalized.Len()+utf8.RuneLen(r) > limit {
+			break
+		}
+		normalized.WriteRune(r)
+		consumed += size
+	}
+	if consumed == 0 && len(raw) > 0 {
+		return Detail{}, fmt.Errorf("%w: output limit cannot hold the first normalized code point", ErrInvalid)
+	}
+	detail.Output = vault.Redact(normalized.String())
+	for len(detail.Output) > limit {
+		_, size := utf8.DecodeLastRune(raw[:consumed])
+		consumed -= size
+		if consumed == 0 {
+			return Detail{}, fmt.Errorf("%w: output limit cannot hold redacted text", ErrInvalid)
+		}
+		detail.Output = vault.Redact(string([]rune(string(raw[:consumed]))))
+	}
+	detail.NextOffset = offset + int64(consumed)
+	detail.Total = max(detail.Total, int64(job.Dropped)+chunk.Total)
 	return detail, nil
 }
 

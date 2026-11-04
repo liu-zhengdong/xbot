@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"runtime"
+	"sort"
 	"strings"
 
 	"xbot/internal/account"
@@ -167,19 +168,50 @@ func (s *Server) deviceRequest(ctx context.Context, target, method, path string,
 	}
 	return s.acct.wire.Do(ctx, s.managementSource(), target, method, path, body)
 }
-func (s *Server) deviceTasks(ctx context.Context, target string) ([]deviceexec.Task, error) {
-	code, raw, _, err := s.deviceRequest(ctx, target, "GET", "/tasks", nil)
-	if err != nil {
-		return nil, err
+func (s *Server) deviceTasks(ctx context.Context, target, botName, sourceID string) ([]deviceexec.Task, bool, error) {
+	tasks := []deviceexec.Task{}
+	offset := int64(0)
+	used := 2
+	for len(tasks) < 200 {
+		query := url.Values{"offset": {fmt.Sprint(offset)}, "limit": {fmt.Sprint(200 - len(tasks))}}
+		if botName != "" {
+			query.Set("bot", botName)
+		}
+		if sourceID != "" {
+			query.Set("source_device_id", sourceID)
+		}
+		code, raw, _, err := s.deviceRequest(ctx, target, "GET", "/tasks?"+query.Encode(), nil)
+		if err != nil {
+			return nil, false, err
+		}
+		if code != 200 {
+			return nil, false, fmt.Errorf("device returned %d: %s", code, strings.TrimSpace(string(raw)))
+		}
+		var page struct {
+			Tasks      []deviceexec.Task `json:"tasks"`
+			NextOffset int64             `json:"next_offset"`
+			HasMore    bool              `json:"has_more"`
+		}
+		if err := json.Unmarshal(raw, &page); err != nil {
+			return nil, false, err
+		}
+		for _, task := range page.Tasks {
+			encoded, _ := json.Marshal(task)
+			if used+len(encoded)+1 > 256<<10 || len(tasks) >= 200 {
+				return tasks, true, nil
+			}
+			used += len(encoded) + 1
+			tasks = append(tasks, task)
+		}
+		if !page.HasMore {
+			return tasks, false, nil
+		}
+		if page.NextOffset <= offset {
+			return nil, false, errors.New("device returned a non-advancing task page")
+		}
+		offset = page.NextOffset
 	}
-	if code != 200 {
-		return nil, fmt.Errorf("device returned %d: %s", code, strings.TrimSpace(string(raw)))
-	}
-	var out struct {
-		Tasks []deviceexec.Task `json:"tasks"`
-	}
-	err = json.Unmarshal(raw, &out)
-	return out.Tasks, err
+	return tasks, true, nil
 }
 func (s *Server) accountDeviceDetail(w http.ResponseWriter, r *http.Request) {
 	d, ok := s.accountDeviceMember(w, r)
@@ -187,15 +219,16 @@ func (s *Server) accountDeviceDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tasks := []deviceexec.Task{}
+	truncated := false
 	if d.Online {
 		var err error
-		tasks, err = s.deviceTasks(r.Context(), d.ID)
+		tasks, truncated, err = s.deviceTasks(r.Context(), d.ID, "", "")
 		if err != nil {
 			writeErr(w, 502, err.Error())
 			return
 		}
 	}
-	writeJSON(w, 200, map[string]any{"device": s.accountDeviceRow(d), "tasks": tasks})
+	writeJSON(w, 200, map[string]any{"device": s.accountDeviceRow(d), "tasks": tasks, "tasks_truncated": truncated})
 }
 func (s *Server) accountDeviceRename(w http.ResponseWriter, r *http.Request) {
 	d, ok := s.accountDeviceMember(w, r)
@@ -249,21 +282,6 @@ func (s *Server) accountDeviceTasks(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 502, err.Error())
 		return
 	}
-	if r.PathValue("artifact") == "" && r.PathValue("ref") == "" && r.URL.Query().Get("bot") != "" {
-		var out struct {
-			Tasks []deviceexec.Task `json:"tasks"`
-		}
-		if code == 200 && json.Unmarshal(body, &out) == nil {
-			filtered := []deviceexec.Task{}
-			for _, t := range out.Tasks {
-				if t.Bot == r.URL.Query().Get("bot") {
-					filtered = append(filtered, t)
-				}
-			}
-			writeJSON(w, 200, map[string]any{"tasks": filtered})
-			return
-		}
-	}
 	w.Header().Set("Content-Type", ct)
 	w.WriteHeader(code)
 	_, _ = w.Write(body)
@@ -277,20 +295,33 @@ func (s *Server) botDeviceTasks(w http.ResponseWriter, r *http.Request) {
 		writeMissing(w, err)
 		return
 	}
-	devices, err := s.boundDevices(r.Context())
+	binding, err := s.readBinding()
 	if err != nil {
+		writeErr(w, 500, "account binding unavailable")
+		return
+	}
+	if binding.Key == "" {
 		writeJSON(w, 200, map[string]any{"tasks": []deviceexec.Task{}})
 		return
 	}
+	devices, err := s.boundDevices(r.Context())
+	if err != nil {
+		writeAccountErr(w, err)
+		return
+	}
 	tasks := []deviceexec.Task{}
+	truncated := false
+	unavailable := []map[string]string{}
 	for _, d := range devices {
 		if !d.Online {
+			unavailable = append(unavailable, map[string]string{"id": d.ID, "name": d.Name, "error": "device offline; task state unavailable"})
 			continue
 		}
-		list, err := s.deviceTasks(r.Context(), d.ID)
+		list, cut, err := s.deviceTasks(r.Context(), d.ID, b.Name(), binding.DeviceID)
+		truncated = truncated || cut
 		if err != nil {
-			writeErr(w, 502, err.Error())
-			return
+			unavailable = append(unavailable, map[string]string{"id": d.ID, "name": d.Name, "error": err.Error()})
+			continue
 		}
 		for _, t := range list {
 			if t.Bot == b.Name() {
@@ -298,7 +329,25 @@ func (s *Server) botDeviceTasks(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	writeJSON(w, 200, map[string]any{"tasks": tasks})
+	sort.SliceStable(tasks, func(i, j int) bool {
+		if (tasks[i].Status == "running") != (tasks[j].Status == "running") {
+			return tasks[i].Status == "running"
+		}
+		return tasks[i].StartedAt.After(tasks[j].StartedAt)
+	})
+	used := 2
+	kept := 0
+	for _, task := range tasks {
+		encoded, _ := json.Marshal(task)
+		if used+len(encoded)+1 > 512<<10 || kept >= 200 {
+			truncated = true
+			break
+		}
+		used += len(encoded) + 1
+		kept++
+	}
+	tasks = tasks[:kept]
+	writeJSON(w, 200, map[string]any{"tasks": tasks, "unavailable_devices": unavailable, "tasks_truncated": truncated})
 }
 
 func (s *Server) validateMessageDevice(ctx context.Context, id string) error {

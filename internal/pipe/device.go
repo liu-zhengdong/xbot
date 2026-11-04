@@ -130,7 +130,7 @@ func (d *Device) standby(ctx context.Context) error {
 			sessions.Add(1)
 			go func() {
 				defer sessions.Done()
-				if err := d.serve(ctx, m.TicketID, m.Secret, m.Execution); err != nil && ctx.Err() == nil {
+				if err := d.serve(ctx, m.TicketID, m.Secret, m.Execution, m.ConsoleSession); err != nil && ctx.Err() == nil {
 					d.logf("pipe: session %s: %v", short(m.TicketID), err)
 				}
 			}()
@@ -155,10 +155,13 @@ func cmpErr(err error, msg string) error {
 // Serve joins one ticket's session as the device and answers requests until
 // either side hangs up.
 func (d *Device) Serve(ctx context.Context, ticketID, secret string) error {
-	return d.serve(ctx, ticketID, secret, nil)
+	return d.serve(ctx, ticketID, secret, nil, "")
 }
 
-func (d *Device) serve(ctx context.Context, ticketID, secret string, execution *ExecutionIdentity) error {
+func (d *Device) serve(ctx context.Context, ticketID, secret string, execution *ExecutionIdentity, consoleSession string) error {
+	if consoleSession != "" {
+		ctx = deviceidentity.WithConsoleSession(ctx, consoleSession)
+	}
 	if execution != nil {
 		ctx = deviceidentity.WithSource(ctx, *execution)
 	}

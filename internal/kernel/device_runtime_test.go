@@ -3,8 +3,12 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+
 	"strings"
 	"testing"
+	"xbot/internal/work"
 
 	"xbot/internal/cliops"
 	"xbot/internal/deviceexec"
@@ -68,6 +72,44 @@ func TestDeviceRuntimePreparedSelectionAndSource(t *testing.T) {
 	if count != 2 {
 		t.Fatalf("unexpected source callback count %d", count)
 	}
+}
+
+func TestDeviceRuntimeLargeReplyStoresCurrentSourceArtifact(t *testing.T) {
+	k, _, _ := freshBot(t)
+	if err := k.StartOperations(); err != nil {
+		t.Fatal(err)
+	}
+	defer k.CloseOperations()
+	want := strings.Repeat("设备清单", 5000)
+	k.DeviceCall = func(context.Context, deviceexec.Source, cliops.DeviceRequest) (json.RawMessage, error) {
+		return json.Marshal(map[string]string{"value": want})
+	}
+	runRoutineSource(t, k, nil, `{"command":"device list --self"}`, func(ctx context.Context, _ json.RawMessage) (string, error) {
+		raw, err := cliops.CallDevice(ctx, k.operations.server.Endpoint, k.Bot.Root, tools.CallID(ctx), cliops.DeviceRequest{Action: "list"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out struct {
+			File  string `json:"file"`
+			Bytes int    `json:"bytes"`
+		}
+		if json.Unmarshal(raw, &out) != nil || out.File == "" || len(raw) > 1024 {
+			t.Fatalf("large result receipt %s", raw)
+		}
+		workspace := k.currentWorkspaceFor(k.Bot)
+		if workspace == "" {
+			workspace = work.BotDir(k.Bot.Root, k.Bot.Name())
+		}
+		data, err := os.ReadFile(filepath.Join(workspace, out.File))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var full map[string]string
+		if json.Unmarshal(data, &full) != nil || full["value"] != want || len(data) != out.Bytes {
+			t.Fatal("stored device reply lost data")
+		}
+		return "completed", nil
+	})
 }
 
 func TestDeviceResearchParserRejectsMutations(t *testing.T) {

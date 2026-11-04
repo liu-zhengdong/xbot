@@ -101,13 +101,14 @@ type control struct {
 	Secret   string `json:"secret,omitempty"`
 	Error    string `json:"error,omitempty"`
 	// A forwarded webhook (hook) and the device's answer (hook_res).
-	ID        string             `json:"id,omitempty"`
-	Path      string             `json:"path,omitempty"`
-	Header    map[string]string  `json:"header,omitempty"`
-	Body      []byte             `json:"body,omitempty"`
-	Status    int                `json:"status,omitempty"`
-	Hook      string             `json:"hook,omitempty"` // standby ack: this device's HookHandle
-	Execution *ExecutionIdentity `json:"execution,omitempty"`
+	ID             string             `json:"id,omitempty"`
+	Path           string             `json:"path,omitempty"`
+	Header         map[string]string  `json:"header,omitempty"`
+	Body           []byte             `json:"body,omitempty"`
+	Status         int                `json:"status,omitempty"`
+	Hook           string             `json:"hook,omitempty"` // standby ack: this device's HookHandle
+	Execution      *ExecutionIdentity `json:"execution,omitempty"`
+	ConsoleSession string             `json:"console_session,omitempty"`
 }
 
 // TicketOut is the POST /pipe/v1/ticket answer. The secret is shown once.
@@ -216,10 +217,10 @@ func (h *Hub) serveTicket(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, status, err.Error())
 		return
 	}
-	h.issueTicket(w, r, key, in.DeviceID, nil)
+	h.issueTicket(w, r, key, in.DeviceID, nil, session)
 }
 
-func (h *Hub) issueTicket(w http.ResponseWriter, r *http.Request, key, deviceID string, execution *ExecutionIdentity) {
+func (h *Hub) issueTicket(w http.ResponseWriter, r *http.Request, key, deviceID string, execution *ExecutionIdentity, consoleSession string) {
 	var secret [32]byte
 	_, _ = rand.Read(secret[:])
 	out := TicketOut{ID: randomHex(16), Secret: base64.RawURLEncoding.EncodeToString(secret[:]), Expires: h.now().Add(TicketTTL), Hub: h.Public}
@@ -252,7 +253,7 @@ func (h *Hub) issueTicket(w http.ResponseWriter, r *http.Request, key, deviceID 
 
 	// The device learns the secret from its own signed-in standby socket; the
 	// hub keeps only its hash after this.
-	msg, _ := json.Marshal(control{T: "open", TicketID: out.ID, Secret: out.Secret, Execution: execution})
+	msg, _ := json.Marshal(control{T: "open", TicketID: out.ID, Secret: out.Secret, Execution: execution, ConsoleSession: consoleSession})
 	if err := standby.WriteMessage(opText, msg); err != nil {
 		h.mu.Lock()
 		delete(h.tickets, t.id)

@@ -60,6 +60,9 @@ func runDeviceRuntime(ctx context.Context, rawRoot string, explicit bool, args [
 		return errors.New("device: requires XBOT_CALL_ID from an active XBot shell")
 	}
 	in := cliops.DeviceRequest{Action: c.Action, DeviceID: c.DeviceID, Ref: c.Ref, Offset: c.Offset, Limit: c.Limit, ArtifactID: c.ArtifactID}
+	if in.Limit == 0 && c.Action == "tasks" {
+		in.Limit = 10
+	}
 	if in.Limit == 0 && (c.Action == "task" || c.Action == "artifact") {
 		in.Limit = 4 << 10
 	}

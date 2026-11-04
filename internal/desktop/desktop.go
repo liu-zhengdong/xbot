@@ -44,6 +44,15 @@ type Driver interface {
 // Perform runs one action. approved is true after the owner confirmed, including a CLI the owner typed.
 // off always refuses. ask refuses when approved is false.
 func Perform(ctx context.Context, root string, d Driver, action Action, approved bool) (string, error) {
+	if held, _ := ctx.Value(sequenceKey{}).(bool); !held {
+		var text string
+		err := Sequence(ctx, func(sequenceCtx context.Context) error {
+			var e error
+			text, e = Perform(sequenceCtx, root, d, action, approved)
+			return e
+		})
+		return text, err
+	}
 	if d == nil {
 		d = defaultDriver()
 	}

@@ -6,9 +6,11 @@ import (
 	"errors"
 	"strconv"
 
+	"xbot/internal/bot"
 	"xbot/internal/cliops"
 	"xbot/internal/deviceexec"
 	"xbot/internal/inbox"
+	"xbot/internal/work"
 )
 
 type deviceChildKey struct{}
@@ -88,6 +90,22 @@ func (k *Kernel) deviceRuntime(ctx context.Context, in cliops.DeviceRequest) (js
 			return nil, problem
 		}
 		raw = masked
+	}
+	if len(raw) > 24<<10 {
+		var file string
+		writeErr := k.withCurrentIO(func(current *bot.Bot, _ *inbox.Inbox) error {
+			workspace := k.currentWorkspaceFor(current)
+			if workspace == "" {
+				workspace = work.BotDir(current.Root, current.Name())
+			}
+			var e error
+			file, e = work.WriteResult(workspace, raw, "json")
+			return e
+		})
+		if writeErr != nil {
+			return nil, writeErr
+		}
+		raw, _ = json.Marshal(map[string]any{"file": file, "bytes": len(raw), "device_id": in.DeviceID, "ref": in.Ref})
 	}
 	return raw, err
 }
