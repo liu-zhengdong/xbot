@@ -456,16 +456,17 @@
 
   // Account execution uses account membership. Legacy pairing below only owns Bot messaging.
   const shared = {
-    devices: null, error: "", bot: "", targets: new Map(), tasks: [], tasksError: "",
+    devices: null, error: "", bot: "", targets: new Map(), tasks: [], tasksError: "", unavailable: new Map(),
     detailID: "", detail: null, detailError: "", detailGeneration: 0, mountGeneration: 0,
     legacy: false, modal: null, modalGeneration: 0, opener: null, listRequest: null, taskRequest: null, scroll: new Map(),
   };
   const accountPath = id => "/api/account/devices/" + encodeURIComponent(id);
+  const deviceOS = os => ({darwin:"macOS", windows:"Windows", linux:"Linux"}[os] || os || "");
   const taskPath = task => accountPath(task.device_id) + "/tasks/" + encodeURIComponent(task.ref);
   const chevron = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>';
   const monitor = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="13" rx="2"/><path d="M8 21h8m-4-5v5"/></svg>';
   const backIcon = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>';
-  const taskStatus = t => ({running:"正在执行", completed:"已完成", failed:"失败", cancelled:"已停止"}[t.status] || t.status);
+  const taskStatus = t => shared.unavailable.has(t.device_id) ? "设备暂不可达，状态待确认" : ({running:"正在执行", completed:"已完成", failed:"失败", cancelled:"已停止"}[t.status] || t.status);
   const selectedText = node => {
     const selection = window.getSelection();
     return selection && !selection.isCollapsed && selection.rangeCount && selection.getRangeAt(0).intersectsNode(node);
@@ -510,7 +511,7 @@
   }
   function deviceRow(d, pick) {
     const chosen = pick && targetFor(shared.bot) === d.id;
-    const description = pick && !d.online ? "离线 · 暂时无法使用" : [d.os, d.self ? "这台电脑" : "", !pick && !d.online && d.last_seen ? "上次在线 " + fmtSeen(d.last_seen) : ""].filter(Boolean).join(" · ");
+    const description = pick && !d.online ? "离线 · 暂时无法使用" : [deviceOS(d.os), d.self ? "这台电脑" : "", !pick && !d.online && d.last_seen ? "上次在线 " + fmtSeen(d.last_seen) : ""].filter(Boolean).join(" · ");
     return `<button class="account-device-row${chosen ? " is-selected" : ""}" type="button" data-shared="${pick ? "choose" : "detail"}" data-id="${esc(d.id)}" ${pick && !d.online ? "disabled" : ""} ${pick ? `aria-pressed="${chosen}"` : ""}>
       <span class="account-device-glyph">${monitor}</span><span class="account-device-main"><b>${esc(d.name)}</b><span>${esc(description)}</span></span>
       <span class="account-device-presence"><span><i class="status-dot ${d.online ? "ok" : ""}"></i>${pick ? "" : d.online ? "在线" : "离线"}</span>${!pick && d.running_count > 0 ? `<span>${d.running_count} 个任务</span>` : ""}</span>${pick ? chosen ? svg("check") : "" : chevron}</button>`;
@@ -580,7 +581,7 @@
     if (!body.querySelector('[data-detail-config]')) {
       body.innerHTML = `<div class="setrows settings-configuration" data-detail-config><div class="setrow"><b>设备名称</b><div class="account-device-value"><span data-detail-name></span><button class="text-btn" type="button" data-shared="rename">改名</button></div></div><div class="setrow"><b>系统</b><span class="account-device-note" data-detail-os></span></div></div><section class="account-device-section"><h3>能力</h3><div class="account-device-caps" data-detail-caps></div></section><section class="account-device-section"><h3 data-detail-tasks-title></h3><div data-detail-tasks></div></section><div data-detail-desktop></div><button class="text-btn account-device-unbind" type="button" data-shared="unbind">解除绑定</button>`;
     }
-    textAt(body, '[data-detail-name]', d.name); textAt(body, '[data-detail-os]', d.os || "未报告");
+    textAt(body, '[data-detail-name]', d.name); textAt(body, '[data-detail-os]', deviceOS(d.os) || "未报告");
     const capNames = {read:"读取文件", write:"写入文件", exec:"终端", browser:"浏览器", desktop:"电脑操作"};
     const capabilities = [...new Set((d.capabilities || []).map(c => c.startsWith("exec:") ? "exec" : c))];
     const caps = body.querySelector('[data-detail-caps]');
@@ -665,7 +666,7 @@
   function paintPicker() {
     if (shared.modal !== "picker") return;
     const search = sharedLayer.querySelector("input"), query = search.value.trim().toLowerCase();
-    const rows = (shared.devices || []).filter(d => [d.name,d.os].join(" ").toLowerCase().includes(query));
+    const rows = (shared.devices || []).filter(d => [d.name,d.os,deviceOS(d.os)].join(" ").toLowerCase().includes(query));
     const host = sharedLayer.querySelector('[data-picker-rows]');
     const items = query ? rows : [{id:"",name:"自动"}, ...rows];
     patchRows(host, items, d => d.id, d => d.id ? deviceRow(d, true) : `<button class="account-device-row${!targetFor(shared.bot) ? " is-selected" : ""}" type="button" data-shared="choose" data-id=""><span class="account-device-glyph">${svg("swap")}</span><span class="account-device-main"><b>自动</b><span>由 Bot 选择合适的在线设备</span></span>${!targetFor(shared.bot) ? svg("check") : ""}</button>`);
@@ -705,7 +706,9 @@
         const result = await api("GET", "/api/bots/" + encodeURIComponent(bot) + "/device-tasks");
         if (bot !== shared.bot) return;
         if (!Array.isArray(result.tasks)) throw new Error("任务状态读取失败");
-        shared.tasks = result.tasks; shared.tasksError = "";
+        shared.unavailable = new Map((result.unavailable_devices || []).map(device => [device.id, device]));
+        const known = shared.tasks.filter(task => shared.unavailable.has(task.device_id) && !result.tasks.some(fresh => fresh.device_id === task.device_id && fresh.ref === task.ref));
+        shared.tasks = [...result.tasks, ...known]; shared.tasksError = "";
       } catch (e) { if (bot === shared.bot) shared.tasksError = e.message; }
       if (bot === shared.bot) paintDeviceTaskStatus();
     })().finally(() => { shared.taskRequest = null; });
@@ -714,15 +717,25 @@
   function paintDeviceTaskStatus() {
     let row = document.getElementById("account-device-task-status");
     if (!row) { row = document.createElement("button"); row.type = "button"; row.id = "account-device-task-status"; row.className = "account-device-task-status"; document.getElementById("composer").before(row); }
-    const task = shared.tasks.find(t => t.status === "running") || shared.tasks[0];
+    const active = shared.tasks.filter(t => t.status === "running" || shared.unavailable.has(t.device_id));
+    const task = active[0] || shared.tasks[0];
     row.hidden = !shared.bot || !S.acct || (!task && !shared.tasksError);
-    const label = task ? [task.device_name, task.description || "设备任务", taskStatus(task), shared.tasksError ? "状态暂未更新" : ""].filter(Boolean).join(" · ") : "任务状态读取失败，点击重试";
+    const label = active.length > 1 ? active.length + " 个设备任务" + (shared.unavailable.size ? " · 部分设备状态待确认" : "") : task ? [task.device_name, task.description || "设备任务", taskStatus(task), shared.tasksError ? "状态暂未更新" : ""].filter(Boolean).join(" · ") : "任务状态读取失败，点击重试";
     if (row.textContent !== label && !selectedText(row)) row.textContent = label;
-    row.onclick = () => task ? openTask(task) : readBotDeviceTasks();
+    row.onclick = () => {
+      if (active.length > 1) {
+        const dialog = sharedModal("tasks", "设备任务", '<div data-current-device-tasks></div>');
+        patchRows(dialog.querySelector('[data-current-device-tasks]'), active, t => t.device_id + ":" + t.ref, taskRow);
+      } else if (task) openTask(task);
+      else readBotDeviceTasks();
+    };
     row.title = shared.tasksError ? "状态读取失败，点击重试" : "查看执行详情";
+    if (shared.modal === "tasks") patchRows(sharedLayer.querySelector('[data-current-device-tasks]'), active, t => t.device_id + ":" + t.ref, taskRow);
   }
   async function openTask(task) {
+    const fromTaskList = shared.modal === "tasks";
     const dialog = sharedModal("task", "执行详情", `<h3 data-task-title></h3><p class="account-device-note" data-task-meta></p><p class="error" data-task-error role="status"></p><pre class="account-device-output" data-task-output></pre><button class="text-btn" type="button" data-shared="more-output" hidden>读取更多</button><div data-task-artifacts></div>`, '<p class="error" role="status" data-shared-error></p><div class="modal-actions"><button class="secondary" type="button" data-shared="close">关闭</button><button class="secondary" type="button" data-shared="refresh-task">重新读取</button><button class="account-device-danger" type="button" data-shared="stop-task">停止任务</button></div>');
+    if (fromTaskList) shared.opener = document.getElementById("account-device-task-status");
     dialog._task = task; dialog._offset = 0; dialog._output = "";
     paintTask(dialog, task); await readTaskOutput(dialog);
   }
@@ -770,7 +783,10 @@
         textAt(sharedLayer, '[data-add-result]', shared.error || "已重新读取账号设备。列表显示当前已绑定的设备。");
         node.disabled = false; break;
       }
-      case "task": await openTask({device_id:node.dataset.device, ref:node.dataset.ref}); break;
+      case "task": {
+        const task = [...shared.tasks, ...(shared.detail?.tasks || [])].find(t => t.device_id === node.dataset.device && t.ref === node.dataset.ref);
+        await openTask(task || {device_id:node.dataset.device, ref:node.dataset.ref}); break;
+      }
       case "more-output": case "refresh-task": await readTaskOutput(sharedLayer.querySelector("dialog")); break;
       case "stop-task": {
         const dialog = sharedLayer.querySelector("dialog"), generation = shared.modalGeneration;
@@ -826,7 +842,7 @@
     },
     conversation(bot) {
       if (bot === shared.bot) return;
-      closeSharedModal(false); shared.bot = bot; shared.tasks = []; paintTarget(); paintDeviceTaskStatus();
+      closeSharedModal(false); shared.bot = bot; shared.tasks = []; shared.unavailable.clear(); paintTarget(); paintDeviceTaskStatus();
       readBotDeviceTasks();
     },
     accepted(send) {
