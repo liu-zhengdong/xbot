@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-03 @ 7c01cb4c (settings visual refresh; existing chat and desktop contracts retained)
+verified: 2026-11-03 @ b15f6a6b (approved image settings layout; existing chat and desktop contracts retained)
 
 ---
 # 网页界面
@@ -101,7 +101,11 @@ Composer 的 mic 在发送钮左侧：点按进入录音条，「发送」提交
 自定义卡用通用线标、右缘配置点和中性 fill-2 选中。主标题优先用户展示名、其次 host 对应人话名、最后「自定义供应商」，不露内部配置 id。匹配内置 host 的自定义卡仍单独存在，且不吞内置格。绑定侧复用实时目录及显式手动模型，供应商标题读取同一元数据。注册与密钥规则见 [供应商](providers.md)，真入口冒烟为 `e2e/smoke/custom_provider_test.go`，辅助 `internal/web/testdata/custom-provider.cjs`；用户日用尚待验收。
 ### 图片生成设置
 
-设置左栏在人设卡后、设备前显示「图片生成」。全局默认关闭，关时仅显示开关和生效说明；开时先显示与网页搜索同皮的「怎么画」：自动（默认，当前模型有 hosted 则厂商，否则代理到所选账号）/ 总用设置里的家（只走代理）；再显示 OpenAI / Grok（xAI）单选及工作区产物说明。关时两区都隐藏。xAI 未登录时详情引导回订阅区，过期或登录失败时可重新登录。账号状态只读现有 OAuth 元数据；没有保存选择时优先已登录的一家，否则 OpenAI。未登录的选中行下显示扁平说明和「去模型与供应商」，在同浮层进入 ChatGPT 详情 / 订阅区 xAI 卡，只有用户点击现有登录按钮才发起 OAuth。此页没有登录或密钥表单。重新打开刷新登录态；保存失败保留上次设置，离开后迟到响应不重绘。开关的 `.on`、`aria-checked` 与选择区 `hidden` 同步取保存后的 `enabled`；保存失败保持旧状态。所选账号只决定代理使用哪家，不要求与 Bot 当前绑定对上；产物脚注为「画好的图保存在工作区，由 Bot 主动挂到回复中。」新一轮使用新设置，只有 Bot 调用 `send_message_to_user images` 挂到回复的图片才沿既有 gallery 展示；生图保存回执仍是普通工具轨迹。
+设置左栏在人设卡后、设备前显示「图片生成」。全局默认关闭，采用关闭／开启原生分段；关闭时只留开关和生效说明。开启后依次展示「生图方式」与「生图账号」。两种方式纵向排列：自动优先用当前模型自带的生图能力，否则代理到所选账号；「始终使用下方账号」只走代理。设置组之间和账号行之间采用用户确认的低对比细横线，值来自 `--settings-divider*` 和 `--settings-row-divider`；该例外只用于本页。菜单、选项保持同一字号，说明随主名缩进，页脚合并为两行。
+
+OpenAI / Grok（xAI）账号状态只读现有 OAuth 元数据；没有保存选择时优先已登录的一家，否则 OpenAI。未登录的选中行下显示扁平说明和「去模型与供应商」，在同浮层进入 ChatGPT 详情 / 订阅区 xAI 卡。只有用户点击现有登录按钮才发起 OAuth，过期或失败可重新登录。本页没有登录或密钥表单。重新打开刷新登录态；保存失败保留上次设置，离开后迟到响应不重绘。分段的选中值与两区 `hidden` 同步取保存后的 `enabled`，提交期间禁用控件。
+
+所选账号只决定代理使用哪家，不要求与 Bot 当前绑定对上。页脚提示图片保存在工作区，由 Bot 挂到回复中；修改从下一轮对话生效。只有 Bot 调用 `send_message_to_user images` 挂到回复的图片才沿既有 gallery 展示；生图保存回执仍是普通工具轨迹。`TestImageGenSettingsBrowser` 守住开关、策略、账号、登录入口、保存失败和迟到回包。
 
 生图使用普通工具调用呈现：运行中复用普通工具的三点忙态（空 description 沿用本次忙碌的上一条，尚无 description 时不加文案），`image_generation` 的提示词与真实保存回执进入「轨迹」工具事件和右侧详情。协议仍是 `PartHosted`，不伪造可执行本地工具调用；对话中不再绘制独立生图步骤、提示词按钮或「查看 generated/」交付入口。只有最终回复的 `Entry.Images` 经现有 paste 路由进入 gallery，完成步骤本身不显示图片。生图回执与失败规则见 [供应商](providers.md)。
 
