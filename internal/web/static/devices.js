@@ -1,5 +1,5 @@
-/* G7 设备：设置浮层的设备页，列出这台电脑和配对的设备。
-   只经同源 /api/devices* 和 /api/account/* 与本机 serve 通信。配对码的弹窗在 pairing.js，通过 window.xbotDevices 挂进来。 */
+/* Account devices own shared execution and next-message targets.
+   Legacy pairing owns Bot messaging. Both use the existing settings shell. */
 (function () {
   "use strict";
   const I = {
@@ -143,6 +143,7 @@
     S.remote = !!(s && s.remote);
     if (S.remote && !was) refresh(); // 底栏要账号设备数，立即拉一次
     else paintFoot();
+    reloadSharedAccount();
   }
   function paintFoot() {
     // 底栏「我」下面那行：本机写这台电脑的名字；官网入口写「已绑定 N 台设备」。
@@ -168,9 +169,14 @@
   async function mount() {
     ensureHosts();
     S.embedded = true; S.menuFor = "";
+    const generation = ++shared.mountGeneration;
+    shared.legacy = false; shared.detailID = "";
     await Promise.all([refresh(), loadAcct()]);
+    if (!S.embedded || generation !== shared.mountGeneration) return;
+    if (S.acct) await readSharedDevices();
+    if (!S.embedded || generation !== shared.mountGeneration) return;
     render();
-    checkDesktop();
+    if (!S.acct) checkDesktop();
   }
   // 「把这台电脑绑到账号？」（04b）：本机还没绑到登录着的账号时，app.js 开机后请一次。
   async function offerClaim() {
@@ -183,7 +189,8 @@
     S.claimErr = ""; S.view = "claim"; render();
   }
   function unmount() {
-    ++desktopGeneration;
+    ++desktopGeneration; ++shared.mountGeneration; ++shared.detailGeneration;
+    closeSharedModal(false);
     S.embedded = false;
     if (["add", "join", "confirm", "waiting"].includes(S.view) && D.closePair) D.closePair();
     else { S.view = null; render(); }
@@ -327,7 +334,7 @@
       list = `<section class="profile-section"><h3>已匹配设备 · ${devs.length}</h3>${devs.map((d) => devCard(d, up)).join("")}
           <p class="g7-fine">${sp("这里列的是配对过的电脑。「在线」表示最近能连上该设备上的 XBot。官网入口不是设备，不会出现在此列表。")}</p></section>`;
     }
-    return `<div class="sethd"><h2>设备</h2><button class="primary" type="button" data-act="add">${svg("plus", 14)}<span>配对设备</span></button></div>
+    return `${S.acct ? '<button class="text-btn account-device-back" type="button" data-shared="manage">账号设备</button>' : ''}<div class="sethd"><h2>${S.acct ? '短码配对' : '设备'}</h2><button class="primary" type="button" data-act="add">${svg("plus", 14)}<span>配对设备</span></button></div>
       <div class="g7-lead">${sp("配对后，可在同一界面与各台电脑上的 Bot 聊天。记忆和文件仍在各自设备上。")}</div>${banner}
       <div class="g7-body">${selfCard}${claim}${list}</div>`;
   }
@@ -341,7 +348,7 @@
         <div class="g7-dev-sub">${esc([self.os, "本机", "未绑定"].filter(Boolean).join(" · "))}</div></div></div>
       ${S.claimErr ? `<p class="error g7-field-err">${esc(S.claimErr)}</p>` : ""}
       <div class="modal-actions"><button class="secondary" type="button" data-act="claim-dismiss">先不绑</button><button class="primary" type="button" data-act="claim" ${S.claimBusy ? "disabled" : ""}>${S.claimBusy ? "绑定中" : "绑定这台电脑"}</button></div>
-      <p class="g7-fine">绑定只让这台电脑出现在账号的「我的设备」里；要在别的电脑上和这里的 Bot 聊天，还要在「设备」里用短码配对。</p>`, "g7-claim-modal");
+      <p class="g7-fine">账号内所有 Bot 均可使用绑定的设备。短码配对只用于与其他设备上的 Bot 互发消息。</p>`, "g7-claim-modal");
   }
 
   function render() {
@@ -351,7 +358,8 @@
     const selEnd = sel != null ? document.activeElement.selectionEnd : null;
     const selDir = sel != null ? document.activeElement.selectionDirection : null;
     const wasView = lastView;
-    devicesEl.innerHTML = S.embedded ? viewDevices() : "";
+    if (S.embedded && S.acct && !shared.legacy) paintSharedPage();
+    else { delete devicesEl.dataset.sharedPage; devicesEl.innerHTML = S.embedded ? viewDevices() : ""; }
     const V = Object.assign({ rename: viewRename, unpair: viewUnpair, claim: viewClaim }, D.views)[S.view];
     modalEl.innerHTML = V ? V() : "";
     if (V && lastView === S.view) { const card = modalEl.querySelector(".modal-card"); if (card) card.style.animation = "none"; }
@@ -414,6 +422,7 @@
           S.acct = (out && out.account) || S.acct;
           S.view = null;
           await refresh();
+          await readSharedDevices();
         } catch (e) { S.claimErr = e.message; }
         S.claimBusy = false; render(); break;
       }
@@ -444,6 +453,401 @@
     if (!modalEl || !modalEl.firstChild) return;
     modalEl.querySelectorAll("[data-left]").forEach((el) => { el.textContent = left(el.dataset.left, Number(el.dataset.minus || 0)); });
   }, 1000);
+
+  // Account execution uses account membership. Legacy pairing below only owns Bot messaging.
+  const shared = {
+    devices: null, error: "", bot: "", targets: new Map(), tasks: [], tasksError: "",
+    detailID: "", detail: null, detailError: "", detailGeneration: 0, mountGeneration: 0,
+    legacy: false, modal: null, modalGeneration: 0, opener: null, listRequest: null, taskRequest: null, scroll: new Map(),
+  };
+  const accountPath = id => "/api/account/devices/" + encodeURIComponent(id);
+  const taskPath = task => accountPath(task.device_id) + "/tasks/" + encodeURIComponent(task.ref);
+  const chevron = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>';
+  const monitor = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="13" rx="2"/><path d="M8 21h8m-4-5v5"/></svg>';
+  const backIcon = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>';
+  const taskStatus = t => ({running:"正在执行", completed:"已完成", failed:"失败", cancelled:"已停止"}[t.status] || t.status);
+  const selectedText = node => {
+    const selection = window.getSelection();
+    return selection && !selection.isCollapsed && selection.rangeCount && selection.getRangeAt(0).intersectsNode(node);
+  };
+  function textAt(root, selector, text) {
+    const node = root.querySelector(selector), value = String(text || "");
+    if (node && node.textContent !== value && !selectedText(node)) node.textContent = value;
+  }
+  function patchRows(host, rows, key, markup) {
+    const keep = new Set();
+    rows.forEach((item, index) => {
+      const id = String(key(item)); keep.add(id);
+      let row = [...host.children].find(node => node.dataset.key === id);
+      const html = markup(item);
+      if (!row) { row = document.createElement("div"); row.dataset.key = id; }
+      if (row._markup !== html && !selectedText(row)) {
+        const focused = row.contains(document.activeElement);
+        row.innerHTML = html; row._markup = html;
+        if (focused) row.querySelector("button:not(:disabled)")?.focus({preventScroll:true});
+      }
+      if (host.children[index] !== row) host.insertBefore(row, host.children[index] || null);
+    });
+    [...host.children].forEach(row => { if (!keep.has(row.dataset.key)) row.remove(); });
+  }
+  async function readSharedDevices() {
+    if (shared.listRequest) return shared.listRequest;
+    shared.listRequest = (async () => {
+      try {
+        const result = await api("GET", "/api/account/devices");
+        if (!Array.isArray(result.devices)) throw new Error("设备列表读取失败");
+        shared.devices = result.devices; shared.error = "";
+        S.acctDevs = result.devices.length; paintFoot();
+        for (const [bot, id] of shared.targets) {
+          if (!result.devices.some(d => d.id === id)) setTarget(bot, "");
+        }
+      } catch (e) { shared.error = e.message; }
+      paintTarget();
+      if (S.embedded && S.acct && !shared.legacy) paintSharedPage();
+      if (shared.modal === "picker") paintPicker();
+    })().finally(() => { shared.listRequest = null; });
+    return shared.listRequest;
+  }
+  function deviceRow(d, pick) {
+    const chosen = pick && targetFor(shared.bot) === d.id;
+    const description = pick && !d.online ? "离线 · 暂时无法使用" : [d.os, d.self ? "这台电脑" : "", !pick && !d.online && d.last_seen ? "上次在线 " + fmtSeen(d.last_seen) : ""].filter(Boolean).join(" · ");
+    return `<button class="account-device-row${chosen ? " is-selected" : ""}" type="button" data-shared="${pick ? "choose" : "detail"}" data-id="${esc(d.id)}" ${pick && !d.online ? "disabled" : ""} ${pick ? `aria-pressed="${chosen}"` : ""}>
+      <span class="account-device-glyph">${monitor}</span><span class="account-device-main"><b>${esc(d.name)}</b><span>${esc(description)}</span></span>
+      <span class="account-device-presence"><span><i class="status-dot ${d.online ? "ok" : ""}"></i>${pick ? "" : d.online ? "在线" : "离线"}</span>${!pick && d.running_count > 0 ? `<span>${d.running_count} 个任务</span>` : ""}</span>${pick ? chosen ? svg("check") : "" : chevron}</button>`;
+  }
+  function paintSharedPage() {
+    if (!devicesEl || !S.embedded || shared.legacy) return;
+    const mode = shared.detailID ? "detail:" + shared.detailID : "list";
+    if (devicesEl.dataset.sharedPage !== mode) {
+      const scroller = devicesEl.closest(".setcnt");
+      if (devicesEl.dataset.sharedPage) shared.scroll.set(devicesEl.dataset.sharedPage, scroller.scrollTop);
+      devicesEl.dataset.sharedPage = mode;
+      shared.restoreScroll = shared.scroll.get(mode) || 0;
+      devicesEl.innerHTML = shared.detailID
+        ? `<button class="text-btn account-device-back" type="button" data-shared="back">${backIcon}设备</button><div class="account-device-heading">${monitor}<div><h2 data-device-name></h2><p class="account-device-note" data-device-presence></p></div></div><p class="error" data-device-error role="status"></p><div data-device-detail></div>`
+        : `<div class="sethd"><h2>设备</h2><button class="primary" type="button" data-shared="add">添加设备</button></div><p class="account-device-note">账号内所有 Bot 均可使用这些设备。</p><div data-account-claim></div><div data-account-list></div><p class="account-device-note account-device-footer">设备在线时，Bot 可使用设备上的文件、工具与应用。</p><button class="text-btn" type="button" data-shared="legacy">短码配对与其他设备的 Bot</button>`;
+    }
+    if (shared.detailID) { paintDeviceDetail(); return; }
+    const claim = devicesEl.querySelector('[data-account-claim]');
+    const claimHTML = S.acct.unbound ? `<div class="account-device-section"><p class="account-device-note">这台电脑尚未绑定。绑定后，账号内所有 Bot 均可使用。</p><p class="error" role="status">${esc(S.claimErr)}</p><button class="secondary" type="button" data-act="claim" ${S.claimBusy ? "disabled" : ""}>绑定这台电脑</button></div>` : "";
+    if (claim._html !== claimHTML) { claim.innerHTML = claimHTML; claim._html = claimHTML; }
+    const host = devicesEl.querySelector('[data-account-list]');
+    const notice = shared.error ? `<p class="error" role="status">${esc(shared.error)}</p><button class="secondary" type="button" data-shared="retry">重试</button>`
+      : shared.devices === null ? '<p class="account-device-note">正在读取设备…</p>'
+      : !shared.devices.length ? '<div class="account-device-empty"><h3>还没有设备</h3><p>在新电脑登录同一账号，并绑定这台电脑。</p><button class="primary" type="button" data-shared="add">添加设备</button></div>' : "";
+    let status = host.querySelector('[data-list-status]');
+    if (!status) { status = document.createElement("div"); status.dataset.listStatus = ""; host.prepend(status); }
+    if (status._html !== notice) { status.innerHTML = notice; status._html = notice; }
+    let rows = host.querySelector('[data-list-rows]');
+    if (!rows) { rows = document.createElement("div"); rows.dataset.listRows = ""; rows.className = "account-device-list"; host.append(rows); }
+    patchRows(rows, shared.devices || [], d => d.id, d => deviceRow(d, false));
+    restoreDeviceScroll();
+  }
+  function restoreDeviceScroll() {
+    if (shared.restoreScroll == null) return;
+    devicesEl.closest(".setcnt").scrollTop = shared.restoreScroll; shared.restoreScroll = null;
+  }
+  async function openDevice(id) {
+    shared.lastDeviceID = id;
+    shared.detailID = id; shared.detail = null; shared.detailError = "";
+    paintSharedPage();
+    devicesEl.querySelector('[data-shared="back"]')?.focus({preventScroll:true});
+    await readDeviceDetail();
+  }
+  async function readDeviceDetail() {
+    const id = shared.detailID, generation = ++shared.detailGeneration;
+    if (!id) return;
+    try {
+      const result = await api("GET", accountPath(id));
+      if (generation !== shared.detailGeneration || id !== shared.detailID || !S.embedded) return;
+      shared.detail = result; shared.detailError = "";
+    } catch (e) { if (generation === shared.detailGeneration) shared.detailError = e.message; }
+    if (generation === shared.detailGeneration && S.embedded) paintDeviceDetail();
+  }
+  function paintDeviceDetail() {
+    const root = devicesEl, detail = shared.detail;
+    const d = detail?.device || (shared.devices || []).find(d => d.id === shared.detailID);
+    if (!d) return;
+    textAt(root, '[data-device-name]', d.name);
+    textAt(root, '[data-device-presence]', d.online ? "在线" : "离线" + (d.last_seen ? " · 上次在线 " + fmtSeen(d.last_seen) : ""));
+    textAt(root, '[data-device-error]', shared.detailError);
+    const body = root.querySelector('[data-device-detail]');
+    if (!detail) {
+      const html = shared.detailError ? '<button class="secondary" type="button" data-shared="retry-detail">重试</button>' : '<p class="account-device-note">正在读取详情…</p>';
+      if (body._loading !== html) { body.innerHTML = html; body._loading = html; }
+      return;
+    }
+    if (!body.querySelector('[data-detail-config]')) {
+      body.innerHTML = `<div class="setrows settings-configuration" data-detail-config><div class="setrow"><b>设备名称</b><div class="account-device-value"><span data-detail-name></span><button class="text-btn" type="button" data-shared="rename">改名</button></div></div><div class="setrow"><b>系统</b><span class="account-device-note" data-detail-os></span></div></div><section class="account-device-section"><h3>能力</h3><div class="account-device-caps" data-detail-caps></div></section><section class="account-device-section"><h3 data-detail-tasks-title></h3><div data-detail-tasks></div></section><div data-detail-desktop></div><button class="text-btn account-device-unbind" type="button" data-shared="unbind">解除绑定</button>`;
+    }
+    textAt(body, '[data-detail-name]', d.name); textAt(body, '[data-detail-os]', d.os || "未报告");
+    const capNames = {read:"读取文件", write:"写入文件", exec:"终端", browser:"浏览器", desktop:"电脑操作"};
+    const capabilities = [...new Set((d.capabilities || []).map(c => c.startsWith("exec:") ? "exec" : c))];
+    const caps = body.querySelector('[data-detail-caps]');
+    caps.closest("section").hidden = !capabilities.length;
+    patchRows(caps, capabilities, c => c, c => `<span class="account-device-cap">${esc(capNames[c] || c)}</span>`);
+    const tasks = detail.tasks || [];
+    textAt(body, '[data-detail-tasks-title]', tasks.length ? "当前任务 · " + tasks.length : "当前没有任务");
+    patchRows(body.querySelector('[data-detail-tasks]'), tasks, t => t.ref, taskRow);
+    const desktop = body.querySelector('[data-detail-desktop]');
+    if (d.self && !desktop.firstChild) {
+      desktop.innerHTML = `<section class="account-device-section"><h3>这台电脑的电脑操作</h3><div class="setrow"><span id="g7-desktop-status">正在检查授权</span><button class="secondary" type="button" data-act="desktop-check">重新检查</button></div><p class="account-device-note" id="g7-desktop-help"></p></section>`;
+      checkDesktop();
+    }
+    restoreDeviceScroll();
+  }
+  function taskRow(t) {
+    return `<button type="button" class="account-device-task account-device-row" data-shared="task" data-device="${esc(t.device_id)}" data-ref="${esc(t.ref)}"><span class="account-device-main"><b>${esc(t.description || "设备任务")}</b><span>${esc([t.bot, taskStatus(t)].filter(Boolean).join(" · "))}</span></span>${chevron}</button>`;
+  }
+  let sharedLayer;
+  function closeSharedModal(restore = true) {
+    if (!sharedLayer?.firstChild) return;
+    ++shared.modalGeneration;
+    sharedLayer.querySelector("dialog").close(); sharedLayer.replaceChildren();
+    shared.modal = null;
+    document.getElementById("account-device-trigger").setAttribute("aria-expanded", "false");
+    const opener = shared.opener?.isConnected ? shared.opener : shared.openerKey ? document.querySelector(shared.openerKey) : null;
+    if (restore) (opener || document.getElementById("account-device-trigger")).focus({preventScroll:true});
+    shared.opener = null; shared.openerKey = "";
+  }
+  function sharedModal(kind, title, body, actions = "") {
+    closeSharedModal(false);
+    shared.opener = document.activeElement;
+    shared.openerKey = shared.opener?.matches('[data-shared]') ? ["shared", "id", "device", "ref"].filter(k => k in shared.opener.dataset).map(k => `[data-${k}="${CSS.escape(shared.opener.dataset[k])}"]`).join("") : "";
+    shared.modal = kind;
+    if (!sharedLayer) { sharedLayer = document.createElement("div"); sharedLayer.id = "account-devices-modal"; document.body.append(sharedLayer); }
+    sharedLayer.innerHTML = `<dialog class="account-device-dialog${kind === "picker" ? " account-device-picker" : ""}" aria-label="${esc(title)}"><header><h2>${esc(title)}</h2><button class="icon-btn" type="button" data-shared="close" aria-label="关闭">${svg("x")}</button></header><div class="account-device-modal-body">${body}</div>${actions ? `<footer>${actions}</footer>` : ""}</dialog>`;
+    const dialog = sharedLayer.firstChild;
+    dialog.addEventListener("cancel", ev => { ev.preventDefault(); closeSharedModal(); });
+    dialog.addEventListener("click", ev => { if (ev.target === dialog) { const r = dialog.getBoundingClientRect(); if (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) closeSharedModal(); } });
+    dialog.showModal();
+    (dialog.querySelector("input") || dialog.querySelector('[data-shared="close"]')).focus();
+    return dialog;
+  }
+  function setTarget(bot, id) {
+    if (id) shared.targets.set(bot, id); else shared.targets.delete(bot);
+    try { if (id) sessionStorage.setItem("xbot-device-target:" + bot, id); else sessionStorage.removeItem("xbot-device-target:" + bot); } catch (e) {}
+    paintTarget();
+  }
+  function targetFor(bot) {
+    if (!S.acct || !bot) return "";
+    if (!shared.targets.has(bot)) {
+      try { const id = sessionStorage.getItem("xbot-device-target:" + bot); if (id) shared.targets.set(bot, id); } catch (e) {}
+    }
+    const id = shared.targets.get(bot) || "";
+    if (id && shared.devices && !shared.devices.some(d => d.id === id)) {
+      shared.targets.delete(bot);
+      try { sessionStorage.removeItem("xbot-device-target:" + bot); } catch (e) {}
+      return "";
+    }
+    return id;
+  }
+  function paintTarget() {
+    const foot = document.getElementById("account-device-foot"), button = document.getElementById("account-device-trigger");
+    foot.hidden = !shared.bot || !S.acct;
+    const id = targetFor(shared.bot), device = (shared.devices || []).find(d => d.id === id);
+    const label = "本次使用：" + (id ? (device?.name || "所选设备") + (device && !device.online ? "（离线）" : "") : "自动");
+    if (button.dataset.label !== label) { button.innerHTML = monitor + `<span>${esc(label)}</span>` + chevron; button.dataset.label = label; }
+  }
+  function openPicker() {
+    sharedModal("picker", "本次使用的设备", `<div class="account-device-search"><input class="ui-input" type="search" aria-label="搜索设备" placeholder="搜索设备" id="account-device-search"></div><div data-picker-status role="status"></div><div class="account-device-picker-list" data-picker-rows></div>`, `<p class="account-device-note">只用于 ${esc(shared.bot)} 的下一条消息，发送后恢复自动。</p><button class="text-btn" type="button" data-shared="manage">管理账号设备</button>`);
+    document.getElementById("account-device-trigger").setAttribute("aria-expanded", "true");
+    positionPicker(); paintPicker(); readSharedDevices();
+  }
+  function positionPicker() {
+    if (shared.modal !== "picker") return;
+    const dialog = sharedLayer.querySelector("dialog"), rect = document.getElementById("account-device-trigger").getBoundingClientRect();
+    const inset = parseFloat(getComputedStyle(dialog).getPropertyValue("--x-s6"));
+    dialog.style.setProperty("--account-picker-left", Math.max(inset, Math.min(rect.left, innerWidth - dialog.offsetWidth - inset)) + "px");
+    dialog.style.setProperty("--account-picker-bottom", innerHeight - rect.top + inset + "px");
+  }
+  window.addEventListener("resize", positionPicker);
+  function paintPicker() {
+    if (shared.modal !== "picker") return;
+    const search = sharedLayer.querySelector("input"), query = search.value.trim().toLowerCase();
+    const rows = (shared.devices || []).filter(d => [d.name,d.os].join(" ").toLowerCase().includes(query));
+    const host = sharedLayer.querySelector('[data-picker-rows]');
+    const items = query ? rows : [{id:"",name:"自动"}, ...rows];
+    patchRows(host, items, d => d.id, d => d.id ? deviceRow(d, true) : `<button class="account-device-row${!targetFor(shared.bot) ? " is-selected" : ""}" type="button" data-shared="choose" data-id=""><span class="account-device-glyph">${svg("swap")}</span><span class="account-device-main"><b>自动</b><span>由 Bot 选择合适的在线设备</span></span>${!targetFor(shared.bot) ? svg("check") : ""}</button>`);
+    const status = shared.error ? `<p class="error">${esc(shared.error)}</p><button class="secondary" type="button" data-shared="retry">重试</button>` : shared.devices === null ? '<p class="account-device-note">正在读取设备…</p>' : query && !rows.length ? '<p class="account-device-note">没有匹配的设备</p><button class="text-btn" type="button" data-shared="clear-search">清除搜索</button>' : !shared.devices.length ? '<p class="account-device-note">还没有设备，请先添加设备。</p>' : "";
+    const statusNode = sharedLayer.querySelector('[data-picker-status]');
+    if (statusNode._html !== status) { statusNode.innerHTML = status; statusNode._html = status; }
+  }
+  function addDevice() {
+    sharedModal("add", "添加设备", `<p>在新电脑打开 XBot。</p><ol class="account-device-steps"><li>登录同一账号${S.acct?.email ? "：" + esc(S.acct.email) : ""}。</li><li>在新电脑主动选择「绑定这台电脑」。</li><li>保持 XBot 在线，再回到这里检查。</li></ol><p class="account-device-note" data-add-result role="status"></p>`, '<button class="secondary" type="button" data-shared="close">取消</button><button class="primary" type="button" data-shared="check-new">已在新电脑登录，检查设备</button>');
+  }
+  async function editDevice(remove) {
+    const d = shared.detail?.device; if (!d) return;
+    const dialog = sharedModal(remove ? "unbind" : "rename", remove ? "解除和「" + d.name + "」的绑定？" : "设备名称", remove ? '<p>账号内所有 Bot 将不能再使用这台设备。设备上的文件和 Bot 历史会保留。</p>' : `<label class="field"><span>名称</span><input class="ui-input" type="text" maxlength="40" value="${esc(d.name)}" aria-label="设备名称"></label>`, `<p class="error" role="status" data-shared-error></p><div class="modal-actions"><button class="secondary" type="button" data-shared="close">取消</button><button class="${remove ? "account-device-danger" : "primary"}" type="button" data-shared="save-device">${remove ? "解除绑定" : "保存"}</button></div>`);
+    if (remove) dialog.querySelector('footer [data-shared="close"]').focus();
+    dialog.querySelector('[data-shared="save-device"]').onclick = async () => {
+      const value = dialog.querySelector("input")?.value.trim();
+      if (!remove && !value) { textAt(dialog, '[data-shared-error]', "名称不能为空"); return; }
+      const generation = shared.modalGeneration;
+      dialog.querySelectorAll('footer button').forEach(b => b.disabled = true);
+      try {
+        const result = await api(remove ? "DELETE" : "PATCH", accountPath(d.id), remove ? undefined : {name:value});
+        if (generation !== shared.modalGeneration) return;
+        if (remove) { shared.detailID = ""; shared.detail = null; devicesEl.dataset.sharedPage = ""; }
+        else shared.detail.device = result.device;
+        closeSharedModal(); await readSharedDevices(); paintSharedPage();
+        if (remove) devicesEl.querySelector('[data-shared="add"]')?.focus();
+      } catch (e) { if (generation === shared.modalGeneration) textAt(dialog, '[data-shared-error]', e.message); }
+      finally { if (generation === shared.modalGeneration) dialog.querySelectorAll('footer button').forEach(b => b.disabled = false); }
+    };
+    dialog.querySelector("input")?.addEventListener("keydown", ev => { if (ev.key === "Enter" && !ev.isComposing) { ev.preventDefault(); dialog.querySelector('[data-shared="save-device"]').click(); } });
+  }
+  async function readBotDeviceTasks() {
+    if (!shared.bot || !S.acct || shared.taskRequest) return;
+    const bot = shared.bot;
+    shared.taskRequest = (async () => {
+      try {
+        const result = await api("GET", "/api/bots/" + encodeURIComponent(bot) + "/device-tasks");
+        if (bot !== shared.bot) return;
+        if (!Array.isArray(result.tasks)) throw new Error("任务状态读取失败");
+        shared.tasks = result.tasks; shared.tasksError = "";
+      } catch (e) { if (bot === shared.bot) shared.tasksError = e.message; }
+      if (bot === shared.bot) paintDeviceTaskStatus();
+    })().finally(() => { shared.taskRequest = null; });
+    return shared.taskRequest;
+  }
+  function paintDeviceTaskStatus() {
+    let row = document.getElementById("account-device-task-status");
+    if (!row) { row = document.createElement("button"); row.type = "button"; row.id = "account-device-task-status"; row.className = "account-device-task-status"; document.getElementById("composer").before(row); }
+    const task = shared.tasks.find(t => t.status === "running") || shared.tasks[0];
+    row.hidden = !shared.bot || !S.acct || (!task && !shared.tasksError);
+    const label = task ? [task.device_name, task.description || "设备任务", taskStatus(task), shared.tasksError ? "状态暂未更新" : ""].filter(Boolean).join(" · ") : "任务状态读取失败，点击重试";
+    if (row.textContent !== label && !selectedText(row)) row.textContent = label;
+    row.onclick = () => task ? openTask(task) : readBotDeviceTasks();
+    row.title = shared.tasksError ? "状态读取失败，点击重试" : "查看执行详情";
+  }
+  async function openTask(task) {
+    const dialog = sharedModal("task", "执行详情", `<h3 data-task-title></h3><p class="account-device-note" data-task-meta></p><p class="error" data-task-error role="status"></p><pre class="account-device-output" data-task-output></pre><button class="text-btn" type="button" data-shared="more-output" hidden>读取更多</button><div data-task-artifacts></div>`, '<p class="error" role="status" data-shared-error></p><div class="modal-actions"><button class="secondary" type="button" data-shared="close">关闭</button><button class="secondary" type="button" data-shared="refresh-task">重新读取</button><button class="account-device-danger" type="button" data-shared="stop-task">停止任务</button></div>');
+    dialog._task = task; dialog._offset = 0; dialog._output = "";
+    paintTask(dialog, task); await readTaskOutput(dialog);
+  }
+  function paintTask(dialog, task) {
+    dialog._task = task;
+    textAt(dialog, '[data-task-title]', task.description || "设备任务");
+    textAt(dialog, '[data-task-meta]', [task.device_name, task.bot, taskStatus(task)].filter(Boolean).join(" · "));
+    textAt(dialog, '[data-task-error]', task.error || "");
+    dialog.querySelector('[data-shared="stop-task"]').hidden = task.status !== "running";
+    patchRows(dialog.querySelector('[data-task-artifacts]'), task.artifacts || [], a => a.id, a => `<button class="text-btn" type="button" data-shared="artifact" data-id="${esc(a.id)}">${esc(a.name)}</button>`);
+  }
+  async function readTaskOutput(dialog) {
+    if (dialog._reading) return;
+    dialog._reading = true;
+    const generation = shared.modalGeneration;
+    try {
+      const result = await api("GET", taskPath(dialog._task) + "?offset=" + dialog._offset + "&limit=16384");
+      if (generation !== shared.modalGeneration) return;
+      dialog._output += result.output; dialog._offset = result.next_offset;
+      paintTask(dialog, result.task); textAt(dialog, '[data-task-output]', dialog._output);
+      dialog.querySelector('[data-shared="more-output"]').hidden = !result.output;
+      textAt(dialog, '[data-shared-error]', "");
+    } catch (e) { if (generation === shared.modalGeneration) textAt(dialog, '[data-shared-error]', e.message); }
+    finally { dialog._reading = false; }
+  }
+  async function sharedAction(action, node) {
+    switch (action) {
+      case "close": closeSharedModal(); break;
+      case "add": addDevice(); break;
+      case "detail": await openDevice(node.dataset.id); break;
+      case "back": shared.detailID = ""; ++shared.detailGeneration; paintSharedPage(); devicesEl.querySelector(`[data-shared="detail"][data-id="${CSS.escape(shared.lastDeviceID)}"]`)?.focus({preventScroll:true}); break;
+      case "retry": await readSharedDevices(); break;
+      case "retry-detail": await readDeviceDetail(); break;
+      case "rename": await editDevice(false); break;
+      case "unbind": await editDevice(true); break;
+      case "choose": setTarget(shared.bot, node.dataset.id); closeSharedModal(); break;
+      case "clear-search": sharedLayer.querySelector("input").value = ""; paintPicker(); sharedLayer.querySelector("input").focus(); break;
+      case "manage": closeSharedModal(); await openDevices(); break;
+      case "legacy": shared.legacy = true; delete devicesEl.dataset.sharedPage; render(); checkDesktop(); break;
+      case "check-new": {
+        node.disabled = true;
+        const generation = shared.modalGeneration;
+        await readSharedDevices();
+        if (generation !== shared.modalGeneration) return;
+        textAt(sharedLayer, '[data-add-result]', shared.error || "已重新读取账号设备。列表显示当前已绑定的设备。");
+        node.disabled = false; break;
+      }
+      case "task": await openTask({device_id:node.dataset.device, ref:node.dataset.ref}); break;
+      case "more-output": case "refresh-task": await readTaskOutput(sharedLayer.querySelector("dialog")); break;
+      case "stop-task": {
+        const dialog = sharedLayer.querySelector("dialog"), generation = shared.modalGeneration;
+        node.disabled = true;
+        try {
+          const result = await api("POST", taskPath(dialog._task) + "/stop", {});
+          if (generation !== shared.modalGeneration) return;
+          paintTask(dialog, result.task); textAt(dialog, '[data-shared-error]', "");
+          readBotDeviceTasks(); if (shared.detailID) readDeviceDetail();
+        } catch (e) { if (generation === shared.modalGeneration) textAt(dialog, '[data-shared-error]', e.message); }
+        finally { node.disabled = false; }
+        break;
+      }
+      case "artifact": {
+        const dialog = sharedLayer.querySelector("dialog"), task = dialog._task, generation = shared.modalGeneration;
+        const artifact = task.artifacts.find(a => a.id === node.dataset.id), chunks = [];
+        node.disabled = true;
+        try {
+          for (let offset = 0; offset < artifact.size;) {
+            const response = await fetch(taskPath(task) + "/artifacts/" + encodeURIComponent(artifact.id) + "?offset=" + offset + "&limit=32768", {credentials:"same-origin"});
+            if (!response.ok) throw new Error("产物读取失败");
+            const bytes = await response.arrayBuffer();
+            if (!bytes.byteLength) throw new Error("产物尚未完整读取，请重试");
+            chunks.push(bytes); offset += bytes.byteLength;
+            if (generation !== shared.modalGeneration) return;
+          }
+          const url = URL.createObjectURL(new Blob(chunks)), link = document.createElement("a");
+          link.href = url; link.download = artifact.name; link.click(); URL.revokeObjectURL(url);
+        } catch (e) { if (generation === shared.modalGeneration) textAt(dialog, '[data-shared-error]', e.message); }
+        finally { node.disabled = false; }
+        break;
+      }
+    }
+  }
+  document.getElementById("account-device-trigger").addEventListener("click", openPicker);
+  document.addEventListener("input", ev => { if (ev.target.id === "account-device-search" && !ev.isComposing) paintPicker(); });
+  document.addEventListener("compositionend", ev => { if (ev.target.id === "account-device-search") paintPicker(); });
+  document.addEventListener("click", ev => { const node = ev.target.closest('[data-shared]'); if (node && !node.disabled) sharedAction(node.dataset.shared, node); });
+  document.addEventListener("keydown", ev => {
+    if (sharedLayer?.firstChild && ev.key === "Escape") { ev.preventDefault(); ev.stopImmediatePropagation(); closeSharedModal(); }
+  }, true);
+  async function reloadSharedAccount() {
+    await loadAcct(); paintTarget();
+    if (S.acct) { await readSharedDevices(); readBotDeviceTasks(); }
+    else { shared.tasks = []; paintDeviceTaskStatus(); }
+  }
+  Object.assign(D, {
+    targetFor, reloadAccount: reloadSharedAccount,
+    signedOut() {
+      S.acct = null; shared.devices = null; shared.tasks = []; shared.targets.clear();
+      try { Object.keys(sessionStorage).filter(key => key.startsWith("xbot-device-target:")).forEach(key => sessionStorage.removeItem(key)); } catch (e) {}
+      D.conversation(""); paintTarget(); paintDeviceTaskStatus();
+    },
+    conversation(bot) {
+      if (bot === shared.bot) return;
+      closeSharedModal(false); shared.bot = bot; shared.tasks = []; paintTarget(); paintDeviceTaskStatus();
+      readBotDeviceTasks();
+    },
+    accepted(send) {
+      if (send._deviceAccepted) return;
+      send._deviceAccepted = true;
+      if (targetFor(send.selection.id) === send.deviceID) setTarget(send.selection.id, "");
+      readBotDeviceTasks();
+    },
+    renameBot(previous, name) {
+      const id = targetFor(previous); setTarget(previous, ""); if (id) setTarget(name, id);
+      if (shared.bot === previous) { shared.bot = name; paintTarget(); readBotDeviceTasks(); }
+    },
+  });
+  setInterval(() => {
+    if (document.hidden) return;
+    if (S.acct && (S.embedded || shared.modal === "picker")) readSharedDevices();
+    if (S.embedded && shared.detailID && !shared.legacy) readDeviceDetail();
+    readBotDeviceTasks();
+    if (shared.modal === "task") readTaskOutput(sharedLayer.querySelector("dialog"));
+  }, 3000);
+  reloadSharedAccount();
 
   // ---- 侧栏：其他电脑上的 Bot，按设备分组（v2 原型 side-full、side-gw-down、rail-devices）----
   // 组头（label）也是一行按钮：不做折叠，所以设备和 Bot 行都放进 #roster（本机行下面），app.js 重画本机行时不会冲掉；

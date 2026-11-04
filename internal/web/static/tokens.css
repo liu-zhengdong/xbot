@@ -6,6 +6,8 @@
   --ui-body:14px; --ui-action:13px; --ui-caption:12px; --ui-section:16px; --ui-page:24px;
   --ui-duration:160ms; --ui-ease:cubic-bezier(.22,1,.36,1);
   --ui-line:1.6; --ui-weight:550; --ui-disabled:.5;
+  --account-picker-width:340px; --account-picker-height:44dvh; --account-output-height:40dvh;
+  --account-picker-left:16px; --account-picker-bottom:108px;
   --workspace-side:256px; --workspace-page-inset:32px;
   --chat-body-size:15px; --ui-layer-width:420px; --ui-layer-radius:16px;
   --ui-layer-padding:24px; --ui-field-width:180px; --ui-field-narrow:132px;

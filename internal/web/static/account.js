@@ -205,6 +205,7 @@
     if (!view) return;
     pending = null;
     me = { account };
+    window.xbotDevices?.reloadAccount();
     if (embedded) { showSettingsAccount(); return; }
     route();
   }
@@ -366,7 +367,7 @@
     tx.append(Object.assign(el("b"), {textContent: masked}), Object.assign(el("p", "ac-hint"), {textContent: a.official ? "经官方网关" : "经自建网关"}));
     box.append(avatar, tx);
     const out = el("button", "ac-btn ac-sec", "退出登录"); out.type = "button";
-    out.onclick = async () => { const r = await call("POST", "/api/account/logout"); if (r.ok) { me = null; showLogin(); } else { out.textContent = "退出失败，请重试"; } };
+    out.onclick = async () => { const r = await call("POST", "/api/account/logout"); if (r.ok) { me = null; window.xbotDevices?.signedOut(); showLogin(); } else { out.textContent = "退出失败，请重试"; } };
     const wrap = el("div", "ac-settings-wrap"); wrap.append(box, out); mount(wrap);
   }
   async function mountSettings(host, isCurrent) {

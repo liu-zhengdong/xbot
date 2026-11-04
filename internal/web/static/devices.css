@@ -1,3 +1,81 @@
+/* Account devices share the settings shell. Legacy pairing styles follow. */
+.account-device-note { color: var(--x-muted); font-size: var(--ui-caption); line-height: var(--ui-line); margin: 0; }
+.account-device-list { display: grid; gap: var(--x-s3); margin-top: var(--ui-group); }
+.account-device-row { display: flex; align-items: center; gap: var(--ui-gap); width: 100%; min-height: var(--ui-record); padding: var(--x-s5) var(--x-s6); border: 0; border-radius: var(--x-r-card); background: var(--x-fill-1); color: var(--x-text); text-align: left; font: inherit; }
+.account-device-row:hover:not(:disabled), .account-device-row.is-selected { background: var(--x-fill-2); }
+.account-device-row:disabled { opacity: var(--ui-disabled); cursor: default; }
+.account-device-glyph { display: flex; flex: none; color: var(--x-muted); }
+.account-device-glyph .icon { width: var(--ui-page); height: var(--ui-page); }
+.account-device-main { flex: 1; min-width: 0; display: grid; gap: var(--x-s1); }
+.account-device-main b { font-size: var(--ui-body); font-weight: var(--ui-weight); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.account-device-main > span { color: var(--x-muted); font-size: var(--ui-caption); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-device-presence { display: grid; flex: none; gap: var(--x-s1); text-align: right; font-size: var(--ui-caption); color: var(--x-muted); }
+.account-device-presence > span:first-child { display: flex; gap: var(--x-s2); align-items: center; justify-content: flex-end; }
+.account-device-presence .status-dot.ok { background: var(--x-online); }
+.account-device-row > .icon { flex: none; width: var(--workspace-tab-icon); height: var(--workspace-tab-icon); color: var(--x-muted); }
+.account-device-footer { margin: var(--ui-group) 0 var(--x-s3); }
+.account-device-empty { padding: var(--x-s9) 0; text-align: center; }
+.account-device-empty h3 { font-size: var(--ui-section); margin: 0 0 var(--x-s3); }
+.account-device-empty p { color: var(--x-muted); margin: 0 0 var(--x-s6); }
+.account-device-back { display: inline-flex; align-items: center; gap: var(--x-s2); margin-bottom: var(--x-s5); }
+.account-device-back .icon { width: var(--workspace-tab-icon); height: var(--workspace-tab-icon); }
+.account-device-heading { display: flex; align-items: center; gap: var(--x-s6); margin: var(--x-s5) 0 var(--ui-group); }
+.account-device-heading > .icon { width: var(--ui-row); height: var(--ui-row); color: var(--x-muted); }
+.account-device-heading h2 { font-size: var(--ui-page); margin: 0 0 var(--x-s1); overflow-wrap: anywhere; }
+.account-device-value { display: flex; align-items: center; justify-content: flex-end; gap: var(--x-s5); min-width: 0; }
+.account-device-value > span { overflow-wrap: anywhere; }
+.account-device-section { margin-top: var(--ui-group); }
+.account-device-section h3 { margin: 0 0 var(--x-s5); font-size: var(--ui-section); }
+.account-device-caps { display: flex; gap: var(--x-s3); flex-wrap: wrap; }
+.account-device-cap { display: block; padding: var(--x-s1) var(--x-s3); border-radius: var(--x-r-sm); background: var(--x-fill-1); color: var(--x-muted); font-size: var(--ui-caption); }
+.account-device-task.account-device-row { background: transparent; }
+.account-device-task.account-device-row:hover { background: var(--x-fill-2); }
+.account-device-unbind { color: var(--x-danger); margin-top: var(--x-s9); margin-bottom: var(--x-s5); }
+.account-device-foot { display: flex; min-width: 0; margin-top: var(--x-s1); }
+.account-device-foot[hidden] { display: none; }
+#account-device-trigger { display: inline-flex; align-items: center; gap: var(--x-s2); max-width: 100%; min-width: 0; color: var(--x-muted); font-size: var(--ui-action); }
+#account-device-trigger span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#account-device-trigger .icon { width: var(--workspace-tab-icon); height: var(--workspace-tab-icon); flex: none; }
+#account-device-trigger .icon:last-child { transform: rotate(90deg); }
+.account-device-dialog :focus-visible { outline-color: var(--x-muted); }
+.account-device-task-status { width: 100%; display: block; padding: var(--x-s3); background: transparent; color: var(--x-muted); border: 0; border-radius: var(--x-r-sm); font: inherit; font-size: var(--ui-action); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-device-task-status[hidden] { display: none; }
+.account-device-task-status:hover { background: var(--x-fill-1); }
+.account-device-dialog { width: min(var(--ui-layer-width), calc(100vw - var(--x-s9))); max-height: calc(100dvh - var(--x-s9)); padding: 0; border: 0; border-radius: var(--ui-layer-radius); color: var(--x-text); background: var(--x-popover); box-shadow: var(--x-shadow-pop); font: var(--ui-body)/var(--ui-line) var(--x-font); overflow: auto; }
+.account-device-dialog::backdrop { background: var(--x-scrim); }
+.account-device-dialog[open] { animation: account-device-enter var(--dur-pop) var(--ease-spring); }
+@keyframes account-device-enter { from { opacity: 0; transform: scale(var(--pop-scale-start)); } to { opacity: 1; transform: scale(1); } }
+.account-device-dialog header { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-gap); padding: var(--x-s6) var(--x-s6) var(--x-s5); }
+.account-device-dialog header h2 { font-size: var(--ui-section); font-weight: var(--ui-weight); margin: 0; }
+.account-device-modal-body { padding: 0 var(--x-s6) var(--x-s6); }
+.account-device-modal-body > p { margin-top: 0; }
+.account-device-dialog footer { padding: var(--x-s5) var(--x-s6) var(--x-s6); }
+.account-device-dialog footer > .modal-actions { margin-top: 0; }
+.account-device-dialog .field input, .account-device-dialog input[type=search] { width: 100%; }
+.account-device-search { border-radius: var(--x-r-sm); background: var(--x-input); }
+.account-device-search:focus-within { box-shadow: inset 0 0 0 var(--settings-divider-width) var(--x-muted); }
+.account-device-search input { background: transparent; }
+.account-device-search input:focus-visible { outline: none; }
+.account-device-dialog .error:empty { display: none; }
+.account-device-dialog .account-device-danger { min-height: var(--ui-control); border: 0; border-radius: var(--x-r-sm); padding: 0 var(--x-s5); background: var(--x-danger); color: var(--x-on-primary); font: inherit; }
+.account-device-picker { width: min(var(--account-picker-width), calc(100vw - var(--x-s9))); position: fixed; inset: auto auto var(--account-picker-bottom) var(--account-picker-left); margin: 0; }
+.account-device-picker::backdrop { background: transparent; }
+.account-device-picker-list { max-height: var(--account-picker-height); overflow: auto; margin-top: var(--x-s5); }
+.account-device-picker .account-device-row { background: transparent; padding: var(--x-s5); }
+.account-device-picker .account-device-row:hover:not(:disabled), .account-device-picker .account-device-row.is-selected { background: var(--x-fill-2); }
+.account-device-picker footer { background: var(--x-fill-1); }
+.account-device-picker footer .text-btn { padding-left: 0; margin-top: var(--x-s3); }
+.account-device-steps { padding-left: var(--x-s7); }
+.account-device-steps li + li { margin-top: var(--x-s3); }
+.account-device-output { white-space: pre-wrap; overflow-wrap: anywhere; max-height: var(--account-output-height); overflow: auto; font: var(--ui-caption)/var(--ui-line) var(--x-mono); }
+@media(max-width:640px) {
+  .account-device-row { padding: var(--x-s5); gap: var(--x-s3); }
+  .account-device-presence { display: grid; }
+  .account-device-row > .icon { display: block; }
+  .account-device-dialog { max-height: calc(100dvh - var(--x-s9)); }
+}
+@media(prefers-reduced-motion:reduce) { .account-device-dialog[open] { animation: none; } }
+
 /* G7 设备 · 配对两台电脑。只用 app.css 里的变量；不加边框、不加分隔线。 */
 .g7-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 

@@ -8,7 +8,10 @@ func TestDesktopStatusBrowser(t *testing.T) {
  const $=s=>document.querySelector(s), assert=(v,m)=>{if(!v)throw Error(m)};
  const until=async(f,m)=>{for(let i=0;i<300;i++){if(f())return;await new Promise(r=>setTimeout(r,10))}throw Error(m)};
  const base=window.fetch;let state='denied',calls=0,pending=null;
+ const selfDevice={id:'self',name:'这台电脑',self:true,online:true,os:'macOS',capabilities:['desktop'],bots:[],running_count:0};
  window.fetch=async(p,o)=>{
+  if(p==='/api/account/devices')return json({devices:[selfDevice]});
+  if(p==='/api/account/devices/self')return json({device:selfDevice,tasks:[]});
   if(p==='/api/devices/desktop'){
    calls++;
    if(state==='pending')return new Promise(resolve=>{pending=resolve});
@@ -20,6 +23,8 @@ func TestDesktopStatusBrowser(t *testing.T) {
   return base(p,o);
  };
  await window.XBotSettings.open('devices');
+ await until(()=>$('[data-shared="detail"][data-id="self"]'),'self device hidden');
+ $('[data-shared="detail"][data-id="self"]').click();
  await until(()=>$('#g7-desktop-status')?.textContent==='无障碍未授权','denied hidden');
  assert($('#g7-desktop-help').textContent.includes('系统设置'),'no manual guide');
  const button=()=>$('#settings-devices [data-act="desktop-check"]');

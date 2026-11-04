@@ -172,11 +172,11 @@
     return raw ? msg : fallback || "操作失败，稍后再试";
   }
 
-  async function apiFetch(path, opt) {
+  async function apiFetch(path, opt, preserveError = false) {
     let res;
     try { res = await fetch(path, opt); } catch (e) { throw new Error("连不上 XBot"); }
     if (res.status === 401 && authenticated) showLogin(true);
-    if (res.status >= 500) {
+    if (res.status >= 500 && !preserveError) {
       const err = new Error("服务出了点问题，请稍后再试。");
       err.status = res.status;
       throw err;
@@ -4635,6 +4635,7 @@
 
   let subagentsView = null;
   function resetConversation() {
+    window.xbotDevices?.conversation(state.sel?.type === "bot" && !state.peer ? state.sel.id : "");
     subagentsView?.dispose(); subagentsView = null;
     $("workspace-view-agents")?.replaceChildren();
     state.tab = "chat";
@@ -7784,12 +7785,14 @@
     const bytes = crypto.getRandomValues(new Uint8Array(16));
     return {id: "web_" + Array.from(bytes, b => b.toString(16).padStart(2, "0")).join(""),
       text: (text || "").trim(), images: [...images], audios: [...audios], status: "sending",
-      serverId: null, row: null, selection: state.sel, time: new Date().toISOString(), replyTo: state.replyTo?.seq || 0};
+      serverId: null, row: null, selection: state.sel, time: new Date().toISOString(), replyTo: state.replyTo?.seq || 0,
+      deviceID: state.sel?.type === "bot" && !state.peer ? window.xbotDevices?.targetFor(state.sel.id) || "" : ""};
   }
 
   function setSendStatus(send, status) {
     if (send.status === "recorded") return;
     send.status = status;
+    if (["accepted", "queued", "recorded"].includes(status) && send.selection?.type === "bot") window.xbotDevices?.accepted(send);
     if (state.sel === send.selection) {
       threadStick.scrolled();
       paintPendingSend(send);
@@ -7878,6 +7881,7 @@
     if (state.sel !== selection || selection?.type !== "bot" || state.peer || !previous || previous !== selection.id || !name || name === previous) return false;
     // Keep this exact object: live SSE readers and attachment uploads own it.
     selection.id = name;
+    window.xbotDevices?.renameBot(previous, name);
     ++state.panelLoad; ++state.threadLoad;
     selection.historyLoading = false;
     selection.traceLoading = false;
@@ -8054,6 +8058,7 @@
       });
       marker.replaceChildren(el("span", "", (accepted ? "没送到" : "没发出去") + pictureNote), back);
     }
+    if (error.reason) marker.append(el("span", "send-reason", "：" + error.reason));
     return row;
   }
 
@@ -8090,14 +8095,20 @@
     };
     try {
       const payload = {text};
-      if (selection.type === "bot") payload.client_id = send.id;
+      if (selection.type === "bot") {
+        payload.client_id = send.id;
+        if (send.deviceID) payload.device_id = send.deviceID;
+      }
       if (images.length) payload.images = images;
       if (audios.length) payload.audios = audios;
       if (send.replyTo > 0) payload.reply_to = send.replyTo;
       const res = await apiFetch("/api/" + (selection.type === "group" ? "groups/" : "bots/") + encodeURIComponent(selection.id) + "/messages", {
         method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw Object.assign(new Error("发送失败"), {status: res.status});
+      }, !!send.deviceID);
+      if (!res.ok) {
+        const failure = await res.json().catch(() => null);
+        throw Object.assign(new Error(failure?.error || "发送失败"), {status: res.status});
+      }
       setSendStatus(send, "accepted");
       if (state.sel !== selection) {
         if (prose && !(res.headers.get("content-type") || "").includes("application/json")) await readSSE(res, selection, prose, markQueued, () => {});
@@ -8144,7 +8155,7 @@
       live?.remove();
       const restored = !composerText(input).trim() && !!text;
       if (restored) { composerSet(text); composerRefreshHeight(); }
-      send.error = {phase: replyFailed ? "reply" : "send", restored};
+      send.error = {phase: replyFailed ? "reply" : "send", restored, reason: send.deviceID && !replyFailed ? zhError(e.message) : ""};
       setSendStatus(send, e.status >= 400 && e.status < 500 ? "failed" : "uncertain");
       announceSend(restored ? "没发出去，原文还在输入框里" + (images.length ? "，图片要重新贴一次" : "") : audios.length ? "语音没发出去，可以重试" : "没发出去" + (images.length ? "，图片要重新贴一次" : ""));
       syncComposer();
@@ -8619,6 +8630,7 @@
   }
 
   function syncComposer() {
+    window.xbotDevices?.conversation(state.sel?.type === "bot" && !state.peer ? state.sel.id : "");
     const hasText = composerText(input).trim().length > 0;
     input.classList.toggle("is-empty", !hasText);
     const ready = attachReady().length > 0;
@@ -8696,6 +8708,7 @@
   });
 
   function forgetOwner() {
+    window.xbotDevices?.signedOut();
     state.sel = null;
     state.knownNotes = null;
     state.listSig = "";
@@ -9186,7 +9199,7 @@
   // Escape consumes one layer per press, topmost first. Device and pairing
   // layers have their own handlers and must see the key before this one.
   function deviceLayerOpen() {
-    for (const id of ["devices-modal"]) {
+    for (const id of ["devices-modal", "account-devices-modal"]) {
       const layer = $(id);
       if (layer && layer.firstChild) return true;
     }
@@ -9481,6 +9494,7 @@
   let booted = false;
   async function enterOwner(name) {
     if (booted && authenticated) {
+      window.xbotDevices?.reloadAccount();
       login.hidden = true;
       shell.hidden = false;
       if (name) await selectBot(name);
