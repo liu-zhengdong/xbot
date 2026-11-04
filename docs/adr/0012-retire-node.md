@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Accepted
+status: Superseded in part by ADR 0075
 date: 2026-10-18
 ---
 # 0012 退役「节点」，多台电脑只靠网关配对

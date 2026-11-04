@@ -60,9 +60,26 @@ UC 与设计来源：[长期设计](</Users/liuzhengdong/Obsidian笔记/正在�
 - 前端 Agent：仅本轮静态 JS/CSS/HTML 与相关浏览器前端用例。按确认原型复用现有组件、token、挂卸载与草稿，不复制原型整套壳。
 - 主管：冻结合同、ADR、独立验收与代码复审、集成和文档。相互独立 worktree，禁止覆盖其他进行中的供应商改动。
 
-拟议前端合同：保留 `GET /api/account/devices` 的 `devices` 外壳；设备字段扩展 `os`、`capabilities`、`last_seen` 与 `running_count`。`GET/PATCH/DELETE /api/account/devices/{id}` 分别取详情、改名 `{name}` 与解绑。详情返回 `{device,tasks}`。消息发送复用原入口，增加可选 `device_id`；源运行冻结设备选择。任务列表/详情/停止/附件接口由后端在编码前与前端对齐，不能由前端发明本地成功状态。
+前后端合同于 2026-11-04 冻结：
 
-最终字段与新增端点由两位执行者在首轮检查后写入本节。已确认语义不因实现方便改变。
+| 入口 | 合同 |
+| --- | --- |
+| `GET /api/account/devices` | `{devices:[{id,name,self,online,bots,os,capabilities,last_seen,running_count}]}` |
+| `GET /api/account/devices/{id}` | `{device,tasks}` |
+| `PATCH /api/account/devices/{id}` | 请求 `{name}`，返回 `{device}` |
+| `DELETE /api/account/devices/{id}` | 返回 `{unbound:true}` |
+| `GET /api/account/devices/{id}/tasks?bot=NAME` | `{tasks}` |
+| `GET /api/account/devices/{id}/tasks/{ref}?offset=N&limit=N` | `{task,output,next_offset}`，输出默认 16 KiB、最多 32 KiB |
+| `POST /api/account/devices/{id}/tasks/{ref}/stop` | `{task}` |
+| `GET /api/account/devices/{id}/tasks/{ref}/artifacts/{artifact_id}` | 原始字节有界下载，较大产物使用 offset/limit 分块 |
+| `GET /api/bots/{name}/device-tasks` | `{tasks}`，供原输入区单行状态使用 |
+| 原主人 messages POST | 增加可选 `device_id`；成功受理后前端恢复自动 |
+
+`Task` 字段为 `id,ref,device_id,device_name,bot,context_id,kind,description,status,started_at,finished_at?,error?,artifacts:[{id,name,size}]`。状态为 `running|completed|failed|cancelled`。传输回执不明作为真实错误回报，不伪造未知任务。`ref` 是原设备/上下文的稳定引用，不用不同设备可能碰撞的裸 Job ID。
+
+设备 capabilities 为字符串数组，last_seen 使用 RFC3339。没有真实能力或任务数据时不编造对应显示。状态轮询复用现有生命周期，不另造 SSE。消息目标按每次真实受理冻结，不设跨 Bot 全局当前设备。
+
+源运行时 CLI 合同：`"$XBOT_BIN" device exec --self --json --args '{"command":"...","description":"..."}'`。可显式 `--device ID`，否则沿消息 prepared context 的冻结目标。`read/write` 使用同一 `--args` 方式传递 `path/content`。查询使用 `device tasks --self --json`、`device task REF --self --json`，停止使用 `device stop REF --self --json`。exec 默认 sh。副作用调用发送前生成稳定 ref，也可显式传 `--ref REF`。来源必须来自原运行入口，不能自报账号/Bot或脱离真实prepared Shell上下文。
 
 ## 对照回顾
 

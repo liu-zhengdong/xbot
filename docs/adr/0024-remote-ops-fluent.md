@@ -1,7 +1,7 @@
 ---
 kind: adr
 guard: owner
-status: Accepted
+status: Superseded in part by ADR 0075
 date: 2026-10-26
 ---
 # 0024 手机薄入口经网关操作设备要流畅：加密实时管道为主，信箱只管异步消息
