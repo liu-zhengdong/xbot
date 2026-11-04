@@ -203,6 +203,10 @@ func ReadMCPReply(response *http.Response) (MCPReply, error) {
 		}
 		_ = json.Unmarshal(raw, &failure)
 		if failure.Error != "" {
+			// 服务端已经带上 "mcp: " 前缀，别再套一层；不然命令行里会看到 mcp: mcp: xxx。
+			if strings.HasPrefix(failure.Error, "mcp: ") {
+				return reply, errors.New(failure.Error)
+			}
 			return reply, fmt.Errorf("mcp: %s", failure.Error)
 		}
 		return reply, fmt.Errorf("mcp: HTTP %d", response.StatusCode)
