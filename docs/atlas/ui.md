@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-03 @ dfcdde9c (desktop settings outside-click and Escape dismissal; near-bottom reply follow retained)
+verified: 2026-11-04 @ dfcdde9c (+ frontend-standard working tree; geometry, controls, settings and real serve journey)
 
 ---
 # 网页界面
@@ -59,6 +59,12 @@ Composer 的 mic 在发送钮左侧：点按进入录音条，「发送」提交
 
 **设计变量集中在一份文件。** `tokens.css` 单独加载、先于 `app.css`，组件只引用里面的变量（颜色、字号、间距、圆角、动效时长和曲线）。设计师以后改变量时整份替换，不用改组件。
 
+前端标准唯一入口是项目根 [design.md](../../design.md)。共享角色由现有 `tokens.css` 提供，普通文字按钮与嵌套弹窗由 `app.css` 提供。业务模块继续拥有数据、请求与生命周期。结构决定见 [ADR 0074](../adr/0074-frontend-standard.md)。
+
+普通控件 36px，单行列表最小 40px，双行列表最小 64px。正文与导航 14px，普通操作 13px，辅助文字 12px；设置操作统一 14px。文字 Button 不配图标，专用图标控件和对象标识保留。普通行不铺斑马底。减少动态效果时，公共按钮不缩放。
+
+未保存拖宽值时，侧栏随窗口采用 256px／232px；已保存宽度优先。身份栏 56px，标签带 48px、标签按钮 36px；手机标签带 46px。记录页最大 960px，页面边距按桌面／中间宽度／手机采用 32／24／20px。聊天正文在桌面与手机均为 15px；输入框和语音保留专用尺寸。几何与弱文字操作由 `frontend_standard_browser_test.go` 检查。
+
 ## 怎么运转
 ### 公网登录后的设备壳
 
@@ -67,7 +73,7 @@ Composer 的 mic 在发送钮左侧：点按进入录音条，「发送」提交
 设备选择时会关闭原 pipe 并整页重载。未选择时取在线设备；明确选择的设备离线时显示原因和重试，不自动换设备、不回落旧壳。会话版本由设备静态响应的 `X-Xbot-Tip` 提供，纯 dev 构建用内嵌 UI 摘要区分。同步脚本不再是业务 UI 发版路径。协议、安全和体限见 [ADR 0029](../adr/0029-public-ui-single-source-via-pipe.md)、[API](../API.md#设备静态壳)。 设计师用户视角已 PASS（合入 tip `a02e3f3`）：公网 `/app/` 仅 pipe 薄引导（`boot.js` 200、`app.js` 404），业务壳经设备 `GET /api/ui/static`；本约定即 atlas 真源。登录后主壳缺会话不挡本条收口。
 ### 统一设置浮层
 
-设置壳采用浅灰底板和内缩的白色主面。桌面尺寸上限 820×681，侧栏 176px，主面圆角 18px，内容边距 28px。导航和配置操作共用 14px 字号，辅助文字 12px，页标题 23px；变量集中在 `tokens.css` 的 `--settings-*`，仅在设置壳内覆盖字号与辅助灰度。各分类共用标题节奏和固定高度，长内容独立滚动。普通行保持透明，供应商模型列表没有斑马纹。浅深主题下，单色品牌标保持可见。
+设置壳采用浅灰底板和内缩的白色主面。桌面尺寸上限 820×681，侧栏 176px，主面圆角 18px，内容边距 28px。导航和配置操作共用 14px 字号，辅助文字 12px，页标题 24px；变量集中在 `tokens.css` 的 `--settings-*`，仅在设置壳内覆盖字号与辅助灰度。各分类共用标题节奏和固定高度，长内容独立滚动。普通行保持透明，供应商模型列表没有斑马纹。浅深主题下，单色品牌标保持可见。
 
 通用页按个人、外观、通知分组。头像、名称及更换／清除操作在同一行；清除只在有自定义图时出现。主题使用三张原生 radio 预览；手机推送使用关闭／开启分段。推送提交期间禁用分段，成功后更新选择，权限拒绝或保存失败保留原选择并显示错误。键盘焦点循环按单选组的当前选中项处理。`TestSettingsGeneralBrowser` 守住主题偏好、推送成功／失败和窄屏目录返回；头像、滚动及各子页沿用对应浏览器回归。确认原型与 DPR 2 实际截图保存在 `~/.xbot-build/ui-shots/general-settings-prototype/` 和 `~/.xbot-build/ui-shots/settings-refresh/`。长期 UC 来源为用户 Obsidian「设置页视觉统一」。
 
@@ -80,7 +86,7 @@ Composer 的 mic 在发送钮左侧：点按进入录音条，「发送」提交
 
 ### 主人头像
 
-设置「通用」的「我的头像」提供预览、「换一张」及有自定义图时的「清除」。整机唯一图片在数据根 `owner-avatar`；`/api/session.owner_avatar_url` 和 `GET/POST/DELETE /api/owner/avatar` 共用此文件，没有 localStorage 图片副本。上传沿 Bot 现有 PNG/JPEG/GIF/WebP、1 MiB 和 multipart 范式（均不另做压缩），类型按字节嗅探、原子落盘；成功后设置预览与侧栏「我」同时使用 URL，清除回 `owner_name` 线稿。认证、同源、缓存契约见 [API](../API.md#主人头像)。接口与脚本化浏览器守护在 `owner_avatar_test.go`、`owner_avatar_browser_test.go`；真实二进制走查脚本为 `internal/web/testdata/owner-avatar.cjs`。
+设置「通用」的个人行显示头像与 `owner_name`，提供「换一张」及有自定义图时的「清除」。整机唯一图片在数据根 `owner-avatar`；`/api/session.owner_avatar_url` 和 `GET/POST/DELETE /api/owner/avatar` 共用此文件，没有 localStorage 图片副本。上传沿 Bot 现有 PNG/JPEG/GIF/WebP、1 MiB 和 multipart 范式（均不另做压缩），类型按字节嗅探、原子落盘；成功后设置预览与侧栏「我」同时使用 URL，清除回 `owner_name` 线稿。认证、同源、缓存契约见 [API](../API.md#主人头像)。接口与脚本化浏览器守护在 `owner_avatar_test.go`、`owner_avatar_browser_test.go`；真实二进制走查脚本为 `internal/web/testdata/owner-avatar.cjs`。
 ### 保险库设置
 
 「保险库」（`static/vault.js` / `vault.css`）展示整机单库，所有 Bot 共用；不显示「当前 Bot」，不要求先选 Bot，切侧栏 Bot 不换列表或清草稿。左栏在权限后、网页搜索前，采用定稿 Grok 风格：全部/出站/本机计数 chip（中性 fill-2 选中）、名称与域名搜索、轻 fill-1 圆角卡。卡左钥匙/终端色块 glyph 的浅深色由专属 token 提供，名称等宽、副行域名或「本机」，右侧「管理」。没有整页灰壳或描边选中。出站是有域名，本机是空域名（包括 LOCAL_SUDO）；筛选与搜索无结果分开说明，全空给添加和本机 sudo 两按钮。
@@ -181,7 +187,7 @@ Bot 发送只凭同一 owner 的 `chat.meta.event_id` 精确对账。对应持�
 
 布局依据 [ADR 0042](../adr/0042-chat-workspace-tabs.md) 和[已确认原型](../prototypes/chat-tabs/README.md)。顶栏先身份与资料编辑、主题、聊天搜索、更新操作，再「聊天、记忆、轨迹、任务、上下文、收件箱、更多」。聊天固定第一；更多管理其他标签显隐，偏好存在本机；间接打开任务或上下文会恢复目标标签。群组仅露聊天，身份区和更多可查看成员；往来继续只读。
 
-主区保留一份聊天 DOM。非聊天视图隐藏聊天、冻结滚动观察并保留草稿、附件、引用、历史位置和 SSE；返回后恢复历史锚或跟尾。各内容视图用原 API 和组件，选择 Bot 回聊天并隔离迟到响应。记忆宽屏左全文右经历、窄屏顺排；任务保持编辑草稿、焦点和复制选择；上下文用量只在顶部「上下文」页查看；聊天输入框下方不再显示用量条，输入框距主工作区底边为 8px 加设备安全区，多行草稿仍向上展开。顶部资料入口承接原详情，职责、人设卡和模型换绑不变。
+主区保留一份聊天 DOM。非聊天视图隐藏聊天、冻结滚动观察并保留草稿、附件、引用、历史位置和 SSE；返回后恢复历史锚或跟尾。各内容视图用原 API 和组件，选择 Bot 回聊天并隔离迟到响应。记忆在桌面与窄屏均为单栏，上方全文预览、下方经历；任务保持编辑草稿、焦点和复制选择；上下文用量只在顶部「上下文」页查看；聊天输入框下方不再显示用量条，输入框距主工作区底边为 8px 加设备安全区，多行草稿仍向上展开。顶部资料入口承接原详情，职责、人设卡和模型换绑不变。
 
 更多操作从左侧本机 Bot 行或置顶头像右键／触控长按进入，复用同一菜单：取消置顶 / 置顶、移到分组、复刻、复制 Bot ID、打开工作目录（只在桌面版有）、导出对话，空一格后是红字「删除 Bot」。操作绑定被点的 Bot，不切换当前对话，也不把远端同名 Bot 当成本机；滚动、取消触控不会误开，长按松手不触发普通选择。重复打开先关旧菜单及其子菜单。复制 Bot ID 用一个 3 秒消失的提示（toast）回执；toast 只用于复制、保存这类回执，不带撤销。
 

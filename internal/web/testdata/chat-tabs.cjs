@@ -14,6 +14,40 @@ const cfg=JSON.parse(fs.readFileSync(0,'utf8'));
   const requests=[];p.on('request',r=>requests.push(new URL(r.url()).pathname));
   const tab=name=>p.locator('#workspace-tabs').getByRole('tab',{name,exact:true});
   const shot=async name=>{if(!cfg.evidence)return;const dir=path.join(cfg.evidence,'after',theme);fs.mkdirSync(dir,{recursive:true});await p.screenshot({path:path.join(dir,name+'.png'),animations:'disabled'})};
+  const settingsShots=async width=>{
+   if(!cfg.evidence)return;
+   if(width<768)await p.locator('#menu').click();
+   await p.locator('#account').click();await p.locator('#account-settings').click();
+   for(const [section,ready] of [['general','#settings-theme'],['skills','.skrow'],['providers','.provider-search input']]){
+    if(width<=640&&section!=='general')await p.locator('#settings-back').click();
+    if(width<=640||section!=='general')await p.locator('[data-set="'+section+'"]').click();
+    await p.locator(ready).first().waitFor({state:'visible'});
+    assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'settings overflow '+width+' '+section);
+     const geometry=await p.evaluate(({section,width})=>{
+      const bounds=n=>{const r=n.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height}};
+      const main=bounds(document.querySelector('.setmain')),content=bounds(document.querySelector('.setcnt'));
+      if(main.left<0||main.right>innerWidth||main.top<0||main.bottom>innerHeight)throw Error('settings main outside viewport');
+      if(content.left<main.left||content.right>main.right||content.top<main.top||content.bottom>main.bottom)throw Error('settings content outside main');
+      const selectors={general:['#settings-owner-upload','.theme-option-light'],skills:['.sksearch','.sktoolbar button'],providers:['.provider-search input','.provider-card']}[section];
+      const controls=selectors.map(selector=>{
+       const n=document.querySelector(selector),r=bounds(n);
+       if(r.left<0||r.right>innerWidth||r.top<0||r.bottom>innerHeight||!r.width||!r.height)throw Error('settings control outside viewport: '+selector);
+       for(const [x,y] of [[r.left+r.width/2,r.top+r.height/2],[r.left+6,r.top+6],[r.right-6,r.top+6],[r.left+6,r.bottom-6],[r.right-6,r.bottom-6]]){
+        if(!n.contains(document.elementFromPoint(x,y)))throw Error('settings control covered: '+selector+' at '+x+','+y);
+       }
+       return {selector,...r};
+      });
+      return {section,width,main,content,controls};
+     },{section,width});
+     console.log(JSON.stringify({theme,settingsGeometry:geometry}));
+    await shot('settings-'+section+(width===1440?'':'-'+width));
+   }
+   await p.keyboard.press('Escape');await p.locator('#setpage').waitFor({state:'hidden'});
+   if(width<768){
+    if(await p.locator('#backdrop').isVisible())await p.locator('#backdrop').click({position:{x:width-8,y:450}});
+    await p.waitForFunction(()=>document.querySelector('#sidebar').getBoundingClientRect().right<=1);
+   }
+  };
   await p.goto(cfg.url);await p.locator('#thread .msg').last().waitFor();
   await p.locator('.thread-loading-cover').waitFor({state:'detached'});
   assert.equal(await tab('聊天').getAttribute('aria-selected'),'true');
@@ -107,6 +141,7 @@ const cfg=JSON.parse(fs.readFileSync(0,'utf8'));
    document.documentElement.classList.remove('in-app','os-mac','os-win');
    document.documentElement.style.removeProperty('--mygo-titlebar-height');
   });
+  await settingsShots(1440);
   for(const width of [768,390]){
    await p.setViewportSize({width,height:900});
    await p.waitForFunction(()=>innerWidth>=768||document.querySelector('#sidebar').getBoundingClientRect().right<=1);
@@ -121,6 +156,7 @@ const cfg=JSON.parse(fs.readFileSync(0,'utf8'));
     await shot(name+'-'+width);
    }
   }
+  await settingsShots(390);
   assert.deepEqual(errors,[]);await context.close();
  }
  }finally{await browser.close()}

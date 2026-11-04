@@ -97,7 +97,7 @@
             row = el("div", "sa-task"); row.dataset.agent = t.id;
             const head = el("div", "sa-task-head"), text = el("div", "sa-task-copy"), title = el("b"), type = el("span", "ty"), status = el("span", "sa-task-status");
             text.append(title, type); head.append(taskAvatar(t), text, status);
-            const step = el("p", "sa-task-step"), enter = button("查看对话", "secondary sa-enter", "message-circle");
+            const step = el("p", "sa-task-step"), enter = button("查看对话", "secondary sa-enter");
             enter.onclick = () => open(t.id); row.append(head, step, enter);
             row.nodes = {title, type, status, step, enter}; rows.set(t.id, row);
           }
@@ -138,10 +138,10 @@
       const c = {id, task:{...task}, entries:new Map(), rowNodes:new Map(), events:[], generation:0, query:"", selected:null, detailTab:"summary", readPending:false, sending:false, stopping:false};
       child = c; storage.write(chosenKey(), id); overview.hidden = true; root.classList.add("child-open");
       const view = el("div", "sa-child"), head = el("header", "sa-child-head"), breadcrumb = el("div", "sa-breadcrumb");
-      const back = button("子代理", "text-btn", "chevronLeft"), parent = button("回主 Bot", "text-btn", "message-circle"); back.onclick = closeChild; parent.onclick = backParent; breadcrumb.append(back, parent);
+      const back = button("子代理", "text-btn"), parent = button("回主 Bot", "text-btn"); back.onclick = closeChild; parent.onclick = backParent; breadcrumb.append(back, parent);
       const titleRow = el("div", "sa-title-row"), titleBox = el("div", "sa-title-copy"), title = el("h2"), meta = el("p"), type = el("span", "ty"), status = el("span"), step = el("p", "sa-child-step");
       meta.append(type, status); titleBox.append(title, meta);
-      const stop = button("", "secondary sa-stop", "square"), stopLabel = el("span"); stop.append(stopLabel); stop.onclick = () => stopChild(c);
+      const stop = button("", "secondary sa-stop"), stopLabel = el("span"); stop.append(stopLabel); stop.onclick = () => stopChild(c);
       titleRow.append(taskAvatar(task), titleBox, stop); head.append(breadcrumb, titleRow, step, el("div", "task-notable"));
       const main = el("div", "sa-record-workspace"), column = el("div", "sa-main"), toolbar = el("div", "sa-record-toolbar"), searchBox = el("label", "sa-search"), search = el("input");
       search.type = "search"; search.placeholder = "搜索已加载记录"; search.setAttribute("aria-label", "搜索已加载的子代理记录"); searchBox.append(icon("search"), search);

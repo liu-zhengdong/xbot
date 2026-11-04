@@ -8677,11 +8677,11 @@
     try { sessionStorage.removeItem("xbot-selected-bot"); } catch (e) {}
     try { localStorage.removeItem("xbot-selected-bot"); } catch (e) {}
   }
-  const SIDE = { min: 210, max: 360, def: 232, snap: 200, rail: 72 };
+  const SIDE = { min: 210, max: 360, def: null, snap: 200, rail: 72 };
   function readSide() {
     try {
       const saved = JSON.parse(localStorage.getItem("xbot.side") || "{}");
-      return { w: Math.max(SIDE.min, Math.min(SIDE.max, Number(saved.w) || SIDE.def)), rail: !!saved.rail };
+      return { w: Number(saved.w) > 0 ? Math.max(SIDE.min, Math.min(SIDE.max, Number(saved.w))) : null, rail: !!saved.rail };
     } catch (e) { return { w: SIDE.def, rail: false }; }
   }
   let side = readSide();
@@ -8689,7 +8689,8 @@
     const rail = window.innerWidth >= 768 && side.rail;
     sidebar.classList.toggle("rail", rail);
     document.documentElement.classList.toggle("has-rail", rail);
-    sidebar.style.setProperty("--side-w", (rail ? SIDE.rail : side.w) + "px");
+    if (rail || side.w) sidebar.style.setProperty("--side-w", (rail ? SIDE.rail : side.w) + "px");
+    else sidebar.style.removeProperty("--side-w");
   }
   function saveSide() { localStorage.setItem("xbot.side", JSON.stringify(side)); }
   const sideGrip = $("side-grip");
@@ -8865,6 +8866,7 @@
   window.XBotSettings = { open: openSettings, close: closeSettings, isOpen: () => !$("setpage").hidden };
   function paintOwnerAvatar() {
     $("settings-owner-preview").replaceChildren(avatar(state.ownerName, { url: state.ownerAvatarURL }, "xl"));
+    $("settings-owner-name").textContent = state.ownerName || "你";
     $("settings-owner-clear").hidden = !state.ownerAvatarURL;
   }
   async function changeOwnerAvatar(file) {

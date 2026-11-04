@@ -25,6 +25,12 @@ func TestChatTabsJourney(t *testing.T) {
 	srv := Start(t, StartStub(t))
 	srv.CreateBot("Workspace", "聊天页面改版验收")
 	srv.CreateBot("Other", "切换隔离验收")
+	if status, body := srv.do("POST", "/api/skills/import", map[string]any{
+		"folder":  "layout-evidence",
+		"content": "---\nname: layout-evidence\ntitle: 布局验收技能\ndescription: 用独立测试数据检查技能列表与控件布局。\n---\n\n只用于界面取证。\n",
+	}); status != 200 {
+		t.Fatalf("seed skill: %d %s", status, body)
+	}
 	srv.Send("Workspace", "SMOKE_HELLO_1")
 	b, err := bot.Load(srv.Root, "Workspace")
 	if err != nil {

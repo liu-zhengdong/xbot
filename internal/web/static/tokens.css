@@ -1,6 +1,14 @@
-/* XBot 视觉规范 v1 · 方向 A「白纸」+ 深色（B 式明度分层）
+/* XBot 前端标准 · 规范见项目根 design.md
    用法：html[data-theme="dark"] 切深色；所有组件只引用这些变量。 */
 :root{
+  /* Common roles own control geometry; pages own composition. */
+  --ui-control:36px; --ui-row:40px; --ui-record:64px; --ui-gap:12px; --ui-group:24px;
+  --ui-body:14px; --ui-action:13px; --ui-caption:12px; --ui-section:16px; --ui-page:24px;
+  --ui-duration:160ms; --ui-ease:cubic-bezier(.22,1,.36,1);
+  --ui-line:1.6; --ui-weight:550; --ui-disabled:.5;
+  --workspace-side:256px; --workspace-page-inset:32px;
+  --chat-body-size:15px; --ui-layer-width:420px; --ui-layer-radius:16px;
+  --ui-layer-padding:24px; --ui-field-width:180px; --ui-field-narrow:132px;
   /* 弹出层：一次回弹；缩小动效模式只淡入淡出。 */
   --ease-spring:cubic-bezier(0.34,1.56,0.64,1);
   --dur-pop:220ms; --dur-pop-close:120ms; --dur-press:120ms; --dur-motion-reduced:100ms;
@@ -13,17 +21,16 @@
   --x-card:#ffffff;       /* 主卡片（对话区） */
   --x-panel:#fafafa;      /* 信息面板，和对话区同卡，靠底色分开 */
   --x-panel-card:#ffffff; /* 面板里的卡片：任务卡、例程 */
-  --x-fill-1:#f5f5f7;     /* 卡片内的块：任务卡、命令框、斑马行 */
+  --x-fill-1:#f5f5f7;     /* 卡片内的块：任务卡、命令框 */
   --x-fill-2:#ededf0;     /* 次级按钮、标签、悬停 */
   --x-fill-3:#e4e4e8;     /* 选中、按下 */
-  --x-zebra:#f4f4f6;
   --x-user-bubble:#18181b; --x-user-bubble-text:#ffffff; /* 用户气泡：深底白字（同 primary） */
   --x-user-code:rgba(255,255,255,.14); --x-user-sel:rgba(255,255,255,.28); /* 用户气泡里的代码块 / 选中 */
   --x-bot-bubble:#f5f5f7; /* Bot 气泡（单聊），同 fill-1 */
   --x-input:#f3f3f5;      /* 输入框 */
   --x-code:#f1f1f3;
   /* 文字四档 */
-  --x-text:#18181b; --x-text-2:#3f3f46; --x-muted:#6b6b70; --x-faint:#9a9aa0; --x-ph:#a6a6ac;
+  --x-text:#18181b; --x-text-2:#3f3f46; --x-muted:#6b6b70; --x-faint:var(--x-muted); --x-ph:var(--x-muted);
   /* 主操作：黑底白字（深色反过来） */
   --x-primary:#18181b; --x-primary-hover:#33333a; --x-on-primary:#ffffff;
   --x-disabled:#e2e2e6; --x-on-disabled:#a6a6ac;
@@ -67,23 +74,23 @@
   --x-formula-copy-size:26px; --x-formula-icon-size:14px; --x-formula-gap:2px;
   --x-formula-copy-radius:7px;
   /* 字号 */
-  --x-fs-cap:11.5px; --x-fs-label:12px; --x-fs-sm:12.5px; --x-fs-ui:13.5px; --x-fs-body:15px; --x-fs-title:17px; --x-fs-greet:19px; --x-fs-h:24px;
+  --x-fs-cap:var(--ui-caption); --x-fs-label:var(--ui-caption); --x-fs-sm:var(--ui-caption); --x-fs-ui:var(--ui-body); --x-fs-body:var(--ui-body); --x-fs-title:var(--ui-section); --x-fs-greet:19px; --x-fs-h:24px;
   /* 间距（4 的倍数为主，6/10 用于紧凑行） */
   --x-s1:4px; --x-s2:6px; --x-s3:8px; --x-s4:10px; --x-s5:12px; --x-s6:16px; --x-s7:20px; --x-s8:24px; --x-s9:32px;
   /* 圆角 */
   --x-r-xs:6px; --x-r-sm:8px; --x-r-card:12px; --x-r-bubble:18px; --x-r-input:24px; --x-r-pill:999px;
   /* 保险库：已定稿 Grok 风格卡行，色块只区分出站 / 本机。 */
   --vault-outbound:#d4897a; --vault-local:#5a9e7f; --vault-glyph-ink:#fff;
-  --vault-glyph-size:36px; --vault-card-radius:14px; --vault-card-height:56px;
+  --vault-glyph-size:36px; --vault-card-radius:14px; --vault-card-height:var(--ui-record);
   --vault-search-width:200px; --vault-search-icon:14px;
   --vault-glyph-radius:10px; --vault-chip-height:28px;
   color-scheme:light;
 }
 html[data-theme="dark"]{
   --x-win:#0f0f11; --x-card:#18181b; --x-panel:#1c1c20; --x-panel-card:#24242a;
-  --x-fill-1:#222226; --x-fill-2:#2a2a2f; --x-fill-3:#33333a; --x-zebra:#222226;
+  --x-fill-1:#222226; --x-fill-2:#2a2a2f; --x-fill-3:#33333a;
   --x-user-bubble:#ececef; --x-user-bubble-text:#18181b; --x-user-code:rgba(24,24,27,.08); --x-user-sel:rgba(24,24,27,.16); --x-bot-bubble:#222226; --x-input:#252528; --x-code:#2a2a2f;
-  --x-text:#ececef; --x-text-2:#d4d4d8; --x-muted:#a1a1a9; --x-faint:#6f6f78; --x-ph:#6f6f75;
+  --x-text:#ececef; --x-text-2:#d4d4d8; --x-muted:#a1a1a9; --x-faint:var(--x-muted); --x-ph:var(--x-muted);
   --x-primary:#f2f2f2; --x-primary-hover:#ffffff; --x-on-primary:#111111;
   --x-disabled:rgba(255,255,255,.08); --x-on-disabled:#6f6f75;
   --x-danger:#f97066; --x-danger-bg:rgba(249,112,102,.12); --x-online:#3fb27f; --x-pending:#d9b44a;
@@ -106,7 +113,7 @@ html[data-theme="dark"]{
 
 /* Voice chat: approved composer and bubble geometry. */
 :root {
-  --voice-button:32px; --voice-mic-button:36px; --voice-wave-base:56px;
+  --voice-button:32px; --voice-mic-button:32px; --voice-wave-base:56px;
   --voice-wave-bar:3px; --voice-wave-radius:1.5px; --voice-wave-muted:.55;
   --voice-caption-size:13px; --voice-user-muted:.7;
   --chat-paragraph-gap:9px; --voice-dot:10px;
@@ -116,12 +123,12 @@ html[data-theme="dark"]{
 /* Approved chat workspace v2: slimmer head/tabs, one reading surface, dark
    user bubble again (chat-workspace-v2 prototype, user-approved). */
 :root {
-  --workspace-head:56px; --workspace-tabs:42px; --workspace-tab-height:32px;
-  --workspace-thread:760px; --workspace-reading:920px; --workspace-gutter:28px;
-  --workspace-control:32px; --workspace-avatar:32px;
+  --workspace-head:56px; --workspace-tabs:48px; --workspace-tab-height:var(--ui-control);
+  --workspace-thread:760px; --workspace-reading:960px; --workspace-gutter:32px;
+  --workspace-control:var(--ui-control); --workspace-avatar:32px;
   --composer-min-height:44px; --composer-btn-size:32px;
   --composer-radius:22px; --composer-expanded-radius:18px;
-  --memory-search-width:280px; --memory-search-height:40px; --memory-row-padding:20px;
+  --memory-search-width:280px; --memory-search-height:var(--ui-control); --memory-row-padding:var(--ui-gap);
   --sa-detail-width:390px; --sa-detail-medium:350px; --sa-detail-narrow:320px;
   --memory-detail-gap:14px; --memory-enter-offset:4px;
   --memory-reading-width:36em; --memory-dialogue-gap:20px;
@@ -142,16 +149,16 @@ html[data-theme="dark"]{
 html[data-theme="dark"] .workspace :is(.chat, .dock) :where(.bubble,.send-state) {
   --x-user-code:rgba(24,24,27,.08); --x-user-sel:rgba(24,24,27,.16);
 }
-@media(min-width:1600px) { :root { --workspace-thread:820px; --workspace-reading:1000px; } }
-@media(max-width:1100px) { :root { --workspace-gutter:20px; } }
-@media(max-width:767px) { :root { --workspace-gutter:16px; } }
+@media(min-width:1600px) { :root { --workspace-thread:820px; } }
+@media(max-width:1100px) { :root { --workspace-side:232px; --workspace-gutter:24px; --workspace-page-inset:24px; } }
+@media(max-width:767px) { :root { --workspace-gutter:20px; --workspace-page-inset:20px; --workspace-tabs:46px; } }
 
 /* Approved settings: a neutral shell, one white surface, visible theme choices. */
 :root {
   --settings-width:820px; --settings-height:681px; --settings-nav:176px;
-  --settings-gutter:28px; --settings-ui:14px; --settings-caption:12px; --settings-title:23px;
-  --settings-radius:18px; --settings-nav-row:38px; --settings-avatar:60px;
-  --settings-section:36px; --settings-preview-height:83px; --settings-button-height:34px;
+  --settings-gutter:28px; --settings-ui:var(--ui-body); --settings-caption:var(--ui-caption); --settings-title:var(--ui-page);
+  --settings-radius:18px; --settings-nav-row:var(--ui-row); --settings-avatar:60px;
+  --settings-section:var(--ui-group); --settings-preview-height:83px; --settings-button-height:var(--ui-control);
   --settings-fill:#f4f4f6; --settings-selected:#e8e8ec;
   --settings-divider-width:1px; --settings-divider:#e9e9ed; --settings-row-divider:#f0f0f3; --settings-radio-size:14px;
   --settings-mini-shell:#e8e8ec; --settings-mini-page:#ffffff;
@@ -170,7 +177,7 @@ html[data-theme="dark"] { --settings-fill:#26262c; --settings-selected:#303037; 
   --trace-model:#765398; --trace-model-mark:#886bae; --trace-model-bg:#f3edf9;
   --trace-tool:#9b5d13; --trace-tool-mark:#dd852a; --trace-tool-bg:#fff4e4;
   --trace-row-height:34px; --trace-body-size:13px; --trace-detail-width:390px;
-  --trace-search-width:270px; --trace-search-min:160px; --trace-search-height:38px;
+  --trace-search-width:270px; --trace-search-min:160px; --trace-search-height:var(--ui-control);
   --trace-seq-width:36px; --trace-time-width:64px; --trace-type-width:64px;
   --trace-chevron-width:12px; --trace-badge-radius:4px; --trace-overview-radius:10px;
   --trace-track-height:20px; --trace-track-name:48px; --trace-track-grid:17px;

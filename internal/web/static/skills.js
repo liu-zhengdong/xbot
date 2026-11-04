@@ -56,7 +56,6 @@
       const none = node("div", "sknone"); none.setAttribute("aria-live", "polite");
       const clear = button("clearsrch", "清除搜索", () => { query = ""; search.value = ""; paint(); search.focus?.(); });
       none.append(node("p", "", "没有匹配的技能"), clear);
-      const foot = node("p", "setfoot", "点开一条，可给某个 Bot 打开或关掉。");
       function paint() {
         const q = query.trim().toLowerCase(), rows = q ? skills.filter(r => ownText(r).includes(q)) : skills;
         list.replaceChildren(...rows.map(r => {
@@ -67,12 +66,12 @@
           const chev = node("span", "skchev"); chev.setAttribute("aria-hidden", "true");
           row.append(tx, chev); return row;
         }));
-        list.hidden = foot.hidden = rows.length === 0;
+        list.hidden = rows.length === 0;
         none.hidden = rows.length > 0;
       }
       search.oninput = () => { query = search.value; paint(); };
       paint();
-      body.replaceChildren(head, lead, statusLine, toolbar, list, none, foot);
+      body.replaceChildren(head, lead, statusLine, toolbar, list, none);
     }
 
     // ---- 二层：单条技能 ----

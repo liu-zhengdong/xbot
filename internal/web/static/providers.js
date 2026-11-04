@@ -217,7 +217,7 @@
     function customDetail(p = {}) {
       if (!alive()) return; const view = ++revision, current = () => alive() && view === revision;
       let protocol = p.protocol || "chat_completions", manual = false, inferredBase = p.base_url || "", inferring = 0, modelRequest = 0, busy = false;
-      const back = button("", "provider-back", () => paint(p.name)); back.append(lineIcon("back"), node("span", "", "模型与供应商"));
+      const back = button("", "provider-back", () => paint(p.name)); back.append(node("span", "", "模型与供应商"));
       const heading = node("div", "provider-detail-heading"), info = node("div", "provider-detail-info"), title = node("h2", "", p.name ? displayName(p) : "添加自定义供应商");
       info.append(title, node("p", "provider-section-note", "填 Base URL 与密钥即可；协议会按地址自动识别")); heading.append(glyph(""), info);
       const form = node("form", "provider-custom"), note = node("p", "provider-custom-note"), fields = {};
@@ -235,11 +235,11 @@
       probe.append(lineIcon("play")); keyline.append(secret, probe); fields.key.box.insertBefore(keyline, fields.key.err); fields.base_url.box.append(httpNote);
       const protocolBox = node("div", "provider-custom-field"), protocolRow = node("div", "provider-custom-protocol"), chip = badge(protocol), protocolNote = node("span", "provider-custom-note", "已按地址自动识别"), choices = node("div", "provider-custom-choices");
       choices.hidden = true;
-      const change = button("更改", "provider-relink", () => { choices.hidden = !choices.hidden; change.setAttribute("aria-expanded", String(!choices.hidden)); }); change.setAttribute("aria-expanded", "false");
+      const change = button("更改", "btn ghost provider-relink", () => { choices.hidden = !choices.hidden; change.setAttribute("aria-expanded", String(!choices.hidden)); }); change.setAttribute("aria-expanded", "false");
       for (const [value, label] of Object.entries(labels)) { const row = node("label"), radio = node("input"); radio.type = "radio"; radio.name = "protocol"; radio.value = value; radio.checked = value === protocol; radio.onchange = () => { protocol = value; manual = true; updateProtocol(); resetProbe(); }; row.append(radio, node("span", "", label)); choices.append(row); }
       protocolRow.append(chip, protocolNote, change); protocolBox.append(node("span", "provider-custom-label", "协议"), protocolRow, choices); form.append(protocolBox);
       const models = node("div", "provider-custom-models"), actions = node("div", "provider-custom-actions"), submit = button("保存", "btn primary", () => {}); submit.type = "submit";
-      actions.append(submit, button("取消", "provider-relink", () => paint(p.name))); form.append(models, note, actions); host.replaceChildren(back, heading, form);
+      actions.append(submit, button("取消", "btn ghost provider-relink", () => paint(p.name))); form.append(models, note, actions); host.replaceChildren(back, heading, form);
       function updateProtocol() { chip.className = "provider-badge " + protocol; chip.textContent = labels[protocol]; protocolNote.textContent = manual ? "已手动选择" : "已按地址自动识别"; for (const radio of choices.querySelectorAll("input")) radio.checked = radio.value === protocol; }
       function resetProbe() { probe.replaceChildren(lineIcon("play")); probe.setAttribute("aria-label", "保存并测试密钥"); probe.title = "保存并测试密钥"; }
       resetProbe();
@@ -284,7 +284,7 @@
             try { await api(`/api/providers/custom/${encodeURIComponent(p.name)}/models`, { method: "PUT", body: { model: input.value.trim(), enabled: true } }); if (current()) { message("模型已添加，可在更换模型时选用"); input.value = ""; } }
             catch (err) { if (current()) message(err.message, true); } finally { if (current()) add.disabled = false; }
           }); input.placeholder = "模型 id"; input.setAttribute("aria-label", "手动模型 id"); manualBox.hidden = true; manualBox.append(input, add);
-          models.append(button("手动添加模型 id", "provider-relink", () => { manualBox.hidden = !manualBox.hidden; if (!manualBox.hidden) input.focus(); }), manualBox);
+          models.append(button("手动添加模型 id", "btn ghost provider-relink", () => { manualBox.hidden = !manualBox.hidden; if (!manualBox.hidden) input.focus(); }), manualBox);
         }
         return succeeded;
       }
@@ -311,8 +311,8 @@
           try { await api(`/api/providers/custom/${encodeURIComponent(p.name)}`, { method: "DELETE" }); const fresh = await api("/api/providers"); if (!current()) return; data = fresh; selected = ""; paint(); }
           catch (err) { if (current()) { message(err.message, true); remove.disabled = false; } }
         });
-        confirm.append(node("p", "provider-custom-note", "将移除密钥与模型勾选；已绑定的 Bot 需要重新换绑。共享密钥会保留给其他供应商。"), remove, button("取消", "provider-relink", () => { confirm.hidden = true; }));
-        area.append(button("删除此供应商", "provider-relink danger", () => { confirm.hidden = false; }), confirm); form.append(area);
+        confirm.append(node("p", "provider-custom-note", "将移除密钥与模型勾选；已绑定的 Bot 需要重新换绑。共享密钥会保留给其他供应商。"), remove, button("取消", "btn ghost provider-relink", () => { confirm.hidden = true; }));
+        area.append(button("删除此供应商", "btn ghost provider-relink danger", () => { confirm.hidden = false; }), confirm); form.append(area);
       }
       addDelete(); loadModels();
     }
@@ -343,8 +343,8 @@
       const actions = node("div", "provider-login-actions");
       const note = node("p", "provider-login-note"); note.setAttribute("role", "status");
       const go = () => login("xai", paint, done);
-      const start = button(label || "重新登录", "provider-btn-pri", go);
-      const reopen = button("再点重开", "provider-btn-ghost", go);
+      const start = button(label || "重新登录", "btn primary provider-btn-pri", go);
+      const reopen = button("再点重开", "btn ghost provider-btn-ghost", go);
       const cancel = async () => {
         if (loginRequest && loginRequest.current() && loginRequest.kind === "xai") {
           loginRequest.stopped = true;
@@ -356,7 +356,7 @@
         catch (err) { paint("error", err && err.status ? err.message : ""); return; }
         paint("cancelled", "");
       };
-      const stop = button("取消", "provider-btn-sec", cancel);
+      const stop = button("取消", "btn sec provider-btn-sec", cancel);
       let shown = "";
       function paint(state, message) {
         // Polling repaints every second; keep the same nodes so focus stays put.
@@ -397,7 +397,7 @@
     }
     function xaiVendorBody(p, vendor, current) {
       const box = node("div", "provider-xai");
-      if (!subscriptionEntry("xai").key_configured) box.append(node("p", "provider-xai-lead", "账号登录请到上方订阅"), button("去订阅", "provider-btn-sec", goToXaiSubscription));
+      if (!subscriptionEntry("xai").key_configured) box.append(node("p", "provider-xai-lead", "账号登录请到上方订阅"), button("去订阅", "btn sec provider-btn-sec", goToXaiSubscription));
       const alt = node("details", "provider-key-alt");
       const fold = node("summary"); fold.append(lineIcon("back"), node("span", "", "用 API 密钥"));
       alt.append(fold, keyForm(p, vendor, () => capability(p, true), current, "", { label: "API 密钥", configured: p.key_configured }));
@@ -407,7 +407,7 @@
     async function capability(p, refresh = false) {
       if (!alive()) return; const request = ++revision;
       const current = () => alive() && request === revision;
-      const back = button("", "provider-back", () => paint(key(p))); back.append(lineIcon("back"), node("span", "", "模型与供应商"));
+      const back = button("", "provider-back", () => paint(key(p))); back.append(node("span", "", "模型与供应商"));
       const heading = node("div", "provider-detail-heading"), info = node("div", "provider-detail-info"), title = node("div", "provider-detail-title"); title.append(node("h2", "", p.title), badge(p.protocol));
       // xAI puts its login state on the right of the header so the column fills.
       const status = node("div", "provider-status"); heading.append(glyph(p.brand), info); info.append(title);
@@ -417,7 +417,7 @@
       // inside the folded key form, never here. Logged in, the list already
       // says so: the header carries only the 退出登录 icon.
       function xaiStatus(state, go, cancel) {
-        if (state === "pending") status.replaceChildren(node("span", "sdot wait"), node("span", "provider-status-wait", "等待登录…"), button("取消", "provider-relink", cancel));
+        if (state === "pending") status.replaceChildren(node("span", "sdot wait"), node("span", "provider-status-wait", "等待登录…"), button("取消", "btn ghost provider-relink", cancel));
         else if (state === "failed") status.replaceChildren(node("span", "provider-status-fail", "登录未完成"));
         else if (state === "logged") {
           const out = button("", "provider-logout", () => xaiLogout(out)); out.title = "退出登录"; out.setAttribute("aria-label", "退出登录"); out.append(lineIcon("logout"));
@@ -482,7 +482,7 @@
         if (vendorEarly) { body.replaceChildren(xaiVendorBody(p, vendorEarly, current)); return; }
         if (!p.key_configured) {
           if (p.oauth === "chatgpt") { body.replaceChildren(state("请重新登录 ChatGPT，再拉取模型。")); return; }
-          if (p.oauth === "xai") { body.replaceChildren(node("p", "provider-xai-lead", "账号登录请到上方订阅"), button("去订阅", "provider-btn-sec", goToXaiSubscription)); return; }
+          if (p.oauth === "xai") { body.replaceChildren(node("p", "provider-xai-lead", "账号登录请到上方订阅"), button("去订阅", "btn sec provider-btn-sec", goToXaiSubscription)); return; }
           const vendor = (p.name == null || p.name === p.brand) && vendorOf(p.brand);
           if (vendor && vendor.key_login) {
             body.replaceChildren(state("这家供应商需要先登录 Google Cloud，暂时不能直接填密钥使用。"));
@@ -583,15 +583,15 @@
     const body = node("div", "binding-body"), note = node("p", "binding-note"), error = node("p", "bad");error.setAttribute("role", "alert");
     const footer = node("div", "binding-footer");let pending = null, current = null, saving = false;
     const goManage = () => { if (!saving) {close();manage();} };
-    const cancel = button("取消", "secondary", () => { if (!saving) close(); });
-    const use = button("使用此模型", "primary", async () => {
+    const cancel = button("取消", "btn sec", () => { if (!saving) close(); });
+    const use = button("使用此模型", "btn primary", async () => {
       if (!pending || pending === current || saving) return; saving = true;use.disabled = cancel.disabled = true;error.textContent = "";
       const {p, m} = pending;
       try { await api(`/api/bots/${encodeURIComponent(data.name)}/binding`, {method:"PUT",body:{provider:p.name,model:m.model}});saving = false;close();await onBound({provider:p.name,display:displayName(p),model:m.model,protocol:p.protocol,hosted_web_search:!!m.hosted_web_search}); }
       catch (err) {error.textContent = err.message || String(err);}
       finally {saving=false;cancel.disabled = false;use.disabled = !pending || pending === current;}
     });use.disabled = true;
-    footer.append(button("管理供应商…", "binding-manage", goManage), cancel, use);
+    footer.append(button("管理供应商…", "btn ghost binding-manage", goManage), cancel, use);
     dialog.append(head,body,note,error,footer);document.body.append(dialog);dialog.showModal();dialog.focus();
     const flat = (text, action) => { const n = node("div", "binding-flat"); n.append(node("p", "", text)); if (action) n.append(action); return n; };
     const options = [];
@@ -615,10 +615,10 @@
       body.replaceChildren(flat("正在拉模型…"));search.hidden = true;options.length = 0;
       let providers;
       try { ({providers} = await api("/api/providers")); }
-      catch { if (dialog.isConnected) body.replaceChildren(flat("模型名单暂时拉不下来", button("重试", "secondary", load))); return; }
+      catch { if (dialog.isConnected) body.replaceChildren(flat("模型名单暂时拉不下来", button("重试", "btn sec", load))); return; }
       if (!dialog.isConnected) return;
       body.replaceChildren();
-      if (!providers.length) { body.append(flat("还没有可用的供应商", button("管理供应商", "primary", goManage))); return; }
+      if (!providers.length) { body.append(flat("还没有可用的供应商", button("管理供应商", "btn primary", goManage))); return; }
       search.hidden = false;
       const order = Object.keys(labels), rank = p => order.indexOf(p.protocol) < 0 ? 99 : order.indexOf(p.protocol), lists = [];
       for (const p of providers.slice().sort((a, b) => rank(a) - rank(b))) {
@@ -638,13 +638,13 @@
       section.replaceChildren(heading, flat("正在拉模型…"));
       let list, failed = false;
       try { ({models: list} = await api(`/api/providers/models?provider=${encodeURIComponent(p.name)}`)); }
-      catch { if (!dialog.isConnected) return; if (p.custom && p.models?.length) { list = []; failed = true; } else { section.replaceChildren(heading, flat("模型名单暂时拉不下来", button("重试", "secondary", () => models(p, section)))); return; } }
+      catch { if (!dialog.isConnected) return; if (p.custom && p.models?.length) { list = []; failed = true; } else { section.replaceChildren(heading, flat("模型名单暂时拉不下来", button("重试", "btn sec", () => models(p, section)))); return; } }
       if (!dialog.isConnected) return;
       // Custom registrations include explicit manual ids when /models is absent.
       if (p.custom) for (const saved of p.models || []) if (!list.some(m => m.model === saved.model)) list.push(saved);
       if (!list.length) { section.replaceChildren(heading, flat("这家暂时没有可用模型")); return; }
       const group = node("div", "binding-group");group.setAttribute("role","radiogroup");group.setAttribute("aria-label",section._title);section.replaceChildren(heading, group);
-      if (failed) section.append(flat("模型名单暂时拉不下来，以下为已保存模型", button("重试", "secondary", () => models(p, section))));
+      if (failed) section.append(flat("模型名单暂时拉不下来，以下为已保存模型", button("重试", "btn sec", () => models(p, section))));
       for (const m of list) {
         const o = {p, m}, b = button("", "binding-option", () => stage(o));b._o = o;b.setAttribute("role", "radio");b.setAttribute("aria-checked","false");
         const caps = node("span", "binding-cap");
