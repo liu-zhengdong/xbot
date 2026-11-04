@@ -1,6 +1,6 @@
 ---
 kind: part
-verified: 2026-11-02 @ 1fb6b41d (current execution and legacy branch boundaries)
+verified: 2026-11-04 @ da1b873f (account shared device execution)
 ---
 # XBot：新人导览
 
@@ -61,13 +61,13 @@ Bot 是全能的。授权给它的机器，它能做用户在终端里能做的�
 | 子代理 | 后台子代理与执行者 | 改 `internal/exec`、`internal/agent` | [subagents.md](subagents.md) |
 | 旧分叉记录 | 历史分支读取与未闭合修复 | 改 branch、Replay、旧格式恢复 | [fork.md](fork.md) |
 | 多 Bot | 主 Bot、分组、Fork Bot、Bot 间通信、档案、例程 | 改 `internal/bot`、`internal/peer`、`internal/cron` | [multibot.md](multibot.md) |
-| 机器与设备 | 机器开关、隧道、多台电脑靠[网关配对](gateway.md)、浏览器、桌面 | 改 `internal/machine`、`browser`、`desktop` | [machines.md](machines.md) |
+| 机器与设备 | 账号共享设备执行、机器开关、隧道、浏览器、桌面；旧配对保留消息 | 改 `internal/deviceexec`、`machine`、`browser`、`desktop` | [machines.md](machines.md) |
 | 生态 | 内置 Link、MCP、技能、连接器、编码代理 | 加 Link、改 MCP、技能或编码代理 | [ecosystem.md](ecosystem.md) |
 | 安全 | 保险箱、出站代理、权限表 | 加工具（必须在权限表归类）、改确认规则 | [security.md](security.md) |
 | 模型供应商与评测 | 供应商、模型提示、认证、主动性评测 | 改 `internal/provider`、`internal/eval`、`evals/` | [providers.md](providers.md) |
 | 网页界面 | 侧栏、顶部标签与聊天主区（记忆、轨迹、任务、上下文）、桌面窗口 | 改 `internal/web`、静态界面和桌面外壳 | [ui.md](ui.md)；改界面先读 [guard/界面.md](../guard/界面.md) |
 | 版本与自动升级 | 版本注入、tag 触发发布、检查与后台下载、装好重启、优雅重起 | 改 `internal/version`、`internal/upgrade`、`internal/web/update.go` | [release.md](release.md) |
-| 网关 | 开源信箱中继，连接用户自己的几台 XBot（G1–G6 已实现）。官方网关 `gateway.babelgo.cn:8443` 是腾讯云上的 Go 服务器（Cloudflare Workers 上的 `xbot.babelgo.cn` 留作备用），也能用 Go 自建 | 做 M8、改 `gateway-worker/` | [gateway.md](gateway.md) |
+| 网关 | 异步信箱传消息，加密 pipe 承载用户控制台和账号设备执行 | 改 `internal/gateway`、`remote`、`pipe`、`deviceclient`、`deviceidentity`、`gateway-worker/` | [gateway.md](gateway.md) |
 
 ## 怎么配合
 ```mermaid

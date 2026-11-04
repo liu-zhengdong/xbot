@@ -40,7 +40,7 @@
 
 ## 账号
 
-都不需要 `xbot_session`；写入要求同源，body 最多 1 MiB、拒绝未知字段。账号会话放在 cookie `xbot_account`（HttpOnly，SameSite=Strict，30 天）。错误一律 `{"error":"<代码>"}`：`bad_input` 400、`credentials` 401、`unverified` 403、`busy` 429、`expired` 410、`session` 401、`unreachable` 502（连不上账号服务）。
+登录、会话与账号目录接口不要求 `xbot_session`。设备管理和任务操作还要求原用户会话。写入要求同源，body 最多 1 MiB、拒绝未知字段。账号会话放在 cookie `xbot_account`（HttpOnly，SameSite=Strict，30 天）。账号错误使用 `{"error":"<代码>"}`：`bad_input` 400、`credentials` 401、`unverified` 403、`busy` 429、`expired` 410、`session` 401、`unreachable` 502（连不上账号服务）。设备执行错误保留实际原因。
 
 - `POST /api/account/register` `{email,password}`：密码 8–128 字节。回 `{challenge,email}`（`email` 已打码）。已有账号的邮箱回同样的形状，改发一封登录信。
 - `POST /api/account/login` `{email,password}`：成功同下面的「进门回包」。邮箱还没确认、密码对时 403 `{"error":"unverified","challenge":"…","email":"…"}`。
@@ -51,7 +51,49 @@
 - 进门回包：200 `{"state":"done","account":{email,owner,hosted,gateway,official,gateway_ok,app}}`，并设 `xbot_account`；`owner` 为真时同时设 `xbot_session`。
 - `GET /api/account/me`：`{"account":null|{…同上},"app":<bool>}`。账号是用户时顺手续上 `xbot_session`。
 - `POST /api/account/logout`：退出账号并清掉 `xbot_account`；本机直连保留 `xbot_session`，远端同时清掉用户会话。
-- `GET /api/account/devices`：`{"devices":[{id,name,online,self,bots:[{name,hint,unread,avatar_url,avatar_bg,avatar_ink,initial}]}]}`；没有账号会话 401。
+- `POST /api/account/claim`：用户在这台电脑主动绑定当前已验证账号。成功回 `{account,bound:true,reported}`。明确重绑可轮换绑定凭据；普通登录和旧格式自动迁移不能恢复已撤销成员。
+- `GET /api/account/devices`：`{devices:[{id,name,online,self,bots,os,capabilities,last_seen,running_count}]}`；`bots` 沿原名字与头像 DTO，没有账号会话为 401。`os` 为 `darwin|windows|linux` 等目标平台值。能力为 `read/write/exec/exec:<解释器>/browser/desktop`，按目标真实探测。`last_seen` 使用 RFC3339。
+
+### 账号设备管理与执行
+
+以下管理接口还要求原用户会话。设备成员由账号统一管理。绑定安装中的 Bot 共用设备池，不增加逐 Bot 许可表。
+
+| 方法与路径 | 请求与结果 |
+| --- | --- |
+| `GET /api/account/devices/{id}` | `{device,tasks,tasks_truncated}`；详情与真实任务摘要 |
+| `PATCH /api/account/devices/{id}` | `{name}` → `{device}`；改名不会被心跳覆盖 |
+| `DELETE /api/account/devices/{id}` | `{unbound:true}`；撤销该成员，保留文件与对话 |
+| `GET /api/account/devices/{id}/tasks?bot=NAME&offset=N&limit=N` | `{tasks,next_offset,has_more}`；原任务的有界页 |
+| `GET /api/account/devices/{id}/tasks/{ref}?offset=N&limit=N` | `{task,output,next_offset,total}`；默认输出 16 KiB、最多 32 KiB |
+| `POST /api/account/devices/{id}/tasks/{ref}/stop` | `{task}`；停止原 Jobs 中的实际操作 |
+| `GET /api/account/devices/{id}/tasks/{ref}/artifacts/{artifact_id}?offset=N&limit=N` | 原始字节块，单块最多 256 KiB |
+| `GET /api/bots/{name}/device-tasks` | `{tasks,unavailable_devices,tasks_truncated}`；当前 Bot 的执行状态摘要 |
+
+`Task` 为 `{id,ref,device_id,device_name,bot,context_id,kind,description,status,started_at,finished_at?,error?,artifacts:[{id,name,size}]}`。`description` 是有界摘要。状态为 `running|completed|failed|cancelled`。`ref` 在发送前生成，属于原设备和执行上下文。未知回执不是完成或失败的证据，调用方应查询原引用。
+
+任务页默认 10 条，并受最终 JSON 24 KiB 预算约束。管理详情最多取 200 条近期摘要。`tasks_truncated:true` 表示记录受条数或字节预算截取。`unavailable_devices` 为 `[{id,name,error}]`。对应设备不可查询时，界面保留已有任务并显示状态待确认。已绑定账号的目录服务失败返回真实错误，不返回成功空表。
+
+主人消息的原 POST 增加可选 `device_id`。目标在实际消息和 prepared 工具上下文中冻结。设备离线或非账号成员时明确拒绝。后续消息或其它 Bot 的选择不改变已受理任务的设备。
+
+### 设备运行时 CLI
+
+`xbot device --help` 离线可用。执行动作需要 `--self` 和原运行实例的实际 prepared Shell；Bot 名、上下文、只读策略由运行入口提供。`--device ID` 优先于消息的冻结选择。未指定可用目标时不在本机代跑。
+
+```sh
+"$XBOT_BIN" device list --self --json
+"$XBOT_BIN" device exec --self --args '{"command":"pwd"}' --json
+"$XBOT_BIN" device read --self --args '{"path":"report.txt"}' --json
+"$XBOT_BIN" device write --self --args '{"path":"report.txt","content":"text"}' --json
+"$XBOT_BIN" device desktop --self --tool desktop_snapshot --args '{"app":"Finder"}' --json
+"$XBOT_BIN" device tasks --self --offset 0 --limit 10 --json
+"$XBOT_BIN" device task REF --self --offset 0 --limit 4096 --json
+"$XBOT_BIN" device stop REF --self --json
+"$XBOT_BIN" device artifact REF --self --artifact-id ID --offset 0 --limit 4096 --json
+```
+
+`exec` 未指定 `--tool` 时使用目标可用解释器。显式指定但不可用时失败。调用也可使用 `--args-file FILE|-`。副作用动作支持调用前固定 `--ref`，不自动重放。任务启动回 `{task}`，详情回 `{task,output,next_offset,total}`。产物块写入源安装的 `device-downloads`，CLI 回本机文件位置与块偏移。命令输出最多 32 KiB，源 HTTP JSON 回包最多 64 KiB。
+
+账号服务增加 `POST /account/v1/devices/bind`、`PATCH/DELETE /account/v1/devices/{id}`。安装凭据使用 `GET /account/v1/binding`、`GET /account/v1/binding/devices`、`POST /account/v1/binding/report`。安装绑定凭据和 UI 登录会话独立。UI 退出不撤销安装。旧会话自动迁移仍服从撤销墓碑。
 
 账号服务本身（`xbot account-api`，或 serve 里的替身）在 `/account/v1/`：`register`、`login`、`magic`、`resend`、`code`、`poll`（POST，JSON），`me`、`devices`（GET，`Authorization: Bearer <会话>`），`logout`、`devices`（POST，Bearer），`health`（GET），以及邮件链接页 `link?t=…`（GET 只显示「确认」按钮，POST 才用掉链接，邮件扫描器预取不会把它用掉）。
 

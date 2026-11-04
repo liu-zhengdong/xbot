@@ -1,14 +1,18 @@
 ---
 kind: part
 parent: README.md
-code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go]
-verified: 2026-11-02 (cards family CLI migrated; HTTP needs-owner card preserved; Event/Link write-side retained)
+code: [internal/vault/, internal/review/, internal/tools/guard.go, internal/tools/tooljob.go, internal/tools/shelljob.go, internal/account/, internal/deviceidentity/]
+verified: 2026-11-04 @ da1b873f (installation binding and execution identity)
 ---
 # 安全：保险箱与权限表
 
 > **30 秒版**：Bot 只知道密钥的名字，出站代理才换成真值。**生产内核永远不弹工具权限卡**（[ADR 0019](../adr/0019-no-permission-cards-by-default.md)）：`serve`/`chat` 固定 `Permissive: true`，旧 `permissions on` 不能开回卡；保险箱/密钥/配置路径、机器 ask/off、外部事件记忆写入也不弹卡。只保留 links install/remove CLI 意图的填 key 输入卡。以下权限分类与确认条件仅描述直接构造的严格测试/评测内核，不是生产许可限制。
 
 > **现阶段（2026-10-18 起）**：先把功能调通调顺，再接安全，见 [ADR 0013](../adr/0013-features-before-security.md)。本页写的是现行代码的行为。权限表、审查入口和保险箱占位作为接口保留；不再加新的安全工作。生产工具许可已经固定放行；文件新鲜度、密钥脱敏、出站域名绑定和存储校验不受这次改动影响。
+
+## 账号设备身份
+
+安装凭据独立于 UI 会话。`account-binding.json` 以 0600 保存账号 key、设备 id、binding token 与世代，不存邮箱；UI 退出不解绑、不停止安装待命。旧会话自动迁移受撤销墓碑约束，只有显式 claim 可恢复撤销成员。目标每次执行请求都核对账号成员与双方 binding 世代，Permissive 不跳过身份核对。用户控制台票冻结账号会话；Bot 执行票只提供窄执行身份，不注入用户 cookie。研究子代理仍受只读门约束，生产不增加操作许可卡；来源见 [内核](kernel.md#账号设备执行入口)，结构决定见 [ADR 0075](../adr/0075-account-shared-device-execution.md)，协议见 [API](../API.md#账号设备管理与执行)。
 
 ## 子代理工具分类
 

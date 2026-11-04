@@ -1,15 +1,15 @@
 ---
 kind: part
 parent: README.md
-code: [internal/gateway/, internal/remote/, internal/pipe/, gateway-worker/]
-verified: 2026-11-02 @ 8472a2a5 (original remote writer facts, paired loopback consumer and retry semantics)
+code: [internal/gateway/, internal/remote/, internal/pipe/, internal/deviceclient/, internal/deviceidentity/, gateway-worker/]
+verified: 2026-11-04 @ da1b873f (serve pipe and account device transport)
 ---
 # 网关（M8，G1–G6 已实现）
 
-> **30 秒版**：开源的信箱中继。用户自己的几台 XBot 只向外连网关，把发给另一台设备上 Bot 的消息存进网关、由对方取走。官方网关在 `https://gateway.babelgo.cn:8443`，是腾讯云上的 Go `xbot gateway serve`（部署材料在 [packaging/gateway/](../../packaging/gateway/README.md)）；原来跑在 Cloudflare Workers + Durable Objects 上的 `https://xbot.babelgo.cn` 留作备用。Go 服务器同时是自建方案。载荷端到端加密，网关只看到密文；网关不存记忆，也不同步文件，每台安装只管自己的数据。规格见 [GATEWAY.md](../GATEWAY.md)，取舍见 [ADR 0010](../adr/0010-gateway-mailbox-relay.md) 和 [ADR 0011](../adr/0011-official-gateway-on-workers.md)。
+> **30 秒版**：异步信箱传 Bot 消息，加密 pipe 承载用户控制台和账号设备执行。以下先说明开源信箱中继。用户自己的几台 XBot 只向外连网关，把发给另一台设备上 Bot 的消息存进网关、由对方取走。官方网关在 `https://gateway.babelgo.cn:8443`，是腾讯云上的 Go `xbot gateway serve`（部署材料在 [packaging/gateway/](../../packaging/gateway/README.md)）；原来跑在 Cloudflare Workers + Durable Objects 上的 `https://xbot.babelgo.cn` 留作备用。Go 服务器同时是自建方案。载荷端到端加密，网关只看到密文；网关不存记忆，也不同步文件，每台安装只管自己的数据。规格见 [GATEWAY.md](../GATEWAY.md)，取舍见 [ADR 0010](../adr/0010-gateway-mailbox-relay.md) 和 [ADR 0011](../adr/0011-official-gateway-on-workers.md)。
 
 ## 边界
-负责：同一个用户的几台安装之间的连接、身份、配对和消息中继。不负责：Bot 之间消息的语义（见 [多 Bot](multibot.md) 的 peer-message 当前实例 CLI），本机的机器开关和远程 shell（见 [机器与设备](machines.md)；旧的远程 shell「节点」已退役），跨用户通信。
+负责：安装之间的配对消息与加密 pipe 传输。不负责：Bot 消息语义（见 [多 Bot](multibot.md)）、目标执行与 Jobs（见 [机器与设备](machines.md)）、账号凭据规则（见 [安全](security.md#账号设备身份)）、跨用户通信。旧 node 协议仍退役。
 
 ## 怎么运转
 - **网关**（`internal/gateway`，G1）：`xbot gateway serve [--addr 127.0.0.1:8790] [--dir DIR] [--open]`，数据目录默认 `<root>/gateway`。加入口令只从环境变量 `XBOT_GATEWAY_TOKEN` 读，不打印；没有口令又没给 `--open` 就拒绝启动。注册写 `installs/<安装 id>`；信封存 `queue/<收件>/<发件>/<信封 id>.json`；确认过的 id 在 `acked/<收件>/` 留 10 分钟，期间重放同一封只回 duplicate。配额：每对发件和收件 64 封、1 MiB，每个收件 512 封、8 MiB，全网关 256 MiB（不够时先清掉所有过期信封再判），超了回 507。另有每个发件人跨所有收件人合计 16 MiB 的上限，防止一个发件人占满全网关。安装数上限 64：每次通过验签的请求刷新安装文件的 mtime，满了时淘汰闲置超过 30 天且没有待收信封的最久未见安装；`--open` 下有人持续保活大量密钥仍可占满，公开网关应使用口令。长轮询每个公钥只留最新一个，旧的立刻返回空；一次最多 32 封、768 KiB。HTTP 服务带读写超时。网关自己不写日志。
@@ -22,7 +22,7 @@ verified: 2026-11-02 @ 8472a2a5 (original remote writer facts, paired loopback c
 - **远端单聊历史**：本次真实source REMOTE尝试得到发送/queue结果后，只在原source transcript记一次完整冻结脱敏请求与结果的普通内部事实，显式跟原actual execution owner动态branch/currentref；不回读file/stdin、不新增Event/waker/私聊账。源记录失败仍保gateway/queued事实、非0且不回滚。RemoteConversation以精确origin/格式读取，queued优先，accepted为sent，unknown如实保留，旧native历史与incoming/bounce兼容；本地Conversation仍只读双方recipient事件。私聊历史只核owned本机Bot和ByName设备，unpaired仍可读，不套发送时XKey/Person/互发开关门，详见 [API私聊](../API.md#bot-私聊)及 [ADR0056](../adr/0056-peer-message-runtime-cli.md)。
 - **目录发现**（G6）：信箱中继没有同步回复，所以使用加密的 `kind=dir` 主动推送。活动网关切换后立即检查（通知不阻塞，只保留最新网关），之后每 60 秒检查；只推送设备绑定之人的 Bot 名（`bot.ValidName`，最多 64 个），避免脱敏器注册前泄密，消除远端自由文本注入面；变化或满 15 分钟就发送（重新配对或对方缓存丢失后很快补上），失败留到下次检查，不进 outbox。发送哈希在 `remote/dirsent.json`；收件经过配对、签名、时间窗、防重放和解密检查，忽略未知字段后按较新的 `at` 原子写入 `remote/dirs/<设备 id>.json`（目录 0700、文件 0600）。`list --self` 按调用 Bot 的 owner 过滤设备，显示 `bot@设备` 和目录时间；缓存按目录生成时间计算，超过 7 天隐藏，解除配对时删除。该目录只作发现，不是peer-message远端发送前置条件；`info --self` 不生成远端运行状态。
 - **收信循环唤醒**（G7）：`SetGateway` 和短码 claim 会唤醒本数据目录的收信循环（按目录各一个通道，同进程多个目录互不抢），配对完成唤醒目录推送，新设备几秒内就显示对方的 Bot。register 回 401/403（短码加入方在 A 允许前是待定安装）不算失败，照样 poll，下一轮再登记。
-- **本版范围（2026-10-18 定）**：设备配对只覆盖同一个人的多台电脑。配对设备算同一用户；每台设备唯一的能力是 Bot 消息，没有远程执行、记忆同步开关。界面只说「设备」，不说「节点」。旧的「节点」功能已于 2026-10-18 退役（[ADR 0012](../adr/0012-retire-node.md)），配对设备是唯一的多设备功能。点开另一台设备上的 Bot 是以用户身份的普通对话：标题显示设备名和在线、离线或最后联系时间，离线时输入框照常可用（信在网关排队），两边各存一份对话，Bot 的记忆只在它自己的电脑上。侧栏按设备分组，数据来自设备 API。不同人之间的 Bot 互发是后面的一步，见候选清单（在用户的 Obsidian）。
+- **配对消息边界**：短码配对只覆盖同一个人的多台电脑，保留 Bot 消息与远端对话。账号共享设备另走下文 pipe，不依赖短码；两条通路都不自动同步文件或记忆。执行边界见 [机器与设备](machines.md) 与 [ADR 0075](../adr/0075-account-shared-device-execution.md)。界面只说「设备」，旧 node 协议仍按 [ADR 0012](../adr/0012-retire-node.md) 退役。点开另一台设备上的 Bot 是以用户身份的普通对话：标题显示设备名和在线、离线或最后联系时间，离线时输入框照常可用（信在网关排队），两边各存一份对话，Bot 的记忆只在它自己的电脑上。侧栏按设备分组，数据来自设备 API。不同人之间的 Bot 互发是后面的一步，见候选清单（在用户的 Obsidian）。
 - **设备 API**（`internal/web/devices.go`，G7d）：`GET /api/devices` 给抽屉和侧栏用，返回这台电脑（名字、系统、Bot、网关）、`gateway_ok`（健康检查按地址缓存 30 秒，`?retry=1` 立即重查）、配对设备（显示名、`bot@名字` 地址、Bot、最后一次目录时间；网关通且 16 分钟内收到目录才算在线；对方解除过配对的带 `unpaired: true`，不算在线）和配对状态。`PUT /api/devices/gateway` 先查新地址，连不上回 502 并保留旧地址，不解除任何配对；`PATCH /api/devices/self`、`PATCH /api/devices/{id}` 只改显示名，`bot@` 地址不变；`DELETE /api/devices/{id}` 解除配对。配对：`POST/DELETE /api/devices/code`（可带 `gateway`，先查再存）生成或作废短码；`POST /api/devices/join {code, gateway?}` 先在本地查校验位，打错不碰网关，404/410/连不上/429/已配对都作为 B 的阶段返回，码上遇到 429 回「操作太频繁，等一分钟再试」，同名满 9 台回 409「同名设备已满 9 台…」；`/join/confirm` 是 B 的连接，`DELETE /join` 取消；`POST /api/devices/request {decision: allow|replace|add|deny}` 是 A 的确认卡，撞名时附带旧设备的最后目录时间和 Bot 数。状态都在 serve 进程内，`GET /api/devices/pairing` 轮询。`PATCH /api/devices/{id}` 还能开关「Bot 互发消息」（`bot_messaging`，默认开；关掉后这台设备的 box 收发两边都拒，用户自己的远端对话和目录不受影响）。A 收到配对请求时如果桌面窗口不在前台，发一条系统通知「X 想连到这台电脑，2 分钟内在 XBot 里允许或拒绝」，点通知回到窗口；不支持通知时只靠应用内提示。
 - **解除配对的通知**（`internal/remote/unpair.go`）：本地解除（`DELETE /api/devices/{id}`、`xbot remote remove`）时尽力给对方发一封加密的 `kind=unpair`（5 秒超时，不排队，失败不影响本地解除，也不记日志）；对方把这台设备标成「已解除配对」（`devices.json` 的 `unpaired_at`），不再收发，侧栏不显示，发给它的消息直接报错，用户在抽屉里再解除就删掉；重新配对清掉标记。收件走和 `dir` 相同的配对、签名、时间窗、防重放和解密检查，正文只是 `{"at": <时间>}`，标记在已有的加锁更新里写。
 - **用户远端对话（G7e，批次 A）**（`internal/remote/chat.go`）：用户在一台电脑的网页上点开另一台设备上的 Bot，以用户身份对话。信封只有两种：`kind=chat`（`{id, bot, text, typed, at}`）和 `kind=chatreply`（`{ref, bot, ack}` 或 `{ref, bot, text, at}`）。一条 chat 算用户原话，必须同时满足：经配对设备签名、时间窗、防重放、解密检查且正文 `typed: true`（只有网页用户会话调的 `SendOwnerChat` 写），设备绑的人在该 Bot 的 owner 里，目标 Bot 存在。不满足的确认后丢弃，不退信；bot 转发的仍走 `box`，照旧中和成不可信。事件 id 是 `rchat_<设备>_<id>`，重复 id 不重复投递。
@@ -38,10 +38,10 @@ verified: 2026-11-02 @ 8472a2a5 (original remote writer facts, paired loopback c
 - 官方网关每次空的长轮询算一次 Worker 请求和一次 Durable Object 请求；一次发送 3 次 DO 请求，一次确认 2 次。Free 计划每天各 10 万次、10 万行写入。一台已配对、一直在线的安装每天长轮询约 3,456 次，每个对端再加约 96 次目录推送和确认，合计约 3,750 次 Worker 请求、4,000 次 DO 请求、700 行写入，所以大约撑 20–25 台，对端多了更少。没配对的安装不联系网关。再多就要换付费计划，不能在代码里打开计费。
 - Go 服务器按文件 mtime 给信封排序，Linux 上 mtime 的精度是一个时钟节拍（约 4 毫秒），间隔更短的两封先后不保证。一致性测试只要求间隔 20 毫秒以上的顺序。
 
-### 用户远程控制台管道（ADR 0024）
+### 用户控制台与账号设备管道
 
 手机/异地桌面经账号登录后，与设备之间的交互式操作（切 Bot、翻阅历史、确认卡等）走**腾讯云中心网关**上的端到端加密实时管道；能局域网/Tailscale 直连则优先直连以省中心流量。信箱已迁到同一中心的 `gateway.babelgo.cn:8443`，CF `xbot.babelgo.cn` 留作备用，新产品面不扩 CF。详见 [ADR 0024](../adr/0024-remote-ops-fluent.md)。
 
-**批 1 穿刺已实现**（`internal/pipe`、`xbot pipe serve`，部署在 `pipe.babelgo.cn:8443`，材料在 [packaging/pipe/](../../packaging/pipe/README.md)）：账号会话领短时票（绑定账号下的设备、5 分钟、一次性），入口和设备各连中枢 WebSocket，中枢只转发不透明的二进制帧；双方用临时 X25519 + 票密钥派生 AES-GCM 会话密钥，入口经管道 `GET /api/bots/<bot>/transcript` 拉到设备上的权威 transcript 一页。两数据根测试里建立约 1 毫秒、拉一页约 1 毫秒，中枢日志只有票 id 前缀和字节数。设备端还没接进 `xbot serve`，只放行 `GET /api/`。协议见 [pipe.md](../pipe.md)。
+`xbot serve` 已装配 `pipe.Device`，由安装绑定凭据恢复待命。用户控制台可通过 `GET/POST/PATCH/PUT/DELETE /api/` 操作原 Web handler。账号 Bot 由 `internal/deviceclient` 领取独立执行票，只能访问 `/api/device-execution/`；身份由已认证的传输固定，见 [安全](security.md#账号设备身份)。双方沿临时 X25519 与票密钥派生 AES-GCM 会话密钥，中枢只转发加密帧。当前请求与响应各限 700 KiB，同连接串行、整体缓冲，不提供流式 SSE 或实时桌面流。执行使用短受理、查询、有界输出与停止；协议见 [pipe.md](../pipe.md)，执行结构见 [机器与设备](machines.md)，决定见 [ADR 0075](../adr/0075-account-shared-device-execution.md)。
 
 **入站 Webhook 公网入口**（`internal/pipe/hook.go`，[ADR 0031](../adr/0031-webhook-ingress-via-pipe.md)）：中枢开放 `POST /pipe/v1/hook/{handle}/webhook/{bot}/{name}`（句柄 = `HookHandle(账号 key, 设备 id)`，随 standby 确认下发，按账号隔离），经该设备的待命连接转给本机 inbound 处理器（不带主人凭证、只认 `/webhook/<bot>/<name>`），签名/令牌在设备上校验，中枢不存 hook 密钥；白名单请求头、32 KiB、每设备 8 条并发、15 秒超时。serve 以 `Device.Standby` 回调为准：中枢回带句柄的 standby 确认后才把这条入口当 Bot webhook 的公网地址，待命断开（含握手失败、重连中）即撤回。

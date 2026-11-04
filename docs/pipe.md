@@ -6,7 +6,7 @@
 
 ## 流程
 
-1. **设备待命**：设备用自己的账号会话开 WebSocket `GET /pipe/v1/ws`，首帧 `{"role":"standby","session":…,"device_id":…}`。中枢调账号服务 `GET /account/v1/me`、`GET /account/v1/devices`，确认会话有效、设备在这个账号下，回 `{"t":"standby"}`。同一设备新的待命连接顶掉旧的。
+1. **设备待命**：设备用独立安装绑定凭据开 WebSocket `GET /pipe/v1/ws`，首帧沿用 `{"role":"standby","session":…,"device_id":…}`。中枢通过账号服务认证安装与成员世代，回 `{"t":"standby"}`。旧账号会话仍兼容原待命协议。`serve` 先迁移有效旧绑定，再使用安装凭据。同一设备新的待命连接顶掉旧的。
 2. **领票**：入口 `POST /pipe/v1/ticket`，`Authorization: Bearer <账号会话>`，正文 `{"device_id":…}`。同样查账号；会话无效 401，设备不在这个账号下 404，设备没待命 409，同一账号同时超过 8 张票 429。成功回 `ticket_id`、`ticket_secret`（32 字节随机，只给一次）、`expires`（5 分钟）、`hub`。中枢同时经待命连接把 `{"t":"open","ticket_id","secret"}` 发给设备，之后只留密钥的 SHA-256。
 3. **配对**：入口和设备各开一条 WebSocket，首帧 `{"role":"entry"|"device","ticket_id","secret"}`。两边到齐后中枢发 `{"t":"ready"}`，之后只转发二进制消息。先到的一方等待时挂断，或票过期还没配上，票就作废。任一方断开，中枢关掉另一方并作废票，一张票只用一次。
 4. **端到端密钥**：ready 之后双方各发一个新的 X25519 公钥；共享秘密经 HKDF-SHA256（salt = `SHA-256("xbot-pipe-v1|" + ticket_secret)`，info 含方向和双方公钥）得到每个方向一把 AES-256-GCM 密钥，nonce 是消息计数，丢帧、重放、乱序都解不开。
@@ -23,11 +23,19 @@
 
 ## serve 与公网入口
 
-`xbot serve` 的用户账号登录/认领后，把账号会话存在 `<root>/account-session`（原子写、0600、勿入 git），经同一个 mux 和 `ui.AuthorizeOwner` 启动 `pipe.Device.Run`。重启会恢复待命；每分钟校验会话与绑定并上报在线设备，无需本机网页常开。新会话轮换时先取消并等旧待命及管道退出；登出或确定会话失效时删除文件并取消。临时账号网络故障不删会话；只取消 serve 不删，供重启恢复。Hub 默认 `https://pipe.babelgo.cn:8443`，`XBOT_PIPE_HUB` 可覆盖；日志前缀 `xbot: pipe:`。
+`xbot serve` 把独立安装凭据存在 `<root>/account-binding.json`（原子写、0600、勿入 git）。重启会恢复待命。每分钟校验成员与世代并上报在线状态，无需网页常开。UI 退出只撤销账号会话，安装继续待命。解绑后，旧凭据、旧心跳和旧执行票不能恢复成员或执行新请求。旧 `<root>/account-session` 仅作升级迁移来源；撤销墓碑仍生效，只有用户显式认领才能重绑。Hub 默认 `https://pipe.babelgo.cn:8443`，`XBOT_PIPE_HUB` 可覆盖；日志前缀 `xbot: pipe:`。
 
-账号仓 `/app/` 只保留登录后的引导、bridge、资源 worker 与字体。业务壳从当前选中的配对设备 `GET /api/ui/static/<path>` 读取，依旧进入现有 Do / owner mux；资源 worker 仅把浏览器原生资源请求交给所属页面的 bridge，不另建网络通道、不缓存业务壳。切设备关闭旧 pipe 并重载；无设备、离线和旧设备不支持出口时显示说明及重试。`/api/account/*` 仍适配云上账号 API；同步脚本不再是业务 UI 发版路径，详见 [ADR 0029](adr/0029-public-ui-single-source-via-pipe.md)。
+用户控制台票在 `open` 控制帧中单独冻结该用户的账号会话。设备在每次请求时复核账号身份，再附原用户会话与账号 cookie。浏览器不能自行指定该身份。Bot 执行票不经过这个入口，也不附这些 cookie。
+
+账号仓 `/app/` 只保留登录后的引导、bridge、资源 worker 与字体。业务壳从当前选中的配对设备 `GET /api/ui/static/<path>` 读取，依旧进入现有 Do / owner mux；资源 worker 仅把浏览器原生资源请求交给所属页面的 bridge，不另建网络通道、不缓存业务壳。切设备关闭旧 pipe 并重载；无设备、离线和旧设备不支持出口时显示说明及重试。账号登录、会话和顶层设备目录仍适配云上账号 API；`/api/account/devices/` 子路径的设备管理与任务请求走原 pipe。对应桥接由独立 `xbot-account` 仓库维护。同步脚本不再是业务 UI 发版路径，详见 [ADR 0029](adr/0029-public-ui-single-source-via-pipe.md)。
 
 静态请求帧可带 `inm`（If-None-Match，最多 256 字节且禁止换行）；静态响应帧可带 `etag`、`tip`、`cache`，分别对应 ETag、X-Xbot-Tip、Cache-Control。只回传这几个白名单字段，不转发 cookie。Go `Do` 既有返回签名保持不变，浏览器 bridge 读取可选元数据。
+
+## 账号内 Bot 执行
+
+`POST /pipe/v1/execute-ticket` 只接安装绑定凭据。票固定账号、源设备与绑定世代、Bot、执行上下文、只读策略及目标世代。目标每次请求复核两端成员，再交给 `/api/device-execution` 的窄 handler。该入口直接使用目标原工具和 Jobs，不调用目标 Bot。来源由当前运行实例的 prepared Shell 提供，详情见 [ADR 0075](adr/0075-account-shared-device-execution.md) 和 [设备运行时 CLI](API.md#设备运行时-cli)。
+
+该通道复用现有加密帧与正文预算。副作用调用在发送前固定 `ref`。传输失败后先查询原引用，不自动重放。任务列表、输出与原始产物按页或字节偏移读取，具体预算见 [API](API.md#账号设备管理与执行)。
 
 ## 入站 Webhook 公网入口
 

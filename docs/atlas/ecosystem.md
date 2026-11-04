@@ -1,14 +1,16 @@
 ---
 kind: part
 parent: README.md
-code: [internal/link/, internal/mcp/, internal/skill/, internal/code/, internal/tools/]
-verified: 2026-11-02 (ToolsLink retired to kernelTools rows; cards/http CLI; Event/Link write-side preserved)
+code: [internal/link/, internal/mcp/, internal/skill/, internal/code/, internal/tools/, internal/cliops/device.go]
+verified: 2026-11-04 @ da1b873f (typed device CLI entry)
 ---
 # 生态：Link、MCP、技能、连接器、编码代理
 
 > **30 秒版**：MCP 经当前实例 CLI 进入每 Bot 的进程资源，同一会话负责发现、调用和通知；模型请求不带 MCP schema。浏览器与 Telegram/飞书等非 MCP Link 仍经工具注册表和 `tools` 门，用户技能与编码代理保原器官。连接应用设置和 `links` 当前实例 CLI 继续管理目录/安装，MCP 的实际入口见 [ADR 0047](../adr/0047-mcp-cli-domain-entry.md)，非 MCP 工具门见 [内核](kernel.md#工具注册与代理门)。
 
 例程CRUD沿当前source实际cached Timer的CLI，不再登记四个例程模型门；研究型只读允许list/help，源审批桥及JSON/人读双32KiB完整产物规则见 [内核](kernel.md#例程实例与原调用审批)。例程可用 `skills` 按序引用本库技能；叫醒时沿共享 id/停用解析器读取，保原单项16KiB投影，正文仅供当轮请求，缺失明确跳过。CLI runtime read 则返回有界完整正文或本地产物。字段写口与唯一装配缝见 [多 Bot](multibot.md)「例程挂技能」。
+
+账号设备能力通过 typed `device --self` CLI 接入，不新增模型工具组或 Bot×设备 grants。源端从真实 prepared Shell 取得身份；目标复用现有工具与 Jobs。研究子代理保留只读门。调用来源见 [内核](kernel.md#账号设备执行入口)，执行归属见 [机器与设备](machines.md)，完整命令见 [API](../API.md#设备运行时-cli)。
 
 ## 边界
 负责：各类 Link 的接入方式。不负责：确认规则（见 [安全](security.md)），各片进度（见 [MILESTONES](../MILESTONES.md)）。
