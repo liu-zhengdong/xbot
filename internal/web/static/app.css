@@ -2923,6 +2923,16 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .workspace > .chat .thread-inner > .msg.cont { margin-top:6px; }
 .workspace > .chat .thread-inner > .tdiv + .msg { margin-top:10px; }
 .workspace > .chat .thread-inner > :is(.tdiv,.sysline,.source-event-row,.routine-line,.typing,.typing-dots) { margin-top:14px; }
+/* Heart disclosure and plain aside share the bot text's left reading axis. */
+.workspace > .chat .thread-inner > .aside-event { align-self:flex-start; width:100%; max-width:none; padding-inline:var(--aside-inset); margin-top:var(--x-s3); color:var(--x-muted); }
+.aside-event > .aside-toggle { display:flex; width:var(--ui-control); height:var(--ui-control); padding:0; margin-left:calc((var(--workspace-action-icon) - var(--ui-control)) / 2); border-radius:var(--x-r-sm); color:var(--x-muted); }
+.aside-toggle > .icon { width:var(--workspace-action-icon); height:var(--workspace-action-icon); }
+.aside-toggle:hover { background:var(--x-fill-1); color:var(--x-text-2); }
+.aside-toggle[aria-expanded=true] { color:var(--x-text-2); }
+.workspace > .chat .aside-event > .aside-body { max-width:var(--aside-reading); margin:0; padding:0 0 var(--x-s3); border-radius:0; background:transparent; color:var(--x-muted); font-family:var(--x-font); font-size:var(--ui-body); line-height:var(--aside-line); }
+.aside-body:not([hidden]) { animation:aside-enter var(--ui-duration) var(--ui-ease); }
+@keyframes aside-enter { from { opacity:0; transform:translateY(calc(-1 * var(--aside-enter))); } to { opacity:1; transform:translateY(0); } }
+@media (prefers-reduced-motion:reduce) { .aside-body:not([hidden]) { animation:none; } }
 .workspace > .chat .msg.bot { display:flex; flex-direction:row; align-items:flex-start; gap:var(--x-s3); }
 .workspace > .chat .msg.bot .body { max-width:100%; width:100%; min-width:0; display:flex; flex-direction:column; align-items:flex-start; }
 .workspace > .chat .thread-inner:not(.grpchat) .msg.bot .body { padding-left:0; }

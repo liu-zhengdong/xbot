@@ -902,6 +902,7 @@
     "circle-slash": '<circle cx="12" cy="12" r="10"/><path d="m4.929 4.929 14.142 14.142"/>',
     reply: '<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
     bubble: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+    "message-circle-heart": '<path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/><path d="M7.828 13.07A3 3 0 0 1 12 8.764a3 3 0 0 1 5.004 2.224 3 3 0 0 1-.832 2.083l-3.447 3.62a1 1 0 0 1-1.45-.001z"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     "alarm-clock": '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M5 3 2 6"/><path d="m22 6-3-3"/>',
     device: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
@@ -2672,25 +2673,35 @@
     });
   }
 
+  function paintAsideToggle(row, head) {
+    const drawer = row.lastElementChild;
+    const label = (drawer.hidden ? "查看心里话" : "收起心里话") +
+      (row._texts.length > 1 ? " · " + row._texts.length + " 条" : "");
+    head.setAttribute("aria-expanded", String(!drawer.hidden));
+    head.setAttribute("aria-label", label);
+    setTip(head, label + "\n\n" + drawer.textContent);
+  }
+
   function addAsideEvent(container, text, key) {
     return addSourceEvent(container, "aside", "thought", (row, head) => {
-      const drawer = el("div", "routine-drawer event-raw");
-      row.classList.add("routine-line");
+      const drawer = el("div", "event-raw aside-body");
+      row.classList.add("aside-event");
       row._texts = [];
+      drawer.id = "aside-" + key;
       drawer.hidden = !openRoutines.has(key);
-      head.setAttribute("aria-expanded", String(!drawer.hidden));
+      head.className = "icon-btn aside-toggle";
+      head.append(icon("message-circle-heart"));
+      head.setAttribute("aria-controls", drawer.id);
       head.addEventListener("click", () => {
         drawer.hidden = !drawer.hidden;
-        head.setAttribute("aria-expanded", String(!drawer.hidden));
+        paintAsideToggle(row, head);
         if (drawer.hidden) openRoutines.delete(key); else openRoutines.add(key);
       });
       row.append(drawer);
     }, (row, head) => {
       row._texts.push(text);
-      const full = row._texts.join("\n\n");
-      row.lastElementChild.textContent = full;
-      head.textContent = "查看心里话" + (row._texts.length > 1 ? " · " + row._texts.length : "");
-      setTip(head, full);
+      row.lastElementChild.textContent = row._texts.join("\n\n");
+      paintAsideToggle(row, head);
     });
   }
 

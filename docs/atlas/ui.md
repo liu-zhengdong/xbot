@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-04 @ 51458922 (+ remove sidebar greeting and busy Bot count)
+verified: 2026-11-04 @ e5627914 (+ heart icon and plain-text aside disclosure)
 
 ---
 # 网页界面
@@ -11,7 +11,7 @@ verified: 2026-11-04 @ 51458922 (+ remove sidebar greeting and busy Bot count)
 
 命令行 `xbot [--root DIR] message <bot> <text...>` 向已运行的本机 serve 发送主人消息：`--http` 默认 `127.0.0.1:8788`，`--timeout` 默认 2 分钟，`--text` 或 `-`/省略正文可提供文本或读 stdin。先通过回环 `/api/session` 获取会话，再调用现有 messages SSE；只输出 `done.text`，没有可见回复、转交、错误或超时返回非零。
 
-对话中的 Bot 往来与 CLI Event 共用可点击的来源行装配缝，按来源种类和身份合并连续事件。Bot 行打开既有往来视图；CLI 行以发送者为 Notionists 头像种子，点击展开该组原文，不把发送者登记为 Bot。`aside` 也走 `addSourceEvent`：灰字「查看心里话」，`setTip` 悬停全文，点击展开纯文本抽屉；连续同 identity 可合并计数，不是 bot 气泡，不绑定回复菜单，也不进侧栏预览或引用摘要。
+对话中的 Bot 往来与 CLI Event 共用可点击的来源行装配缝，按来源种类和身份合并连续事件。Bot 行打开既有往来视图；CLI 行以发送者为 Notionists 头像种子，点击展开该组原文，不把发送者登记为 Bot。`aside` 也走 `addSourceEvent`：左侧单个 Lucide 心形对话图标，图形 16px、点击面 36px；默认收起，点击展开无底色的灰色纯文本旁注，与 Bot 气泡内文字对齐，正文沿用项目字体、14px／1.7 行高。`aria-label` 与 `setTip` 同步查看／收起及合并条数，悬停保留全文；连续同 identity 可合并，轮询保留节点与展开态。旁注不是 Bot 气泡，不绑定回复菜单，也不进侧栏预览或引用摘要。CLI 与 Bot 往来行保留原外观。行为由 `TestAsideSourceBrowser` 守护。
 
 主视图「记忆」由 `GET /api/bots/{name}` 的 `memory` DTO 装配：桌面与窄屏均为单栏，上方「关于本 Bot」、下方经历；不显示「关于你」，person 的存储及模型注入不变。常驻预览前两条带日期条目（手机一条），「展开全部」读取原文的完整 Markdown 投影；复用气泡渲染和打开文件入口，不经 Recall 拆卡。经历来自当前 Bot 的 `experience.sqlite`，带时间、新到旧，点开关注点与提纲；正常 user/assistant 片段按「你／Bot 名」分段、限制阅读行宽，工具完成回报与截断标记只留在默认折叠的「原始提纲」里。原始内容仍逐字可读、可选中复制并保留搜索命中，不改经历库。首屏 40 条，可加载更早内容。标题旁「搜索经历」通过 `GET /api/bots/{name}/experiences?q=…&before=…` 搜整个库的摘要、关注点、提纲；字面包含、英文忽略大小写，沿相同顺序分页，命中用中性底突出。输入法选词期间不查询，快速换词或切 Bot 丢弃旧回包；轮询保留输入、焦点与展开态，清除恢复已加载的普通列表。失败保留查询并可重试，无匹配单独提示。页脚只在本月有流水时给打开入口，不进主列表。浏览器打开只读原文件，桌面交给默认应用；不提供编辑器。守护为 `memory_panel_test.go`、`memory_panel_search_test.go` 的数据与搜索回归，`memory_panel_browser_test.go`、`memory_search_browser_test.go`、`memory_detail_browser_test.go` 的 Chrome 行为，以及真实 serve 的 `TestChatTabsJourney`。
 

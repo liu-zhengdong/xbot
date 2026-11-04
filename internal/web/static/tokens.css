@@ -127,6 +127,7 @@ html[data-theme="dark"]{
   --workspace-thread:760px; --workspace-reading:960px; --workspace-gutter:32px;
   --workspace-control:var(--ui-control); --workspace-avatar:32px;
   --workspace-action-icon:16px; --workspace-tab-icon:14px;
+  --aside-inset:15px; --aside-reading:620px; --aside-line:1.7; --aside-enter:3px;
   --composer-min-height:44px; --composer-btn-size:32px;
   --composer-radius:22px; --composer-expanded-radius:18px;
   --memory-search-width:280px; --memory-search-height:var(--ui-control); --memory-row-padding:var(--ui-gap);
