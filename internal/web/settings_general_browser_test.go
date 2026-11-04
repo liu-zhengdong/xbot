@@ -46,7 +46,7 @@ const settingsGeneralDriver = `
  const until=async(fn,msg)=>{for(let i=0;i<500;i++){if(fn())return;await new Promise(resolve=>setTimeout(resolve,10))}throw Error(msg)};
  const visible=node=>!!node&&node.getClientRects().length>0;
  const click=selector=>{const node=$(selector);assert(visible(node),'control not visible: '+selector);node.click()};
- const open=()=>{click('#account');click('#account-settings')};
+ const open=()=>{$('#account').focus();click('#account');click('#account-settings')};
  await until(()=>!$('#shell').hidden,'shell did not open');
  if(new URLSearchParams(location.search).has('settings-mobile')){
   assert(matchMedia('(max-width: 640px)').matches,'iframe is not a phone viewport');
@@ -102,14 +102,20 @@ const settingsGeneralDriver = `
   generalFixture.permission='granted';generalFixture.failMethod='POST';
   await pushClick('on','POST',false);
   assert(visible($('#phone-push-hint'))&&$('#phone-push-hint').textContent!==normalHint,'subscribe failure was silent');
-  click('#settings-close');open();
+  click('#settings-theme');
+  assert(!$('#setpage').hidden,'clicking inside closed settings');
+  click('#setscrim');
+  assert($('#setpage').hidden&&$('#setscrim').hidden&&!$('#shell').inert,'outside click did not close settings');
+  assert(document.activeElement===$('#account'),'outside close did not restore focus');
+  open();
   await until(()=>!$('#phone-push').disabled&&visible($('#settings-theme')),'general did not reopen');
   assert(theme('system').checked&&localStorage.getItem('xbot-theme')==='system','reopen lost theme preference');
   assert(selected('off'),'reopen lost saved push state');
    const lastOption=$('#phone-push input[value="off"]');lastOption.focus();
    const tab=new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true});lastOption.dispatchEvent(tab);
    assert(tab.defaultPrevented&&document.activeElement===$('[data-set="general"]'),'Tab escaped the selected radio at the end of settings');
-  click('#settings-close');
+  $('#setpage').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+  assert($('#setpage').hidden&&!$('#shell').inert,'Escape did not close settings');
   const mobile=document.createElement('iframe');
   mobile.style.cssText='position:fixed;left:0;top:0;width:390px;height:844px;border:0';
   const target=new URL(location.href);target.searchParams.set('settings-mobile','1');mobile.src=target.href;document.body.append(mobile);

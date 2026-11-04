@@ -50,8 +50,8 @@ const cfg=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
    await p.evaluate(()=>document.querySelector('[data-bot="bob"]').click());
    assert.equal(await d().getByLabel('名称',{exact:true}).inputValue(),'DRAFT_SHARED');
    await d().getByRole('button',{name:'取消',exact:true}).click();
-   await p.locator('#settings-close').click();await p.locator('[data-bot="bob"]').first().click();await openSettings();await host.getByText('LOCAL_SUDO',{exact:true}).waitFor();
-   await p.locator('#settings-close').click();await p.locator('[data-bot="ada"]').first().click();await openSettings();await host.getByText('LOCAL_SUDO',{exact:true}).waitFor();
+   await p.locator('#setscrim').click({position:{x:4,y:4}});await p.locator('[data-bot="bob"]').first().click();await openSettings();await host.getByText('LOCAL_SUDO',{exact:true}).waitFor();
+   await p.locator('#setscrim').click({position:{x:4,y:4}});await p.locator('[data-bot="ada"]').first().click();await openSettings();await host.getByText('LOCAL_SUDO',{exact:true}).waitFor();
    for(let i=0;i<15;i++){const before=Date.now(),res=await context.request.get(cfg.url+'/api/secrets');const text=await res.text();readTimes.push(Date.now()-before);assert.ok(!text.includes('value')&&!text.includes(cfg.password));}
    assert.deepEqual(errors,[]);await context.close();
   }

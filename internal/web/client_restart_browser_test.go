@@ -88,7 +88,7 @@ const clientRestartUnavailableDriver = clientRestartBrowserHelpers + `
  await openRestartAbout();await nextFrames();
  assert(clientRestart.sessionReads>0&&!clientRestart.canRestart,'unavailable session fixture was not read');
  assert(!visible($('#settings-restart-row'))&&!visible($('#settings-restart')),'desktop without can_restart exposed restart');
- $('#settings-close').click();
+ $('#setscrim').click();
  await waitFor(()=>$('#setpage').hidden,'settings did not close');
  await openRestartAbout();await nextFrames();
  assert(!visible($('#settings-restart-row'))&&!visible($('#settings-restart')),'reopening about exposed unavailable restart');

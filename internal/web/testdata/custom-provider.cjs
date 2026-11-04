@@ -78,7 +78,7 @@ const shot=async(p,theme,name)=>{const dir=path.join(cfg.shots,theme);fs.mkdirSy
     // Same-host registration is independent even with no display-name override.
     // Registration itself performs no network request; leave this detail closed.
     const known=await api('POST','/api/providers/custom',{base_url:'https://api.openai.com/v1',key:cfg.key});
-    await p.locator('#settings-close').click();await openSettings();
+    await p.locator('#setscrim').click({position:{x:4,y:4}});await openSettings();
     const openaiCards=surface.locator('.provider-section').last().locator('.provider-card').filter({has:p.locator('strong',{hasText:/^OpenAI$/})});
     await openaiCards.nth(1).waitFor();assert.equal(await openaiCards.count(),2);
     await api('DELETE','/api/providers/custom/'+known.provider);
@@ -93,7 +93,7 @@ const shot=async(p,theme,name)=>{const dir=path.join(cfg.shots,theme);fs.mkdirSy
     await save.click();assert.ok((await updated).ok());
     await form.getByRole('checkbox',{name:'runtime-custom-browser',exact:true}).waitFor();
     data=await api('GET','/api/providers');row=data.providers.find(x=>x.name===name);assert.equal(row.base_url,editedBase);assert.equal(row.display_name,edited);assert.equal(row.protocol,'responses');
-    await p.locator('#settings-close').click();
+    await p.locator('#setscrim').click({position:{x:4,y:4}});
     await p.locator('#roster [data-bot="custom-browser"]').click();
     await p.locator('#head-chip').click();
     await p.locator('.binding-trigger:visible').first().click();
@@ -113,7 +113,7 @@ const shot=async(p,theme,name)=>{const dir=path.join(cfg.shots,theme);fs.mkdirSy
     await form.getByRole('textbox',{name:'手动模型 id',exact:true}).fill('manual-custom-browser');
     const manualAdded=p.waitForResponse(r=>r.request().method()==='PUT'&&new URL(r.url()).pathname.endsWith('/models'));
     await form.locator('.provider-custom-manual').getByRole('button',{name:'添加',exact:true}).click();assert.ok((await manualAdded).ok());
-    await p.locator('#settings-close').click();await p.locator('.binding-trigger:visible').first().click();
+    await p.locator('#setscrim').click({position:{x:4,y:4}});await p.locator('.binding-trigger:visible').first().click();
     const manualDialog=p.locator('dialog.binding-dialog');await manualDialog.waitFor();
     const manualSection=manualDialog.locator('.binding-section').filter({has:p.locator('.binding-heading',{hasText:edited})});
     await manualSection.getByRole('radio').filter({hasText:'manual-custom-browser'}).click();

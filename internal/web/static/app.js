@@ -8916,7 +8916,6 @@
   $("settings-theme").addEventListener("change", (ev) => applyTheme(ev.target.value));
   $("account-settings").prepend(icon("settings"));
   $("account-settings").addEventListener("click", () => openSettings("general", { home: settingsNarrow.matches }));
-  $("settings-close").addEventListener("click", () => closeSettings());
   $("settings-close-m").addEventListener("click", () => closeSettings());
   $("settings-back").addEventListener("click", () => { if (settingsLevel) settingsLevel.back(); else showSettingsHome(); });
   // Widening the window from the phone home leaves no list to pick from: land on the section the desktop layout shows.

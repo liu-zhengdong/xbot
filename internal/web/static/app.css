@@ -2539,10 +2539,9 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setnav button+button{margin-top:calc(var(--x-s2)/2)}
 .setnav button .ic{color:inherit;opacity:.9;flex:none}
 .setmain{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;position:relative;background:var(--x-card);overflow:hidden;border-radius:var(--settings-radius)}
-.setclose{position:absolute;top:var(--x-s8);right:var(--x-s8);z-index:2;width:var(--x-s9);height:var(--x-s9)}
 .setcnt{flex:1;min-width:0;min-height:0;overflow:auto;margin:var(--x-s8) var(--x-s3) var(--x-s3) 0;padding:0 calc(var(--settings-gutter) - var(--x-s3)) var(--x-s9) var(--settings-gutter);scrollbar-gutter:stable}
 /* Keep page headings in view; the scroll track belongs to the inset content,
-   never to the modal's rounded outer edge or its close-button lane. */
+   never to the modal's rounded outer edge. */
 @media(min-width:641px){
 .setcnt .setpane>h2,.setpane .sethd:first-child,.setpane .web-search-settings>h2,.setpane .provider-title{position:sticky;top:0;z-index:1;background:var(--x-card);margin-top:0}
 }
@@ -2595,7 +2594,7 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setpage .btn.ghost{background:transparent}.setpage .btn:hover{background:var(--x-fill-3)}
 .setpage .btn:disabled{opacity:.5;cursor:default}.setpage .btn.sm{height:28px;padding:0 10px;font-size:12px}
 .setpage h3{margin:0}.setadd{width:100%;justify-content:center;color:var(--x-muted);border:0;cursor:pointer;font:inherit;font-size:13.5px}
-.setpage .icon{width:16px;height:16px}.setclose svg{width:18px;height:18px}
+.setpage .icon{width:16px;height:16px}
 .setnav button:focus-visible,.setpage button:focus-visible{outline:2px solid var(--x-muted);outline-offset:2px}
 .setpage [hidden]{display:none!important}.setpage .setnav button.on{background:var(--settings-selected)}
 .setdev .g7-lead,.setdev .g7-banner{margin:0 0 14px}.setdev .g7-body{overflow:visible;padding:0}
@@ -2633,7 +2632,6 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setbarback:hover{color:var(--x-text);background:var(--x-fill-2)}
 .setbarclose{flex:none;width:36px;height:36px}
 .setbody{flex-direction:column}
-.setclose{display:none}
 .setmain{min-height:0}
 .setnav,.setmain,.setcnt{border-radius:0}.setnavtitle{display:none}
 #setpage[data-nav="home"] .setmain,#setpage[data-nav="pane"] .setnav{display:none}
