@@ -2674,11 +2674,12 @@
   }
 
   function paintAsideToggle(row, head) {
-    const drawer = row.lastElementChild;
+    const drawer = row._asideBody;
     const label = (drawer.hidden ? "查看心里话" : "收起心里话") +
       (row._texts.length > 1 ? " · " + row._texts.length + " 条" : "");
     head.setAttribute("aria-expanded", String(!drawer.hidden));
     head.setAttribute("aria-label", label);
+    row.hidden = drawer.hidden && row.classList.contains("aside-attached");
     setTip(head, label + "\n\n" + drawer.textContent);
   }
 
@@ -2688,21 +2689,54 @@
       row.classList.add("aside-event");
       row._texts = [];
       drawer.id = "aside-" + key;
-      drawer.hidden = !openRoutines.has(key);
-      head.className = "icon-btn aside-toggle";
+      // Keep the keyed projection closed; restore reader state after patching.
+      drawer.hidden = true;
+      row.dataset.asideKey = key;
+      row._asideHead = head;
+      row._asideBody = drawer;
+      head._asideRow = row;
+      head.className = "msg-act aside-toggle";
       head.append(icon("message-circle-heart"));
       head.setAttribute("aria-controls", drawer.id);
       head.addEventListener("click", () => {
+        const top = thread.scrollTop;
+        threadStick.read();
         drawer.hidden = !drawer.hidden;
         paintAsideToggle(row, head);
         if (drawer.hidden) openRoutines.delete(key); else openRoutines.add(key);
+        thread.scrollTop = top;
       });
       row.append(drawer);
     }, (row, head) => {
       row._texts.push(text);
-      row.lastElementChild.textContent = row._texts.join("\n\n");
+      row._asideBody.textContent = row._texts.join("\n\n");
       paintAsideToggle(row, head);
     });
+  }
+
+  // Attach reader-owned controls after keyed patching, outside its snapshots.
+  function mountAsideActions(inner) {
+    for (const head of inner.querySelectorAll(".aside-toggle")) {
+      if (!inner.contains(head._asideRow)) head.remove();
+    }
+    let previousBot = null;
+    for (const row of inner.children) {
+      if (row.classList.contains("msg")) {
+        previousBot = row.classList.contains("bot") ? row : null;
+      } else if (row.classList.contains("aside-event")) {
+        const head = row._asideHead;
+        const bar = previousBot && msgMetaBar(previousBot);
+        const time = bar && bar.querySelector(".msg-time");
+        if (bar) {
+          if (head.parentElement !== bar || head.nextElementSibling !== time) bar.insertBefore(head, time);
+        } else if (head.parentElement !== row) row.prepend(head);
+        row.classList.toggle("aside-attached", !!bar);
+        row._asideBody.hidden = !openRoutines.has(row.dataset.asideKey);
+        paintAsideToggle(row, head);
+      } else if (!row._source && !row.classList.contains("tdiv") && !row.hasAttribute("data-history-controls")) {
+        previousBot = null;
+      }
+    }
   }
 
   // A remote bounce the outbox or the peer wrote back into the sender's inbox.
@@ -3270,6 +3304,7 @@
     return {
       get sticking() { return sticking; },
       get paused() { return paused; },
+      read() { sticking = false; lastTop = thread.scrollTop; },
       pause() {
         if (paused) return;
         savedTop = thread.scrollTop; savedAnchor = sticking ? null : threadStick.anchor();
@@ -3428,6 +3463,7 @@
     addTimeDividers(inner);
     const unaligned = messages.some((m, i) => !Number.isInteger(m.id) || m.id <= 0 || (i > 0 && m.id <= messages[i - 1].id));
     const changed = commitTranscript(inner, who, unaligned);
+    mountAsideActions(thread.querySelector(".thread-inner"));
     state.firstRender = false;
     if (changed) threadStick.changed();
     return true;
