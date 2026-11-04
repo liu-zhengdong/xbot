@@ -1,14 +1,13 @@
 /* Apps store: the skills shell with a card grid. Selected chips use the neutral fill, never an accent. */
-.setpage:has([data-spane="apps"]:not([hidden])){height:min(760px,90vh)}
 .ap-head{justify-content:space-between;gap:var(--x-s4)}
 .ap-count{display:inline-flex;align-items:center;gap:var(--x-s2);border:0;background:transparent;font:inherit;font-size:var(--x-fs-ui);font-weight:560;color:var(--x-muted);cursor:pointer;padding:var(--x-s2) 0}
 .ap-count:hover{color:var(--x-text)}
 .ap-search{display:block;margin:0 0 var(--x-s4)}
 .ap-search .sksearch{width:100%;max-width:none}
 .ap-chips{display:flex;flex-wrap:wrap;gap:var(--x-s3);margin:0 0 var(--x-s6)}
-.ap-chip{border:0;border-radius:999px;height:28px;padding:0 var(--x-s5);font:inherit;font-size:var(--x-fs-sm);font-weight:560;background:transparent;color:var(--x-muted);cursor:pointer}
+.ap-chip{border:0;border-radius:var(--x-r-pill);height:calc(var(--x-s7) + var(--x-s3));padding:0 var(--x-s5);font:inherit;font-size:var(--x-fs-ui);font-weight:560;background:transparent;color:var(--x-muted);cursor:pointer}
 .ap-chip:hover{background:var(--x-fill-1);color:var(--x-text)}
-.ap-chip.on{background:var(--x-fill-3);color:var(--x-text)}
+.ap-chip.on{background:var(--x-fill-2);color:var(--x-text)}
 .ap-sec{margin:0 0 var(--x-s7)}
 .ap-sec h4{margin:0 0 var(--x-s4);font-size:var(--x-fs-sm);font-weight:600;color:var(--x-muted)}
 .ap-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--x-s4);align-items:stretch}

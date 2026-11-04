@@ -1,5 +1,4 @@
 /* Persona cards reuse the skills settings shell (list, toolbar, layers); only the editor and the picker are new. */
-.setpage:has([data-spane="persona"]:not([hidden])){height:min(760px,90vh)}
 .persona-settings{--pc-plus:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round'%3E%3Cpath d='M12 5v14M5 12h14'/%3E%3C/svg%3E");--pc-art:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 64' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='26' y='14' width='44' height='36' rx='4'/%3E%3Ccircle cx='40' cy='28' r='5'/%3E%3Cpath d='M32 42c1.5-4 4.5-6 8-6s6.5 2 8 6'/%3E%3Cpath d='M54 26h9M54 33h7'/%3E%3C/svg%3E")}
 .persona-settings .pc-art{-webkit-mask-image:var(--pc-art);mask-image:var(--pc-art)}
 .pc-emptyacts{display:flex;gap:var(--x-s3);justify-content:center}

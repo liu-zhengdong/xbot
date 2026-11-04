@@ -116,7 +116,7 @@
     const theme = themeMode === "system" ? (systemTheme.matches ? "dark" : "light") : themeMode;
     document.documentElement.setAttribute("data-theme", theme);
     $("theme-color")?.setAttribute("content", theme === "dark" ? "#161618" : "#ffffff");
-    $("settings-theme").value = themeMode;
+    $("settings-theme").querySelector(`input[value="${themeMode}"]`).checked = true;
     $("workspace-theme").replaceChildren(icon(theme === "dark" ? "sun" : "moon"));
     try { localStorage.setItem("xbot-theme", themeMode); } catch (e) {}
     if (inApp) api("/api/app/theme", { method: "POST", body: { theme } }).catch(() => {});
@@ -8818,7 +8818,7 @@
     window.XBotPersonaCards?.unmount();
     window.XBotApps?.unmount();
     window.XBotVault?.unmount();
-    $("settings-theme").value = themeMode;
+    $("settings-theme").querySelector(`input[value="${themeMode}"]`).checked = true;
     for (const node of page.querySelectorAll("[data-settings-version]")) node.textContent = aboutVersion();
     $("settings-restart-row").hidden = !state.canRestart;
     if (opening) page.focus({ preventScroll: true });
@@ -8868,7 +8868,7 @@
       if (bad) { problem.textContent = bad; return; }
     }
     upload.disabled = clear.disabled = true;
-    upload.textContent = file ? "正在上传…" : "换一张";
+    upload.querySelector("span").textContent = file ? "正在上传…" : "换一张";
     try {
       const data = file
         ? await uploadAvatar(null, file, "/api/owner/avatar")
@@ -8877,7 +8877,7 @@
       renderMe();
       paintOwnerAvatar();
     } catch (e) { problem.textContent = avatarUploadProblem(e); }
-    finally { upload.disabled = clear.disabled = false; upload.textContent = "换一张"; }
+    finally { upload.disabled = clear.disabled = false; upload.querySelector("span").textContent = "换一张"; }
   }
   $("settings-owner-upload").addEventListener("click", () => $("settings-owner-file").click());
   $("settings-owner-file").addEventListener("change", (ev) => {
@@ -8924,7 +8924,7 @@
     if ($("setpage").hidden || deviceLayerOpen() || !modal.hidden) return;
     if (ev.key === "Escape") { ev.preventDefault(); ev.stopImmediatePropagation(); closeSettings(); }
     else if (ev.key === "Tab") {
-      const items = [...$("setpage").querySelectorAll('button:not(:disabled),select,a[href],input')].filter(n => n.getClientRects().length);
+      const items = [...$("setpage").querySelectorAll('button:not(:disabled),select,a[href],input')].filter(n => n.getClientRects().length && (n.type !== "radio" || n.checked));
       const first = items[0], last = items.at(-1);
       if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
       else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
@@ -8958,7 +8958,6 @@
       setTimeout(() => { status.textContent = ""; }, 2000);
     }
   });
-  $("push-icon").append(icon("phone"));
 
   function urlBase64ToUint8Array(s) {
     const pad = "=".repeat((4 - (s.length % 4)) % 4);
@@ -8975,9 +8974,8 @@
     const hint = $("phone-push-hint");
     const on = !!(data && data.subscribed);
     if (btn) {
-      btn.classList.toggle("on", on);
-      btn.setAttribute("aria-checked", on ? "true" : "false");
-      btn.setAttribute("aria-label", on ? "关闭手机推送" : "开启手机推送");
+      btn.querySelector(`input[value="${on ? "on" : "off"}"]`).checked = true;
+      btn.disabled = false;
     }
     if (hint) {
       hint.classList.remove("bad");
@@ -9000,10 +8998,14 @@
     return data;
   }
 
-  async function togglePush() {
+  async function togglePush(enabled) {
+    const control = $("phone-push");
     try {
       const data = state.push || await loadPush();
-      if (data.subscribed) {
+      paintPush(data);
+      if (!!data.subscribed === enabled) return;
+      control.disabled = true;
+      if (!enabled) {
         await api("/api/push/subscribe", { method: "DELETE", body: {} });
         await loadPush();
         return;
@@ -9034,12 +9036,14 @@
       });
       await loadPush();
     } catch (e) {
-      showPushErr(visibleError(e, "开启失败"));
+      showPushErr(visibleError(e, "操作失败"));
+    } finally {
+      control.disabled = false;
     }
   }
 
   const phonePush = $("phone-push");
-  if (phonePush) phonePush.addEventListener("click", () => { togglePush().catch(() => {}); });
+  if (phonePush) phonePush.addEventListener("change", (ev) => { togglePush(ev.target.value === "on"); });
 
   const tipEl = el("div", "tip");
   tipEl.setAttribute("role", "tooltip");

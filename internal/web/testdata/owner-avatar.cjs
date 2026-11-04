@@ -16,7 +16,7 @@ const url=process.argv[2];
   const shots=process.env.OWNER_AVATAR_SHOTS;
   const capture=async(name)=>{if(shots){const dir=path.join(shots,'after',await page.locator('html').getAttribute('data-theme'));fs.mkdirSync(dir,{recursive:true});await page.screenshot({path:path.join(dir,name+'.png')})}};
   for(const theme of ['light','dark']){
-   await page.locator('#settings-theme').selectOption(theme);
+   await page.locator(`.theme-option-${theme}`).click();
    assert.equal(await page.locator('html').getAttribute('data-theme'),theme);
    await capture('default');await page.locator('#settings-owner-upload').hover();await capture('hover');
   }
@@ -31,7 +31,7 @@ const url=process.argv[2];
   const uploadMs=performance.now()-uploadStart;
   assert.equal((await (await context.request.get(url+'/api/session')).json()).owner_avatar_url,'/api/owner/avatar');
   assert.deepEqual(await (await context.request.get(url+'/api/owner/avatar')).body(),png);
-  for(const theme of ['light','dark']){await page.locator('#settings-theme').selectOption(theme);await capture('custom')}
+  for(const theme of ['light','dark']){await page.locator(`.theme-option-${theme}`).click();await capture('custom')}
   await page.reload();await page.locator('#shell').waitFor({state:'visible'});assert.equal(await me.getAttribute('src'),'/api/owner/avatar');
   await open();assert.equal(await page.locator('#settings-owner-preview img').getAttribute('src'),'/api/owner/avatar');
   // A reachable disk-write failure is tested in the scripted browser regression.
@@ -39,7 +39,7 @@ const url=process.argv[2];
   await page.waitForFunction(src=>document.querySelector('#me-avatar img')?.getAttribute('src')===src,original);
   assert.equal((await (await context.request.get(url+'/api/session')).json()).owner_avatar_url,'');
   assert.equal((await context.request.get(url+'/api/owner/avatar')).status(),404);
-  for(const theme of ['light','dark']){await page.locator('#settings-theme').selectOption(theme);await capture('cleared')}
+  for(const theme of ['light','dark']){await page.locator(`.theme-option-${theme}`).click();await capture('cleared')}
   await page.reload();await page.locator('#shell').waitFor({state:'visible'});assert.equal(await me.getAttribute('src'),original);
   assert.deepEqual(errors,[]);
   times.sort((a,b)=>a-b);console.log(JSON.stringify({result:'PASS',sessionP95Ms:times[Math.ceil(times.length*.95)-1],uploadToMeMs:uploadMs}));

@@ -22,7 +22,7 @@ func TestSettingsSystemThemeKeepsPreference(t *testing.T) {
 	}
 	encoded, _ := json.Marshal(`let themeMode = "system";` + block + `;initTheme();return {applyTheme};`)
 	script := `const assert=require('node:assert/strict');
- const nodes=new Map();const $=id=>{if(!nodes.has(id)) nodes.set(id,{value:'',attrs:{},setAttribute(k,v){this.attrs[k]=v},replaceChildren(...children){this.children=children}});return nodes.get(id)};
+ const nodes=new Map();const $=id=>{if(!nodes.has(id)) nodes.set(id,{value:'',attrs:{},setAttribute(k,v){this.attrs[k]=v},replaceChildren(...children){this.children=children},querySelector(selector){return $('theme-'+selector.match(/value="([^"]+)"/)[1])}});return nodes.get(id)};
  const media={matches:false,addEventListener(event,cb){this.change=cb}};
  const store=new Map([['xbot-theme','system']]);const calls=[];
  const api=(path,opts)=>{calls.push([path,opts.body.theme]);return Promise.resolve()};
@@ -31,7 +31,7 @@ func TestSettingsSystemThemeKeepsPreference(t *testing.T) {
  const ctrl=run($,{matchMedia:()=>media},doc,{getItem:k=>store.get(k),setItem:(k,v)=>store.set(k,v)},true,api,name=>({name}));
  assert.equal(store.get('xbot-theme'),'system');assert.equal($('root').attrs['data-theme'],'light');
  media.matches=true;media.change();assert.equal($('root').attrs['data-theme'],'dark');assert.equal(store.get('xbot-theme'),'system');
- ctrl.applyTheme('light');media.change();assert.equal($('root').attrs['data-theme'],'light');assert.equal($('settings-theme').value,'light');
+ ctrl.applyTheme('light');media.change();assert.equal($('root').attrs['data-theme'],'light');assert.equal($('theme-light').checked,true);
  ctrl.applyTheme('dark');assert.equal(store.get('xbot-theme'),'dark');assert.equal($('root').attrs['data-theme'],'dark');
  assert.ok(calls.every(([path,theme])=>path==='/api/app/theme'&&['light','dark'].includes(theme)));
  `

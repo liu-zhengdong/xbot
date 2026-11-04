@@ -120,7 +120,7 @@
   .acct .ac-card .ac-devcnt{padding:4px 20px 22px}
 }
 @media (prefers-reduced-motion:reduce){.acct .ac-btn{transition:none}}
-.acct.acct-settings{position:static;inset:auto;z-index:auto;display:block;background:transparent;overflow:visible}
+.acct.acct-settings{position:static;inset:auto;z-index:auto;display:block;background:transparent;font-size:var(--x-fs-ui);overflow:visible}
 .acct-settings .ac-stage{display:block;min-height:0;padding:0;background:transparent}
 /* settings · account fills .setcnt (E2); beats the wide-stage .acct .ac-card 420/560 */
 .acct.acct-settings .ac-card{width:100%;max-width:none;box-shadow:none;background:transparent}
@@ -128,5 +128,7 @@
 .acct-settings .ac-auth h1{display:none}
 .acct-settings .ac-auth .ac-foot{margin-top:12px;padding:0}
 .acct.acct-settings .ac-settings-wrap{max-width:none}
-.acct-settings .ac-settings-profile{display:flex;gap:12px;align-items:center;padding:16px;background:var(--x-fill-1);border-radius:12px;margin-bottom:18px}
-.acct-settings .ac-settings-profile p{margin:4px 0 0;color:var(--x-muted);font-size:13px}
+.acct-settings .ac-settings-profile{display:flex;gap:var(--x-s5);align-items:center;padding:var(--x-s6) 0;background:transparent;margin-bottom:var(--x-s6)}
+.acct-settings .ac-settings-profile p{margin:var(--x-s1) 0 0;color:var(--x-muted);font-size:var(--x-fs-sm)}
+.acct.acct-settings :is(.ac-btn,.ac-field label,.ac-field input,.ac-link,.ac-auth .ac-lead,.ac-auth .ac-foot,.ac-av){font-size:var(--x-fs-ui)}
+.acct.acct-settings :is(.ac-err,.ac-note,.ac-verify .ac-fine,.ac-divider){font-size:var(--x-fs-sm)}

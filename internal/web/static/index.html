@@ -248,7 +248,7 @@ try {
   <button id="settings-close-m" class="icon-btn setbarclose" type="button" aria-label="关闭设置"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
  </div>
  <div class="setbody">
-  <nav class="setnav">
+  <nav class="setnav" aria-label="设置分类"><h2 class="setnavtitle">设置</h2>
    <p class="setnavlead">整台 XBot 的共用选项。点开一项继续。</p>
    <button type="button" data-set="general"><svg class="ic " width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg><span>通用</span></button>
    <button type="button" data-set="account"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span>账号</span></button>
@@ -267,33 +267,42 @@ try {
    <button id="settings-close" class="icon-btn setclose" type="button" aria-label="关闭设置"><svg class="ic " width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
    <div class="setcnt"><p id="settings-error" class="bad" role="alert" hidden></p>
    <div class="setpane" data-spane="general">
-    <h2>通用</h2>
-    <div class="setsec" style="margin-top:0">
-     <h4>我的头像</h4>
-     <div class="setrow">
-      <span id="settings-owner-preview" class="tx"></span>
-      <button id="settings-owner-upload" class="btn" type="button">换一张</button>
-      <button id="settings-owner-clear" class="text-btn" type="button" hidden>清除</button>
-      <input id="settings-owner-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
-     </div>
-     <p id="settings-owner-error" class="avatar-note err" role="alert"></p>
-    </div>
-    <div class="setsec">
-     <h4>外观</h4>
-     <div class="setrows">
-      <div class="setrow">
-       <div class="tx"><b>主题</b></div>
-       <select class="setselect" id="settings-theme" aria-label="主题">
-        <option value="light" selected>浅色</option>
-        <option value="dark">深色</option>
-        <option value="system">跟随系统</option>
-       </select>
+     <h2>通用</h2>
+     <div class="setsec settings-personal">
+      <h4>个人</h4>
+      <div class="setrow settings-owner-row">
+       <span id="settings-owner-preview"></span>
+       <div class="tx"><b>我的头像</b></div>
+       <button id="settings-owner-upload" class="btn" type="button"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg><span>换一张</span></button>
+       <button id="settings-owner-clear" class="text-btn" type="button" hidden>清除</button>
+       <input id="settings-owner-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
       </div>
+      <p id="settings-owner-error" class="avatar-note err" role="alert"></p>
      </div>
+     <div class="setsec settings-appearance">
+      <h4>外观</h4>
+      <div class="settings-theme-label" id="settings-theme-label">主题</div>
+      <fieldset class="theme-options" id="settings-theme" aria-labelledby="settings-theme-label">
+        <label class="theme-option theme-option-light">
+         <input type="radio" name="settings-theme" value="light" checked>
+         <span class="theme-preview" aria-hidden="true"><span class="theme-mini"><span class="theme-mini-nav"><i></i><i></i><i></i><i></i></span><span class="theme-mini-content"><i class="theme-mini-heading"></i><i class="theme-mini-bubble"></i><i class="theme-mini-reply"></i><i class="theme-mini-input"></i></span></span></span>
+         <span class="theme-caption"><span class="theme-radio" aria-hidden="true"></span>浅色</span>
+        </label>
+        <label class="theme-option theme-option-dark">
+         <input type="radio" name="settings-theme" value="dark">
+         <span class="theme-preview" aria-hidden="true"><span class="theme-mini"><span class="theme-mini-nav"><i></i><i></i><i></i><i></i></span><span class="theme-mini-content"><i class="theme-mini-heading"></i><i class="theme-mini-bubble"></i><i class="theme-mini-reply"></i><i class="theme-mini-input"></i></span></span></span>
+         <span class="theme-caption"><span class="theme-radio" aria-hidden="true"></span>深色</span>
+        </label>
+        <label class="theme-option theme-option-system">
+         <input type="radio" name="settings-theme" value="system">
+         <span class="theme-preview" aria-hidden="true"><span class="theme-mini"><span class="theme-mini-nav"><i></i><i></i><i></i><i></i></span><span class="theme-mini-content"><i class="theme-mini-heading"></i><i class="theme-mini-bubble"></i><i class="theme-mini-reply"></i><i class="theme-mini-input"></i></span></span><span class="theme-mini theme-mini-system-dark"><span class="theme-mini-nav"><i></i><i></i><i></i><i></i></span><span class="theme-mini-content"><i class="theme-mini-heading"></i><i class="theme-mini-bubble"></i><i class="theme-mini-reply"></i><i class="theme-mini-input"></i></span></span></span>
+         <span class="theme-caption"><span class="theme-radio" aria-hidden="true"></span>跟随系统</span>
+        </label>
+      </fieldset>
+     </div>
+     <div class="setsec settings-notifications"><h4>通知</h4><div class="approw"><div class="tx"><b>手机推送</b><div class="st" id="phone-push-hint">Bot 有话找你时，推送到这台设备</div></div><fieldset id="phone-push" class="set-segments" aria-label="手机推送" disabled><label><input type="radio" name="phone-push" value="off" checked>关闭</label><label><input type="radio" name="phone-push" value="on">开启</label></fieldset></div></div>
     </div>
-    <div class="setsec"><h4>通知</h4><div class="approw"><span class="icwrap" id="push-icon"></span><div class="tx"><b>手机推送</b><div class="st" id="phone-push-hint">Bot 有话找你时，推送到这台设备</div></div><button id="phone-push" type="button" class="tog" role="switch" aria-checked="false" aria-label="手机推送"></button></div></div>
-   </div>
-   <div class="setpane" data-spane="account" hidden><h2>账号</h2><div id="settings-account" class="acct acct-settings"></div></div>
+    <div class="setpane" data-spane="account" hidden><h2>账号</h2><div id="settings-account" class="acct acct-settings"></div></div>
    <div class="setpane" data-spane="perm">
     <h2>权限</h2>
     <div class="setsec" style="margin-top:0">

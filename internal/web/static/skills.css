@@ -1,5 +1,4 @@
 /* Skills uses the approved settings shell and the web-search density; only list, toolbar and layers are new. */
-.setpage:has([data-spane="skills"]:not([hidden])){height:min(760px,90vh)}
 .skills-settings h2{font-size:var(--x-fs-title);font-weight:650;margin:var(--x-s1) 0 var(--x-s3)}
 .skills-settings .sethd{display:flex;align-items:center;min-height:28px}
 .skills-settings .sethd>h2{margin:var(--x-s1) 0 var(--x-s3)}

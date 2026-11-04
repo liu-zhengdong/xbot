@@ -146,6 +146,22 @@ html[data-theme="dark"] .workspace :is(.chat, .dock) :where(.bubble,.send-state)
 @media(max-width:1100px) { :root { --workspace-gutter:20px; } }
 @media(max-width:767px) { :root { --workspace-gutter:16px; } }
 
+/* Approved settings: a neutral shell, one white surface, visible theme choices. */
+:root {
+  --settings-width:820px; --settings-height:681px; --settings-nav:176px;
+  --settings-gutter:28px; --settings-ui:14px; --settings-caption:12px; --settings-title:23px;
+  --settings-radius:18px; --settings-nav-row:38px; --settings-avatar:60px;
+  --settings-section:36px; --settings-preview-height:83px; --settings-button-height:34px;
+  --settings-fill:#f4f4f6; --settings-selected:#e8e8ec;
+  --settings-mini-shell:#e8e8ec; --settings-mini-page:#ffffff;
+  --settings-mini-line:#c6c6cd; --settings-mini-heading:#93939d;
+  --settings-mini-bubble:#ededf1; --settings-mini-reply:#53535e;
+  --settings-mini-dark-shell:#29292f; --settings-mini-dark-page:#19191e;
+  --settings-mini-dark-line:#54545e; --settings-mini-dark-bubble:#303037;
+  --settings-mini-dark-reply:#b9b9c1;
+}
+html[data-theme="dark"] { --settings-fill:#26262c; --settings-selected:#303037; }
+
 /* Approved trace explorer: compact rows, semantic accents, neutral selection. */
 :root {
   --trace-input:#3d65ad; --trace-input-mark:#6c95ed; --trace-input-bg:#edf3ff;
