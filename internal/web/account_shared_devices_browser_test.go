@@ -127,9 +127,10 @@ const keyEscape=()=>document.activeElement.dispatchEvent(new KeyboardEvent('keyd
  assert(!$('[data-detail-task-note]').hidden,'truncated detail claimed a complete list');
  accountFixture.detailTruncated=false;await until(()=>$('[data-detail-task-note]').hidden,'untruncated detail kept stale warning');
  assert(accountFixture.detailReads>0,'detail not requested');
- assert($('[data-detail-os]').textContent==='macOS','runtime OS was not projected');
+ const platform=$('[data-device-platform] [role=img]');
+ assert(platform.getAttribute('aria-label')==='macOS'&&platform.querySelector('svg')&&!platform.textContent.trim(),'platform identity lacks an accessible symbol');
  assert(JSON.stringify([...document.querySelectorAll('[data-detail-caps] .account-device-cap')].map(n=>n.textContent))===JSON.stringify(['读取文件','写入文件','终端','浏览器','电脑操作']),'backend capabilities were not projected or exec was duplicated');
- const rename=$('[data-shared=rename]');rename.focus();rename.click();
+ const rename=$('[data-device-name]');rename.focus();rename.click();
  const field=$('#account-devices-modal input');field.value='新的工作电脑';field.setSelectionRange(1,4);
  const detailReads=accountFixture.detailReads;await until(()=>accountFixture.detailReads>=detailReads+2,'detail polls');
  assert($('#account-devices-modal input')===field&&field.value==='新的工作电脑'&&field.selectionStart===1&&field.selectionEnd===4&&document.activeElement===field,'detail poll lost rename draft');
