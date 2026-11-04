@@ -2680,9 +2680,10 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .setpage .setdev .sethd .primary{font-size:var(--x-fs-ui)}
 }
 .settings-profile-value{display:flex;align-items:center;justify-content:flex-end;gap:var(--ui-gap);min-width:0}
+.settings-avatar-button{display:flex;align-items:center;justify-content:center;flex:none;width:var(--settings-avatar);height:var(--settings-avatar);padding:0;border:0;border-radius:var(--x-r-pill);background:transparent;color:inherit;cursor:pointer}
+.settings-avatar-button:disabled{cursor:default;opacity:.6}
 #settings-owner-preview{display:flex;flex:none}
 #settings-owner-preview .avatar{width:var(--settings-avatar);height:var(--settings-avatar)}
-#settings-owner-name{font-size:var(--settings-ui);font-weight:var(--ui-weight);max-width:var(--ui-field-width);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #settings-owner-clear{flex:none;font-size:var(--ui-action);color:var(--x-muted)}
 #settings-owner-error:empty{display:none}
 .theme-options{display:flex;flex:none;align-items:stretch;min-width:0;height:var(--ui-control);padding:var(--x-s1);gap:0;margin:0;border:0;border-radius:var(--x-r-sm);background:var(--settings-fill)}

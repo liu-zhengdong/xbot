@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-04 @ fb2a9ddf (+ Magpie settings working tree; controls, geometry and real serve checked)
+verified: 2026-11-04 @ 4a1d4e19 (+ direct avatar picker working tree; avatar behavior, geometry and real serve checked)
 
 ---
 # 网页界面
@@ -75,7 +75,7 @@ Composer 的 mic 在发送钮左侧：点按进入录音条，「发送」提交
 
 设置壳采用浅灰底板和内缩的白色主面。桌面尺寸上限 820×681，侧栏 176px，主面圆角 18px，内容边距 28px。导航和配置操作共用 14px 字号，辅助文字 12px，页标题 24px；变量集中在 `tokens.css` 的 `--settings-*`，仅在设置壳内覆盖字号与辅助灰度。各分类共用标题节奏和固定高度，长内容独立滚动。普通行保持透明，供应商模型列表没有斑马纹。浅深主题下，单色品牌标保持可见。
 
-设置采用用户指定的 Magpie 配置格式，左侧标签、右侧控件，相邻配置行用低对比细线。通用页为头像、外观、手机推送三行，最低 64px；头像、名称及更换／清除操作在同一行，清除只在有自定义图时出现。主题使用跟随系统／浅色／深色紧凑原生 radio 分段，取消大预览和中间分类标题；手机推送使用关闭／开启分段。推送提交期间禁用分段，成功后更新选择，权限拒绝或保存失败保留原选择并显示错误。键盘焦点循环按单选组的当前选中项处理。`TestSettingsGeneralBrowser` 守住主题偏好、推送成功／失败和窄屏目录返回；头像、滚动及各子页沿用对应浏览器回归。当前原型与 DPR 2 实际截图保存在 `~/.xbot-build/ui-shots/magpie-settings/`。长期 UC 来源为用户 Obsidian「设置页视觉统一」。
+设置采用用户指定的 Magpie 配置格式，左侧标签、右侧控件，相邻配置行用低对比细线。通用页为头像、外观、手机推送三行，最低 64px；头像行右侧只展示头像，点击头像按钮直接打开文件选择器；支持键盘操作，不再显示用户名与独立更换按钮。清除只在有自定义图时出现。主题使用跟随系统／浅色／深色紧凑原生 radio 分段，取消大预览和中间分类标题；手机推送使用关闭／开启分段。推送提交期间禁用分段，成功后更新选择，权限拒绝或保存失败保留原选择并显示错误。键盘焦点循环按单选组的当前选中项处理。`TestSettingsGeneralBrowser` 守住主题偏好、推送成功／失败和窄屏目录返回；头像、滚动及各子页沿用对应浏览器回归。当前原型与 DPR 2 实际截图保存在 `~/.xbot-build/ui-shots/magpie-settings/`。长期 UC 来源为用户 Obsidian「设置页视觉统一」。
 
 桌面设置壳与侧栏不随右栏内容滚动；`.setcnt` 是内缩的独立滚动区，滚动条与模态右缘、上下圆角留出间距。各页主标题行吸顶；通用、连接应用和同族长页共用规则，不按应用页特判。桌面设置不显示右上关闭按钮，点击浮层外部或按 Escape 关闭，关闭后恢复入口焦点；内部点击不关闭，有嵌套弹窗时沿原层级处理。窄屏设置占满屏幕，沿用固定顶栏、关闭入口与独立内容滚动。行为守护为 `TestSettingsGeneralBrowser`。
 

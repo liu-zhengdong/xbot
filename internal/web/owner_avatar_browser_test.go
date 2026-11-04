@@ -24,6 +24,9 @@ func TestOwnerAvatarBrowser(t *testing.T) {
   return base(p,o);
  };
  const open=()=>window.XBotSettings.open('general');await open();
+  const picker=$('settings-owner-file'),nativeClick=picker.click;let opened=0;
+  picker.click=()=>{opened++};$('settings-owner-upload').click();picker.click=nativeClick;
+  assert(opened===1,'avatar did not open the file picker');
  const old=$('me-avatar').querySelector('img').getAttribute('src');
  const choose=(file)=>{const dt=new DataTransfer();dt.items.add(file);$('settings-owner-file').files=dt.files;$('settings-owner-file').dispatchEvent(new Event('change'))};
  const file=new File([new Uint8Array([137,80,78,71,13,10,26,10])],'face.png',{type:'image/png'});

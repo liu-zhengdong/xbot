@@ -8866,7 +8866,6 @@
   window.XBotSettings = { open: openSettings, close: closeSettings, isOpen: () => !$("setpage").hidden };
   function paintOwnerAvatar() {
     $("settings-owner-preview").replaceChildren(avatar(state.ownerName, { url: state.ownerAvatarURL }, "xl"));
-    $("settings-owner-name").textContent = state.ownerName || "你";
     $("settings-owner-clear").hidden = !state.ownerAvatarURL;
   }
   async function changeOwnerAvatar(file) {
@@ -8878,7 +8877,7 @@
       if (bad) { problem.textContent = bad; return; }
     }
     upload.disabled = clear.disabled = true;
-    upload.querySelector("span").textContent = file ? "正在上传…" : "换一张";
+    upload.setAttribute("aria-busy", "true");
     try {
       const data = file
         ? await uploadAvatar(null, file, "/api/owner/avatar")
@@ -8887,7 +8886,7 @@
       renderMe();
       paintOwnerAvatar();
     } catch (e) { problem.textContent = avatarUploadProblem(e); }
-    finally { upload.disabled = clear.disabled = false; upload.querySelector("span").textContent = "换一张"; }
+    finally { upload.disabled = clear.disabled = false; upload.removeAttribute("aria-busy"); }
   }
   $("settings-owner-upload").addEventListener("click", () => $("settings-owner-file").click());
   $("settings-owner-file").addEventListener("change", (ev) => {

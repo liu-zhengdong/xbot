@@ -22,6 +22,10 @@ const cfg=JSON.parse(fs.readFileSync(0,'utf8'));
     if(width<=640&&section!=='general')await p.locator('#settings-back').click();
     if(width<=640||section!=='general')await p.locator('[data-set="'+section+'"]').click();
     await p.locator(ready).first().waitFor({state:'visible'});
+    if(section==='general'){
+     const [picker]=await Promise.all([p.waitForEvent('filechooser'),p.locator('#settings-owner-upload').click()]);
+     await picker.setFiles([]);
+    }
     assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'settings overflow '+width+' '+section);
      const geometry=await p.evaluate(({section,width})=>{
       const bounds=n=>{const r=n.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height}};
