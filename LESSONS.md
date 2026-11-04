@@ -135,6 +135,8 @@
 
 ## 界面交互
 
+- **工具栏图标的视觉尺寸与点击区域分开定义。** 原因：刷新图形修正后，用户仍指出顶栏与标签图标过大；只核图形，未检查整组与文字的重量。XBot 本轮顶栏从 20px 收到 16px、标签从 16px 收到 14px，保留 36px 点击区和文字尺寸。图标直接使用官方 Lucide 路径，不自行绘制或改形。守护：`tokens.css` 的工作区图标尺寸与 DPR 2 局部截图，正常阅读尺寸检查整组及相邻文字。Seen 1×（2026-11-04，用户截图纠正）。
+
 - **文字按钮的强调样式不能继承图标按钮的几何。** 公共 `btn ghost` 曾被后加载的 `.ghost` 规则压成 32×32px，长文字会溢出。图标几何现限定为 `.ghost:not(.btn)`。守护：`TestFrontendStandardWeakActionBrowser` 检查真实模型选择器的管理按钮尺寸、文字完整和设置入口。Seen 1×（2026-11-04）。
 
 - **贴底布局要量到用户看见的主工作区边缘。** 首轮只量 `.chat` 至输入框，漏掉同级隐藏 `.subtitle` 用 `visibility:hidden` 仍保留的 16.8px，16px 内距实际成为 32.796875px。守护：`TestContextAndTaskIndirectNavigationBrowser` 改量 `.workspace` 至输入框，修前红、修后实际 8px；隐藏状态行改为不占位，并与 `TestChatStreamBrowser` 同次通过。Seen 1×（2026-11-02，用户截图纠正）。

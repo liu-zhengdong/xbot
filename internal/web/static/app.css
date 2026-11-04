@@ -2883,11 +2883,12 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .workspace .workspace-actions:not([hidden]) + #workspace-theme { margin-left:0; }
 .workspace .chat-search-btn, .workspace #update { position:static; transform:none; flex:none; margin:0; }
 .workspace .icon-btn { width:var(--workspace-control); height:var(--workspace-control); border-radius:var(--x-r-sm); }
+.workspace .top-inner .icon-btn svg { width:var(--workspace-action-icon); height:var(--workspace-action-icon); }
 .workspace-navigation { display:flex; align-items:center; height:var(--workspace-tabs); gap:var(--x-s1); min-width:0; }
 #workspace-tabs { position:relative; display:flex; align-items:center; gap:var(--x-s1); overflow-x:auto; min-width:0; scrollbar-width:none; }
 #workspace-tabs::-webkit-scrollbar { display:none; }
 .workspace-tab { position:relative; z-index:1; display:inline-flex; align-items:center; justify-content:center; gap:var(--x-s3); height:var(--workspace-tab-height); padding:0 var(--x-s5); border:0; border-radius:var(--x-r-sm); background:transparent; color:var(--x-muted); white-space:nowrap; font-size:var(--x-fs-ui); cursor:pointer; flex:none; transition:color var(--dur-press) ease-out, background var(--dur-press) ease-out, transform var(--dur-press) ease-out; }
-.workspace-tab .icon { width:var(--x-s6); height:var(--x-s6); stroke-width:var(--x-icon-stroke); }
+.workspace-tab .icon { width:var(--workspace-tab-icon); height:var(--workspace-tab-icon); stroke-width:var(--x-icon-stroke); }
 .workspace-tab:hover:not([aria-selected=true]), .workspace-tab[aria-expanded=true] { background:var(--x-fill-1); color:var(--x-text); }
 .workspace-tab[aria-selected=true] { color:var(--x-text); font-weight:var(--workspace-weight); }
 .workspace-tab:active { transform:scale(var(--press-scale)); }
