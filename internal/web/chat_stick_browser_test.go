@@ -17,6 +17,14 @@ func TestChatStickBrowser(t *testing.T) {
 	runChatFramesBrowser(t, transcriptWindowFixture, chatStickDriver)
 }
 
+func TestChatStickNearBottomReplyBrowser(t *testing.T) {
+	runChatFramesBrowser(t, transcriptWindowFixture+`fixture.seq=420;`, chatStickNearBottomReplyDriver)
+}
+
+func TestChatStickAcceptedReplyBrowser(t *testing.T) {
+	runChatFramesBrowser(t, transcriptWindowFixture+`fixture.seq=420;`, chatStickAcceptedReplyDriver)
+}
+
 func TestChatStickSettlementBrowser(t *testing.T) {
 	runChatFramesBrowser(t, transcriptWindowFixture+`fixture.seq=420;`, chatStickSettlementDriver)
 }
@@ -60,6 +68,65 @@ func runChatFramesBrowser(t *testing.T, fixture, driver string) {
 	}
 	t.Log(strings.TrimSpace(string(out)))
 }
+
+const chatStickNearBottomReplyDriver = `
+const $=s=>document.querySelector(s),assert=(v,m)=>{if(!v)throw Error(m)};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const waitFor=async(f,m)=>{for(let i=0;i<1000;i++){if(f())return;await sleep(10)}throw Error(m)};
+(async()=>{
+ await waitFor(()=>$('#thread [data-seq="420"]')&&!$('.thread-loading-cover'),'opening failed');await sleep(100);
+ const thread=$('#thread'),gap=()=>thread.scrollHeight-thread.clientHeight-thread.scrollTop;
+ const box=$('#input');box.textContent='接近底部时接收回复';box.dispatchEvent(new Event('input'));$('#composer').requestSubmit();
+ await waitFor(()=>fixture.streams.length&&$('#thread .live'),'send failed');await sleep(100);
+ const stream=fixture.streams[0];
+ // Deliver before the native scroll event, as a ready SSE reader can do.
+ thread.scrollTop-=80;
+ say(stream,'第一条回复应自动跟随。'.repeat(200));
+ await sleep(100);
+ assert(gap()<3,'near-bottom reply lost follow: '+gap());
+ // A larger pending upward scroll must still protect historical reading.
+ thread.scrollTop-=400;const top=thread.scrollTop;
+ say(stream,'上翻阅读时保持位置。'.repeat(200));await sleep(100);
+ assert(Math.abs(thread.scrollTop-top)<3,'reply pulled historical reader');
+ finish(stream,'第一条回复应自动跟随。'.repeat(200));historyFixture.version++;
+ await waitFor(()=>!$('#thread .live'),'stream did not settle');
+ assert(testErrors.length===0,testErrors.join('; '));document.body.dataset.testResult='passed';
+})().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
+`
+
+const chatStickAcceptedReplyDriver = `
+const $=s=>document.querySelector(s),assert=(v,m)=>{if(!v)throw Error(m)};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const waitFor=async(f,m)=>{for(let i=0;i<1000;i++){if(f())return;await sleep(10)}throw Error(m)};
+(async()=>{
+ await waitFor(()=>$('#thread [data-seq="420"]')&&!$('.thread-loading-cover'),'opening failed');await sleep(100);
+ const thread=$('#thread'),gap=()=>thread.scrollHeight-thread.clientHeight-thread.scrollTop;
+ let accept;const baseFetch=window.fetch;
+ window.fetch=async(path,options)=>{
+  const response=await baseFetch(path,options);
+  if(String(path).endsWith('/messages'))await new Promise(resolve=>accept=resolve);
+  return response;
+ };
+ const box=$('#input');box.textContent='收到发送确认后继续跟随';box.dispatchEvent(new Event('input'));$('#composer').requestSubmit();
+ await waitFor(()=>accept&&$('#thread .send-state')&&fixture.streams.length,'send failed');await sleep(100);
+ assert(gap()<3,'sending state did not follow');const oldTop=thread.scrollTop,stream=fixture.streams[0];
+ const observer=new MutationObserver(records=>{
+  if(!records.some(r=>[...r.removedNodes].some(n=>n.nodeType===1&&n.classList.contains('send-state'))))return;
+  observer.disconnect();
+  // Force the status-line shrink to layout before the ready SSE response.
+  document.body.dataset.acceptedShrink=String(oldTop-thread.scrollTop);
+  say(stream,'发送确认后的长回复。'.repeat(200));
+ });
+ observer.observe(thread,{childList:true,subtree:true});accept();
+ await waitFor(()=>document.body.dataset.acceptedShrink!==undefined,'sending state was not removed');await sleep(100);
+ assert(Number(document.body.dataset.acceptedShrink)>3,'fixture did not shrink the scroll position');
+ assert(gap()<3,'accepted reply lost follow: '+gap());
+ finish(stream,'发送确认后的长回复。'.repeat(200));historyFixture.version++;
+ await waitFor(()=>!$('#thread .live'),'stream did not settle');await sleep(100);
+ assert(gap()<3,'accepted reply settlement lost follow');
+ assert(testErrors.length===0,testErrors.join('; '));document.body.dataset.testResult='passed';
+})().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
+`
 
 const chatStickHistoryNoticeDriver = `
 const $=s=>document.querySelector(s),assert=(v,m)=>{if(!v)throw Error(m)};

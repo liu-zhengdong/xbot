@@ -3237,8 +3237,7 @@
     function position(top) { thread.scrollTop = top; lastTop = thread.scrollTop; }
     function follow() {
       if (paused) return;
-      // Input can move the viewport before its scroll event is delivered.
-      if (thread.scrollTop < lastTop && !nearBottom()) sticking = false;
+      // Read scroll intent before changing content. New height is not user input.
       if (sticking && !state.peer) position(thread.scrollHeight);
     }
     function schedule() {
@@ -3307,6 +3306,7 @@
   // image load state belong to the reader and must survive a poll.
   function applyTranscript(messages, who) {
     if (!state.firstRender && state.sig && sameTranscriptValue(messages, state.messages)) return false;
+    threadStick.scrolled();
     state.messages = messages;
     const inner = el("div", "thread-inner");
     if (state.firstRender) threadStick.reset();
@@ -3486,6 +3486,7 @@
   }
 
   function renderGroup(messages, who) {
+    threadStick.scrolled();
     const inner = el("div", "thread-inner grpchat");
     if (state.firstRender) threadStick.reset();
     if (!messages || !messages.length) {
@@ -4808,6 +4809,7 @@
   }
 
   function paintHistory() {
+    threadStick.scrolled();
     const anchor = threadStick.sticking ? null : threadStick.anchor();
     const sel = state.sel, meta = sel?.history;
     const inner = thread.querySelector(".thread-inner:not(.thread-skeleton)");
@@ -7763,7 +7765,11 @@
   function setSendStatus(send, status) {
     if (send.status === "recorded") return;
     send.status = status;
-    if (state.sel === send.selection) paintPendingSend(send);
+    if (state.sel === send.selection) {
+      threadStick.scrolled();
+      paintPendingSend(send);
+      threadStick.changed();
+    }
   }
 
   function reconcilePendingSends(messages) {
@@ -7820,7 +7826,7 @@
   }
 
   function liveBubble() {
-
+    threadStick.scrolled();
     const inner = thread.querySelector(".thread-inner") || thread;
     const empty = inner.querySelector(".empty");
     if (empty) empty.remove();
@@ -7923,6 +7929,7 @@
         try { payload = JSON.parse(data); } catch (e) { continue; }
         if (payload.status === "queued") { onQueued(); continue; }
         if (event === "done") finished = true;
+        threadStick.scrolled();
         const host = prose.closest(".body") || prose.parentElement;
         if (event === "tool") {
           // Tool steps show only as the busy line; the trace has the detail.
@@ -7965,6 +7972,7 @@
   }
 
   function optimisticMessage(send) {
+    threadStick.scrolled();
     let inner = thread.querySelector(".thread-inner:not(.thread-skeleton)");
     if (!inner) {
       inner = el("div", "thread-inner");
