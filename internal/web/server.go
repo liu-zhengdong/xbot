@@ -298,6 +298,8 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/skills/sources/{id}", s.listSourceSkills)
 	mux.HandleFunc("GET /skills.js", s.static("static/skills.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /skills.css", s.static("static/skills.css", "text/css; charset=utf-8"))
+	mux.HandleFunc("GET /bot-skills.js", s.static("static/bot-skills.js", "text/javascript; charset=utf-8"))
+	mux.HandleFunc("GET /bot-skills.css", s.static("static/bot-skills.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /api/persona-cards", s.listPersonaCards)
 	mux.HandleFunc("POST /api/persona-cards", s.createPersonaCard)
 	mux.HandleFunc("POST /api/persona-cards/import", s.importPersonaCard)

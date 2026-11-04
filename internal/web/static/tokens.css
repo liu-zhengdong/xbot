@@ -133,6 +133,7 @@ html[data-theme="dark"]{
   --composer-min-height:44px; --composer-btn-size:32px;
   --composer-radius:22px; --composer-expanded-radius:18px;
   --memory-search-width:280px; --memory-search-height:var(--ui-control); --memory-row-padding:var(--ui-gap);
+  --bot-skills-search-width:220px; --bot-skills-list-width:320px; --bot-skills-empty-inset:80px;
   --sa-detail-width:390px; --sa-detail-medium:350px; --sa-detail-narrow:320px;
   --memory-detail-gap:14px; --memory-enter-offset:4px;
   --memory-reading-width:36em; --memory-dialogue-gap:20px;

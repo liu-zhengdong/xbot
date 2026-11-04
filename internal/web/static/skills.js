@@ -15,7 +15,7 @@
     return {title, hint};
   };
 
-  async function mount({api, host, isCurrent, onLevel = () => {}}) {
+  async function mount({api, host, isCurrent, onLevel = () => {}, onChanged = () => {}}) {
     teardown();
     let alive = true, skills = [], query = "", detail = null, status = "", layer = null, importing = false, statusLine = null, nav = 0;
     const current = () => alive && isCurrent();
@@ -113,6 +113,7 @@
       importing = true; layer.buttons.forEach(b => b.disabled = true); layerError("");
       try {
         await api("/api/skills/" + encodeURIComponent(data.slug), {method: "DELETE"});
+        onChanged();
         importing = false;
         if (!current()) return;
         closeLayer(); status = "已删除「" + title + "」。";
@@ -128,7 +129,10 @@
       if (tog.disabled || !current()) return;
       const want = !b.enabled, slug = detail.slug;
       b.enabled = want; b.paint(); tog.disabled = true; fail("");
-      try { await api("/api/bots/" + encodeURIComponent(b.name) + "/skills/" + encodeURIComponent(slug) + (want ? "/enable" : "/disable"), {method: "POST"}); }
+      try {
+        await api("/api/bots/" + encodeURIComponent(b.name) + "/skills/" + encodeURIComponent(slug) + (want ? "/enable" : "/disable"), {method: "POST"});
+        onChanged();
+      }
       catch { if (current()) { b.enabled = !want; b.paint(); fail("没能保存，请再试一次。"); } }
       finally { tog.disabled = false; }
     }
@@ -237,7 +241,7 @@
       for (const r of picked) {
         const body = {source, id: r.id, overwrite: false};
         for (;;) {
-          try { await api("/api/skills/import", {method: "POST", body}); done.push(r.name); break; }
+          try { await api("/api/skills/import", {method: "POST", body}); onChanged(); done.push(r.name); break; }
           catch (e) {
             if (!current()) { importing = false; return; }
             if (e.status !== 409 || body.overwrite) { problem = e; break; }
@@ -278,7 +282,7 @@
       if (importing || !layer || !current()) return;
       importing = true; layer.buttons.forEach(b => b.disabled = true); layerError("");
       let res = null, problem = null;
-      try { res = await api("/api/skills/import", {method: "POST", body: payload}); } catch (e) { problem = e; }
+      try { res = await api("/api/skills/import", {method: "POST", body: payload}); onChanged(); } catch (e) { problem = e; }
       importing = false;
       if (!current() || !layer) return;
       layer.buttons.forEach(b => b.disabled = false);
@@ -301,5 +305,5 @@
     if (!(await load())) return;
     showList();
   }
-  window.XBotSkills = {mount, unmount: () => teardown()};
+  window.XBotSkills = {mount, displayText, unmount: () => teardown()};
 })();

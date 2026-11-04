@@ -4633,8 +4633,9 @@
     subtitle.hidden = !text;
   }
 
-  let subagentsView = null;
+  let subagentsView = null, botSkillsView = null;
   function resetConversation() {
+    botSkillsView?.dispose(); botSkillsView = null;
     window.xbotDevices?.conversation(state.sel?.type === "bot" && !state.peer ? state.sel.id : "");
     subagentsView?.dispose(); subagentsView = null;
     $("workspace-view-agents")?.replaceChildren();
@@ -5081,7 +5082,7 @@
     return row;
   }
 
-  const TABS = [["chat", "聊天", "message-circle"], ["library", "记忆", "brain"], ["trace", "轨迹", "git-branch"], ["agents", "子代理", "git-branch"], ["computer", "任务", "list-checks"], ["context", "上下文", "layers"], ["inbox", "收件箱", "inbox"]];
+  const TABS = [["chat", "聊天", "message-circle"], ["library", "记忆", "brain"], ["trace", "轨迹", "git-branch"], ["agents", "子代理", "git-branch"], ["computer", "任务", "list-checks"], ["context", "上下文", "layers"], ["inbox", "收件箱", "inbox"], ["skills", "技能", "book-open"]];
   const hiddenWorkspaceTabs = new Set();
   try { for (const id of JSON.parse(localStorage.getItem("xbot-workspace-hidden") || "[]")) if (id !== "chat") hiddenWorkspaceTabs.add(id); } catch (e) {}
   function availableWorkspaceTabs() { return state.sel?.type === "bot" && !state.peer ? TABS : TABS.slice(0, 1); }
@@ -5187,12 +5188,14 @@
     if (!keepMenu) closeWorkspaceMore();
     renderWorkspaceTabs();
     paintPanel();
+    $("workspace-tab-" + id)?.scrollIntoView({block:"nearest", inline:"nearest"});
     // Restore after identity, navigation and context controls have their final layout.
     if (id === "chat") threadStick.resume();
     if (id !== "chat") panelBody.scrollTop = workspaceView(id).savedScrollTop || 0;
     if (focus) ($("workspace-tab-" + id) || workspaceView(id)).focus({preventScroll:true});
     if (id !== "chat") {
-      if (id === "trace") { loadTrace(); if (!state.panelData) loadPanel(); }
+      if (id === "skills") botSkillsView.refresh();
+      else if (id === "trace") { loadTrace(); if (!state.panelData) loadPanel(); }
       else if (!state.panelData || state.panelError === id || id === "context") loadPanel();
       else if (id === "inbox") loadInbox();
       else if (id === "agents") subagentsView?.poll().catch(() => {});
@@ -5209,7 +5212,10 @@
     ev.preventDefault(); selectWorkspaceTab(tabs[at].dataset.tab, true);
     tabs[at].scrollIntoView({block:"nearest", inline:"nearest"});
   });
-  window.addEventListener("resize", syncTabPill);
+  window.addEventListener("resize", () => {
+    syncTabPill();
+    $("workspace-tab-" + state.tab)?.scrollIntoView({block:"nearest", inline:"nearest"});
+  });
   $("workspace-more").addEventListener("click", () => {
     const open = $("workspace-more-menu").hidden;
     renderWorkspaceMore(); $("workspace-more-menu").hidden = !open;
@@ -5679,6 +5685,18 @@
     for (const body of panelBody.children) body.hidden = body.id !== "workspace-view-" + state.tab;
     if (!state.sel || state.tab === "chat" || state.peer) return;
     const body = workspaceView(state.tab); body.hidden = false;
+    if (state.tab === "skills") {
+      if (!botSkillsView) {
+        const selection = state.sel;
+        botSkillsView = window.XBotBotSkills.create({
+          botName:() => selection.id, api, el, icon, appendMarkdown,
+          current:() => state.sel === selection && !state.peer,
+          manage:() => openSettings("skills"),
+        });
+        body.replaceChildren(botSkillsView.root);
+      }
+      return;
+    }
     if (state.panelError === state.tab) {
       // Failed refreshes must not destroy an editor or its unsaved draft.
       if (!body.querySelector(":scope > .workspace-error")) body.prepend(workspaceError("页面加载失败", loadPanel));
@@ -8836,6 +8854,7 @@
     shell.inert = false;
     if (restore) (settingsOpener?.isConnected && !settingsOpener.hidden ? settingsOpener : $("account")).focus({ preventScroll: true });
     settingsOpener = null;
+    if (state.tab === "skills") botSkillsView?.refresh();
   }
   async function openSettings(section = "general", { home = false, provider = "" } = {}) {
     const page = $("setpage");
@@ -8886,7 +8905,9 @@
       } else if (section === "image-gen") {
         await window.XBotImageGen.mount({api, host:$("settings-image-gen"), isCurrent:()=>request===settingsRequest, manage:id=>openSettings("providers", {provider:id})});
       } else if (section === "skills") {
-        await window.XBotSkills.mount({api, host:$("settings-skills"), isCurrent:()=>request===settingsRequest, onLevel:level=>{ if (request===settingsRequest) { settingsLevel = level; paintSettingsBar(); } }});
+        await window.XBotSkills.mount({api, host:$("settings-skills"), isCurrent:()=>request===settingsRequest,
+          onChanged:() => { if (state.tab === "skills") botSkillsView?.refresh(); },
+          onLevel:level=>{ if (request===settingsRequest) { settingsLevel = level; paintSettingsBar(); } }});
       } else if (section === "persona") {
         await window.XBotPersonaCards.mount({api, host:$("settings-persona"), isCurrent:()=>request===settingsRequest, onLevel:level=>{ if (request===settingsRequest) { settingsLevel = level; paintSettingsBar(); } }});
       } else if (section === "providers") {
@@ -9225,6 +9246,7 @@
       const root = panelBody.querySelector(".trace-explorer");
       if (root) { ev.preventDefault(); closeTraceDetail(root); return; }
     }
+    if (state.tab === "skills" && botSkillsView?.closeDetail()) { ev.preventDefault(); return; }
     if (state.replyTo) { clearQuote(); return; }
     if (!$("account-menu").hidden) { closePops(); return; }
     if (panel.classList.contains("open")) {
