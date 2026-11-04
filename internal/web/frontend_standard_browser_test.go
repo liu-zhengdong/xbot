@@ -70,6 +70,8 @@ const tab=name=>[...document.querySelectorAll('#workspace-tabs [role=tab]')].fin
  assert(settings.left>=-1&&settings.right<=innerWidth+1&&settings.top>=-1&&settings.bottom<=innerHeight+1,'settings outside viewport');
  if(selectedWidth>640){near(settings.width,820,'settings width');near(settings.height,681,'settings height');near(rect($('.setnav')).width,176,'settings navigation width')}
  const upload=$('#settings-owner-upload');hit(upload);near(rect(upload).height,36,'settings button height');near(parseFloat(getComputedStyle(upload).fontSize),14,'settings button font');
+  for(const row of document.querySelectorAll('.settings-configuration>.setrow')){assert(rect(row).height>=63,'configuration row too short');const label=row.querySelector('.tx'),control=row.lastElementChild;assert(rect(control).left>=rect(label).right-1,'configuration label overlaps control');hit(control)}
+  near(rect($('#settings-theme')).height,36,'compact theme control height');
  if(selectedWidth<=640){$('#settings-back').click();await frame()}
  $('[data-set="skills"]').click();await until(()=>$('.skrow'),'skill list');await frame();
  const search=$('.sksearch'),importButton=$('.sktoolbar button');hit(search);hit(importButton);

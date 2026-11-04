@@ -153,22 +153,21 @@ html[data-theme="dark"] .workspace :is(.chat, .dock) :where(.bubble,.send-state)
 @media(max-width:1100px) { :root { --workspace-side:232px; --workspace-gutter:24px; --workspace-page-inset:24px; } }
 @media(max-width:767px) { :root { --workspace-gutter:20px; --workspace-page-inset:20px; --workspace-tabs:46px; } }
 
-/* Approved settings: a neutral shell, one white surface, visible theme choices. */
+/* Magpie configuration format within the existing XBot settings shell. */
 :root {
   --settings-width:820px; --settings-height:681px; --settings-nav:176px;
   --settings-gutter:28px; --settings-ui:var(--ui-body); --settings-caption:var(--ui-caption); --settings-title:var(--ui-page);
-  --settings-radius:18px; --settings-nav-row:var(--ui-row); --settings-avatar:60px;
-  --settings-section:var(--ui-group); --settings-preview-height:83px; --settings-button-height:var(--ui-control);
+  --settings-radius:18px; --settings-nav-row:var(--ui-row); --settings-avatar:var(--ui-row);
+  --settings-section:var(--ui-group); --settings-label-min:80px; --settings-button-height:var(--ui-control);
   --settings-fill:#f4f4f6; --settings-selected:#e8e8ec;
-  --settings-divider-width:1px; --settings-divider:#e9e9ed; --settings-row-divider:#f0f0f3; --settings-radio-size:14px;
-  --settings-mini-shell:#e8e8ec; --settings-mini-page:#ffffff;
-  --settings-mini-line:#c6c6cd; --settings-mini-heading:#93939d;
-  --settings-mini-bubble:#ededf1; --settings-mini-reply:#53535e;
-  --settings-mini-dark-shell:#29292f; --settings-mini-dark-page:#19191e;
-  --settings-mini-dark-line:#54545e; --settings-mini-dark-bubble:#303037;
-  --settings-mini-dark-reply:#b9b9c1;
+  --settings-divider-width:1px; --settings-divider:#e9e9ed; --settings-row-divider:var(--settings-divider); --settings-radio-size:14px;
+  --settings-segment-selected:var(--x-card); --settings-segment-shadow:0 1px 3px rgba(0,0,0,.08);
+  --settings-swatch-light:#e5e5e9; --settings-swatch-dark:#4b4b53;
+  --settings-swatch-width:12px; --settings-swatch-height:14px;
 }
-html[data-theme="dark"] { --settings-fill:#26262c; --settings-selected:#303037; --settings-divider:#34343b; --settings-row-divider:#2a2a30; }
+html[data-theme="dark"] { --settings-fill:#26262c; --settings-selected:#303037; --settings-divider:#34343b; --settings-row-divider:var(--settings-divider); --settings-segment-selected:var(--x-fill-3); --settings-swatch-light:#b9b9c2; --settings-swatch-dark:#62626c; }
+
+@media(max-width:640px) { :root { --settings-label-min:56px; } }
 
 /* Approved trace explorer: compact rows, semantic accents, neutral selection. */
 :root {

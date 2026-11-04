@@ -41,7 +41,7 @@ func TestSearchSelectionRefreshesCredentialStatusWithoutLosingDraft(t *testing.T
   assert.equal(input.value,'','server echoed credential');
   await tryButton.onclick();
   const status=tryButton,failure=status.attrs['aria-label'];
-  await nodes.find(n=>n.dataset.mode==='local').onclick();
+  await nodes.find(n=>n.id==='web-search-mode').onchange({target:{value:'local'}});
   assert.equal(status.attrs['aria-label'],failure,'mode change hid known credential failure');
   input.value='unsubmitted-draft';input.oninput();
   await provider('ddg').onclick();await provider('deepseek').onclick();
@@ -58,7 +58,7 @@ func TestSearchSelectionRefreshesCredentialStatusWithoutLosingDraft(t *testing.T
   await window.XBotWebSearch.mount({api:concurrent,host:new Node('div'),isCurrent:()=>true});
   const input2=nodes.find(n=>n.id==='search-key-deepseek'),try2=nodes.find(n=>n.className.startsWith('ws-try')),status2=try2;
   input2.value='fake-verified-key';input2.oninput();
-  const probe=try2.onclick();const save=nodes.find(n=>n.dataset.mode==='local').onclick();
+  const probe=try2.onclick();const save=nodes.find(n=>n.id==='web-search-mode').onchange({target:{value:'local'}});
   finishProbe({ok:true});await probe;const success=status2.attrs['aria-label'];
   finishSave();await save;
   assert.equal(status2.attrs['aria-label'],success,'older settings response hid a verified key');

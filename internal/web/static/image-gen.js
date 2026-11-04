@@ -13,8 +13,8 @@
     try { data = await api("/api/image-gen"); }
     catch { if (current()) { error.textContent = "没能读取图片生成设置，请重新打开试试。"; error.hidden = false; } return; }
     if (!current()) return;
-    const box = node("div", "setrows"), row = node("div", "setrow"), tx = node("div", "tx"), hint = node("div", "hint");
-    tx.append(node("b", "", "允许生成图片"), hint);
+    const box = node("div", "setrows"), row = node("div", "setrow settings-field"), tx = node("div", "tx"), hint = node("div", "hint");
+    tx.append(node("span", "settings-field-label", "允许生成图片"), hint);
     const toggle = node("fieldset", "set-segments");
     toggle.setAttribute("aria-label", "允许生成图片");
     for (const [value, text] of [["off", "关闭"], ["on", "开启"]]) {
@@ -23,16 +23,17 @@
       label.prepend(input); toggle.append(label);
     }
     toggle.onchange = e => save({enabled:e.target.value === "on"});
-    row.append(tx, toggle); box.append(row); host.append(box);
-    const modeSec = node("div", "setsec"); modeSec.append(node("h4", "", "生图方式"));
-    const modes = node("div", "ws-choices"); modes.setAttribute("role", "radiogroup"); modes.setAttribute("aria-label", "生图方式");
-    const modeButtons = [];
-    for (const [id, title, desc] of [["auto", "自动", "优先使用当前模型的生图能力，否则使用下方账号"], ["local", "始终使用下方账号", "跳过当前模型自带的生图能力"]]) {
-      const b = button("ws-choice", "", () => save({mode:id})); b.dataset.mode = id; b.setAttribute("role", "radio");
-      const body = node("span", "ws-body"), ttl = node("span", "ws-title", title);
-      body.append(ttl, node("span", "ws-desc", desc)); b.append(node("span", "ws-radio"), body); modes.append(b); modeButtons.push(b);
+    row.append(tx, toggle); box.append(row);
+    const modeSec = node("div", "setrow settings-field"), modeTx = node("div", "tx");
+    const modeLabel = node("label", "settings-field-label", "生图方式"), modeHint = node("div", "hint");
+    modeLabel.htmlFor = "image-gen-mode"; modeHint.id = "image-gen-mode-hint"; modeTx.append(modeLabel, modeHint);
+    const modeControl = node("div", "settings-field-control"), modes = node("select", "settings-select");
+    modes.id = "image-gen-mode"; modes.setAttribute("aria-label", "生图方式"); modes.setAttribute("aria-describedby", modeHint.id);
+    for (const [id, title] of [["auto", "自动"], ["local", "始终使用下方账号"]]) {
+      const option = node("option", "", title); option.value = id; modes.append(option);
     }
-    modeSec.append(modes); host.append(modeSec);
+    modes.onchange = e => save({mode:e.target.value});
+    modeControl.append(modes); modeSec.append(modeTx, modeControl); box.append(modeSec); host.append(box);
     const section = node("div", "setsec ig-accounts"); section.append(node("h4", "", "生图账号"));
     const list = node("div", "ws-list"); list.setAttribute("role", "radiogroup"); list.setAttribute("aria-label", "生图账号");
     const rows = [];
@@ -43,7 +44,7 @@
       const meta = node("span", "ws-meta");
       select.append(node("span", "ws-radio"), glyph, node("span", "ws-name", p.name), meta);
       const guide = node("div", "ig-guide");
-      guide.append(node("p", "", `还没登录 ${p.id === "openai" ? "OpenAI" : "Grok"} 账号。到「模型与供应商」里点登录，不用在这里再登一遍。`), button("ws-try", "去模型与供应商", () => manage(p.id)));
+      guide.append(node("p", "", `还没登录 ${p.id === "openai" ? "OpenAI" : "Grok"} 账号。到「模型与供应商」里点登录，不用在这里再登一遍。`), button("btn ghost", "去模型与供应商", () => manage(p.id)));
       list.append(select, guide); rows.push({id:p.id, select, meta, guide});
     }
     // Arrow keys follow the radio-group convention and keep focus on the choice.
@@ -62,10 +63,8 @@
       toggle.querySelector(`input[value="${data.enabled ? "on" : "off"}"]`).checked = true; toggle.disabled = saving;
       hint.textContent = data.enabled ? "Bot 可以按需画图" : "对话里不会去画图";
       modeSec.hidden = section.hidden = imageNote.hidden = !data.enabled;
-      for (const b of modeButtons) {
-        const selected = b.dataset.mode === data.mode;
-        b.classList.toggle("on", selected); b.setAttribute("aria-checked", String(selected)); b.disabled = saving;
-      }
+      modes.value = data.mode; modes.disabled = saving;
+      modeHint.textContent = data.mode === "local" ? "跳过当前模型自带的生图能力" : "优先使用当前模型的生图能力，否则使用下方账号";
       for (const r of rows) {
         const selected = data.provider === r.id, loggedIn = data.providers.find(p => p.id === r.id)?.logged_in;
         r.select.classList.toggle("on", selected); r.select.setAttribute("aria-checked", String(selected)); r.select.disabled = saving; r.select.tabIndex = selected ? 0 : -1;

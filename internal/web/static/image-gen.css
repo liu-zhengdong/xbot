@@ -1,29 +1,10 @@
-/* Approved image settings: vertical choices, quiet separators and native segments. */
-.image-gen-settings .ig-scope{font-size:var(--x-fs-sm);color:var(--x-muted);margin:0 0 var(--x-s7);line-height:1.6}
-.image-gen-settings .setrow{min-height:calc(var(--x-s7)*2 + var(--x-s4));padding:0}
-.image-gen-settings .setsec{margin-top:calc(var(--x-s6) + var(--x-s2));padding-top:calc(var(--x-s6) + var(--x-s2));border-top:var(--settings-divider-width) solid var(--settings-divider)}
-.image-gen-settings .setsec>h4{margin-bottom:var(--x-s5)}
-.image-gen-settings .ws-choices{display:flex;flex-direction:column;gap:0}
-.image-gen-settings .ws-choice{grid-template-columns:var(--settings-radio-size) minmax(0,1fr);gap:var(--x-s5);align-items:start;min-height:calc(var(--x-s9)*2);padding:var(--x-s4) var(--x-s3);border-radius:var(--x-r-sm)}
-.image-gen-settings .ws-choice>.ws-body{display:block}
-.image-gen-settings .ws-title{font-size:var(--x-fs-ui);font-weight:500;line-height:1.6}
-.image-gen-settings .ws-name{font-size:var(--x-fs-ui);font-weight:500}
-.image-gen-settings .ws-desc{margin-top:calc(var(--x-s2)/2);line-height:1.6}
-.image-gen-settings .ws-radio{width:var(--settings-radio-size);height:var(--settings-radio-size);outline:none;background:var(--x-fill-3)}
-.image-gen-settings .ws-choice>.ws-radio{margin-top:calc(var(--x-s2)/2)}
-.image-gen-settings .on>.ws-radio{background:var(--x-primary)}
-.image-gen-settings .ig-accounts{margin-top:calc(var(--x-s6) + var(--x-s1)/2);padding-top:var(--x-s7)}
-.image-gen-settings .ws-list{border-radius:0}
-.ig-provider{gap:var(--x-s5);min-height:calc(var(--x-s8)*2 - var(--x-s1)/2);padding:var(--x-s3);border-radius:var(--x-r-sm)}
-.ig-provider~.ig-provider{border-top:var(--settings-divider-width) solid var(--settings-row-divider);border-radius:0}
+/* Image settings share configuration rows and keep account choices as a list. */
+.image-gen-settings .ig-scope{font-size:var(--ui-caption);color:var(--x-muted);margin:0 0 var(--ui-group);line-height:1.6}
+.image-gen-settings .ig-accounts{margin-top:var(--ui-group);padding-top:var(--ui-group);border-top:var(--settings-divider-width) solid var(--settings-row-divider)}
+.image-gen-settings .ig-accounts>h4{margin-bottom:var(--ui-gap)}
 .ig-glyph{width:var(--x-s7);height:var(--x-s7);object-fit:contain;flex:none}
 [data-theme="dark"] .ig-glyph{filter:invert(1)}
-.ig-guide{padding:0 var(--x-s3) var(--x-s5) calc(var(--x-s3) + var(--settings-radio-size) + var(--x-s5)*2 + var(--x-s7));background:transparent}
-.ig-guide p{font-size:var(--x-fs-sm);color:var(--x-muted);line-height:1.6;margin:0 0 var(--x-s4)}
-.ig-guide .ws-try{width:100%}
-.image-gen-settings .ig-footnote{font-size:var(--x-fs-sm);color:var(--x-muted);line-height:1.75;margin:var(--x-s7) var(--x-s3) 0}
-@media(max-width:600px){
-.image-gen-settings .setrow{flex-wrap:nowrap;gap:var(--x-s5)}
-.image-gen-settings .ws-choice{padding-inline:var(--x-s1)}
-.image-gen-settings .setsec{margin-top:var(--x-s7);padding-top:var(--x-s7)}
-}
+.ig-guide{padding:0 0 var(--ui-gap) calc(var(--settings-radio-size) + var(--ui-gap)*2 + var(--x-s7));background:transparent}
+.ig-guide p{font-size:var(--ui-caption);color:var(--x-muted);line-height:1.6;margin:0 0 var(--x-s4)}
+.ig-guide .btn{padding-inline:0}
+.image-gen-settings .ig-footnote{font-size:var(--ui-caption);color:var(--x-muted);line-height:1.75;margin:var(--ui-group) 0 0}

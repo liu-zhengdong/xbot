@@ -19,24 +19,31 @@
     try { data = await api("/api/web-search"); }
     catch { if (current()) { error.textContent = "没能读取网页搜索设置，请重新打开试试。"; error.hidden = false; } return; }
     if (!current()) return;
-    const switchBox = node("div", "setrows"), switchRow = node("div", "setrow"), tx = node("div", "tx");
-    const hint = node("div", "hint"); tx.append(node("b", "", "允许查网页"), hint);
-    const toggle = button("tog", "", () => save({enabled:!data.enabled})); toggle.setAttribute("role", "switch"); toggle.setAttribute("aria-label", "允许查网页");
-    switchRow.append(tx, toggle); switchBox.append(switchRow); host.append(switchBox);
-    const modeSec = node("div", "setsec"); modeSec.append(node("h4", "", "搜索工具策略"));
-    const modes = node("div", "ws-choices"); modes.setAttribute("role", "radiogroup"); modes.setAttribute("aria-label", "搜索工具策略");
-    const modeButtons = [];
-    for (const [id, title, desc] of [["auto","自动","模型自带搜索就用厂商的；没有就用本机搜。"],["local","总用本机","一律用本机搜，不用厂商的——即便模型支持。"]]) {
-      const b = button("ws-choice", "", () => save({mode:id})); b.dataset.mode = id; b.setAttribute("role", "radio");
-      const body = node("span", "ws-body"), ttl = node("span", "ws-title", title);
-      if (id === "auto") ttl.append(node("span", "ws-tag", "默认"));
-      body.append(ttl, node("span", "ws-desc", desc)); b.append(node("span", "ws-radio"), body); modes.append(b); modeButtons.push(b);
+    const switchBox = node("div", "setrows"), switchRow = node("div", "setrow settings-field"), tx = node("div", "tx");
+    const hint = node("div", "hint"); tx.append(node("span", "settings-field-label", "允许查网页"), hint);
+    const toggle = node("fieldset", "set-segments"), enabledInputs = [];
+    toggle.setAttribute("aria-label", "允许查网页");
+    for (const [value, text] of [["off", "关闭"], ["on", "开启"]]) {
+      const label = node("label"), input = node("input");
+      input.type = "radio"; input.name = "web-search-enabled"; input.value = value;
+      label.append(input, node("span", "", text)); toggle.append(label); enabledInputs.push(input);
     }
-    modeSec.append(modes); host.append(modeSec);
+    toggle.onchange = e => save({enabled:e.target.value === "on"});
+    switchRow.append(tx, toggle); switchBox.append(switchRow);
+    const modeSec = node("div", "setrow settings-field"), modeTx = node("div", "tx");
+    const modeLabel = node("label", "settings-field-label", "搜索工具策略"), modeHint = node("div", "hint");
+    modeLabel.htmlFor = "web-search-mode"; modeHint.id = "web-search-mode-hint"; modeTx.append(modeLabel, modeHint);
+    const modeControl = node("div", "settings-field-control"), modes = node("select", "settings-select");
+    modes.id = "web-search-mode"; modes.setAttribute("aria-label", "搜索工具策略"); modes.setAttribute("aria-describedby", modeHint.id);
+    for (const [id, title] of [["auto", "自动"], ["local", "总用本机"]]) {
+      const option = node("option", "", title); option.value = id; modes.append(option);
+    }
+    modes.onchange = e => save({mode:e.target.value});
+    modeControl.append(modes); modeSec.append(modeTx, modeControl); switchBox.append(modeSec); host.append(switchBox);
     const providerSec = node("div", "setsec"), providerTitle = node("h4", "ws-provider-title", "搜索工具");
     const info = button("ws-provider-info", "ⓘ");
     info.setAttribute("aria-label", "说明");
-    info.dataset.tip = "本机搜不到网页时，对话里会提示。默认 DuckDuckGo，免密钥。改完后，新开的对话按新设置来。";
+    info.dataset.tip = "本机搜不到网页时，对话里会提示。默认 DuckDuckGo，免密钥。";
     providerTitle.append(info); providerSec.append(providerTitle);
     const list = node("div", "ws-list"); list.setAttribute("role", "radiogroup"); list.setAttribute("aria-label", "搜索工具");
     for (const p of data.providers) {
@@ -63,10 +70,12 @@
     }
     providerSec.append(list); host.append(providerSec);
     function paint() {
-      toggle.classList.toggle("on",data.enabled); toggle.setAttribute("aria-checked",String(data.enabled)); toggle.disabled = saving;
+      for (const input of enabledInputs) input.checked = (input.value === "on") === data.enabled;
+      toggle.disabled = saving;
       hint.textContent = data.enabled ? "需要时 Bot 可以查网页。" : "对话里不会去搜网页。";
       modeSec.hidden = providerSec.hidden = !data.enabled;
-      for (const b of modeButtons) { const on = b.dataset.mode === data.mode; b.classList.toggle("on",on); b.setAttribute("aria-checked",String(on)); b.disabled = saving; }
+      modes.value = data.mode; modes.disabled = saving;
+      modeHint.textContent = data.mode === "local" ? "一律用本机搜，不用厂商搜索。" : "模型自带搜索就用厂商的；没有就用本机搜。";
       for (const [id,r] of rows) {
         const selected = id === data.provider;
         r.button.classList.toggle("on",selected); r.button.setAttribute("aria-checked",String(selected)); r.button.setAttribute("aria-disabled",String(saving));

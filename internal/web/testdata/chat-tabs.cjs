@@ -18,7 +18,7 @@ const cfg=JSON.parse(fs.readFileSync(0,'utf8'));
    if(!cfg.evidence)return;
    if(width<768)await p.locator('#menu').click();
    await p.locator('#account').click();await p.locator('#account-settings').click();
-   for(const [section,ready] of [['general','#settings-theme'],['skills','.skrow'],['providers','.provider-search input']]){
+   for(const [section,ready] of [['general','#settings-theme'],['search','#web-search-mode'],['image-gen','#image-gen-mode'],['skills','.skrow'],['providers','.provider-search input']]){
     if(width<=640&&section!=='general')await p.locator('#settings-back').click();
     if(width<=640||section!=='general')await p.locator('[data-set="'+section+'"]').click();
     await p.locator(ready).first().waitFor({state:'visible'});
@@ -28,7 +28,7 @@ const cfg=JSON.parse(fs.readFileSync(0,'utf8'));
       const main=bounds(document.querySelector('.setmain')),content=bounds(document.querySelector('.setcnt'));
       if(main.left<0||main.right>innerWidth||main.top<0||main.bottom>innerHeight)throw Error('settings main outside viewport');
       if(content.left<main.left||content.right>main.right||content.top<main.top||content.bottom>main.bottom)throw Error('settings content outside main');
-      const selectors={general:['#settings-owner-upload','.theme-option-light'],skills:['.sksearch','.sktoolbar button'],providers:['.provider-search input','.provider-card']}[section];
+      const selectors={general:['#settings-owner-upload','.theme-option-light'],search:['#web-search-mode','#settings-search .set-segments'],'image-gen':['#image-gen-mode','#settings-image-gen .set-segments'],skills:['.sksearch','.sktoolbar button'],providers:['.provider-search input','.provider-card']}[section];
       const controls=selectors.map(selector=>{
        const n=document.querySelector(selector),r=bounds(n);
        if(r.left<0||r.right>innerWidth||r.top<0||r.bottom>innerHeight||!r.width||!r.height)throw Error('settings control outside viewport: '+selector);

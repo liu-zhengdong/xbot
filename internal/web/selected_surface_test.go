@@ -23,16 +23,16 @@ func TestSelectedCardSurfaces(t *testing.T) {
 		styles.Write(data)
 		styles.WriteByte('\n')
 	}
-	page := `<!doctype html><style>` + styles.String() + `</style><div id="settings-providers" style="width:640px"><div class="provider-grid"><button class="provider-card" aria-current="true"><strong>selected</strong><span class="sdot ok"></span></button><button class="provider-card">other</button></div></div><div class="binding-group"><button class="binding-option" aria-checked="true">model</button></div><div class="setrows other-settings">other settings</div><div class="approw">push</div><div class="kvrow">version</div><div class="sklist"><button class="skrow">skill</button></div><div class="sknone">none</div><div class="setdev"><div class="g7-device g7-self">this computer</div></div><div class="ig-guide">guide</div><div class="web-search-settings"><div class="setrows"><div class="setrow">switch</div></div><div class="ws-choices"><button class="ws-choice on">search</button><button class="ws-choice">other</button></div><div class="ws-list"><button class="ws-provider on">provider</button><div class="ws-key">key</div><button class="ws-provider">other</button></div></div><script>
+	page := `<!doctype html><style>` + styles.String() + `</style><div id="settings-providers" style="width:640px"><div class="provider-grid"><button class="provider-card" aria-current="true"><strong>selected</strong><span class="sdot ok"></span></button><button class="provider-card">other</button></div></div><div class="binding-group"><button class="binding-option" aria-checked="true">model</button></div><div class="setrows other-settings">other settings</div><div class="approw">push</div><div class="kvrow">version</div><div class="sklist"><button class="skrow">skill</button></div><div class="sknone">none</div><div class="setdev"><div class="g7-device g7-self">this computer</div></div><div class="ig-guide">guide</div><div class="web-search-settings"><div class="setrows"><div class="setrow">switch</div></div><div class="ws-list"><button class="ws-provider on">provider</button><div class="ws-key">key</div><button class="ws-provider">other</button></div></div><script>
  try {
   const bg = e => getComputedStyle(e).backgroundColor;
   const q = s => document.querySelector(s);
   for (const theme of ['light','dark']) {
    document.documentElement.dataset.theme=theme;
-   for (const container of ['.provider-grid','.binding-group','.ws-choices','.ws-list']) {
+   for (const container of ['.provider-grid','.binding-group','.ws-list']) {
     if(bg(q(container))!=='rgba(0, 0, 0, 0)') throw Error(theme+' '+container+' has a background');
    }
-   for (const surface of ['.web-search-settings .setrows','.ws-choice','.ws-provider','.ws-choice.on','.ws-provider.on','.ws-key']) {
+   for (const surface of ['.web-search-settings .setrows','.ws-provider','.ws-provider.on','.ws-key']) {
     if(bg(q(surface))!=='rgba(0, 0, 0, 0)') throw Error(theme+' '+surface+' has a background');
    }
    for (const shell of ['.other-settings','.approw','.kvrow','.sklist','.skrow','.sknone','.setdev .g7-self','.ig-guide']) {
@@ -46,7 +46,7 @@ func TestSelectedCardSurfaces(t *testing.T) {
    for (const surface of ['.provider-card[aria-current]','.binding-option']) {
     if(bg(q(surface))!==bg(sample)) throw Error(theme+' '+surface+' selection differs from fill-2');
    }
-   for (const surface of ['.ws-choice.on','.ws-provider.on','.ws-key']) {
+   for (const surface of ['.ws-provider.on','.ws-key']) {
     const style=getComputedStyle(q(surface));
     if(style.borderStyle!=='none' || style.boxShadow!=='none') throw Error(theme+' '+surface+' has an outline');
    }
