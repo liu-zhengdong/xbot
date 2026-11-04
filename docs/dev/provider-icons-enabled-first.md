@@ -2,7 +2,7 @@
 
 Created: 2026-11-04
 
-状态：用户已确认设计，已启动 `devin/swe-2` 实施。Codex 会话为 `01a1a6eb-aa1e-7600-bc4b-cfd255123ce3`。
+状态：用户已确认设计，`devin/swe-2` 已实施两轮（`1dc6757c` + 补修）。Codex 会话为 `01a1a6eb-aa1e-7600-bc4b-cfd255123ce3`。
 实施工作区：`/Users/liuzhengdong/repos/xbot-worktrees/provider-icons-enabled-first-20261104`。
 实施分支：`feat/provider-icons-enabled-first-20261104`。
 运行记录位于原型目录的 `swe-2-events.jsonl`，完成报告写入 `swe-2-result.md`。
@@ -53,9 +53,7 @@ Created: 2026-11-04
 
 主要入口为 `internal/web/static/providers.js` 和 `providers.css`。读取项目 `AGENTS.md`、`design.md`、相关 Atlas、接口与测试约定后实施。
 
-图标素材仍在 `internal/web/static/provider-icons/`。`glyph()` 对已知品牌创建 img，请求 `/provider-icons/<brand>.svg`。ChatGPT 是例外，使用 CSS mask。服务器有图标路由。尚未取得截图运行页的资源请求与计算样式，图标失效根因未确认。
-
-先通过真实入口核对 img 的 currentSrc、naturalWidth、资源状态和计算样式，取得故障依据。不要将猜测写成根因，也不要凭原型内联成功声称产品修复。修复应同时适用于产品实际采用的本地入口与设备静态资源路径。
+图标素材仍在 `internal/web/static/provider-icons/`。`glyph()` 对已知品牌创建 img，请求 `/provider-icons/<brand>.svg`。ChatGPT 是例外，使用 CSS mask。服务器路由 `internal/web/server.go` 的 `/provider-icons/{brand}.svg` 与 `internal/web/ui_static.go` 的 `/api/ui/static/{path}` 均在；xbot-account `resource-worker.js` 将 `/provider-icons/*` 映射到 pipe 的 `/api/ui/static/provider-icons/*`，链路完整。两轮均未能复现用户侧图标失效，根因未定位；可能是旧二进制或服务工作者缓存的旧资源，但本轮没有取证确认，不声称已修复，也未添加无证据的 fallback。
 
 `entries()` 只排除了 ChatGPT OAuth，没有排除 xAI OAuth。xAI 订阅因此重复进入 API 目录。按真实接入身份去重，不能按品牌名合并订阅与密钥。
 
@@ -98,7 +96,6 @@ Created: 2026-11-04
 
 ## 还没做的
 
-- SWE-2 已启动并收到执行稿路径；等待实施结果。
-- 未确认产品运行时图标故障的具体原因。
-- 未修改产品代码，未执行产品回归。
-- 未验证 Windows 实际显示。
+- 用户运行链路中的图标失效未复现、未定位；headless Chrome 与新进程取图均成功，不足以证明用户环境无故障。
+- 未合入 main；主工作区其他 Agent 的未提交 UI 变更保持原状。
+- 未执行全量回归与 Windows/窄屏实机验证。

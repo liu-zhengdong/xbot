@@ -77,7 +77,6 @@
 .provider-section-head h3{font-size:var(--ui-section);font-weight:650;line-height:1.5;margin:0}
 .provider-count{font-size:var(--ui-caption);color:var(--x-muted)}
 .provider-section-note{font-size:var(--ui-caption);color:var(--x-faint);margin:0 0 10px}
-.provider-directory.provider-directory-divided{border-top:1px solid var(--x-fill-2);padding-top:22px}
 .provider-subhead{display:flex;align-items:baseline;gap:10px;margin:16px 12px 4px;font-size:var(--ui-caption);color:var(--x-muted)}
 .provider-group:first-of-type .provider-subhead,.provider-subhead[hidden]{margin-top:0}
 .provider-subhead[hidden]{display:none}

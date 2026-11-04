@@ -174,8 +174,9 @@
         }
         const card = button("", "provider-card provider-subscription", () => {
           const p = subscriptionEntry(kind); selected = key(p);
-          return p.key_configured ? capability(p) : login(kind, paintSubscription, updateSubscription);
+          return p.key_configured ? capability(p) : login(kind, paintSubscription, () => { updateSubscription(); filter(); });
         });
+        let note = null;
         card.setAttribute("aria-current", String(selected === "subscription:" + kind));
         function updateSubscription() {
           const p = subscriptionEntry(kind);
@@ -183,11 +184,13 @@
           card.replaceChildren(kind === "chatgpt" ? node("span", "provider-glyph provider-chatgpt-glyph") : glyph("xai"), copy);
           if (p.key_configured) {
             const dot = node("span", "sdot ok"); dot.setAttribute("role", "img"); dot.setAttribute("aria-label", "已登录"); card.append(dot);
+            if (note) { note.remove(); note = null; }
           } else {
             subnote.textContent = "登录"; card.append(subnote);
             const found = local[kind];
-            if (found) {
-              wrap.append(node("p", "provider-import-note", `本机已登录 ${found.source}${found.account ? "（" + found.account + "）" : ""}`));
+            if (found && !note) {
+              note = node("p", "provider-import-note", `本机已登录 ${found.source}${found.account ? "（" + found.account + "）" : ""}`);
+              wrap.append(note);
             }
           }
         }
@@ -217,12 +220,15 @@
           const hay = (subscriptionEntry(kind).title + " 订阅").toLowerCase();
           const hide = !!term && !hay.includes(term); card.hidden = hide; wrap.hidden = hide;
         }
-        subscriptionGroup.hidden = subscriptions.every(({card}) => card.hidden);
         grid.replaceChildren(); enabledGrid.replaceChildren();
         const all = entries();
         const on = all.filter(p => p.key_configured);
         const off = all.filter(p => !p.key_configured && (!term || (p.title + " api 密钥").toLowerCase().includes(term)));
-        for (const {kind, card, wrap} of subscriptions) if (!card.hidden && subscriptionEntry(kind).key_configured) enabledGrid.append(wrap);
+        for (const {kind, card, wrap} of subscriptions) {
+          const target = !card.hidden && subscriptionEntry(kind).key_configured ? enabledGrid : subgrid;
+          if (wrap.parentNode !== target) target.append(wrap);
+        }
+        subscriptionGroup.hidden = subscriptions.every(({card, wrap}) => card.hidden || wrap.parentNode !== subgrid);
         for (const p of on.filter(p => !term || (p.title + " api 密钥").toLowerCase().includes(term))) {
           const card = button("", "provider-card", () => { selected = key(p); return p.custom ? customDetail(p) : capability(p); }); card.setAttribute("aria-current", String(selected === key(p)));
           const copy = node("span", "provider-copy"); copy.append(node("strong", "", p.title), node("span", "provider-method", p.custom ? "自定义 API" : "API 密钥"));
@@ -240,7 +246,6 @@
         count.textContent = enabledGrid.children.length ? String(enabledGrid.children.length) : "";
         enabled.hidden = !enabledGrid.children.length;
         directory.hidden = subscriptionGroup.hidden && !grid.children.length;
-        directory.classList.toggle("provider-directory-divided", !enabled.hidden);
         apiHead.hidden = subscriptionGroup.hidden;
         apiGroup.hidden = !grid.children.length && !(!term && subscriptionGroup.hidden);
         if (term && !enabledGrid.children.length && !grid.children.length && subscriptionGroup.hidden) {
