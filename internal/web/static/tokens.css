@@ -74,7 +74,7 @@
   --x-formula-copy-size:26px; --x-formula-icon-size:14px; --x-formula-gap:2px;
   --x-formula-copy-radius:7px;
   /* 字号 */
-  --x-fs-cap:var(--ui-caption); --x-fs-label:var(--ui-caption); --x-fs-sm:var(--ui-caption); --x-fs-ui:var(--ui-body); --x-fs-body:var(--ui-body); --x-fs-title:var(--ui-section); --x-fs-greet:19px; --x-fs-h:24px;
+  --x-fs-cap:var(--ui-caption); --x-fs-label:var(--ui-caption); --x-fs-sm:var(--ui-caption); --x-fs-ui:var(--ui-body); --x-fs-body:var(--ui-body); --x-fs-title:var(--ui-section); --x-fs-h:24px;
   /* 间距（4 的倍数为主，6/10 用于紧凑行） */
   --x-s1:4px; --x-s2:6px; --x-s3:8px; --x-s4:10px; --x-s5:12px; --x-s6:16px; --x-s7:20px; --x-s8:24px; --x-s9:32px;
   /* 圆角 */

@@ -67,7 +67,7 @@ func TestFinishedTaskFoldKeepsSameHeader(t *testing.T) {
  const el=(tag,cls,text)=>{const n=document.createElement(tag);n.className=cls||'';if(text)n.textContent=text;return n};
  const icon=()=>el('span','icon'),spinIcon=icon,avatar=icon,plainText=x=>x,clip=(x,n)=>Array.from(x).slice(0,n).join(''),taskStatus=x=>x,when=x=>x,displayText=x=>x,elapsedWork=()=>'',zhError=x=>x,queuePathLayout=()=>{};
  const confirmTaskStop=()=>{},errorDetails=()=>{},controlAgent=async()=>true;
- ` + part("  function taskTypeLabel(", "  function paintGreeting(") + part("  function updateTaskNotable(", "  const routineChanges") + `
+ ` + part("  function taskTypeLabel(", "  function paintWorkStatus(") + part("  function updateTaskNotable(", "  const routineChanges") + `
  try {
  for(const type of ['routine','dev']) {
   const ag={id:'sa_0123456789abcdef',type,task:'测试记录',status:'done',summary:'结果正文'},card=taskCard(ag);document.body.append(card);

@@ -254,9 +254,6 @@ const open=async()=>{$('#settings-devices [data-act="add"]').click();await waitF
  await waitFor(()=>clicks('GET /api/bots/status')>polls,'app polling did not advance');
  assert(!$('#devices-modal').firstChild,'poll reopened canceled pair while DELETE pending');
  fixture.pendingCodeDelete();await closed(deleted);fixture.delayCodeDelete=false;
- // 问候下状态只写「在忙」。
- assert(!document.getElementById('greeting').textContent.includes('刚做完'),'greeting keeps 刚做完');
- assert(!document.getElementById('greeting').textContent.includes('有什么事'),'greeting idle line');
  assert(testErrors.length===0,testErrors.join(';'));
  document.body.dataset.testResult='passed';
 })().catch(e=>{const m=document.getElementById("devices-modal");document.body.dataset.testResult="ERR "+String(e).slice(0,150)+" view="+(window.xbotDevices&&xbotDevices.S.view)+" modal="+(m?m.innerHTML.slice(0,150):"")});

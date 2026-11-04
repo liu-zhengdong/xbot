@@ -54,7 +54,7 @@ func TestTaskCardUsesTitleAndKeepsOriginalErrorAcrossPolls(t *testing.T) {
  const taskStatus=x=>x,when=x=>x,plainText=x=>x,displayText=x=>x,elapsedWork=()=>'',zhError=()=> '请求超时';
  const elements=new Map([['.task-error',node()]]),card=node();card.querySelector=sel=>{if(sel==='.recent-name')sel='.task-name';if(sel==='.res'&&elements.get('.task-type')?.className?.split(' ').includes('res'))return elements.get('.task-type');if(!elements.has(sel))elements.set(sel,node());return elements.get(sel)};
  card.querySelector('.task-heading').prepend=()=>{};card.querySelector('.recent-task').insertBefore=()=>{};
- ` + part("  function clip(", "  function when(") + part("  function taskTypeLabel(", "  function paintGreeting(") + part("  function errorDetails(", "  function visibleError(") + part("  function updateTaskNotable(", "  function taskCard(") + part("  function updateTaskCard(", "  const routineChanges") + `
+ ` + part("  function clip(", "  function when(") + part("  function taskTypeLabel(", "  function paintWorkStatus(") + part("  function errorDetails(", "  function visibleError(") + part("  function updateTaskNotable(", "  function taskCard(") + part("  function updateTaskCard(", "  const routineChanges") + `
  const plain=node();taskText(plain,'研究/开发 3/5');assert.equal(plain.textContent,'研究/开发 3/5');assert.equal(plain.children.length,0);
  const ag={id:'sa_0123456789abcdef',type:'dev',task:'核对页面\n下一行是具体步骤',status:'failed',summary:'provider: context deadline exceeded',steps:3};
  updateTaskCard(card,ag);

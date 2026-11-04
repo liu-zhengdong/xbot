@@ -6622,27 +6622,6 @@
 
   function taskAvatar(ag, size = "") { return ag.type === "routine" ? icon("alarm-clock") : avatar(ag.id, null, size); }
 
-  function paintGreeting() {
-    const host = $("greeting");
-    if (!host) return;
-    const statuses = Object.values(stStatus.map);
-    const busy = statuses.filter(st => st.state === "running" || st.state === "awaiting");
-    const hour = new Date().getHours();
-    const hello = hour < 6 ? "夜深了" : hour < 12 ? "上午好" : hour < 18 ? "下午好" : "晚上好";
-    const sig = JSON.stringify([hello, state.ownerName, busy.map(s => s.bot)]);
-    if (host.dataset.sig === sig) return;
-    host.dataset.sig = sig;
-    host.replaceChildren(document.createTextNode(hello + (state.ownerName ? "，" + state.ownerName : "") + "。"));
-    // 状态只写「有 N 个 Bot 在忙」，有忙才出；不写已完成类状态。
-    if (busy.length) {
-      host.append(el("br"), el("span", "g", "有 "));
-      const stack = el("span", "greet-stack");
-      for (const st of busy.slice(0, 3)) stack.append(avatar(st.bot, paintOf(st.bot), "xs"));
-      if (busy.length > 3) stack.append(el("span", "greet-more", "+" + (busy.length - 3)));
-      host.append(stack, document.createTextNode(" " + busy.length + " 个 Bot"), el("span", "g", " 在忙。"));
-    }
-  }
-
   function paintWorkStatus() {
     const host = $("work-status");
     const selected = state.sel?.type === "bot" && !state.peer;
@@ -6696,7 +6675,6 @@
   }
 
   async function refreshWork() {
-    paintGreeting();
     const selection = state.sel;
     if (!selection || selection.type !== "bot" || state.peer) { paintWorkStatus(); return; }
     const data = await fetchBotProfile(selection.id);

@@ -2305,7 +2305,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
   .sidebar.rail { align-items: center; padding-bottom: 10px; }
   .sidebar.rail .side-scroll { width: 100%; }
   .sidebar.rail .pin-row { gap: 4px; padding: 0 0 4px; }
-  .sidebar.rail .pin.add, .sidebar.rail .greeting, .sidebar.rail .gateway-hint { display: none; }
+  .sidebar.rail .pin.add, .sidebar.rail .gateway-hint { display: none; }
   .sidebar.rail .item { width: 52px; min-height: 56px; padding: 8px; margin: 0 auto; border-radius: 12px; }
   .sidebar.rail .group-label, .sidebar.rail .folder-head {
     height: 10px; min-height: 10px; margin: 0; padding: 0; overflow: hidden;
@@ -2402,14 +2402,8 @@ html[data-theme="dark"] .bubble.message-target { background: color-mix(in srgb, 
 
 
 /* M6: status and tasks share the selected bot's live metadata. */
-.greeting { font-size: var(--x-fs-greet); line-height: 1.75; font-weight: 600; padding: 10px 20px 8px; }
-.greeting .g { color: var(--x-faint); font-weight: 500; }
-.greet-stack, .work-stack { display: inline-flex; align-items: center; vertical-align: -3px; margin: 0 2px; flex: none; }
-.greet-stack .avatar { width: 22px; height: 22px; margin-left: -5px; box-shadow: 0 0 0 2px var(--x-win); }
-.greet-stack .avatar:first-child, .work-stack .avatar:first-child { margin-left: 0; }
-.greet-more { font-size: 11px; color: var(--x-muted); margin-left: 3px; }
-.sidebar.rail .greeting { display: none; }
-@media (max-width: 959px) { .greeting { display: none; } }
+.work-stack { display: inline-flex; align-items: center; vertical-align: -3px; margin: 0 2px; flex: none; }
+.work-stack .avatar:first-child { margin-left: 0; }
 #work-status { width: min(680px, 100% - 64px); margin: 0 auto; }
 .wrow { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px 0 6px; margin: 0 0 6px; border: 0; border-radius: 99px; background: transparent; font-size: 12.5px; color: var(--x-muted); cursor: pointer; max-width: 100%; white-space: nowrap; }
 .wrow:hover { background: var(--x-fill-1); }
