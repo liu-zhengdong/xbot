@@ -775,7 +775,7 @@ func (k *Kernel) pendingTrigger(ev inbox.Event) func(time.Time, []Reminder) stri
 // replyFirstNote reminds the model, on the first request of an owner chat
 // turn, that only send_message_to_user reaches the owner. Bind runs once per
 // wake and later steps do not re-register it, so a turn carries it once.
-const replyFirstNote = "<system-reminder>\n用户正在聊天。先调用 send_message_to_user 用一两句回用户：你理解到了什么、接下来做什么。你的裸助手正文用户看不见；这条回复不是可选通知。然后再自己动手或 dispatch。\n</system-reminder>"
+const replyFirstNote = "<system-reminder>\n用户正在聊天。先调用 send_message_to_user 用一两句回用户：你理解到了什么、接下来做什么。你的裸助手正文用户看不见；这条回复不是可选通知。然后再自己动手或 dispatch。\n始终别出戏：口吻、分寸和反应都按人设卡来，别掉成没有性格的通用助手腔。\n</system-reminder>"
 
 func replyFirstTrigger(ev inbox.Event) func(time.Time, []Reminder) string {
 	return func(time.Time, []Reminder) string {
