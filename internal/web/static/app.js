@@ -1273,15 +1273,27 @@
           }
         }
         if (!(width > 0)) continue;
-        const next = compactPath(label.dataset.path, text => measure(text) <= width);
-        if (label.textContent !== next && !taskSelected(label)) label.textContent = next;
+        const reserve = label.classList.contains("resource-link")
+          ? parseFloat(style.getPropertyValue("--resource-inline-icon")) + parseFloat(style.getPropertyValue("--resource-small-gap")) + 2 * parseFloat(style.getPropertyValue("--resource-inline-padding")) : 0;
+        const next = compactPath(label.dataset.resourceOriginal || label.dataset.path, text => measure(text) + reserve <= width);
+        const text = label.querySelector(".resource-path-text") || label;
+        if (text.textContent !== next && !taskSelected(label)) text.textContent = next;
       }
     });
   }
 
-  function pathLabel(path, tag = "span") {
-    const label = el(tag, "compact-path", path); label.dataset.path = path; label.title = path;
-    pathLabels.add(label); queuePathLayout();
+  function pathLabel(path, tag = "span", title = "") {
+    const destination = window.XBotResources.target(path, !!title);
+    const label = el(destination ? "button" : tag, (title ? "" : "compact-path") + (destination ? " resource-link" : ""));
+    label.dataset.path = destination?.path || path; label.dataset.resourceOriginal = path; label.title = path;
+    if (destination) {
+      label._resourceTarget = destination; label.dataset.line = String(destination.line);
+      label.type = "button"; label.setAttribute("aria-label", title || path);
+      label.setAttribute("aria-haspopup", "dialog"); label.setAttribute("aria-controls", "resource-layer"); label.setAttribute("aria-expanded", "false");
+      label.append(icon(/[/\\]$/.test(destination.path) ? "folder" : "file-text"), el("span", "resource-path-text", title || path));
+      label.addEventListener("click", ev => { ev.stopPropagation(); resources.open(destination, label); });
+    } else label.textContent = title || path;
+    if (!title) { pathLabels.add(label); queuePathLayout(); }
     if (!pathObserver && typeof ResizeObserver !== "undefined") {
       pathObserver = new ResizeObserver(queuePathLayout);
       for (const root of document.querySelectorAll(".chat, #panel")) pathObserver.observe(root);
@@ -1316,7 +1328,7 @@
   }
 
   function appendPathText(parent, text) {
-    const paths = /(?<![^\s，。；：（("'])((?:~\/|\/|[A-Za-z]:\\)[^\s，。；、）)<>"'`]+)/g;
+    const paths = /(?<![^\s，。；：（("'])((?:~[/\\]|\/(?!\/)|[A-Za-z]:[/\\])[^\s，。；、）)<>"'`]*)/g;
     let last = 0;
     for (const match of text.matchAll(paths)) {
       if (match.index > last) parent.append(document.createTextNode(text.slice(last, match.index)));
@@ -1351,7 +1363,7 @@
     // Math needs its neighbors glued on: `$5 and $6` is prose (the closing
     // side is a space), `$x^2$` is a formula. $$ pairs come first so a single
     // $ never eats their opening.
-    const re = /(`[^`]+`)|(\$\$[^$]+\$\$)|(\$[^\s$][^$\n]*?[^\s$]\$|\$[^\s$]\$)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(\[[^\]]+\]\(https?:\/\/[^\s)]+\))|(https?:\/\/[A-Za-z0-9\-._~:?#@!$&()*+,;=%/[\]]*[A-Za-z0-9\-_~#@$&(*+=%/[])/g;
+    const re = /(`[^`]+`)|(\$\$[^$]+\$\$)|(\$[^\s$][^$\n]*?[^\s$]\$|\$[^\s$]\$)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(\[[^\]]+\]\((?:<[^>]+>|[^()\n]+)\))|(https?:\/\/[A-Za-z0-9\-._~:?#@!$&()*+,;=%/[\]]*[A-Za-z0-9\-_~#@$&(*+=%/[])/g;
     let last = 0;
     let match;
     while ((match = re.exec(text))) {
@@ -1359,7 +1371,7 @@
       const tok = match[0];
       if (tok.charAt(0) === "`") {
         const code = tok.slice(1, -1);
-        parent.append(/^(?:~[/\\]|[/\\]|[A-Za-z]:[/\\])/.test(code) && !/\s--?/.test(code) ? pathLabel(code, "code") : el("code", "", code));
+        parent.append(window.XBotResources.target(code) ? pathLabel(code, "code") : el("code", "", code));
       } else if (tok.startsWith("$$")) {
         // The sentence-middle $$…$$ tradeoff: rendered inline, but the
         // fallback keeps the full source including both $$ delimiters.
@@ -1371,18 +1383,19 @@
       } else if (tok.charAt(0) === "*") {
         parent.append(el("em", "", tok.slice(1, -1)));
       } else {
-        // [text](url) or a bare URL; trailing punctuation stays prose.
-        const lm = /^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/.exec(tok) || (match[7] && [tok, tok, tok]);
-        if (lm) {
+        // Explicit file targets share resource actions; web links stay native.
+        const lm = /^\[([^\]]+)\]\((?:<([^>]+)>|([^()\n]+))\)$/.exec(tok);
+        const href = lm ? (lm[2] || lm[3]).trim() : match[7] ? tok : "";
+        if (/^https?:\/\//i.test(href)) {
           const a = document.createElement("a");
-          a.textContent = lm[1];
-          a.href = lm[2];
+          a.textContent = lm ? lm[1] : tok;
+          a.href = href;
           a.rel = "noopener noreferrer";
           a.target = "_blank";
           parent.append(linkIcon(a));
-        } else {
-          parent.append(document.createTextNode(tok));
-        }
+        } else if (lm && window.XBotResources.target(href, true)) {
+          parent.append(pathLabel(href, "span", lm[1]));
+        } else parent.append(document.createTextNode(tok));
       }
       last = match.index + tok.length;
     }
@@ -3012,25 +3025,33 @@
     btn.type = "button";
     btn.append(icon("bubble"));
     btn.append(el("span", "", quoteSnippet(previewText(lineBySeq(messages, seq)))));
-    btn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      jumpToSeq(seq);
+    btn.addEventListener("click", async (ev) => {
+      ev.stopPropagation(); resources.close();
+      const anchor = threadStick.anchor();
+      const saved = quoteReturn = { selection: state.sel, messages: state.messages, history: state.sel?.history, top: thread.scrollTop,
+        anchor: anchor && { key: anchor.row.dataset.transcriptKey, top: anchor.top }, from: btn.closest(".msg")?.dataset.transcriptKey };
+      const found = await jumpToSeq(seq);
+      if (quoteReturn === saved) { quoteReturnButton.hidden = !found; if (!found) quoteReturn = null; }
     });
     return btn;
   }
 
-  function jumpToSeq(seq) {
-    const row = thread.querySelector('.msg[data-seq="' + Number(seq) + '"]');
+  async function jumpToSeq(seq) {
+    const selection = state.sel;
+    let row = thread.querySelector('.msg[data-seq="' + Number(seq) + '"]');
     if (!row) {
       const target = state.messages.find(m => m.reply_to === seq)?.reply_to_id;
-      if (target) loadThread("around", target);
-      return;
+      if (target) await loadThread("around", target);
+      if (state.sel !== selection) return false;
+      row = thread.querySelector('.msg[data-seq="' + Number(seq) + '"]');
     }
+    if (!row) return false;
     threadStick.locate(row);
     row.classList.remove("quote-hit");
     void row.offsetWidth;
     row.classList.add("quote-hit");
     window.setTimeout(() => row.classList.remove("quote-hit"), 1500);
+    return true;
   }
 
   let activeVoice = null;
@@ -3266,7 +3287,7 @@
       text = EMPTY_REPLY;
     }
     appendMessageBubbles(body, displayText(text), pasted, audios, true);
-    if (!say) window.XBotProviders.decorate(body, m.parts);
+    if (!say) window.XBotProviders.decorate(body, m.parts, resources.source);
     bindMessageMenu(row, m, said);
     // Single chat reads on one left axis: no per-row avatar/name; copy/reply/time
     // live in the hover meta-bar that addBubbleTime builds.
@@ -3345,6 +3366,26 @@
       },
     };
   })();
+
+  const resources = window.XBotResources.create({ api, el, icon, copyText, read: () => threadStick.read(), errorText: visibleError });
+  let quoteReturn = null;
+  const quoteReturnButton = el("button", "", "返回阅读处");
+  quoteReturnButton.id = "quote-return"; quoteReturnButton.type = "button"; quoteReturnButton.hidden = true;
+  quoteReturnButton.prepend(icon("undo")); $("workspace-chat").append(quoteReturnButton);
+  function clearQuoteReturn() { quoteReturn = null; quoteReturnButton.hidden = true; }
+  quoteReturnButton.addEventListener("click", () => {
+    const saved = quoteReturn;
+    if (!saved || saved.selection !== state.sel) return;
+    clearQuoteReturn(); ++state.threadLoad;
+    state.sel.historyLoading = false; state.sel.transcriptETag = null;
+    // The saved array is the prior immutable projection, not another chat store.
+    applyTranscript(saved.messages, state.sel.id); state.sel.history = saved.history; paintHistory();
+    threadStick.position(saved.top);
+    const anchor = saved.anchor && [...thread.querySelectorAll(".msg[data-transcript-key]")].find(row => row.dataset.transcriptKey === saved.anchor.key);
+    if (anchor) threadStick.restore({ row: anchor, top: saved.anchor.top });
+    const from = [...thread.querySelectorAll(".msg[data-transcript-key]")].find(row => row.dataset.transcriptKey === saved.from);
+    from?.querySelector(".quote-block")?.focus({ preventScroll: true });
+  });
 
   // Sole chat -> main-column assembly seam. Keys are chat delivery IDs,
   // never transcript sequence numbers or content fingerprints. Compare
@@ -4587,6 +4628,7 @@
   // at: the first event's time, so the view opens at the run that was clicked.
   async function openPeer(a, b, at) {
     if (!a || !b || a === b || state.streaming) return;
+    resources.close(); clearQuoteReturn();
     selectWorkspaceTab("chat");
     clearQuote();
     $("chat-search").hidden = true;
@@ -4635,6 +4677,7 @@
 
   let subagentsView = null, botSkillsView = null;
   function resetConversation() {
+    resources.close(); clearQuoteReturn();
     botSkillsView?.dispose(); botSkillsView = null;
     window.xbotDevices?.conversation(state.sel?.type === "bot" && !state.peer ? state.sel.id : "");
     subagentsView?.dispose(); subagentsView = null;

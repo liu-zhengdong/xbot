@@ -28,14 +28,23 @@
     for (const m of marks) chars.splice(m.at, 0, m.text);
     return chars.join("");
   }
-  function decorate(host, parts) {
+  function decorate(host, parts, showSource) {
     const hs = (parts || []).filter(p => p.hosted && p.hosted.name !== "image_generation");
     for (const p of hs.slice().reverse()) host.prepend(step(p));
     const cs = citations(parts); if (!cs.length) return;
     for (let i=0;i<cs.length;i++) {
       const url=safeURL(cs[i].citation.url);
       const a=[...host.querySelectorAll("a")].find(a=>a.href===url && a.textContent===String(i+1));
-      if (a) {a.textContent=`[${i+1}]`;a.classList.add("hs-cite-mark");a.setAttribute("aria-label",`来源 ${i+1}`);}
+      if (a) {
+        a.textContent=`[${i+1}]`;a.classList.add("hs-cite-mark");a.setAttribute("aria-label",`来源 ${i+1}`);
+        if (showSource) {
+          a.setAttribute("aria-haspopup","dialog");a.setAttribute("aria-expanded","false");
+          a.addEventListener("click",ev=>{
+            if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+            ev.preventDefault();ev.stopPropagation();showSource({title:cs[i].citation.title,url},a);
+          });
+        }
+      }
     }
     const list = node("ol", "hs-cites");
     for (const p of cs) { const c = p.citation, url = safeURL(c.url), li = node("li"), a = node("a", "", c.title || url); a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer"; a.append(node("small", "", new URL(url).hostname)); li.append(window.XBotLinkIcon(a)); list.append(li); }

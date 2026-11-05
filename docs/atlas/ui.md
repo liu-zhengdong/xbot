@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-04 @ d7265714 (Bot skills tab, direct device editing and platform icons)
+verified: 2026-11-04 (chat resource reading, keyboard pagination and reference return)
 
 ---
 # 网页界面
@@ -193,6 +193,16 @@ Bot 发送只凭同一 owner 的 `chat.meta.event_id` 精确对账。对应持�
 气泡缩略图沿用该条消息的图片列表与 paste URL。点击哪张就打开哪张，查看层是原生模态 dialog，始终只显示当前一张完整图片；同条消息中抽出的图片与附件按原顺序合成一组。左右按钮、方向键和未放大时的横向触控滑动只在这组内切换，到头停住，不循环、不跨消息。多图显示 `i / n`，单图隐藏计数与切换按钮。
 
 双击、触屏双击、双指捏合与滚轮可以在适应屏幕到 6 倍之间缩放，放大后拖动平移，位置限制在图片边界内；切图和窗口尺寸变化重置适应屏幕。图片载入失败保留关闭及切图入口。空白遮罩、关闭按钮和 Esc 退出，恢复触发缩略图的焦点及聊天滚动位置；背景由原生模态层隔离，Tab 在查看器按钮间循环。拖动、捏合、取消手势不会误触关闭。交互只改变图片 transform，没有缩放过渡动画。图片仍走既有鉴权与资源路径，没有新增下载、编辑、挂图或线程图库机制。
+### 对话资源与引用
+
+聊天中的绝对路径、home 路径和明确的 Windows 路径显示为轻量链接。反引号完整路径、具名本地 Markdown 链接和文件行号复用同一目标解析。具名链接保留标题，长路径沿既有宽度省略，完整地址保留在标题和阅读面。代码块、明显命令、普通文件名与缺少基准的相对路径保持原文；本应用的 HTTP 命名空间不猜成文件。
+
+目录与文件点击后，通过认证的 [资源接口](../API.md#对话资源读取与打开) 查询当前连接设备。阅读面标出实际设备名和完整地址。目录按 40 项续页，文本按 64KiB 原始字节和完整行续页，支持 `:112`、`#L112` 与 `file:` URI 的行范围。无法预览时保留真实元信息；不存在与失败可复制和重试。真实桌面能力决定是否出现系统打开。行引用的复制保留位置，普通文件复制路径。默认设备不由主人输入来源或临时执行选择推断。
+
+阅读控制器挂在聊天投影外。它覆盖页面，不压窄聊天，不由轮询重建。子目录返回保留目录滚动；关闭与 Escape 恢复触发焦点，点击输入框保留新焦点。分页和子导航保留键盘阅读流程，迟到回包不能在关闭或换 Bot 后重开。来源角标展示已有标题与原网址，普通网页链接直接打开。消息引用沿原窗口加载定位，再用临时阅读检查点恢复原窗口与阅读锚。
+
+实现位于 [chat_resources.go](../../internal/web/chat_resources.go)、[resources.js](../../internal/web/static/resources.js) 和 [resources.css](../../internal/web/static/resources.css)。HTTP 行为由 [chat_resources_test.go](../../internal/web/chat_resources_test.go) 守护；实际文件、分页、焦点、轮询、行号及引用返回由 [resources_browser_test.go](../../internal/web/resources_browser_test.go) 覆盖。设备选择与边界依据 [ADR 0076](../adr/0076-chat-resource-reading.md)。
+
 ### 聊天工作区与顶部标签
 
 布局依据 [ADR 0042](../adr/0042-chat-workspace-tabs.md) 和[已确认原型](../prototypes/chat-tabs/README.md)。顶栏先身份与资料编辑、主题、聊天搜索、更新操作，再「聊天、记忆、轨迹、任务、上下文、收件箱、更多」。聊天固定第一；更多管理其他标签显隐，偏好存在本机；间接打开任务或上下文会恢复目标标签。群组仅露聊天，身份区和更多可查看成员；往来继续只读。

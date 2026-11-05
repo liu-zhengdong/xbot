@@ -10,6 +10,17 @@
   --account-picker-left:16px; --account-picker-bottom:108px;
   --workspace-side:256px; --workspace-page-inset:32px;
   --chat-body-size:15px; --ui-layer-width:420px; --ui-layer-radius:16px;
+  --resource-width:480px; --resource-height:560px; --resource-radius:14px;
+  --resource-edge:16px; --resource-mobile-edge:12px; --resource-mobile-top:88px;
+  --resource-padding:20px; --resource-gap:8px; --resource-small-gap:4px;
+  --resource-header-top:14px; --resource-footer-top:10px; --resource-footer-bottom:14px;
+  --resource-icon:16px; --resource-inline-icon:14px; --resource-inline-padding:3px;
+  --resource-row-padding:10px; --resource-row-radius:8px; --resource-control:32px;
+  --resource-file-line:25px; --resource-number:30px; --resource-number-size:11px;
+  --resource-line-height:1.8; --resource-address-line:1.7; --resource-line-radius:3px;
+  --resource-menu-width:190px; --resource-menu-padding:6px; --resource-menu-radius:10px;
+  --resource-return-bottom:84px; --resource-layer-z:1120;
+  --resource-font:"SF Mono",Consolas,"XBot SC",var(--x-font);
   --ui-layer-padding:24px; --ui-field-width:180px; --ui-field-narrow:132px;
   /* 弹出层：一次回弹；缩小动效模式只淡入淡出。 */
   --ease-spring:cubic-bezier(0.34,1.56,0.64,1);

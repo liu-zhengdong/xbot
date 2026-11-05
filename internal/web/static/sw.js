@@ -1,5 +1,5 @@
-const CACHE = "xbot-ui-v15";
-const SHELL = ["/", "/tokens.css", "/vendor/katex/katex.min.css", "/app.css", "/app.js", "/vendor/xbot-avatar.min.js", "/vendor/katex/katex.min.js", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/favicon.svg", "/apple-touch-icon.png", "/fonts/MonaSansVF.woff2"];
+const CACHE = "xbot-ui-v16";
+const SHELL = ["/", "/tokens.css", "/vendor/katex/katex.min.css", "/app.css", "/app.js", "/resources.css", "/resources.js", "/vendor/xbot-avatar.min.js", "/vendor/katex/katex.min.js", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/favicon.svg", "/apple-touch-icon.png", "/fonts/MonaSansVF.woff2"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));

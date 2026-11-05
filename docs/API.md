@@ -26,6 +26,26 @@
 
 实际资料变化沿当前活轮次 Sink 发送 `profile` SSE `{name,previous_name?}`，网页再读原资料接口；不新增 Inbox 类型。入口随宿主/任务生命周期关闭，不可达时 CLI 明确非 0，不另启 Kernel 或静默离线改文件。无 endpoint 保原人用离线用途。完整命令见 [运行时普通资料](atlas/multibot.md#运行时普通资料)。
 
+## 对话资源读取与打开
+
+资源属于当前连接的 XBot 设备。路径不指向浏览器所在机器。两接口沿现有 owner 会话认证；POST 沿现有同源检查。不新增工具审批，也不改聊天记录。
+
+`GET /api/resources?path=…&offset=0&line=1` 按需读取。`path` 接受当前平台的绝对路径或服务用户的 `~/`，最多 4096 字节。相对路径、NUL、非法分页参数回 400。`offset` 从 0 开始，`line` 从 1 开始。
+
+成功公共字段：`path,name,kind,device,platform,can_open`。path 是清理后的绝对路径；device 是实际服务主机名；platform 是该主机的 Go 平台名。kind 为 `directory|file|unsupported`。can_open 仅在桌面 App 和 OpenPath 回调均存在、且目标为文件或目录时为 true。
+
+| kind | 正文与分页 |
+| --- | --- |
+| directory | `entries:[{name,kind}]`，每页最多 40 项。条目 kind 为 directory/file/link/unsupported。可选 `next_offset` 用于续页。空目录回空数组。按目录的实际枚举顺序读取，不整目录排序。 |
+| file | `text,start_line`，按完整行分页，每页原始文本最多 64KiB。可选 `next_line` 用于续页。保留原 CRLF 和末行无换行。空文件回空串。 |
+| unsupported | 返回 `preview_error`，不读取管道、设备文件或其他特殊类型的正文。 |
+
+二进制、无效 UTF-8 或单行超过上限时，仍回 200 和真实文件元信息，kind 保持 file，提供 preview_error。不得把不可预览误报成文件不存在。符号链接条目可进入；读取时以实际目标类型为准。最终 JSON 小于 1MiB；取消请求后停止扫描。
+
+`POST /api/resources/open` 接受 `{path}`。先认证，再校验路径与实际类型。只在能力存在时调用既有 OpenPath，且只调用一次。成功回 `{status:"ok"}`；缺少能力回 404；特殊类型回 400；真实打开失败回 500 和回调错误。GET 不调用系统应用。
+
+目标或父目录不存在回 404 和中文原因；无读取权限回 403；其他 IO 错误回 500。未认证为 401，跨站写入为 403。界面保留原地址、复制与重试，不把错误变成空目录。
+
 ## 设备静态壳
 
 `GET /api/ui/static/<path>` 要求用户认证（pipe 复用 `AuthorizeOwner`）。与本机静态路由同源：设置 `XBOT_DEV_STATIC` 时只读该配置目录内的真实文件（拒绝符号链接越界），否则读内嵌 `static/`。扩展名允许 html/js/css/svg/png/woff2/webmanifest/txt；非法相对路径、`..`、绝对路径、反斜杠、重复编码和目录均不提供文件。不存在或未列入允许类型回 404。
