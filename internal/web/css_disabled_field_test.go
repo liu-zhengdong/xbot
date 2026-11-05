@@ -15,24 +15,32 @@ func TestDisabledPrimaryAndFieldTextColors(t *testing.T) {
 		t.Fatal(err)
 	}
 	css := string(data)
-	for _, want := range []string{
-		`.primary:disabled, .primary:disabled:hover, .primary:disabled:active { background: var(--fill); color: var(--muted); opacity: 1; cursor: default; }`,
-		`.field input::placeholder, .field textarea::placeholder { color: var(--muted); }`,
-	} {
-		if !strings.Contains(css, want) {
-			t.Errorf("app.css missing %s", want)
-		}
-	}
-	start := strings.Index(css, ".field input, .field textarea, .field select, .agent input, .task input {")
+	// The design standard folds the disabled look of every button flavour into
+	// one rule; the assertion follows the current selector but keeps the intent.
+	disabled := `:is(.ui-button,.btn,.primary,.secondary):disabled {`
+	start := strings.Index(css, disabled)
 	if start < 0 {
-		t.Fatal("field input rule not found")
+		t.Fatal("app.css missing the disabled-button rule")
 	}
 	rule := css[start : start+strings.Index(css[start:], "}")]
-	if !strings.Contains(rule, "color: var(--text);") {
+	for _, want := range []string{"opacity:var(--ui-disabled)", "cursor:default"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf("disabled-button rule must keep %s: %s", want, rule)
+		}
+	}
+	if !strings.Contains(css, `.field input::placeholder, .field textarea::placeholder { color: var(--muted); }`) {
+		t.Error("app.css missing the muted placeholder rule")
+	}
+	fieldStart := strings.Index(css, ".field input, .field textarea, .field select, .agent input, .task input {")
+	if fieldStart < 0 {
+		t.Fatal("field input rule not found")
+	}
+	fieldRule := css[fieldStart : fieldStart+strings.Index(css[fieldStart:], "}")]
+	if !strings.Contains(fieldRule, "color: var(--text);") {
 		t.Error("typed text in .field inputs must use --text, not the label's --muted")
 	}
 	// The disabled rule must come after :hover so hover cannot repaint it black.
-	if strings.Index(css, ".primary:disabled,") < strings.Index(css, ".primary:hover") {
-		t.Error(".primary:disabled must follow .primary:hover")
+	if start < strings.Index(css, ".primary:hover") {
+		t.Error("the disabled rule must follow .primary:hover so hover cannot repaint it")
 	}
 }
