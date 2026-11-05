@@ -233,7 +233,7 @@ async function xaiLoggedIn(){
  search.value='chatgpt';search.dispatchEvent(new Event('input'));assert(subcard('ChatGPT')&&!subcard('ChatGPT').hidden&&subcard('xAI').hidden,'chatgpt subscription search failed');
  search.value='';search.dispatchEvent(new Event('input'));
  for(const t of ['Google Gemini','Vertex AI','xAI','Kimi Code','Zhipu GLM','Z.ai','MiniMax','StepFun','Xiaomi MiMo','Baidu Qianfan','Tencent Cloud'])assert(card(t),'missing '+t);
- assert([...document.querySelectorAll('.provider-card img')].every(i=>/provider-icons\/[a-z-]+\.svg$/.test(i.getAttribute('src'))),'bad glyph');
+ assert([...document.querySelectorAll('.provider-card img')].every(i=>/provider-icons\/[a-z-]+\.svg(\?v=\d+)?$/.test(i.getAttribute('src'))),'bad glyph');
  card('Vertex AI').click();await waitFor(()=>$('.provider-empty'),'vertex state');assert(!$('.provider-key')&&$('.provider-empty').textContent.includes('Google Cloud'),'vertex shown as keyable');assert(document.querySelectorAll('.provider-model-row').length===2,'vertex default models');
  $('.provider-back').click();
  // The vendor detail directs account login to the subscription, while keeping the key form.

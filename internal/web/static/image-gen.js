@@ -40,7 +40,7 @@
     for (const p of data.providers) {
       const select = button("ws-provider ig-provider", "", () => save({provider:p.id}));
       select.dataset.provider = p.id; select.setAttribute("role", "radio");
-      const glyph = node("img", "ig-glyph"); glyph.src = `/provider-icons/${p.id}.svg`; glyph.alt = "";
+      const glyph = node("img", "ig-glyph"); glyph.src = `/provider-icons/${p.id}.svg?v=3`; glyph.alt = "";
       const meta = node("span", "ws-meta");
       select.append(node("span", "ws-radio"), glyph, node("span", "ws-name", p.name), meta);
       const guide = node("div", "ig-guide");

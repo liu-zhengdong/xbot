@@ -66,7 +66,7 @@
       svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.8");
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path"); path.setAttribute("d", "m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"); svg.append(path); svg.classList.add("provider-glyph"); svg.setAttribute("aria-hidden", "true"); return svg;
     }
-    const img = node("img", "provider-glyph provider-glyph-" + brand); img.src = `/provider-icons/${brand}.svg`; img.alt = ""; return img;
+    const img = node("img", "provider-glyph provider-glyph-" + brand); img.src = `/provider-icons/${brand}.svg?v=3`; img.alt = ""; return img;
   }
   function lineIcon(kind) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
