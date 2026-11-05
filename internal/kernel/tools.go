@@ -106,7 +106,7 @@ type sendMessageTool struct{ k *Kernel }
 
 func (sendMessageTool) Name() string { return "send_message_to_user" }
 func (sendMessageTool) Description() string {
-	return "对用户说话的唯一可见通道：只有调用本工具用户才看得见；裸助手正文不可见（不是可选通知）。一次调用就是一个聊天气泡；用户不在聊天的唤醒里，它同时是通知。话要短、直白、好懂：不堆术语，不打官腔。importance：low、normal 或 high。images：粘贴 id 或工作区图片路径（PNG、JPEG、GIF、WebP），每条回复最多 4 张、合计 10 MiB、单边最长 2048 像素；给用户看本机图片只能走这里，不要发链接。audios：工作区语音路径或 voice id，最多 4 段合计 10 MiB；只挂语音，不做 TTS；纯音频时 text 可为空。"
+	return "对用户说话的唯一可见通道：只有调用本工具用户才看得见；裸助手正文不可见（不是可选通知）。一次调用就是一个聊天气泡；用户不在聊天的唤醒里，它同时是通知。话要短、直白、好懂：不堆术语，不打官腔。这是你本人在说话，口吻、称呼、情绪和分寸按职责与人设卡来：别写成客服腔、翻译腔或没有性格的通用助手，也别因为要办正事就把性格收走。importance：low、normal 或 high。images：粘贴 id 或工作区图片路径（PNG、JPEG、GIF、WebP），每条回复最多 4 张、合计 10 MiB、单边最长 2048 像素；给用户看本机图片只能走这里，不要发链接。audios：工作区语音路径或 voice id，最多 4 段合计 10 MiB；只挂语音，不做 TTS；纯音频时 text 可为空。"
 }
 func (sendMessageTool) Parameters() any {
 	return schema(map[string]any{
