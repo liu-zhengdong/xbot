@@ -49,7 +49,7 @@ func TestProvidersSettingsBrowser(t *testing.T) {
 	}
 	// The xai scene runs the OAuth login path on its own page: a logged-in
 	// xai binding cannot share a name with the key binding the main run saves.
-	for _, query := range []string{"", "state=xai", "state=xaiunconfigured", "state=xaifailure", "state=opencode"} {
+	for _, query := range []string{"", "state=loginsweep", "state=xai", "state=xaiunconfigured", "state=xaifailure", "state=opencode"} {
 		page := (&url.URL{Scheme: "file", Path: filepath.Join(dir, "index.html"), RawQuery: query}).String()
 		out, err := exec.Command(chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files", "--user-data-dir="+filepath.Join(t.TempDir(), "chrome"), "--virtual-time-budget=20000", "--dump-dom", page).CombinedOutput()
 		if err != nil {
@@ -83,6 +83,7 @@ window.open=()=>({opener:null,closed:false,location:{replace(){}},close(){this.c
 const providers=[{name:'',brand:'deepseek',protocol:'chat_completions',api_key_env:'XBOT_API_KEY',key_configured:true,models:[]},{name:'openai',protocol:'responses',api_key_env:'OPENAI_API_KEY',key_configured:true,models:[]},{name:'anthropic',protocol:'anthropic_messages',api_key_env:'ANTHROPIC_API_KEY',key_configured:true,models:[]}];
 if(scene==='xai')providers.push({name:'xai-key',brand:'xai',protocol:'chat_completions',key_configured:true,models:[]});
 if(['loggedin','chatgptdetail'].includes(scene))providers.push({name:'chatgpt',oauth:'chatgpt',protocol:'responses',key_configured:true,models:[]});
+if(scene==='loginsweep')providers.push({name:'xai',oauth:'xai',protocol:'responses',key_configured:true,models:[]});
 if(scene==='xaiunconfigured'){providers.push({name:'xai',oauth:'xai',protocol:'responses',key_configured:false,models:[]});fixture.xaiIdle=true;}
 const vendors=[['gemini','Google Gemini'],['vertex','Vertex AI'],['xai','xAI'],['kimi','Kimi'],['kimi-code','Kimi Code'],['zhipu','Zhipu GLM'],['zai','Z.ai'],['minimax','MiniMax'],['stepfun','StepFun'],['mimo','Xiaomi MiMo'],['qianfan','Baidu Qianfan'],['tencent','Tencent Cloud'],['opencode-go','OpenCode Go']].map(([brand,title])=>({brand,title,protocol:'chat_completions',key_login:brand==='vertex',models:['m1','m2']}));
 const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'Content-Type':'application/json'}});
@@ -128,8 +129,11 @@ window.fetch=async(path,opts={})=>{
 const providersDriver = `
 const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)},btn=text=>[...document.querySelectorAll('button')].find(b=>b.textContent===text);
 const waitFor=async(fn,msg)=>{for(let i=0;i<400;i++){if(fn())return;await new Promise(r=>setTimeout(r,10))}throw Error(msg)};
-const card=name=>[...document.querySelectorAll(name==='xAI'?'.provider-section:nth-of-type(2) .provider-card':'.provider-card')].find(n=>n.textContent.includes(name));
+const card=name=>[...document.querySelectorAll(name==='xAI'?'.provider-card:not(.provider-subscription)':'.provider-card')].find(n=>n.textContent.includes(name));
 const subcard=name=>[...document.querySelectorAll('.provider-subscription')].find(n=>n.textContent.includes(name));
+const subscriptionGroup=()=>[...document.querySelectorAll('.provider-subhead')].find(h=>h.textContent.includes('订阅'))?.closest('.provider-group');
+const apiHead=()=>[...document.querySelectorAll('.provider-subhead')].find(h=>h.textContent.includes('API 接入'));
+const catalogCards=()=>[...document.querySelectorAll('.provider-catalog .provider-card')];
 const gap=(above,below)=>below.getBoundingClientRect().top-above.getBoundingClientRect().bottom;
 const fullWidth=()=>$('.provider-models').getBoundingClientRect().width;
 // xAI OAuth: log in; the header carries only the 退出登录 icon and the hosted
@@ -177,6 +181,21 @@ async function xaiLoggedIn(){
   if(['detail','error','empty','unconfigured'].includes(scene))card(scene==='unconfigured'?'OpenRouter':'OpenAI').click();
   if(scene==='search'){$('.provider-search input').value='OpenAI';$('.provider-search input').dispatchEvent(new Event('input'))}
   if(scene==='xai')await xaiLoggedIn();
+  if(scene==='loginsweep'){
+   // After OAuth the subscription joins the enabled group and leaves the
+   // directory; the empty subscription group and the API head must not stay.
+   subcard('ChatGPT').click();
+   await waitFor(()=>subcard('ChatGPT')?.querySelector('[aria-label="已登录"]'),'chatgpt subscription did not sign in');
+   await waitFor(()=>subscriptionGroup().hidden,'empty subscription group stayed after login');
+   const wrap=subcard('ChatGPT').closest('.provider-subscription-wrap');
+   assert(subcard('ChatGPT').closest('.provider-enabled'),'subscription not moved to enabled');
+   assert(apiHead().hidden,'api head visible without subscription group');
+   const search=$('.provider-search input');search.value='xai';search.dispatchEvent(new Event('input'));
+   assert(wrap.hidden,'enabled subscription stayed visible during search');
+   search.value='';search.dispatchEvent(new Event('input'));
+   assert(wrap.closest('.provider-enabled')&&subcard('xAI')&&subscriptionGroup().hidden&&apiHead().hidden,'clearing search lost entries');
+   assert(catalogCards().filter(n=>n.querySelector('strong')?.textContent==='xAI').length>=1,'clearing search lost api cards');
+  }
   if(scene==='opencode'||scene==='opencodepreview'){
    assert(!subcard('OpenCode Go'),'Go must not be an OAuth subscription');
    card('OpenCode Go').click();await waitFor(()=>$('.provider-key input'),'Go key form missing');
@@ -189,6 +208,7 @@ async function xaiLoggedIn(){
   }
   if(scene==='xaifailure'){fixture.xaiFail=true;subcard('xAI').click();await waitFor(()=>subcard('xAI').textContent.includes('登录未完成'),'xai failure missing');fixture.xaiFail=false;fixture.xaiSucceed=true;subcard('xAI').click();await waitFor(()=>subcard('xAI').querySelector('[aria-label="已登录"]'),'xai retry failed');}
   if(scene==='xaiunconfigured'){
+   assert([...document.querySelectorAll('.provider-catalog .provider-card')].filter(n=>!n.classList.contains('provider-subscription')&&n.querySelector('strong')?.textContent==='xAI').length===1,'xaiunconfigured duplicated xAI');
    card('xAI').click();await waitFor(()=>btn('去订阅'),'unconfigured OAuth guidance missing');
    assert(!btn('登录')&&!btn('重新登录'),'unconfigured OAuth entry shows login CTA');
    assert($('.provider-status').textContent.includes('未登录'),'unconfigured OAuth status wrong');
@@ -198,9 +218,19 @@ async function xaiLoggedIn(){
  }
  assert(!card('ChatGPT').disabled,'subscription login disabled');
  assert(subcard('ChatGPT')&&subcard('xAI'),'subscription cards missing');
+ // Enabled entries move to the top group and leave the API catalog; unconfigured
+ // subscriptions stay in the directory. xAI OAuth never joins the API catalog.
+ const enabled=$('.provider-enabled'),directory=$('.provider-directory');
+ assert(enabled&&!enabled.hidden&&/已启用/.test(enabled.textContent),'enabled section missing');
+ assert(directory&&!directory.hidden&&/添加供应商/.test(directory.textContent),'directory section missing');
+ assert(enabled.compareDocumentPosition(directory)&Node.DOCUMENT_POSITION_FOLLOWING,'enabled section not on top');
+ assert(catalogCards().filter(n=>n.querySelector('strong')?.textContent==='DeepSeek').length===0,'configured DeepSeek still in catalog');
+ assert([...enabled.querySelectorAll('.provider-card')].some(n=>n.querySelector('strong')?.textContent==='DeepSeek'&&n.textContent.includes('API 密钥')),'DeepSeek not in enabled');
+ assert(!subscriptionGroup().hidden,'subscription group hidden without term');
+ assert(catalogCards().filter(n=>!n.classList.contains('provider-subscription')&&n.querySelector('strong')?.textContent==='xAI').length===1,'xAI catalog entry missing or duplicated');
  const search=$('.provider-search input');search.value='xai';search.dispatchEvent(new Event('input'));
- assert(!$('.provider-section').hidden&&subcard('xAI')&&!subcard('xAI').hidden&&subcard('ChatGPT').hidden,'xai subscription search failed');
- search.value='chatgpt';search.dispatchEvent(new Event('input'));assert(!subcard('ChatGPT').hidden&&subcard('xAI').hidden,'chatgpt subscription search failed');
+ assert(!directory.hidden&&subcard('xAI')&&!subcard('xAI').hidden&&subcard('ChatGPT').hidden,'xai subscription search failed');
+ search.value='chatgpt';search.dispatchEvent(new Event('input'));assert(subcard('ChatGPT')&&!subcard('ChatGPT').hidden&&subcard('xAI').hidden,'chatgpt subscription search failed');
  search.value='';search.dispatchEvent(new Event('input'));
  for(const t of ['Google Gemini','Vertex AI','xAI','Kimi Code','Zhipu GLM','Z.ai','MiniMax','StepFun','Xiaomi MiMo','Baidu Qianfan','Tencent Cloud'])assert(card(t),'missing '+t);
  assert([...document.querySelectorAll('.provider-card img')].every(i=>/provider-icons\/[a-z-]+\.svg$/.test(i.getAttribute('src'))),'bad glyph');
@@ -233,7 +263,7 @@ async function xaiLoggedIn(){
  $('.provider-back').click();fixture.large=true;card('OpenAI').click();await waitFor(()=>document.querySelectorAll('.provider-model-row').length===2048,'large catalog missing');
  assert(!fixture.xaiStarts,'unexpected xAI login starts');assert(!fixture.calls.some(p=>p.includes('/oauth/chatgpt/start')),'OAuth started without subscription click');
  $('.provider-back').click();$('.provider-search input').value='chatgpt';$('.provider-search input').dispatchEvent(new Event('input'));
- assert(!$('.provider-section').hidden,'ChatGPT search hid subscription');
+ assert(subcard('ChatGPT')&&!subcard('ChatGPT').hidden,'ChatGPT search hid subscription');
  card('ChatGPT').click();assert(card('ChatGPT').disabled,'start request remained clickable');
  await waitFor(()=>card('ChatGPT')?.querySelector('[aria-label="已登录"]'),'subscription did not sign in');
  assert(fixture.calls.filter(p=>p.endsWith('/chatgpt/start')).length===1,'duplicate OAuth start');
