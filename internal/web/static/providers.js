@@ -80,6 +80,9 @@
     const mount = {}; mounts.set(host, mount);
     const alive = () => mounts.get(host) === mount && isCurrent();
     let data, query = "", selected = "", revision = 0, loginRequest = null;
+    // 本机订阅探测与详情态：每画一次都会重发探测，回来又画一次，会无限重画并把已打开的详情冲掉，所以只探一次、只在列表态重画。
+    const localProbe = {}, probed = new Set();
+    let detailOpen = false;
     const key = p => p.name ?? p.brand;
     const vendorOf = brand => ((data && data.vendors) || []).find(v => v.brand === brand);
     function entries() {
@@ -167,12 +170,14 @@
       const input = node("input"); input.type = "search"; input.placeholder = "查找供应商…"; input.setAttribute("aria-label", "查找供应商"); input.value = query;
       const clear = button("×", "provider-search-clear", () => { query = ""; input.value = ""; filter(); input.focus(); }); clear.setAttribute("aria-label", "清除搜索"); clear.hidden = !query;
       search.append(input, clear); tools.append(search); host.append(tools);
-      const local = {};
+      detailOpen = false;
       for (const kind of ["chatgpt", "xai"]) {
+        if (probed.has(kind)) continue;
+        probed.add(kind);
         api(`/api/providers/oauth/${kind}/local`).then(async r => {
           if (!alive()) return;
-          if (r && r.imported) { data = await api("/api/providers"); paint(); return; }
-          if (r && r.available) { local[kind] = r; paint(); }
+          if (r && r.imported) { data = await api("/api/providers"); if (!detailOpen) paint(); return; }
+          if (r && r.available) { localProbe[kind] = r; if (!detailOpen) paint(); }
         }).catch(() => {});
       }
       const subscriptions = ["chatgpt", "xai"].map(kind => {
@@ -185,7 +190,7 @@
           else subnote.textContent = "登录未完成，请重试";
         }
         const card = button("", "provider-card provider-subscription", () => {
-          const p = subscriptionEntry(kind); selected = key(p);
+          const p = subscriptionEntry(kind); selected = key(p); detailOpen = true;
           return p.key_configured ? capability(p) : login(kind, paintSubscription, () => { updateSubscription(); filter(); });
         });
         let note = null;
@@ -199,7 +204,7 @@
             if (note) { note.remove(); note = null; }
           } else {
             subnote.textContent = "登录"; card.append(subnote);
-            const found = local[kind];
+            const found = localProbe[kind];
             if (found && !note) {
               note = node("p", "provider-import-note", `本机已登录 ${found.source}${found.account ? "（" + found.account + "）" : ""}`);
               wrap.append(note);
@@ -242,14 +247,14 @@
         }
         subscriptionGroup.hidden = subscriptions.every(({card, wrap}) => card.hidden || wrap.parentNode !== subgrid);
         for (const p of on.filter(p => !term || (p.title + " api 密钥").toLowerCase().includes(term))) {
-          const card = button("", "provider-card", () => { selected = key(p); return p.custom ? customDetail(p) : capability(p); }); card.setAttribute("aria-current", String(selected === key(p)));
+          const card = button("", "provider-card", () => { selected = key(p); detailOpen = true; return p.custom ? customDetail(p) : capability(p); }); card.setAttribute("aria-current", String(selected === key(p)));
           const copy = node("span", "provider-copy"); copy.append(node("strong", "", p.title), node("span", "provider-method", p.custom ? "自定义 API" : "API 密钥"));
           card.append(glyph(p.custom ? "" : p.brand), copy);
           const dot = node("span", "sdot ok"); dot.setAttribute("role", "img"); dot.setAttribute("aria-label", "已配置"); card.append(dot);
           enabledGrid.append(card); if (focusKey === key(p)) { card.focus(); focusKey = undefined; }
         }
         for (const p of off) {
-          const card = button("", "provider-card", () => { selected = key(p); return p.custom ? customDetail(p) : capability(p); }); card.setAttribute("aria-current", String(selected === key(p)));
+          const card = button("", "provider-card", () => { selected = key(p); detailOpen = true; return p.custom ? customDetail(p) : capability(p); }); card.setAttribute("aria-current", String(selected === key(p)));
           const copy = node("span", "provider-copy"); copy.append(node("strong", "", p.title)); if (p.custom) copy.append(node("span", "provider-method", "自定义 API"));
           card.append(glyph(p.custom ? "" : p.brand), copy);
           grid.append(card); if (focusKey === key(p)) { card.focus(); focusKey = undefined; }
