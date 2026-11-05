@@ -543,7 +543,11 @@
         const vendorEarly = p.brand === "xai" && p.oauth !== "xai" && vendorOf("xai");
         if (vendorEarly) { body.replaceChildren(xaiVendorBody(p, vendorEarly, current)); return; }
         if (!p.key_configured) {
-          if (p.oauth === "chatgpt") { body.replaceChildren(state("请重新登录 ChatGPT，再拉取模型。")); return; }
+          if (p.oauth === "chatgpt") {
+            const again = state("还没登录 ChatGPT，登录后会自动拉取模型。");
+            again.insertBefore(button("登录 ChatGPT", "btn primary provider-btn-pri", () => login(p.oauth, () => {}, () => capability(p, true))), again.querySelector(".btn"));
+            body.replaceChildren(again); return;
+          }
           if (p.oauth === "xai") { body.replaceChildren(node("p", "provider-xai-lead", "账号登录请到上方订阅"), button("去订阅", "btn sec provider-btn-sec", goToXaiSubscription)); return; }
           const vendor = (p.name == null || p.name === p.brand) && vendorOf(p.brand);
           if (vendor && vendor.key_login) {
@@ -590,7 +594,12 @@
           return;
         }
         if (p.oauth && message.includes("重新登录")) {
-          body.replaceChildren(state(p.oauth === "chatgpt" ? "ChatGPT 登录凭证已失效，请重新登录。" : "登录凭证已失效，请点「重新登录」。", () => capability(p, true)));
+          // 头部的绿点说「已登录」、正文又说凭证失效，自己跟自己打架；失效时头部也跟着改口。
+          status.replaceChildren(node("span", "sdot wait"), node("span", "provider-status-fail", "登录已失效"));
+          const again = state(p.oauth === "chatgpt" ? "ChatGPT 登录凭证已失效，重新登录后可继续拉取模型。" : "登录凭证已失效，重新登录后可继续拉取模型。", () => capability(p, true));
+          const relogin = button("重新登录", "btn primary provider-btn-pri", () => login(p.oauth, () => {}, () => capability(p, true)));
+          again.insertBefore(relogin, again.querySelector(".btn"));
+          body.replaceChildren(again);
           return;
         }
         // A key-only xAI vendor card that still fails points back at account

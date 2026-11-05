@@ -182,3 +182,10 @@ html[data-theme="dark"] :is(.provider-glyph-opencode-go,.provider-glyph-xai,.pro
 .provider-custom-actions>.btn.primary{padding-inline:var(--x-s8)}
 .provider-custom input[name=base_url]{font-family:var(--x-mono)}
 .provider-custom-models>.provider-model-count{margin:0;font-size:var(--ui-caption);font-weight:500;color:var(--x-muted)}
+/* 详情页：内容按可读宽度收住，别贴着左边缘散成一片，也别让正文裸着 */
+.provider-back{margin-bottom:var(--x-s5)}
+.provider-detail-heading,.provider-auth-slot,.provider-models,.provider-xai-lead{max-width:720px}
+.provider-detail-title h2{font-size:var(--ui-page);letter-spacing:-.01em}
+.provider-empty{max-width:720px;padding:16px 18px;background:var(--x-fill-1);border-radius:var(--x-r-card);color:var(--x-text)}
+.provider-empty p{margin:0 0 10px}
+.provider-empty .btn{margin-top:2px}
