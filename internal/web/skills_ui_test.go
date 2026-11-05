@@ -392,7 +392,7 @@ func TestSkillsDisplayNamesAndCopy(t *testing.T) {
    const api=async(path,opt)=>{calls.push([path,opt]);return path==='/api/skills'?{skills:[skill]}:{...skill,bots:[{name:'ada',enabled:true}]}};
    await window.XBotSkills.mount({api,host,isCurrent:()=>true,onLevel:l=>levels.push(l)});
    assert.equal(find(host,'setlead')[0].textContent,'本机 Bot 共享。是否启用，按每个 Bot 单独设。');
-   assert.equal(find(host,'setfoot')[0].textContent,'点开一条，可给某个 Bot 打开或关掉。');
+   assert.equal(find(host,'setfoot').length,0,'列表页不再挂脚注，说明文字只在详情页');
    const row=find(host,'skrow')[0];
    assert.deepEqual(row.children[0].children.map(n=>n.textContent),hint?[title,hint]:[title]);
    assert.equal(row.children[0].children[0].children.length,0,'title must be plain text');
@@ -400,6 +400,7 @@ func TestSkillsDisplayNamesAndCopy(t *testing.T) {
    assert.equal(find(host,'skrow').length,1,'the displayed slug must remain searchable');
    await row.onclick();
    assert.equal(find(host,'skdetail-name')[0].textContent,title);
+   assert.equal(find(host,'setfoot')[0].textContent,'关掉只影响这一条技能、这一个 Bot。库里还在，别的 Bot 不受影响。');
    assert.deepEqual(find(host,'skdetail-desc').map(n=>n.textContent),hint?[hint]:[]);
    assert.equal(levels.at(-1).title,title,'phone title must match the list');
    const toggle=find(host,'tog')[0];
