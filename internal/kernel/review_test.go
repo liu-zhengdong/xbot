@@ -211,14 +211,25 @@ func TestRecordDecisionRedactsSecrets(t *testing.T) {
 
 func TestReviewedToolHTTPReview(t *testing.T) {
 	tool := reviewedTool{Tool: &tools.HTTPRequest{}}
-	if need, _, err := tool.Confirm(json.RawMessage(`{"url":"https://example.com"}`)); err != nil || need {
-		t.Fatalf("plain GET need=%v err=%v", need, err)
+	// The tool itself never asks; a plain read and a write both come back
+	// without a card. The http card is decided by review.HTTPNeedsOwner.
+	for _, args := range []string{
+		`{"url":"https://example.com"}`,
+		`{"method":"POST","url":"https://example.com","body":"x"}`,
+		`{"url":"https://example.com/?k={{secret:TOKEN}}"}`,
+	} {
+		if need, _, err := tool.Confirm(json.RawMessage(args)); err != nil || need {
+			t.Fatalf("%s need=%v err=%v", args, need, err)
+		}
 	}
-	if need, _, err := tool.Confirm(json.RawMessage(`{"method":"POST","url":"https://example.com","body":"x"}`)); err != nil || !need {
-		t.Fatalf("POST need=%v err=%v", need, err)
+	if review.HTTPNeedsOwner(json.RawMessage(`{"url":"https://example.com"}`)) {
+		t.Fatal("plain GET should not ask")
 	}
-	if need, _, err := tool.Confirm(json.RawMessage(`{"url":"https://example.com/?k={{secret:TOKEN}}"}`)); err != nil || !need {
-		t.Fatalf("secret GET need=%v err=%v", need, err)
+	if !review.HTTPNeedsOwner(json.RawMessage(`{"method":"POST","url":"https://example.com","body":"x"}`)) {
+		t.Fatal("POST should ask")
+	}
+	if !review.HTTPNeedsOwner(json.RawMessage(`{"url":"https://example.com/?k={{secret:TOKEN}}"}`)) {
+		t.Fatal("secret placeholder should ask")
 	}
 }
 
