@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -485,10 +486,7 @@ func (s *Server) signIn(w http.ResponseWriter, r *http.Request, session string) 
 	}
 	view := s.accountViewFor(r, me, b)
 	if view.Owner {
-		if err := s.keepPipeSession(session); err != nil {
-			writeErr(w, 500, "account session persistence")
-			return
-		}
+		s.keepPipeSessionOrLog(r.Context(), session)
 		s.setCookie(w, s.loginToken())
 		_ = s.reportDevice(r.Context(), session, b, true)
 	}
@@ -535,14 +533,22 @@ func (s *Server) accountMe(w http.ResponseWriter, r *http.Request) {
 	}
 	view := s.accountViewFor(r, me, b)
 	if view.Owner {
-		if err := s.keepPipeSession(session); err != nil {
-			writeErr(w, 500, "account session persistence")
-			return
-		}
+		// The standby credential is a background concern: an account service that
+		// predates device binding must not blank out the whole account screen.
+		s.keepPipeSessionOrLog(r.Context(), session)
 		s.setCookie(w, s.loginToken())
 		_ = s.reportDevice(r.Context(), session, b, false)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"account": view, "app": s.App})
+}
+
+// keepPipeSessionOrLog persists the installation credential when it can. A
+// failure here leaves standby unstarted; it must not fail the caller's page, so
+// the reason goes to the log instead of the response.
+func (s *Server) keepPipeSessionOrLog(ctx context.Context, session string) {
+	if err := s.keepPipeSession(session); err != nil && ctx.Err() == nil {
+		log.Printf("xbot: account: standby credential not persisted: %v", err)
+	}
 }
 
 // accountLogout ends the account session here and at the service, and the
