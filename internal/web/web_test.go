@@ -363,7 +363,9 @@ func TestProfileAPI(t *testing.T) {
 	res = do(http.MethodGet, "/api/bots", nil, "")
 	raw, _ = io.ReadAll(res.Body)
 	res.Body.Close()
-	if !bytes.Contains(raw, []byte(`"avatar":"custom"`)) || !bytes.Contains(raw, []byte(`"avatar_url":"/api/bots/ada/avatar"`)) {
+	// The upload path is stable, so the listed URL carries a version taken
+	// from the file's change time; another upload must change it.
+	if !bytes.Contains(raw, []byte(`"avatar":"custom"`)) || !bytes.Contains(raw, []byte(`"avatar_url":"/api/bots/ada/avatar?v=`)) {
 		t.Fatalf("custom list %s", raw)
 	}
 	res = do(http.MethodDelete, "/api/bots/ada/avatar", nil, "")
