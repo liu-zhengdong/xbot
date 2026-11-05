@@ -2806,18 +2806,28 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .history-earlier{height:30px;padding:0 14px;border:0;border-radius:999px;font:inherit;font-size:12.5px;font-weight:560;color:var(--x-text-2);background:var(--x-fill-2);cursor:pointer}
 .history-earlier:hover{background:var(--x-fill-3);color:var(--x-text)}
 .history-earlier[aria-busy="true"]{color:var(--x-faint);cursor:wait}
-.chat-search-pop{position:absolute;top:calc(var(--top-h) - 4px);left:50%;transform:translateX(-50%);z-index:41;width:min(400px,calc(100% - 48px));background:var(--x-card);border-radius:14px;box-shadow:var(--x-shadow-pop);overflow:hidden;display:flex;flex-direction:column;max-height:min(420px,70vh)}
+/* 搜索：浮在对话上的一块轻卡片。以前用纯 --x-card 面加无边框输入框，
+   深色主题下整块和背景同色，看起来就是贴了块黑板。现在卡片抬一档、
+   输入框自己是个填色块，边框和投影只负责分层。 */
+.chat-search-pop{position:absolute;top:calc(var(--top-h) + 6px);right:14px;z-index:41;width:min(420px,calc(100% - 28px));display:flex;flex-direction:column;gap:8px;padding:10px;background:var(--x-panel-card);border:1px solid color-mix(in srgb,var(--x-text) 12%,transparent);border-radius:14px;box-shadow:var(--x-shadow-pop);max-height:min(460px,72vh);overflow:hidden}
 .chat-search-pop[hidden]{display:none}
-.search-bar{display:flex;align-items:center;gap:8px;padding:10px 12px}
-#history-search{min-width:0;flex:1;background:transparent;color:var(--x-text);border:0;font:inherit;font-size:14.5px}
-.search-x{flex:none;width:28px;height:28px}
-.history-results{overflow:auto;overscroll-behavior:contain;padding:6px;display:flex;flex-direction:column;gap:5px}
-.history-results>p{padding:16px;text-align:center}
-.history-hit{display:flex;flex-direction:column;gap:4px;align-items:stretch;flex:none;text-align:left;width:100%;border:0;background:transparent;color:var(--x-text);padding:10px 12px;border-radius:10px;font:inherit;cursor:pointer;overflow-wrap:anywhere}
-.history-hit .ex{font-size:13.5px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.search-bar{display:flex;align-items:center;gap:6px}
+.search-field{display:flex;align-items:center;gap:8px;flex:1;min-width:0;height:38px;padding:0 6px 0 10px;background:var(--x-input);border:1px solid transparent;border-radius:var(--x-r-sm);transition:border-color 120ms,box-shadow 120ms}
+.search-field:focus-within{border-color:color-mix(in srgb,var(--x-text) 18%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--x-text) 6%,transparent)}
+.search-icon{flex:none;width:15px;height:15px;color:var(--x-muted)}
+#history-search{min-width:0;flex:1;height:100%;background:transparent;color:var(--x-text);border:0;outline:none;font:inherit;font-size:14px}
+#history-search::placeholder{color:var(--x-muted)}
+#history-search::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
+.search-x{flex:none;width:30px;height:30px;border-radius:var(--x-r-sm);color:var(--x-muted);font-size:16px;line-height:1}
+.search-x:hover{background:var(--x-fill-2);color:var(--x-text)}
+.history-results{overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:2px;padding:0;margin:0 -2px}
+.history-results:not(:empty){padding-top:2px;border-top:1px solid color-mix(in srgb,var(--x-text) 8%,transparent)}
+.history-results>p{padding:22px 16px;text-align:center;font-size:13px;color:var(--x-muted)}
+.history-hit{display:flex;flex-direction:column;gap:3px;align-items:stretch;flex:none;text-align:left;width:100%;border:0;background:transparent;color:var(--x-text);padding:9px 10px;border-radius:var(--x-r-sm);font:inherit;cursor:pointer;overflow-wrap:anywhere}
+.history-hit .ex{font-size:13.5px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .history-hit .tm{font-size:11.5px;color:var(--x-faint)}
 .history-hit:hover{background:var(--x-fill-2)}
-.history-hit:focus-visible,#history-search:focus-visible,.history-earlier:focus-visible{outline:2px solid var(--x-muted);outline-offset:-2px}
+.history-hit:focus-visible,.history-earlier:focus-visible{outline:2px solid var(--x-muted);outline-offset:-2px}
 #history-error{flex-basis:100%;margin:0;text-align:center;color:var(--x-muted);font-size:12.5px}
 .thread{overflow-anchor:none}
 .thread-loading-cover{position:absolute;inset:0;z-index:28;display:grid;place-items:center;background:color-mix(in srgb,var(--x-card) 78%,transparent);backdrop-filter:blur(6px);color:var(--x-muted);font-size:14px;opacity:1;transition:opacity 320ms ease-out}
@@ -2838,7 +2848,6 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 @keyframes chat-avatar-sway{0%,100%{transform:rotate(-2.2deg) translateY(0)}50%{transform:rotate(2.2deg) translateY(-1px)}}
 @media(prefers-reduced-motion:reduce){.chat-open-avatar{animation:none}}
 
-.search-bar .secondary{height:28px;padding:4px 8px;font-size:12.5px}
 
 /* Composer action cluster: mic and send share one geometry so they read as a
    single group, centred inside the pill and inset from its right edge. Later

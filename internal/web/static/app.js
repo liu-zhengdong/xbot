@@ -5092,6 +5092,10 @@
     lastHistoryTop = thread.scrollTop;
     if (movingUp && thread.scrollTop < 24 && !state.sel?.historyLoading && state.sel?.history?.has_more_before && !state.peer) loadThread("older");
   });
+  // 摘要直接来自聊天原文，去掉 **、反引号和换行，读起来才像一句话。
+  function plainExcerpt(text) {
+    return (text || "").replace(/\*\*/g, "").replace(/`/g, "").replace(/\s+/g, " ").trim();
+  }
   let searchRequest = 0;
   $("history-search").addEventListener("input", () => { ++searchRequest; });
   $("history-form").addEventListener("submit", async ev => {
@@ -5107,7 +5111,7 @@
       results.replaceChildren();
       for (const hit of data.matches || []) {
         const btn = el("button", "history-hit search-row");
-        btn.append(el("span", "ex", hit.preview || "查看这条历史记录"));
+        btn.append(el("span", "ex", plainExcerpt(hit.preview) || "查看这条历史记录"));
         if (hit.time) btn.append(el("time", "tm", new Date(hit.time).toLocaleString()));
         btn.type = "button";
         btn.dataset.id = hit.id;

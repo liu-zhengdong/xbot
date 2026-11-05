@@ -170,8 +170,11 @@ try {
     <section id="workspace-chat" class="chat" role="tabpanel" aria-labelledby="workspace-tab-chat">
     <div id="history-search-panel" class="chat-search-pop" role="dialog" aria-label="搜索聊天记录" hidden>
       <form id="history-form" class="search-bar" role="search">
-        <input id="history-search" type="search" aria-label="搜索此 Bot 的聊天历史" placeholder="搜索聊天记录" maxlength="1024">
-        <button class="secondary" type="submit">搜索</button>
+        <span class="search-field">
+          <svg class="icon search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
+          <input id="history-search" type="search" aria-label="搜索此 Bot 的聊天历史" placeholder="搜索聊天记录" maxlength="1024">
+          <button class="visually-hidden" type="submit">搜索</button>
+        </span>
         <button id="history-close" class="icon-btn search-x" type="button" aria-label="关闭搜索">×</button>
       </form>
       <div id="history-results" class="history-results search-list" aria-live="polite"></div>
