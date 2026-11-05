@@ -122,7 +122,7 @@
           if (line >= view.target.line && line <= view.target.endLine) node.classList.add("is-highlight");
           node.append(el("span", "resource-line-number", String(line)), el("span", "resource-line-text", text || " ")); file.append(node);
         });
-        if (!page.text && !file.childNodes.length) view.body.append(el("p", "resource-empty", "这个文件是空的"));
+        if (!page.text && !file.childNodes.length) view.body.append(el("p", "resource-empty", "当前范围没有内容"));
       } else if (page.preview_error || page.kind === "unsupported") view.body.append(el("p", "resource-empty", page.preview_error || "这种资源无法预览"));
     }
     async function load(view, more = false) {
