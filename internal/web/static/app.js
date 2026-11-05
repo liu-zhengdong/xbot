@@ -3299,7 +3299,9 @@
   // Scroll state belongs to the reader, not to transient layout geometry.
   const threadStick = (() => {
     let sticking = true, frame = 0, lastTop = 0, observed = null, paused = false, savedTop = 0, savedAnchor = null;
-    const nearBottom = () => thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
+    // A wheel nudge of a few hundred pixels still counts as reading the end:
+    // losing the follow from that is what left new messages out of view.
+    const nearBottom = () => thread.scrollHeight - thread.scrollTop - thread.clientHeight < 320;
     function position(top) { thread.scrollTop = top; lastTop = thread.scrollTop; }
     function follow() {
       if (paused) return;
@@ -3336,6 +3338,15 @@
         paused = false; position(savedTop); threadStick.restore(savedAnchor); savedAnchor = null; schedule();
       },
       reset() { sticking = true; lastTop = thread.scrollTop; schedule(); },
+      // Sending is an explicit "I am reading the end": take the follow back and
+      // glide down, even from far up the history.
+      stick() {
+        if (state.peer) return;
+        sticking = true;
+        const gap = thread.scrollHeight - thread.scrollTop - thread.clientHeight;
+        if (gap > 240) { thread.scrollTo({ top: thread.scrollHeight, behavior: 'smooth' }); lastTop = thread.scrollTop; schedule(); return; }
+        schedule();
+      },
       release() { sticking = false; },
       changed,
       schedule,
@@ -8062,6 +8073,7 @@
   }
 
   function optimisticMessage(send) {
+    threadStick.stick();
     threadStick.scrolled();
     let inner = thread.querySelector(".thread-inner:not(.thread-skeleton)");
     if (!inner) {
