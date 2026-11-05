@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 
 	"xbot/internal/bot"
@@ -17,8 +19,24 @@ func paintBot(b *bot.Bot) (url, bg, ink, initial string) {
 	bg, ink, initial = bot.AvatarColors(b.Name())
 	if b.Config().Avatar == bot.AvatarCustom {
 		url = "/api/bots/" + b.Name() + "/avatar"
+		// A fresh upload keeps the same path, so browsers happily reuse the
+		// cached picture. A version from the file's change time makes a new
+		// upload load by itself.
+		if v := avatarVersion(b); v != "" {
+			url += "?v=" + v
+		}
 	}
 	return url, bg, ink, initial
+}
+
+// avatarVersion is the uploaded picture's modification time in nanoseconds.
+// It is empty when there is no upload yet, so the URL stays unchanged then.
+func avatarVersion(b *bot.Bot) string {
+	info, err := os.Stat(b.AvatarPath())
+	if err != nil || info.IsDir() {
+		return ""
+	}
+	return strconv.FormatInt(info.ModTime().UnixNano(), 36)
 }
 
 func (s *Server) forgetKernel(name string) {
