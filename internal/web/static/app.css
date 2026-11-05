@@ -2939,7 +2939,7 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .workspace > .chat .bubble { padding:10px 15px; line-height:1.65; }
 /* Hover-only action cluster (copy / reply / time) replaces the always-on
    ghost button; .send-state stays a permanent row of its own. */
-.msg-meta-bar { display:flex; align-items:center; gap:var(--x-s1); padding:0 var(--x-s1); opacity:0; pointer-events:none; transition:opacity 140ms ease-out; }
+.msg-meta-bar { display:flex; align-items:center; gap:var(--x-s1); padding:0 var(--x-s1); min-height:24px; opacity:0; pointer-events:none; transition:opacity 140ms ease-out; }
 .msg:hover .msg-meta-bar, .msg:focus-within .msg-meta-bar, .msg:has(.aside-toggle[aria-expanded=true]) .msg-meta-bar { opacity:1; pointer-events:auto; }
 .msg-act { width:24px; height:24px; border:0; border-radius:var(--x-r-xs); padding:0; color:var(--x-faint); background:transparent; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; transition:background var(--dur-press) ease-out, color var(--dur-press) ease-out, transform var(--dur-press) ease-out; }
 .msg-act:hover { background:var(--x-fill-2); color:var(--x-text); }
