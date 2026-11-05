@@ -373,7 +373,15 @@
     if (state.sel && state.sel.type === "bot" && !state.peer) {
       const st = stStatus.map[state.sel.id];
       const host = thread.querySelector(".msg.live .body");
-      if (st && host && host.querySelector(".live-status")) setWorking(host);
+      const running = !!st && (st.state === "running" || st.state === "awaiting");
+      if (host) {
+        if (running) setWorking(host);
+        else if (!state.streaming && !host.textContent.trim() && !host.querySelector(".approval")) host.closest(".msg")?.remove();
+      } else if (running && !state.streaming) {
+        // Switching chats drops the live bubble; a bot still working here gets
+        // its dots back instead of silently looking idle.
+        liveBubble();
+      }
     }
   }
 
@@ -7930,6 +7938,8 @@
   }
 
   function liveBubble() {
+    const present = thread.querySelector(".msg.live .prose.bot-bubble");
+    if (present) return present;
     threadStick.scrolled();
     const inner = thread.querySelector(".thread-inner") || thread;
     const empty = inner.querySelector(".empty");
