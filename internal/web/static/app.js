@@ -9631,3 +9631,20 @@
     if (new URLSearchParams(location.search).get("s") === "account") openSettings("account");
   }
 })();
+
+// 开发期：静态文件一有改动就整页刷新，省得记着手动刷。只看 dev-static 的响应，正式包里不会轮询。
+(function devAutoReload() {
+  const files = ["/app.css", "/app.js", "/providers.css", "/providers.js", "/resources.css", "/resources.js"];
+  const tagOf = (name) => fetch(name, { method: "HEAD", cache: "no-store" })
+    .then((r) => (r.headers.get("X-Xbot-Tip") === "dev-static" ? r.headers.get("ETag") || "-" : null))
+    .catch(() => null);
+  const stamp = () => Promise.all(files.map(tagOf)).then((tags) => tags.join("|"));
+  stamp().then((first) => {
+    if (!first || first.indexOf("null") >= 0) return;
+    setInterval(() => {
+      stamp().then((now) => {
+        if (now && now.indexOf("null") < 0 && now !== first) location.reload();
+      });
+    }, 2000);
+  });
+})();
