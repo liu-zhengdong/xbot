@@ -2,7 +2,7 @@
 
 Created: 2026-11-04
 
-状态：用户已确认设计，`devin/swe-2` 已实施两轮（`1dc6757c` + 补修）。Codex 会话为 `01a1a6eb-aa1e-7600-bc4b-cfd255123ce3`。
+状态：已合入主分支（合并提交 `ea288326`，实现提交 `1dc6757c` + `7328493b`）。用户看到的「只有 ChatGPT 有图标」是主分支一直没合这条分支，不是单独的运行链路 bug；合并后用无头浏览器打开设置页核对，`/provider-icons/<brand>.svg` 全部返回并渲染，已启用分组置顶正常。Codex 会话为 `01a1a6eb-aa1e-7600-bc4b-cfd255123ce3`。
 实施工作区：`/Users/liuzhengdong/repos/xbot-worktrees/provider-icons-enabled-first-20261104`。
 实施分支：`feat/provider-icons-enabled-first-20261104`。
 运行记录位于原型目录的 `swe-2-events.jsonl`，完成报告写入 `swe-2-result.md`。
