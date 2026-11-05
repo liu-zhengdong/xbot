@@ -194,7 +194,7 @@ const tab=name=>[...document.querySelectorAll('#workspace-tabs [role=tab]')].fin
  await waitFor(()=>$('[data-routine=r1] .routine-skills-summary'),'routine');
  $('[data-routine=r1] .routine-skills-summary').click();
  const input=$('[data-routine=r1] form input');input.value='尚未保存的技能草稿';
- failTaskProfile=true;tab('轨迹').click();
+ failTaskProfile=true;tab('上下文').click();
  await waitFor(()=>$('.workspace-view:not([hidden]) .workspace-error'),'error not surfaced');
  tab('任务').click();await sleep(100);
  assert(input.isConnected&&input.value==='尚未保存的技能草稿','read failure destroyed cached task draft');
