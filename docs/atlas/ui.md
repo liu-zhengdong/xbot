@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-04 (chat resource reading, keyboard pagination and reference return)
+verified: 2026-11-04 @ 0ab4f359 (chat resource reading, keyboard pagination and reference return)
 
 ---
 # 网页界面

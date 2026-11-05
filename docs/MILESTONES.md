@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-11-04 对话资源路径与引用（L，端到端通过，未发布）
+
+- 用户认可统一资源原型后授权实施。正文路径可点击，目录与文件就地阅读，支持 home、中文空格、具名文件和行范围。阅读面给出实际设备与完整地址；复制行引用保留位置，真实桌面能力决定系统打开。来源角标展示已有依据，普通网页直接打开；消息引用可返回原窗口和阅读锚。
+- 沿 owner 会话和同源 POST 增加有界读取，不改聊天历史或内核工具。目录每页 40 项，文本每页 64KiB；特殊文件不读正文，预览失败保留原因。选择与代价见 [ADR 0076](adr/0076-chat-resource-reading.md)，实施与 UC 验证见 [归档](dev/archive/chat-resources.md)。
+- 资源 HTTP 回归通过。独立浏览器流程使用真实临时文件与真实 Server，覆盖 40→80→83、中文文件、URI 112–114 行、复制、系统打开 POST、重试、焦点、切 Bot 迟到响应和两轮询状态。逐帧样本开层与关闭位移均为 0px。来源和窗外引用返回通过；含括号来源 URL 取得红绿证据。相关 Markdown、引用贴底、旁注和增量聊天回归通过。
+- 独立编码复核发现的 URI fragment 与分页焦点问题均已修复并关闭。实际 8788 App 已更新，技能目录读取与系统打开成功。主管查看 [桌面深色目录](</Users/liuzhengdong/.xbot-build/ui-shots/chat-resources/product/desktop/page-@2x.png>) 和 [手机浅色文件](</Users/liuzhengdong/.xbot-build/ui-shots/chat-resources/product/mobile/page-@2x.png>)；独立视觉复核无必改项。手机截图记录一次设备列表 401，资源读取正常，未扩修无关流程。复核范围见 [记录](</Users/liuzhengdong/.xbot-build/ui-shots/chat-resources/product/review.md>)。
+- 实现提交 cd53aae7，来源与等宽字体修正 19ea6912。web vet、Go 格式、JS 语法及 diff 检查通过；Atlas audit 退出 0，保留原有文档提示。Not run: 全仓、真实模型、跨平台原生窗口矩阵、用户日用、推送与发布。没有新增 guard。
+
 ## 2026-11-04 设备直接操作与图标（S，界面通过）
 
 - 用户要求常见动作图标化、直接点击对象及 macOS 平台标识，并授权修改界面。设备详情标题现在直接改名，删除重复名称和系统行。目录、详情与选择器采用标准平台图形。返回、添加、解绑、刷新与停止复用图标控件；保存与解绑确认保留文字。
