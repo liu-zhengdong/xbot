@@ -83,7 +83,7 @@
   --err: var(--x-danger);
   --scroll: #d4d4d8;
   --eye: #3a342f;
-  --composer: #e9f0fc;         /* 回复框走淡蓝，和白底拉开又不刺眼 */
+  --composer: #f3f3f5;
   --panel: var(--x-panel);
   /* The bundled Noto Sans SC subset ("XBot SC") stays first so Chinese keeps
      the face the interface shipped with; its unicode-range covers CJK only, so
@@ -112,7 +112,7 @@ html[data-theme="dark"] {
   --warn: #c6c6cc;
   --scroll: #3a3a40;
   --eye: #241f1c;
-  --composer: #222a36;         /* 深色下用压住的蓝，不拿纯淡蓝晃眼 */
+  --composer: #252528;
   color-scheme: dark;
 }
 
