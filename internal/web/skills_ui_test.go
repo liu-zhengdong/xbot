@@ -337,8 +337,17 @@ func TestSourceGlyphsAreBlossomAndClaudeStarburst(t *testing.T) {
 	if !strings.Contains(ag, "M12 8V5") || strings.Contains(ag, "r='2.1'") {
 		t.Fatalf("agent glyph must be the bot outline, not the target: %.120s", ag)
 	}
-	if !strings.Contains(css, ".nestcard .srcrow .bico{width:44px;height:44px;-webkit-mask-size:28px 28px;mask-size:28px 28px}") {
-		t.Fatal("source row glyph must be a 44 box with a 28 mark")
+	// The design standard moved control sizes onto --ui-control; the source row
+	// glyph keeps a 28px mark inside that box.
+	if !strings.Contains(css, ".nestcard .srcrow .bico{width:var(--ui-control);height:var(--ui-control);-webkit-mask-size:28px 28px;mask-size:28px 28px}") {
+		t.Fatal("source row glyph must be a control-sized box with a 28 mark")
+	}
+	tok, err := staticFS.ReadFile("static/tokens.css")
+	if err != nil {
+		t.Fatalf("read tokens.css: %v", err)
+	}
+	if !strings.Contains(string(tok), "--ui-control:36px") {
+		t.Fatal("--ui-control must stay the design-standard control size")
 	}
 }
 
