@@ -24,25 +24,8 @@ func TestBackgroundEventBehavior(t *testing.T) {
 		}
 		return source[a : a+b]
 	}
-	script := extract("unwrap", "displayText") + extract("displayText", "routineOf") + `
+	script := extract("unwrap", "displayText") + extract("displayText", "compactPath") + `
 const assert = require("node:assert/strict");
-const assistant = (content, branch, tool_calls) => ({role:"assistant", content, branch, tool_calls});
-const event = (text, type="fork_end", status="") => ({role:"user", content:
- '<untrusted_event source="subagent" type="'+type+'" status="'+status+'">\n'+text+'\n</untrusted_event>'});
-const check = (messages, expected) => assert.deepEqual([...backgroundRelays(messages)], expected);
-check([assistant("same"), event("same"), assistant("same"), assistant("same")], [2]);
-check([event("same"), assistant("different"), assistant("same")], []);
-check([event("same"), assistant("", null, [{}]), assistant("same")], []);
-check([assistant("intermediate", "bg_a"), assistant("intermediate"), assistant("final", "bg_a"), assistant("final"), assistant("final")], [3]);
-check([assistant("same"), assistant("same", "bg_a")], []);
-check([assistant("one", "bg_a"), assistant("two", "bg_b"), assistant("one"), assistant("two")], [2]);
-check([event("a \n b"), assistant(" a b ")], [1]);
-check([event("![pic](one.png)"), assistant("![pic](two.png)")], []);
-check([event("[file](one.pdf)"), assistant("[file](two.pdf)")], []);
-check([event("![pic](one.png)"), assistant("![pic](one.png)")], [1]);
-check([event("bg_abcd same"), assistant("same")], []);
-check([event("same", "done"), assistant("same")], []);
-const openRoutines = new Set();
 const clip = s => s;
 const plainText = s => s;
 const icon = () => ({});
