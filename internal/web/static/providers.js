@@ -7,6 +7,7 @@
   const pname = p => p.name;
   const ctxShort = c => c >= 1000000 ? `${+(c / 1000000).toFixed(2)}M` : `${+(c / 1000).toFixed(1)}K`;
   function safeURL(value) { try { const u = new URL(value); return ["http:", "https:"].includes(u.protocol) ? u.href : null; } catch { return null; } }
+  const markdownURL = url => url.replace(/\(/g, "%28").replace(/\)/g, "%29");
   function step(part) {
     const h = part.hosted;
     const running = !["completed", "failed"].includes(h.status);
@@ -23,7 +24,7 @@
   function citations(parts) { return (parts || []).filter(p => p.citation && safeURL(p.citation.url)); }
   function citedText(text, parts) {
     const cs = citations(parts), chars = Array.from(text);
-    const marks = cs.map((p, i) => ({ at: Math.min(chars.length, Math.max(0, p.citation.end)), text: ` [${i + 1}](${safeURL(p.citation.url).replace(/\(/g, "%28").replace(/\)/g, "%29")})` }));
+    const marks = cs.map((p, i) => ({ at: Math.min(chars.length, Math.max(0, p.citation.end)), text: ` [${i + 1}](${markdownURL(safeURL(p.citation.url))})` }));
     marks.sort((a,b) => b.at - a.at);
     for (const m of marks) chars.splice(m.at, 0, m.text);
     return chars.join("");
@@ -34,7 +35,7 @@
     const cs = citations(parts); if (!cs.length) return;
     for (let i=0;i<cs.length;i++) {
       const url=safeURL(cs[i].citation.url);
-      const a=[...host.querySelectorAll("a")].find(a=>a.href===url && a.textContent===String(i+1));
+      const a=[...host.querySelectorAll("a")].find(a=>a.href===markdownURL(url) && a.textContent===String(i+1));
       if (a) {
         a.textContent=`[${i+1}]`;a.classList.add("hs-cite-mark");a.setAttribute("aria-label",`来源 ${i+1}`);
         if (showSource) {

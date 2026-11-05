@@ -147,7 +147,7 @@ const resourceMessage=[
  '普通网页：[普通网页](https://example.org/plain)。来源证据。'
 ].join('\n\n');
 fixture.messages[bots[0].name][419]={seq:420,role:'assistant',content:'',reply_to:65,time:'2026-11-04T12:00:00Z',
- parts:[{type:'citation',citation:{title:'资源契约来源',url:'https://example.org/resource-contract',start:0,end:4}}],
+ parts:[{type:'citation',citation:{title:'资源契约来源',url:'https://example.org/resource_(contract)',start:0,end:4}}],
  tool_calls:[{id:'resource-say',function:{name:'send_message_to_user',arguments:JSON.stringify({text:resourceMessage})}}]};
 fixture.messages[bots[0].name].push({seq:421,role:'tool',content:"sent to the owner's chat",tool_call_id:'resource-say'});
 const resourceScriptedFetch=window.fetch;
@@ -314,7 +314,7 @@ const resourcesSourcesQuoteDriver = `
  assert(ordinary&&ordinary.target==='_blank','ordinary web link lost direct new-tab behavior');
  const cite=message.querySelector('.hs-cite-mark');assert(cite,'provider citation mark was not rendered');
  cite.focus({preventScroll:true});cite.click();await loaded('资源契约来源');
- const source=[...layer().querySelectorAll('a')].find(a=>a.href==='https://example.org/resource-contract');
+ const source=[...layer().querySelectorAll('a')].find(a=>a.href==='https://example.org/resource_(contract)');
  assert(source&&source.target==='_blank','citation source did not preserve its URL');
  assert(resourceFixture.requests.length===0,'citation source unexpectedly fetched a host resource');
  document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
