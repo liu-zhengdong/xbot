@@ -46,7 +46,6 @@ type Guard struct {
 type FetchResult struct {
 	URL         string
 	Status      int
-	StatusLine  string
 	ContentType string
 	Body        []byte
 	Truncated   bool
@@ -144,7 +143,6 @@ func (g *Guard) do(ctx context.Context, method, raw string, body []byte, header 
 		return FetchResult{
 			URL:         final,
 			Status:      resp.StatusCode,
-			StatusLine:  resp.Status,
 			ContentType: resp.Header.Get("Content-Type"),
 			Body:        rawBody,
 			Truncated:   truncated,

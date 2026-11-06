@@ -70,8 +70,6 @@ jobs:
           go-version-file: go.mod
       - name: go build
         run: go build ./...
-      - name: build the xbot binary
-        run: go build -o xbot-ci-check ./cmd/xbot
 
   avatar:
     name: avatar bundle golden

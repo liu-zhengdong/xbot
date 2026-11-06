@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -26,8 +25,6 @@ const (
 	deepseekQueryMax = 128
 	deepseekCountMax = 50
 )
-
-var envVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // NewSearch builds the configured search backend.
 // An empty backend, "ddg", and "duckduckgo" use DuckDuckGo and ignore the key.
@@ -64,9 +61,6 @@ func NewFetcher(backend string) (Fetcher, error) {
 		return nil, fmt.Errorf("fetch: backend %q is not enabled", backend)
 	}
 }
-
-// EnvName reports whether s is an environment variable name, not a secret.
-func EnvName(s string) bool { return envVarName.MatchString(s) }
 
 type deepseekSearch struct {
 	BaseURL string

@@ -13,7 +13,6 @@ const resultPreviewBytes = 256
 
 // ResultText stores the conclusion in the task's existing directory. Completion
 // events carry a pointer, never a second full copy, even for short conclusions.
-// Tool jobs keep their existing output policy through ResultTextAt.
 func ResultText(dir, text, tail string) (string, error) {
 	path := filepath.Join(dir, "result.txt")
 	text = strings.TrimSpace(text)
@@ -38,18 +37,6 @@ func ResultText(dir, text, tail string) (string, error) {
 		report = preview + "\n\n" + report
 	}
 	return report, nil
-}
-
-// ResultTextAt shares the same bounded preview with an existing tool-job output.
-func ResultTextAt(path, text, tail string) (string, error) {
-	text = strings.TrimSpace(text)
-	if len(text) <= reportBytes {
-		return text, nil
-	}
-	if err := fsutil.WriteAtomic(path, []byte(text), 0600); err != nil {
-		return "", err
-	}
-	return PreviewResult(path, text, tail)
 }
 
 // PreviewResult refers to a complete result already stored by its owner.
