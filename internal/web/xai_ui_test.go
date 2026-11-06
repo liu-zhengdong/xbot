@@ -15,8 +15,8 @@ const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
 let completed=false;process.on('beforeExit',()=>{if(!completed){console.error('async test did not complete');process.exitCode=1}});
 class Element {
  constructor(tag){this.tag=tag;this.children=[];this.attrs={};this.classList={add(){}};this.textContent='';}
- append(...nodes){this.children.push(...nodes)} replaceChildren(...nodes){this.children=nodes}
- setAttribute(k,v){this.attrs[k]=v} focus(){} get innerText(){return this.textContent+this.children.map(n=>n.innerText).join(' ')}
+ append(...nodes){for(const n of nodes){if(n&&n.parent){const c=n.parent.children;const i=c.indexOf(n);if(i>=0)c.splice(i,1)}if(n)n.parent=this;this.children.push(n)}} replaceChildren(...nodes){for(const c of this.children)if(c)c.parent=null;this.children=[];this.append(...nodes)}
+ setAttribute(k,v){this.attrs[k]=v} focus(){} addEventListener(){} remove(){if(this.parent){const c=this.parent.children;const i=c.indexOf(this);if(i>=0)c.splice(i,1);this.parent=null}} get innerText(){return this.textContent+this.children.map(n=>n.innerText).join(' ')}
 }
 const host=new Element('main'),calls=[];
 const window={open(){throw Error('no login window expected before OAuth')}};
