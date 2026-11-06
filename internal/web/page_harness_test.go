@@ -12,6 +12,19 @@ import (
 	"xbot/internal/browsertest"
 )
 
+// resourcesScript is the shipped resources.js, prepended to harness scripts
+// that cut a slice out of app.js: appendInline and pathLabel both ask
+// window.XBotResources whether a string is a readable path, so the slice needs
+// the real thing rather than a stub.
+func resourcesScript(t *testing.T) string {
+	t.Helper()
+	raw, err := staticFS.ReadFile("static/resources.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
 // runPageInChrome writes the shipped page into a temp dir with the scripted
 // chat fixture (chatStreamFixture) and the given driver appended before
 // </body>, runs headless Chrome over it and fails unless the driver reports

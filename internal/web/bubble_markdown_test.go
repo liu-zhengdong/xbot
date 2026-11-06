@@ -40,7 +40,7 @@ const pathLabel = (path, tag) => el(tag || "span", "compact-path", path);
 const copyText = () => {};
 const calls = [];
 const window = { katex: { renderToString: (tex, opts) => { calls.push([tex, !!(opts && opts.displayMode)]); return "<katex>" + tex + "</katex>"; } } };
-`+s[a:b]+`
+`+resourcesScript(t)+s[a:b]+`
 const dump = (n) => n.nodeType === 3 ? JSON.stringify(n.nodeValue)
   : n.tagName + (n.className ? "." + n.className : "") + (n.textContent != null ? "{" + JSON.stringify(n.textContent) + "}" : "") + "[" + (n.childNodes || []).map(dump).join(",") + "]";
 const text = (n) => n.nodeType === 3 ? n.nodeValue : (n.textContent != null ? n.textContent : "") + (n.childNodes || []).map(text).join("");

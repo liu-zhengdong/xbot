@@ -27,6 +27,9 @@ func pathFunctions(t *testing.T, layout bool) string {
 	if a < 0 || b < a {
 		t.Fatal("path functions missing")
 	}
+	if layout {
+		return resourcesScript(t) + s[a:b]
+	}
 	return s[a:b]
 }
 func TestCompactPathKeepsSegmentsAndTheWholeFilename(t *testing.T) {
@@ -49,9 +52,10 @@ func TestCompactPathKeepsSegmentsAndTheWholeFilename(t *testing.T) {
 
 func TestCardAndBubblePathsShareFittingAcrossWidths(t *testing.T) {
 	chrome := browsertest.Chrome(t)
-	page := `<!doctype html><meta charset="utf-8"><style>.chat{width:520px}.msg{width:100%}.body{max-width:86%}.bot-bubble{padding:9px 15px}body{font:13px monospace}.notable-text{display:flex;width:320px}.notable-prefix{flex:none}.compact-path{min-width:0;display:inline-block;max-width:100%;overflow-wrap:anywhere;white-space:normal}.notable-text .compact-path{flex:1}</style><div class="chat"><div class="msg"><div class="body"><div class="bot-bubble"><p></p></div></div></div></div><div class="notable-text has-path"><span class="notable-prefix">写入了 </span></div><script>
+	page := `<!doctype html><meta charset="utf-8"><style>.chat{width:520px}.msg{width:100%}.body{max-width:86%}.bot-bubble{padding:9px 15px}body{font:13px monospace}.notable-text{display:flex;width:320px}.notable-prefix{flex:none}.compact-path{min-width:0;display:inline-block;max-width:100%;overflow-wrap:anywhere;white-space:normal}.notable-text .compact-path{flex:1}.resource-link{--resource-inline-icon:14px;--resource-small-gap:4px;--resource-inline-padding:2px}</style><div class="chat"><div class="msg"><div class="body"><div class="bot-bubble"><p></p></div></div></div></div><div class="notable-text has-path"><span class="notable-prefix">写入了 </span></div><script>
  window.requestAnimationFrame=fn=>setTimeout(()=>fn(performance.now()),1);
  const el=(tag,cls,text)=>{const n=document.createElement(tag);n.className=cls||'';n.textContent=text||'';return n},taskSelected=()=>false;
+ const icon=()=>document.createElement('span'),resources={open(){}};
  ` + pathFunctions(t, true) + `
  const path='~/.config/xbot/这个目录名字很长用来核对尾部保留/再加一段/日常工作/.zshrc';
  const card=pathLabel(path);document.querySelector('.notable-text').append(card);

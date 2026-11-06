@@ -56,7 +56,7 @@ const icon = () => el("svg", "icon");
 const calls = [];
 const realKatexStub = { renderToString: (tex, opts) => { calls.push([tex, !!(opts && opts.displayMode)]); return "<katex>" + tex + "</katex>"; } };
 const window = { katex: realKatexStub };
-`+s[a:b]+`
+`+resourcesScript(t)+s[a:b]+`
 const dump = (n) => n.nodeType === 3 ? JSON.stringify(n.nodeValue)
   : n.tagName + (n.className ? "." + n.className : "") + "[" + (n.childNodes || []).map(dump).join(",") + "]";
 const run = (fn, ...rest) => { const p = document.createElement("div"); fn(p, ...rest); return dump(p); };
