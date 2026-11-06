@@ -379,8 +379,11 @@
         else if (!state.streaming && !host.textContent.trim() && !host.querySelector(".approval")) host.closest(".msg")?.remove();
       } else if (running && !state.streaming) {
         // Switching chats drops the live bubble; a bot still working here gets
-        // its dots back instead of silently looking idle.
-        liveBubble();
+        // its dots back instead of silently looking idle. Only while the bot
+        // hasn't answered: a status that lags one tick behind the reply would
+        // otherwise resurrect the dots right after the message landed.
+        const rows = thread.querySelectorAll(".msg"), last = rows[rows.length - 1];
+        if (!last || last.classList.contains("user")) liveBubble();
       }
     }
   }
