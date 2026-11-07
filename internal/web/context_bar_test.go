@@ -26,8 +26,11 @@ const hide=name=>{
 };
 (async()=>{
  await waitFor(()=>!$('#shell').hidden&&$('#work-status button')&&!$('.thread-loading-cover'),'workspace controls missing');
- const bottomGap=()=>$('.workspace').getBoundingClientRect().bottom-$('#composer').getBoundingClientRect().bottom;
- assert(Math.abs(bottomGap()-8)<1,'composer is not at the workspace bottom: '+bottomGap());
+ // composer 底下可能还有一行「本次使用：…」的设备条目，所以贴边看整块 dock，而不是只看 composer。
+ const bottomGap=()=>$('.workspace').getBoundingClientRect().bottom-$('.dock').getBoundingClientRect().bottom;
+ assert(Math.abs(bottomGap())<1,'dock is not at the workspace bottom: '+bottomGap());
+ const dockBox=$('.dock').getBoundingClientRect(),composerBox=$('#composer').getBoundingClientRect();
+ assert(composerBox.bottom<=dockBox.bottom+0.5&&composerBox.top>=dockBox.top-0.5,'composer escaped the dock');
  tab('上下文').click();
  await waitFor(()=>tab('上下文')?.getAttribute('aria-selected')==='true'&&$('#panel').checkVisibility(),'context tab navigation failed');
  assert(!$('#thread').checkVisibility(),'context left chat visible');
