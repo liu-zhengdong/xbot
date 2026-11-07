@@ -33,20 +33,23 @@ func TestAccountMenuBrowser(t *testing.T) {
  $('acct-login-email').closest('form').requestSubmit();
  await until(()=>$('settings-account').textContent.includes('p***@example.com'),'signed-in account missing');
  document.querySelector('[data-set=devices]').click();
- // 已登未绑：这台电脑、关联提示、已匹配设备三段，不另列账号设备，也没有底部「连接」。
- await until(()=>$('g7-claim'),'claim missing');
- assert(heads()==='这台电脑,claim,已匹配设备',heads());
- assert($('g7-claim').textContent.includes('通过账号关联设备')&&$('g7-claim').textContent.includes('把这台电脑绑到账号，手机和其它入口也能看到这台上的 Bot。'),'claim copy');
- assert($('g7-claim').querySelector('[data-act=claim]').textContent.trim()==='绑定这台电脑','claim CTA');
- assert(!$('g7-account-devices')&&![...$('settings-devices').querySelectorAll('h3')].some(h=>h.textContent==='账号关联设备'),'account device list rendered');
+ // 已登未绑：账号设备页顶上给「绑定这台电脑」，下面列账号里的设备。
+ await until(()=>$('settings-devices').querySelector('[data-account-claim] [data-act=claim]'),'claim missing');
+ const claim=$('settings-devices').querySelector('[data-account-claim]');
+ assert(claim.textContent.includes('这台电脑尚未绑定。绑定后，账号内所有 Bot 均可使用。'),'claim copy');
+ assert(claim.querySelector('[data-act=claim]').textContent.trim()==='绑定这台电脑','claim CTA');
+ await until(()=>$('settings-devices').querySelectorAll('.account-device-row').length===1,'account device row missing');
+ assert($('settings-devices').textContent.includes('另一台电脑'),'account device name');
  assert(!$('settings-devices').querySelector('.g7-bound'),'unbound shows bound badge');
+ assert(accountDeviceCalls>0,'logged-in devices page never read account devices');
  $('settings-devices').querySelector('[data-act=claim]').click();
- // 已登已绑：关联提示整节不渲染，本机卡弱标「已绑到账号」。
- await until(()=>!$('g7-claim'),'claim not completed');
+ // 绑完这提示就撤；短码配对页里本机卡弱标「已绑到账号」。
+ await until(()=>!$('settings-devices').querySelector('[data-account-claim] [data-act=claim]'),'claim not completed');
+ $('settings-devices').querySelector('[data-shared=legacy]').click();
+ await until(()=>$('settings-devices').querySelector('.g7-self .g7-bound'),'bound badge missing');
+ assert($('settings-devices').querySelector('.g7-self .g7-bound').textContent==='已绑到账号','bound badge text');
  assert(heads()==='这台电脑,已匹配设备',heads());
- assert($('settings-devices').querySelector('.g7-self .g7-bound').textContent==='已绑到账号','bound badge missing');
  assert(!$('settings-devices').querySelector('[data-act=claim]'),'bound still offers claim');
- assert(accountDeviceCalls===0,'local devices page fetched account devices');
  document.querySelector('[data-set=account]').click();
  await until(()=>$('settings-account').textContent.includes('退出登录'),'logout missing');
  [...$('settings-account').querySelectorAll('button')].find(b=>b.textContent==='退出登录').click();
