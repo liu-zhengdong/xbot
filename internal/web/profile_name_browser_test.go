@@ -10,7 +10,7 @@ func TestProfileNameBrowser(t *testing.T) {
 
 const profileNameDriver = `
 const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
-const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await new Promise(r=>setTimeout(r,10))}throw Error(msg)};
+const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await new Promise(r=>setTimeout(r,10))}throw Error(typeof msg==='function'?msg():msg)};
 (async()=>{
  await waitFor(()=>!$('#shell').hidden&&$('#title').textContent.includes(bots[0].name),'app did not boot');
  const cards=[{id:'aaaaaaaaaaaaaaaa',name:'工程合伙人',preview:'长期技术搭档',default:true},{id:'bbbbbbbbbbbbbbbb',name:'碎嘴群友',preview:'爱接梗'}];
@@ -57,11 +57,13 @@ const waitFor=async(fn,msg)=>{for(let i=0;i<600;i++){if(fn())return;await new Pr
  assert(body.name==='名字热修验证'&&body.description==='保留简介与人设卡','wrong saved fields');
  assert(body.persona==='管周报和排期，不碰线上。','duty not saved');
  assert(Object.keys(body).sort().join(',')==='description,name,persona','save changed unrelated fields');
- // Renaming selects the Bot's chat by design; re-enter its public profile.
- await waitFor(()=>!$('#head-chip').disabled,'renamed Bot profile unavailable');$('#head-chip').click();
+ // Renaming selects the Bot's chat by design; open its public profile if that
+ // left the chat in front (the chip toggles, so only click when it is closed).
+ await waitFor(()=>!$('#head-chip').disabled,'renamed Bot profile unavailable');
+ if($('#head-chip').getAttribute('aria-expanded')!=='true')$('#head-chip').click();
  // The refreshed profile shows 职责 first, then the picked card by name only.
  const cardSec=()=>[...document.querySelectorAll('.tab-body:not([hidden]) .psec')].find(n=>n.querySelector('h4')?.textContent==='人设卡');
- await waitFor(()=>cardSec()?.textContent.includes('碎嘴群友'),'details lack the picked card');
+ await waitFor(()=>cardSec()?.textContent.includes('碎嘴群友'),()=>'details lack the picked card: '+(document.querySelector('.tab-body:not([hidden])')?.textContent||'(no tab body)'));
  const heads=[...document.querySelectorAll('.tab-body:not([hidden]) .psec h4')].map(n=>n.textContent);
  assert(heads.indexOf('职责')>=0&&heads.indexOf('职责')<heads.indexOf('人设卡'),'details must show 职责 before 人设卡');
  assert(!heads.includes('人设'),'details still label the duty 人设');

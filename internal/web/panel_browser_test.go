@@ -107,7 +107,14 @@ window.fetch=async(path,opts={})=>{
  const match=String(path).match(/^\/api\/bots\/([^/]+)$/);
  if(match){
   const name=decodeURIComponent(match[1]);
-  if(opts.method==='PATCH'){Object.assign(bots.find(b=>b.name===name),JSON.parse(opts.body));return json({})}
+  // The real PATCH answers with the saved profile, previous_name included; the
+  // drawer renames from that receipt instead of assuming the write landed.
+  if(opts.method==='PATCH'){
+   const body=JSON.parse(opts.body),target=bots.find(b=>b.name===name);
+   Object.assign(target,body);
+   if(body.name&&body.name!==name)target.name=body.name;
+   return json({name:target.name,previous_name:name,scope:'runtime',applied:!!body.name&&body.name!==name,moved:!!body.name&&body.name!==name,applied_fields:Object.keys(body).filter(k=>k!=='name'),agents:[],links:[]});
+  }
   return json({...bots.find(b=>b.name===name),persona:'You are XBot, a personal assistant. Help the person with the tools granted to you. Be concise and concrete.',model:fixture.bound?.model||'scripted',provider:fixture.bound?.provider||'fake',agents:[],links:[]});
  }
  return baseFetch(path,opts);
