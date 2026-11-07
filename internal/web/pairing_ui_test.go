@@ -118,6 +118,7 @@ const $=s=>document.querySelector(s);
 const waitFor=async(fn,msg)=>{for(let i=0;i<400;i++){if(fn())return;await new Promise(r=>setTimeout(r,10))}throw Error(msg)};
 const clicks=key=>fixture.calls.filter(x=>x.key===key).length;
 const closed=async before=>waitFor(()=>clicks('DELETE /api/devices/code')>before&&!$('#devices-modal').firstChild&&fixture.pairing.a.phase==='none'&&fixture.pairing.b.phase==='none','cancel left live pairing');
+const toLegacy=async()=>{await waitFor(()=>$('#settings-devices [data-shared="legacy"]'),'legacy pairing entry missing');$('#settings-devices [data-shared="legacy"]').click()};
 const open=async()=>{$('#settings-devices [data-act="add"]').click();await waitFor(()=>$('#g7-copy-code')&&!xbotDevices.S.busy,'add did not generate code')};
 (async()=>{
  if(/^account-claim/.test(scene)){
@@ -163,6 +164,8 @@ const open=async()=>{$('#settings-devices [data-act="add"]').click();await waitF
  if(scene==='unpair'){
   fixture.devices=[peerDevice];
   await XBotSettings.open('devices');
+  // 已登录时设备页先开「账号设备」，配对设备列表在「短码配对与其他设备的 Bot」那一页。
+  await toLegacy();
   await waitFor(()=>$('#settings-devices .g7-dev-card'),'device card missing');
   $('#settings-devices [data-act="row-menu"][data-id="desktop"]').click();
   const row=$('#devices-modal [data-act="ask-unpair"]')||document.querySelector('.g7-row-menu [data-act="ask-unpair"]');
@@ -181,6 +184,7 @@ const open=async()=>{$('#settings-devices [data-act="add"]').click();await waitF
   // 次要路径：在添加设备里输入对方的短码 → 确认 → 等对方允许 → 配对成功。
   await XBotSettings.open('devices');
   await waitFor(()=>!$('[data-spane="devices"]').hidden,'settings devices pane');
+  await toLegacy();
   await open();
   assert(!$('#g7-code'),'join input should start folded');
   const toggle=$('#devices-modal [data-act="join-open"]');
@@ -212,6 +216,7 @@ const open=async()=>{$('#settings-devices [data-act="add"]').click();await waitF
  // 默认场景：设置·设备与添加设备嵌层。
  await XBotSettings.open('devices');
  await waitFor(()=>!$('[data-spane="devices"]').hidden,'settings devices pane');
+ await toLegacy();
  const devices=$('#settings-devices');
  assert(devices.querySelectorAll('[data-act="add"]').length===1,'add entry count');
  const add=devices.querySelector('.sethd [data-act="add"]');
@@ -224,7 +229,8 @@ const open=async()=>{$('#settings-devices [data-act="add"]').click();await waitF
  assert(devices.querySelector('.g7-self').closest('section').textContent.includes('这台电脑'),'local device card missing in the empty state');
  assert(devices.textContent.includes('还没有其它设备'),'other-device empty copy');
  assert(!devices.textContent.includes('还没有设备'),'empty state contradicts the local device card');
- fixture.devices=[peerDevice];await xbotDevices.mount();
+ // mount 每次都回到「账号设备」页，看完设备卡要再进一次短码配对页。
+ fixture.devices=[peerDevice];await xbotDevices.mount();await toLegacy();
  assert(!devices.querySelector('.g7-empty'),'paired list still shows an empty state');
  await waitFor(()=>document.querySelector('.g7-side-head'),'sidebar group missing');
  assert(document.querySelector('.g7-side-head').textContent.includes('台式机'),'sidebar group name');
@@ -256,5 +262,5 @@ const open=async()=>{$('#settings-devices [data-act="add"]').click();await waitF
  fixture.pendingCodeDelete();await closed(deleted);fixture.delayCodeDelete=false;
  assert(testErrors.length===0,testErrors.join(';'));
  document.body.dataset.testResult='passed';
-})().catch(e=>{const m=document.getElementById("devices-modal");document.body.dataset.testResult="ERR "+String(e).slice(0,150)+" view="+(window.xbotDevices&&xbotDevices.S.view)+" modal="+(m?m.innerHTML.slice(0,150):"")});
+})().catch(e=>{const m=document.getElementById("devices-modal");const at=String(e&&e.stack||"").split("\n").slice(0,3).join(" | ").slice(0,200);document.body.dataset.testResult="ERR "+String(e).slice(0,120)+" @"+at+" view="+(window.xbotDevices&&xbotDevices.S.view)+" modal="+(m?m.innerHTML.slice(0,120):"")});
 `
