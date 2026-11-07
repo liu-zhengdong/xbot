@@ -39,7 +39,7 @@ const send=async value=>{
  assert(fixture.botReads===reads&&face(name)===oldFace,'refreshed before profile save');
  if(new URLSearchParams(location.search).get('shot')==='before'){document.body.dataset.testResult='passed';return}
  const started=performance.now();
- emit(stream,'result',{name:'bot_update_profile',output:'profile saved'});
+ emit(stream,'profile',{name:name});  // 服务端保存资料后发的是 profile 事件，不再靠 result 的工具名
  await waitFor(()=>face(name)!==oldFace&&face(name,true)!==oldHead,'saved profile did not repaint rail and header during stream');
  document.body.dataset.profileRefreshMs=String(Math.round(performance.now()-started));
  assert($('#thread .live'),'profile refresh ended the stream');
@@ -51,7 +51,7 @@ const send=async value=>{
  // A slow list fetch must not pause incoming text or steal the next Bot's header.
  const firstSavedFace=face(name);
  fixture.holdProfile=true;bots[0].avatar_seed='Ada#3';
- emit(stream,'result',{name:'bot_update_profile',output:'profile saved'});
+ emit(stream,'profile',{name:name});  // 服务端保存资料后发的是 profile 事件，不再靠 result 的工具名
  await waitFor(()=>fixture.releaseProfile,'profile read not started');
  say(stream,'继续处理。');
  await waitFor(()=>$('#thread').textContent.includes('继续处理。'),'profile fetch blocked the stream');
@@ -65,7 +65,7 @@ const send=async value=>{
  finish(stream,'换好了。');
  // A refresh error must not reject readSSE or lose the actual reply.
  const next=await send('继续');fixture.failProfile=true;
- emit(next,'result',{name:'bot_update_profile',output:'profile saved'});
+ emit(next,'profile',{name:name});  // 服务端保存资料后发的是 profile 事件，不再靠 result 的工具名
  say(next,'仍能回复。');
  await waitFor(()=>$('#thread').textContent.includes('仍能回复。'),'list failure broke stream');
  finish(next,'仍能回复。');
