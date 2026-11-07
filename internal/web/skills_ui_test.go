@@ -279,7 +279,11 @@ func TestImportChecklistRowsDoNotOverlap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	page := `<!doctype html><meta charset=utf-8><style>:root{--x-s5:12px;--x-fs-ui:15px;--x-fs-sm:13px}body{font:15px sans-serif;width:420px}` + string(css) + `</style>
+	tokens, err := staticFS.ReadFile("static/tokens.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := `<!doctype html><meta charset=utf-8><style>` + string(tokens) + `body{font:15px sans-serif;width:420px}` + string(css) + `</style>
 <div class=nestcard><div class=cklist id=l></div></div><pre id=out></pre><script>
 const long='使用代码化工具（以 Remotion 为核心）制作通用的动态视频、产品演示、架构演进、机制解释与数据图表动画。基于 React 逐帧数学插值，精确控制时间轴、虚拟镜头、状态重组、数据流动与导出渲染。';
 for(let i=0;i<8;i++){const r=document.createElement('button');r.className='ckrow';r.innerHTML='<span class=ck></span><span class=tx><b>name'+i+'</b><span class=hint>'+long+'</span></span>';l.append(r)}
