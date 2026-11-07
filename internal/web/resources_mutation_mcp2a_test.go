@@ -128,8 +128,13 @@ func TestMCP2aDifferentRenameSourceInvalidatesCachedKernel(t *testing.T) {
 	if entry.Kernel != nil || entry.Resources != r || entry.Gate != gate {
 		t.Fatal("different cached source not invalidated in same entry")
 	}
-	if source.Bot.Name() != "renamed" || source.Inbox == box {
-		t.Fatal("invoking source did not move Bot and Inbox")
+	// The route moves; both frozen sources keep the Bot/Inbox they were
+	// prepared with, so an in-flight turn cannot be rebound mid-answer.
+	if r.Name() != "renamed" {
+		t.Fatalf("shared route did not move: %q", r.Name())
+	}
+	if source.Bot.Name() != "target" || source.Inbox != box {
+		t.Fatal("rename mutated the invoking source's frozen Bot/Inbox")
 	}
 	if cached.Bot.Name() != "target" {
 		t.Fatal("rename mutated another source's Bot asynchronously")
