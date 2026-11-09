@@ -3378,9 +3378,12 @@
 
   const resources = window.XBotResources.create({ api, el, icon, copyText, read: () => threadStick.read(), errorText: visibleError });
   let quoteReturn = null;
-  const quoteReturnButton = el("button", "", "返回阅读处");
+  const quoteReturnButton = el("button", "");
   quoteReturnButton.id = "quote-return"; quoteReturnButton.type = "button"; quoteReturnButton.hidden = true;
-  quoteReturnButton.prepend(icon("undo")); $("workspace-chat").append(quoteReturnButton);
+  quoteReturnButton.setAttribute("aria-label", "返回阅读处"); quoteReturnButton.dataset.tip = "返回阅读处";
+  quoteReturnButton.append(icon("undo"));
+  const quoteReturnPlacement = el("div", "quote-return-placement");
+  quoteReturnPlacement.append(quoteReturnButton); $("workspace-chat").querySelector(".dock").before(quoteReturnPlacement);
   function clearQuoteReturn() { quoteReturn = null; quoteReturnButton.hidden = true; }
   quoteReturnButton.addEventListener("click", () => {
     const saved = quoteReturn;

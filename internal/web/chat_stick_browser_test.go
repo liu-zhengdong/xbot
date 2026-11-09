@@ -160,7 +160,8 @@ const waitFor=async(f,m)=>{for(let i=0;i<1000;i++){if(f())return;await sleep(10)
 (async()=>{
  await waitFor(()=>$('#thread [data-seq="420"] .quote-block')&&!$('.thread-loading-cover'),'opening failed');await sleep(100);
  const thread=$('#thread'),tail=$('#thread [data-seq="420"]'),target=$('#thread [data-seq="419"]');
- tail.style.minHeight=(thread.clientHeight/2+30)+'px';await sleep(100);
+ // Leave room for the return control's row within the near-bottom threshold.
+ tail.style.minHeight=(thread.clientHeight/2-30)+'px';await sleep(100);
  tail.querySelector('.quote-block').click();await sleep(100);
  const gap=thread.scrollHeight-thread.clientHeight-thread.scrollTop,y=target.getBoundingClientRect().top;
  assert(gap>3&&gap<120,'fixture quote did not land near bottom: '+gap);

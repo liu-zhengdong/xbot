@@ -20,7 +20,7 @@
   --resource-file-line:25px; --resource-number:30px; --resource-number-size:11px;
   --resource-line-height:1.8; --resource-address-line:1.7; --resource-line-radius:3px;
   --resource-menu-width:190px; --resource-menu-padding:6px; --resource-menu-radius:10px;
-  --resource-return-bottom:84px; --resource-layer-z:1120;
+  --resource-layer-z:1120;
   --resource-font:"SFMono-Regular",Consolas,"Liberation Mono","XBot SC",monospace;
   --ui-layer-padding:24px; --ui-field-width:180px; --ui-field-narrow:132px;
   /* 弹出层：一次回弹；缩小动效模式只淡入淡出。 */
