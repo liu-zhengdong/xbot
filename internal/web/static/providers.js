@@ -73,7 +73,7 @@
   function lineIcon(kind) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.8"); svg.setAttribute("stroke-linecap", "round"); svg.setAttribute("stroke-linejoin", "round"); svg.setAttribute("aria-hidden", "true");
-    const paths = { plus: "M12 5v14M5 12h14", play: "m9 5 11 7-11 7V5Z", check: "m5 12 4 4L19 6", cross: "m6 6 12 12M6 18 18 6", back: "m15 18-6-6 6-6", search: "M21 21l-4.4-4.4M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0", image: "M4 4h16v16H4zM4 16l5-5 4 4 2-2 5 5M15 8h.01", vision: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0", logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" };
+    const paths = { plus: "M12 5v14M5 12h14", play: "m9 5 11 7-11 7V5Z", check: "m5 12 4 4L19 6", cross: "m6 6 12 12M6 18 18 6", back: "m15 18-6-6 6-6", search: "M21 21l-4.4-4.4M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0", image: "M4 4h16v16H4zM4 16l5-5 4 4 2-2 5 5M15 8h.01", vision: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0", trash: "M10 11v6M14 11v6M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" };
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path"); path.setAttribute("d", paths[kind]); svg.append(path); return svg;
   }
   async function settings({ api, host, isCurrent = () => true, initialProvider = "" }) {
@@ -193,7 +193,8 @@
           const p = subscriptionEntry(kind); selected = key(p); detailOpen = true;
           return p.key_configured ? capability(p) : login(kind, paintSubscription, () => { updateSubscription(); filter(); });
         });
-        let note = null;
+        let note = null, remove = null;
+        const failure = node("p", "provider-remove-error"); failure.setAttribute("role", "status");
         card.setAttribute("aria-current", String(selected === "subscription:" + kind));
         function updateSubscription() {
           const p = subscriptionEntry(kind);
@@ -201,6 +202,25 @@
           card.replaceChildren(kind === "chatgpt" ? node("span", "provider-glyph provider-chatgpt-glyph") : glyph("xai"), copy);
           if (p.key_configured) {
             const dot = node("span", "sdot ok"); dot.setAttribute("role", "img"); dot.setAttribute("aria-label", "已登录"); card.append(dot);
+            if (!remove) {
+              remove = button("", "provider-remove", async () => {
+                if (remove.disabled) return;
+                const view = revision, current = () => alive() && view === revision;
+                remove.disabled = card.disabled = true; failure.textContent = "";
+                try {
+                  await api(`/api/providers/oauth/${kind}/logout`, { method: "POST" });
+                  const fresh = await api("/api/providers");
+                  if (!current()) return;
+                  data = fresh; selected = ""; paint("subscription:" + kind);
+                } catch (err) {
+                  if (!current()) return;
+                  remove.disabled = card.disabled = false;
+                  failure.textContent = err && err.status ? err.message : "移除失败，请重试";
+                }
+              });
+              remove.title = `移除 ${p.title} 订阅接入`; remove.setAttribute("aria-label", remove.title); remove.append(lineIcon("trash"));
+              wrap.append(remove, failure);
+            }
             if (note) { note.remove(); note = null; }
           } else {
             subnote.textContent = "登录"; card.append(subnote);
@@ -211,7 +231,7 @@
             }
           }
         }
-        updateSubscription(); wrap.append(card);
+        updateSubscription(); wrap.prepend(card);
         return { kind, card, wrap };
       });
       const enabledHead = node("div", "provider-section-head"), enabledTitle = node("h3", "", "已启用"), count = node("span", "provider-count");
@@ -475,33 +495,13 @@
       const status = node("div", "provider-status"); heading.append(glyph(p.brand), info); info.append(title);
       if (p.brand === "xai") { heading.className += " provider-detail-heading-aside"; heading.append(status); } else info.append(status);
       const auth = node("div", "provider-auth-slot"), body = node("div", "provider-models"), keySlot = node("div"); host.replaceChildren(back, heading, auth, body, keySlot); heading.tabIndex = -1; heading.focus({preventScroll:true});
-      // xAI's header row reflects account login only; a saved API key shows
-      // inside the folded key form, never here. Logged in, the list already
-      // says so: the header carries only the 退出登录 icon.
+      // Account removal lives on the subscription card. The key state stays
+      // inside the folded key form.
       function xaiStatus(state, go, cancel) {
         if (state === "pending") status.replaceChildren(node("span", "sdot wait"), node("span", "provider-status-wait", "等待登录…"), button("取消", "btn ghost provider-relink", cancel));
         else if (state === "failed") status.replaceChildren(node("span", "provider-status-fail", "登录未完成"));
-        else if (state === "logged") {
-          const out = button("", "provider-logout", () => xaiLogout(out)); out.title = "退出登录"; out.setAttribute("aria-label", "退出登录"); out.append(lineIcon("logout"));
-          status.replaceChildren(out);
-        } else status.replaceChildren(node("span", "sdot idle"), node("span", "provider-status-idle", "未登录"));
-      }
-      // Logging out removes the account and its binding on the server, then
-      // redraws this card as the not-logged-in xAI vendor.
-      async function xaiLogout(out) {
-        out.disabled = true;
-        try {
-          await api("/api/providers/oauth/xai/logout", { method: "POST" });
-          if (!current()) return;
-          data = await api("/api/providers");
-        } catch (err) {
-          if (!current()) return;
-          out.disabled = false;
-          status.append(node("span", "provider-status-fail", err && err.status ? err.message : "退出失败，请重试"));
-          return;
-        }
-        if (!current()) return;
-        capability(entries().find(row => row.brand === "xai" && !row.oauth) || { brand: "xai", title: brands.xai, key_configured: false, protocol: "chat_completions" });
+        else if (state === "logged") status.replaceChildren();
+        else status.replaceChildren(node("span", "sdot idle"), node("span", "provider-status-idle", "未登录"));
       }
       function keyStatus() {
         if (p.brand === "xai") {

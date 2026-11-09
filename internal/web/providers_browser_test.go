@@ -49,7 +49,7 @@ func TestProvidersSettingsBrowser(t *testing.T) {
 	}
 	// The xai scene runs the OAuth login path on its own page: a logged-in
 	// xai binding cannot share a name with the key binding the main run saves.
-	for _, query := range []string{"", "state=loginsweep", "state=xai", "state=xaiunconfigured", "state=xaifailure", "state=opencode"} {
+	for _, query := range []string{"", "state=loginsweep", "state=xai", "state=xaiunconfigured", "state=xaifailure", "state=opencode", "state=remove"} {
 		page := (&url.URL{Scheme: "file", Path: filepath.Join(dir, "index.html"), RawQuery: query}).String()
 		out, err := exec.Command(chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files", "--user-data-dir="+filepath.Join(t.TempDir(), "chrome"), "--virtual-time-budget=20000", "--dump-dom", page).CombinedOutput()
 		if err != nil {
@@ -81,9 +81,9 @@ window.testErrors=[];window.addEventListener('error',e=>testErrors.push(e.messag
 const fixture={calls:[],fail:false,empty:false,large:false,oauthPolls:0};
 window.open=()=>({opener:null,closed:false,location:{replace(){}},close(){this.closed=true}});
 const providers=[{name:'',brand:'deepseek',protocol:'chat_completions',api_key_env:'XBOT_API_KEY',key_configured:true,models:[]},{name:'openai',protocol:'responses',api_key_env:'OPENAI_API_KEY',key_configured:true,models:[]},{name:'anthropic',protocol:'anthropic_messages',api_key_env:'ANTHROPIC_API_KEY',key_configured:true,models:[]}];
-if(scene==='xai')providers.push({name:'xai-key',brand:'xai',protocol:'chat_completions',key_configured:true,models:[]});
-if(['loggedin','chatgptdetail'].includes(scene))providers.push({name:'chatgpt',oauth:'chatgpt',protocol:'responses',key_configured:true,models:[]});
-if(scene==='loginsweep')providers.push({name:'xai',oauth:'xai',protocol:'responses',key_configured:true,models:[]});
+if(['xai','remove','removepreview'].includes(scene))providers.push({name:'xai-key',brand:'xai',protocol:'chat_completions',key_configured:true,models:[]});
+if(['loggedin','chatgptdetail','remove','removepreview'].includes(scene))providers.push({name:'chatgpt',oauth:'chatgpt',protocol:'responses',key_configured:true,models:[]});
+if(['loginsweep','remove','removepreview'].includes(scene))providers.push({name:'xai',oauth:'xai',protocol:'responses',key_configured:true,models:[]});
 if(scene==='xaiunconfigured'){providers.push({name:'xai',oauth:'xai',protocol:'responses',key_configured:false,models:[]});fixture.xaiIdle=true;}
 const vendors=[['gemini','Google Gemini'],['vertex','Vertex AI'],['xai','xAI'],['kimi','Kimi'],['kimi-code','Kimi Code'],['zhipu','Zhipu GLM'],['zai','Z.ai'],['minimax','MiniMax'],['stepfun','StepFun'],['mimo','Xiaomi MiMo'],['qianfan','Baidu Qianfan'],['tencent','Tencent Cloud'],['opencode-go','OpenCode Go']].map(([brand,title])=>({brand,title,protocol:'chat_completions',key_login:brand==='vertex',models:['m1','m2']}));
 const json=(v,status=200)=>new Response(JSON.stringify(v),{status,headers:{'Content-Type':'application/json'}});
@@ -106,7 +106,14 @@ window.fetch=async(path,opts={})=>{
   return json({state:'succeeded'});
  }
  if(path==='/api/providers/oauth/xai/start'){fixture.xaiStarts=(fixture.xaiStarts||0)+1;fixture.xaiCancelled=false;return json({url:'https://auth.example/authorize'})}
- if(path==='/api/providers/oauth/xai/logout'){const i=providers.findIndex(p=>p.oauth==='xai');if(i>=0)providers.splice(i,1);fixture.xaiSucceed=false;fixture.xaiIdle=true;return json({status:'logged_out'})}
+ const removeRoute=/^\/api\/providers\/oauth\/(chatgpt|xai)\/logout$/.exec(path);
+ if(removeRoute){
+  if(opts.method!=='POST')return json({error:'method'},405);
+  if(fixture.slowRemove)await new Promise(r=>{fixture.releaseRemove=r});
+  if(fixture.removeFail)return json({error:'移除失败，请重试'},500);
+  const kind=removeRoute[1],i=providers.findIndex(p=>p.oauth===kind);if(i>=0)providers.splice(i,1);
+  if(kind==='xai'){fixture.xaiSucceed=false;fixture.xaiIdle=true}return json({status:'logged_out'});
+ }
  if(path==='/api/providers/oauth/xai/status'){
   if(fixture.xaiIdle)return json({state:'idle'});
   if(fixture.xaiCancelled)return json({state:'cancelled'});
@@ -136,18 +143,16 @@ const apiHead=()=>[...document.querySelectorAll('.provider-subhead')].find(h=>h.
 const catalogCards=()=>[...document.querySelectorAll('.provider-catalog .provider-card')];
 const gap=(above,below)=>below.getBoundingClientRect().top-above.getBoundingClientRect().bottom;
 const fullWidth=()=>$('.provider-models').getBoundingClientRect().width;
-// xAI OAuth: log in; the header carries only the 退出登录 icon and the hosted
-// note sits above the models; clicking logout returns to the login page.
+// xAI OAuth: login and catalog still work. Remove the subscription from its
+// list card and keep the separate API key.
 async function xaiLoggedIn(){
  subcard('xAI').click();await waitFor(()=>subcard('xAI').textContent.includes('等待登录'),'xai pending state missing');
  subcard('xAI').click();assert(fixture.xaiStarts===1,'pending click started another OAuth');fixture.xaiSucceed=true;
  await waitFor(()=>subcard('xAI')?.querySelector('[aria-label="已登录"]'),'xai subscription did not sign in');
  assert(fixture.xaiStarts===1,'xai subscription did not use OAuth');
  assert(providers.some(p=>p.name==='xai-key'&&p.key_configured),'xai key binding lost');
- subcard('xAI').click();await waitFor(()=>$('.provider-status .provider-logout')&&$('.provider-model-row'),'xai subscription detail missing');
- const out=$('.provider-status .provider-logout');
- assert(out&&out.getAttribute('aria-label')==='退出登录'&&out.title==='退出登录'&&!out.textContent.trim(),'xai logout icon missing');
- assert($('.provider-detail-heading').getBoundingClientRect().right-out.getBoundingClientRect().right<2,'xai logout icon not on the header right');
+ subcard('xAI').click();await waitFor(()=>$('.provider-model-row'),'xai subscription detail missing');
+ assert(!$('.provider-logout'),'old detail removal entry survived');
  assert(!/已登录|重新登录/.test($('#settings-providers').innerText),'xai logged-in page shows 已登录 or 重新登录');
  assert(!btn('登录')&&!$('.provider-status').textContent.includes('密钥已配置'),'xai logged-in detail kept login or key state');
  assert(gap($('.provider-hosted-hint'),$('.provider-model-count'))>=0&&$('.provider-hosted-hint').textContent.includes('已用厂商搜索'),'xai hosted note not above the models');
@@ -165,11 +170,11 @@ async function xaiLoggedIn(){
  input.value='scripted-key-12345';input.dispatchEvent(new Event('input'));$('.provider-key').requestSubmit();
  await waitFor(()=>fixture.saves===1,'key form did not submit');
  assert(!$('.provider-status').textContent.includes('账号登录占用'),'key status claims account occupies it');
- $('.provider-back').click();subcard('xAI').click();await waitFor(()=>$('.provider-logout'),'subscription detail missing after old key');
- $('.provider-logout').click();
- await waitFor(()=>btn('去订阅')&&$('.provider-status').textContent.includes('未登录'),'xai logout did not return to the vendor page');
- assert(fixture.calls.includes('/api/providers/oauth/xai/logout'),'xai logout not sent');
- assert($('.provider-key-alt')&&!$('.provider-key-alt').open&&!$('.provider-logout')&&btn('去订阅'),'xai logged-out page wrong');
+ $('.provider-back').click();
+ subcard('xAI').closest('.provider-subscription-wrap').querySelector('.provider-remove').click();
+ await waitFor(()=>subcard('xAI')?.closest('.provider-directory'),'removed xai did not return to directory');
+ assert(fixture.calls.includes('/api/providers/oauth/xai/logout'),'xai removal not sent');
+ assert(providers.some(p=>p.name==='xai-key'&&p.key_configured),'removing xai subscription removed its key');
  assert(testErrors.length===0,testErrors.join(';'));
 }
 (async()=>{
@@ -181,6 +186,32 @@ async function xaiLoggedIn(){
   if(['detail','error','empty','unconfigured'].includes(scene))card(scene==='unconfigured'?'OpenRouter':'OpenAI').click();
   if(scene==='search'){$('.provider-search input').value='OpenAI';$('.provider-search input').dispatchEvent(new Event('input'))}
   if(scene==='xai')await xaiLoggedIn();
+   if(scene==='remove'){
+    const remove=kind=>subcard(kind).closest('.provider-subscription-wrap').querySelector('.provider-remove');
+    const chat=remove('ChatGPT'),wrap=chat.parentElement,dot=wrap.querySelector('.sdot');
+    assert(chat&&!chat.parentElement.closest('button'),'remove button is nested');
+    const before=dot.getBoundingClientRect();chat.focus();
+    assert(getComputedStyle(chat).opacity==='1'&&getComputedStyle(dot).opacity==='0','keyboard did not reveal removal');
+    const hit=chat.getBoundingClientRect();
+    assert(hit.width===36&&hit.height===36&&Math.abs(hit.x+hit.width/2-before.x-before.width/2)<1&&Math.abs(hit.y+hit.height/2-before.y-before.height/2)<1,'removal moved from the status point');
+    assert(chat.contains(document.elementFromPoint(hit.x+hit.width/2,hit.y+hit.height/2)),'remove button cannot receive a click');
+    fixture.removeFail=true;chat.click();await waitFor(()=>wrap.querySelector('[role=status]').textContent.trim()&&!chat.disabled,'removal error missing');
+    assert(providers.some(p=>p.oauth==='chatgpt')&&!chat.disabled&&$('.provider-search'),'failure lost card or opened detail');
+    const search=$('.provider-search input');search.value='订阅';search.dispatchEvent(new Event('input'));
+    fixture.removeFail=false;fixture.slowRemove=true;
+    const requestCount=fixture.calls.filter(p=>p.endsWith('/chatgpt/logout')).length;
+    chat.click();chat.click();await waitFor(()=>fixture.releaseRemove,'removal request missing');
+    assert(chat.disabled&&subcard('ChatGPT').disabled&&fixture.calls.filter(p=>p.endsWith('/chatgpt/logout')).length===requestCount+1,'duplicate removal was sent');
+    fixture.slowRemove=false;fixture.releaseRemove();
+    await waitFor(()=>subcard('ChatGPT')?.closest('.provider-directory'),'ChatGPT did not return to directory');
+    assert($('.provider-search input').value==='订阅'&&!providers.some(p=>p.oauth==='chatgpt'),'removal lost query or account');
+    assert(document.activeElement===subcard('ChatGPT'),'removal lost focus');
+    remove('xAI').click();await waitFor(()=>!providers.some(p=>p.oauth==='xai')&&!remove('xAI'),'xAI removal did not finish');
+    assert(providers.some(p=>p.name==='xai-key'&&p.key_configured),'subscription removal deleted API key');
+    $('.provider-search input').value='';$('.provider-search input').dispatchEvent(new Event('input'));
+    assert(card('xAI').closest('.provider-enabled')&&subcard('xAI').closest('.provider-directory'),'xAI identities merged after removal');
+    assert(!$('.provider-enabled .provider-remove')&&!testErrors.length,'unexpected removal control or browser error');
+   }
   if(scene==='loginsweep'){
    // After OAuth the subscription joins the enabled group and leaves the
    // directory; the empty subscription group and the API head must not stay.

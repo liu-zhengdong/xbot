@@ -6,6 +6,7 @@
   --ui-body:14px; --ui-action:13px; --ui-caption:12px; --ui-section:16px; --ui-page:24px;
   --ui-duration:160ms; --ui-ease:cubic-bezier(.22,1,.36,1);
   --ui-line:1.6; --ui-weight:550; --ui-disabled:.5;
+  --provider-status-size:7px; --provider-remove-icon:16px;
   --account-picker-width:340px; --account-picker-height:44dvh; --account-output-height:40dvh;
   --account-picker-left:16px; --account-picker-bottom:108px;
   --workspace-side:256px; --workspace-page-inset:32px;

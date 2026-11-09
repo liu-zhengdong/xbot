@@ -1,5 +1,13 @@
 # XBot 里程碑与进度
 
+## 2026-11-09 订阅卡悬停删除（S，浏览器入口通过）
+
+- 按用户指定样式，ChatGPT 与 xAI 的已启用订阅卡在悬停或键盘焦点进入时，将绿色状态点原位换成红色 Lucide trash-2。图形 16px、点击区 36px；触控设备常显删除入口。卡片打开与删除按钮为兄弟节点，不嵌套。移除 xAI 详情原退出图标。
+- 点击复用既有 OAuth logout 接口，禁用重复提交，成功重读目录并保留搜索与焦点；失败保留卡片和内联错误。只删除对应订阅，保留同品牌 API 密钥。
+- 扩展 `TestProvidersSettingsBrowser`，覆盖两个订阅的移除、失败重试、重复点击、搜索保留、焦点及状态点中心对齐。首轮测试错误提示断言未考虑既有 API 层对 500 的统一文案；改为验证错误可见及可重试后，七个浏览器场景通过。既有 `TestOAuthLogoutRoute`、`TestOAuthLogoutDuringRefresh` 通过。
+- 主 Agent 检查实际产品 DOM 的 DPR 2 浅深色与 390px 截图。数据使用隔离脚本化夹具；审美顾问仅核对局部结构。证据位于 `~/.xbot-build/ui-shots/provider-subscription-remove/`。本机 8788 三份受影响静态资源返回 `dev-static`，与源码逐字节一致。
+- JavaScript 语法、diff 检查与 Atlas audit 通过；audit 仍提示既有文档长度、过期戳与未映射文件。Not run: 全仓测试、真实模型、真实订阅删除、原生桌面平台矩阵、用户日用、推送与发布。
+
 ## 2026-11-09 持续回复期间读取更早消息（S，浏览器入口通过）
 
 - 用户报告点击「更早的消息」没有反应。实际桌面显示小鲸仍忙碌，按钮可点击且没有错误反馈；前端 `loadThread` 因 SSE 未结束直接返回，未发分页请求。普通分页回归通过，新增 `TestHistoryEarlierStreamingBrowser` 在旧代码命中“earlier click made no request during SSE”。
