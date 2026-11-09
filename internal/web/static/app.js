@@ -7872,7 +7872,7 @@
     const bytes = crypto.getRandomValues(new Uint8Array(16));
     return {id: "web_" + Array.from(bytes, b => b.toString(16).padStart(2, "0")).join(""),
       text: (text || "").trim(), images: [...images], audios: [...audios], status: "sending",
-      serverId: null, row: null, selection: state.sel, time: new Date().toISOString(), replyTo: state.replyTo?.seq || 0,
+      serverId: null, row: null, selection: state.sel, time: new Date().toISOString(), quote: state.replyTo, replyTo: state.replyTo?.seq || 0,
       deviceID: state.sel?.type === "bot" && !state.peer ? window.xbotDevices?.targetFor(state.sel.id) || "" : ""};
   }
 
@@ -7882,6 +7882,7 @@
     if (["accepted", "queued", "recorded"].includes(status) && send.selection?.type === "bot") window.xbotDevices?.accepted(send);
     if (state.sel === send.selection) {
       threadStick.scrolled();
+      if (["accepted", "queued", "recorded"].includes(status) && send.quote && state.replyTo === send.quote) clearQuote();
       paintPendingSend(send);
       threadStick.changed();
     }
@@ -8102,6 +8103,7 @@
     const body = el("div", "bubble-col");
     row.dataset.sender = "user";
     row.dataset.time = send.time;
+    if (send.replyTo) body.append(quoteBlock(state.messages, send.replyTo));
     appendMessageBubbles(body, send.text, pastedURLs(send.selection, send.images), send.audios);
     row.append(body);
     markLiveGroup(inner, row);
@@ -8218,7 +8220,6 @@
       }
       if (state.sel !== selection) return;
       state.sig = "";
-      if (state.replyTo?.seq === send.replyTo) clearQuote();
       settle();
       await loadThread("settle");
     } catch (e) {
