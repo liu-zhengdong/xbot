@@ -3579,7 +3579,8 @@
     for (const row of old.values()) if (row.dataset.transcriptKey) { row.remove(); changed = true; }
     restoreSendFeedback(current);
     for (const row of Array.from(current.children)) {
-      if (!row.dataset.transcriptKey && !row.hasAttribute("data-history-controls") && !state.pendingSends.some(send => send.row === row) && !state.replyErrors.includes(row)) { row.remove(); changed = true; }
+      // Older pages keep the live tail and the nodes held by the SSE reader.
+      if (!state.streaming && !row.dataset.transcriptKey && !row.hasAttribute("data-history-controls") && !state.pendingSends.some(send => send.row === row) && !state.replyErrors.includes(row)) { row.remove(); changed = true; }
     }
     if (activeVoice && !activeVoice.isConnected) stopVoice();
     return changed;
@@ -4926,7 +4927,7 @@
     historyButtons.latest.hidden = !meta?.has_more_after;
     for (const key of ["older", "newer", "latest"]) {
       const btn = historyButtons[key];
-      btn.disabled = !!sel?.historyLoading || !!state.streaming;
+      btn.disabled = !!sel?.historyLoading || (!!state.streaming && key !== "older");
       btn.setAttribute("aria-busy", String(sel?.historyLoading === key));
       const label = {older:"更早的消息",newer:"更新的消息",latest:"回到最新"}[key];
       const text = sel?.historyLoading === key ? "加载中…" : label;
@@ -4937,10 +4938,11 @@
   }
 
   async function loadThread(mode = "poll", target = 0) {
-    if (!state.sel || state.streaming || state.peer) return false;
+    const streamingOlder = mode === "older";
+    if (!state.sel || (state.streaming && !streamingOlder) || state.peer) return false;
     const selection = state.sel;
     if (mode === "poll" && (selection.historyLoading || (selection.history?.has_more_after && !threadStick.sticking))) return false;
-    if (selection.historyLoading && mode !== "around" && mode !== "latest") return false;
+    if (selection.historyLoading && !["around", "latest", "settle"].includes(mode)) return false;
     const request = ++state.threadLoad;
     selection.historyLoading = mode;
     paintHistory();
@@ -4955,11 +4957,11 @@
           credentials: "same-origin",
           headers: mode === "poll" && state.sig && selection.transcriptETag ? { "If-None-Match": selection.transcriptETag } : {},
         });
-        if (state.sel !== selection || request !== state.threadLoad || state.streaming || state.peer) return false;
+        if (state.sel !== selection || request !== state.threadLoad || (state.streaming && !streamingOlder) || state.peer) return false;
         if (res.status === 304) return true;
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "request failed");
-        if (state.sel !== selection || request !== state.threadLoad || state.streaming || state.peer) return false;
+        if (state.sel !== selection || request !== state.threadLoad || (state.streaming && !streamingOlder) || state.peer) return false;
         // Capture after the request: the reader may have scrolled while it
         // was in flight. Include early returns and control/error height changes.
         readingAnchor = threadStick.sticking ? null : threadStick.anchor();
@@ -5043,7 +5045,7 @@
       revealThread();
       return true;
     } catch (e) {
-      if (state.sel === selection && request === state.threadLoad && !state.streaming && !state.pendingSends.length) {
+      if (state.sel === selection && request === state.threadLoad && (streamingOlder || (!state.streaming && !state.pendingSends.length))) {
         readingAnchor = threadStick.sticking ? null : threadStick.anchor();
         if (!state.messages.length) threadUnavailable();
         else {
@@ -7876,7 +7878,9 @@
     reconcilePendingSends(state.messages || []);
     state.pendingSends = state.pendingSends.filter(send => send.status !== "recorded");
     if (state.pendingSends.length) inner.querySelector(".empty")?.remove();
-    inner.append(...state.pendingSends.map(paintPendingSend), ...state.replyErrors);
+    for (const row of [...state.pendingSends.map(paintPendingSend), ...state.replyErrors]) {
+      if (row.parentNode !== inner) inner.append(row);
+    }
     updateWorkTimes();
   }
 
@@ -8151,11 +8155,15 @@
     };
     if (selection.type === "bot" && !state.streaming && stStatus.map[selection.id]?.state !== "running") workDescriptions.delete(selection.id);
     state.streaming = (state.streaming || 0) + 1;
+    paintHistory();
     let counted = true;
     const settle = () => {
       if (counted) {
         counted = false;
-        if (state.sel === selection) state.streaming = Math.max(0, state.streaming - 1);
+        if (state.sel === selection) {
+          state.streaming = Math.max(0, state.streaming - 1);
+          paintHistory();
+        }
       }
     };
     try {
