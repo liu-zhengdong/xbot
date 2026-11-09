@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-08 (reply send feedback; chat resource reading, keyboard pagination, reference return; provider icons and enabled-first sections)
+verified: 2026-11-09 (chat busy progress remains in sidebar; reply send feedback; chat resources)
 
 ---
 # 网页界面
@@ -123,7 +123,7 @@ OpenAI / Grok（xAI）账号状态只读现有 OAuth 元数据；没有保存选
 
 所选账号只决定代理使用哪家，不要求与 Bot 当前绑定对上。页脚提示图片保存在工作区，由 Bot 挂到回复中；修改从下一轮对话生效。只有 Bot 调用 `send_message_to_user images` 挂到回复的图片才沿既有 gallery 展示；生图保存回执仍是普通工具轨迹。`TestImageGenSettingsBrowser` 守住开关、策略、账号、登录入口、保存失败和迟到回包。
 
-生图使用普通工具调用呈现：运行中复用普通工具的三点忙态（空 description 沿用本次忙碌的上一条，尚无 description 时不加文案），`image_generation` 的提示词与真实保存回执进入「轨迹」工具事件和右侧详情。协议仍是 `PartHosted`，不伪造可执行本地工具调用；对话中不再绘制独立生图步骤、提示词按钮或「查看 generated/」交付入口。只有最终回复的 `Entry.Images` 经现有 paste 路由进入 gallery，完成步骤本身不显示图片。生图回执与失败规则见 [供应商](providers.md)。
+生图使用普通工具调用呈现：运行摘要显示在侧栏 Bot 预览中（空 description 沿用本次忙碌的上一条，尚无 description 时不加文案），`image_generation` 的提示词与真实保存回执进入「轨迹」工具事件和右侧详情。协议仍是 `PartHosted`，不伪造可执行本地工具调用；对话中不再绘制独立生图步骤、提示词按钮或「查看 generated/」交付入口。只有最终回复的 `Entry.Images` 经现有 paste 路由进入 gallery，完成步骤本身不显示图片。生图回执与失败规则见 [供应商](providers.md)。
 
 Bot 菜单「查看生成的图片」保留为可选工作区定位功能，打开现有模态框展示服务端工作区路径并可复制；桌面有真实 OpenPath 回调时才显示「打开目录」，复用 open-workdir。接口仍固定路径并校验 Bot 所有权，不分发图片、不新增产物账本。
 ### 资料即时刷新
@@ -149,7 +149,7 @@ Bot 菜单「查看生成的图片」保留为可选工作区定位功能，打�
 
 身份区位于主区左上，显示真实头像、名字和模型副标，资料编辑、主题、搜索与更新靠右。dev 刷新按钮采用 Lucide 官方 `rotate-cw` 路径，沿用公共图标尺寸、线宽与编译重启入口。点击身份或更多里的资料项进入 Bot 资料，群组身份进入成员；往来时身份入口禁用。主视图直接从内容开始，页面名称由顶部标签表达；各 Tab 内不再重复大标题或保留其占位，分区标题与操作照常保留。窄屏保留侧栏入口，页面标签横向滚动，更多固定可达。桌面身份栏保留拖动区，按钮和标签明确 no-drag，Windows/Linux 顶部避让系统按钮。⌘\ / Ctrl+\ 在聊天与资料间切换，Escape 先关闭菜单、搜索与弹窗。
 ### 对话
-底部状态行隐藏时不占位，只在有提示时显示；不再显示重复的「正在回复」文案，回复中保留主列三点 typing 指示；排队、错误与进程状态逻辑不变，Bot 往来提示可按内容换行。
+主 Bot 忙碌状态和工具摘要只在侧栏 Bot 预览显示。聊天主列不再显示三点、重复摘要或空消息时间，也不保留空白占位。底部状态行仅在有提示时显示；发送、排队、错误与子代理状态沿既有入口展示，Bot 往来提示可按内容换行。
 
 输入区是一条 44px 高、22px 圆角的药丸（`--composer-*` 变量，v2 原型 chat-workspace-v2 定稿）：默认一列布局「输入 + 32px 动作钮（mic、发送）」；有引用、附件或草稿超过一行（`is-multiline`）时圆角收到 18px，引用条与 48px 缩略附件行排在输入框上方，录音时整条换成录音栏。聚焦时底色加深到 `--x-fill-2`。顶栏 56px、标签条 42px（标签高 32px），选中标签下有一块跟随滑动的 `.tab-pill-indicator` 底片，只动 transform 不重排。
 
@@ -165,7 +165,7 @@ Bot 菜单「查看生成的图片」保留为可选工作区定位功能，打�
 
 切换 Bot 时同步清空对话与详情，显示灰色骨架。旧请求只更新原 selection。加载失败显示「连不上 XBot」和「重试」。每次新发送创建普通记录，冻结正文、附件、语音、引用和时间。发送状态保存在记录中；DOM 只展示用户气泡、发送状态和失败说明。
 Bot 发送只凭同一 owner 的 `chat.meta.event_id` 精确对账。对应持久行接替自己的临时气泡；窗口缺少该 ID 时继续保留状态。新提交不会删除另一条同文失败消息。已记录状态不被迟到回包降低。语音显式重试沿同一记录；群发送沿原 `status=sent` 回执结算。协议见 [API](../API.md#对话)。
-**Bot 只通过工具说话**：对话里 Bot 的正文和挂图只来自 `send_message_to_user`（旧名 `notify_owner`）的 `text` / `images`，一次送达的调用一条气泡，同一轮的挂图画在这一轮最后一条气泡里；`ask_user` 仍是决策卡。裸助手正文（流式和终稿，含 SILENT）不进 bot 气泡、不进侧栏预览和引用摘要，transcript 照存给模型；有成功 say 的轮次可由 Go 整轮投影经 Record 追加一条合格短正文为 aside 来源行（「心里话」），不从前端 transcript 抠正文。服务端 SSE 不再发 `delta`；`send_message_to_user` 送达时 `result` 事件带 `text`，前端据此封住当前活泡、另开一条只显示忙态的活泡；`done.text` 是本次送达的消息。主列不画工具过程行和 Bot 自己发起的往来系统行，忙态在活泡内以浅底三点胶囊和右侧文案组成一行，细节在「轨迹」。持久主列读取chat送达快照，不再由前端spokenLines/skipMessage投影raw。成功say待最终助手行与媒体归组定稿后一次写入，多say多行、媒体挂最后一条；SSE仍实时显示。回填的单一Go可见规则保留`2026-10-27 11:00 +08:00`之前无say旧轮正文，其后的裸正文不作为 bot 行入 chat，只可按心里话筛选规则入 aside。正文渲染先去掉图片 Markdown 与残缺语法，再统一渲染 Markdown；代码示例、数学公式和普通链接保留，原 transcript 不改。Bot chat 的首次装载、轮询与发送收工对账统一经 `applyTranscript(messages, who)`；主列按chat ID对齐，transcript_seq只用于引用与轨迹回链，审批卡按 card id 对齐，时间行跟随消息键。比较上一次投影的 DOM 结构，只增删或替换变化的行，不动未变行的节点、选区与展开态；首次／切 Bot 或chat ID缺失乱序时才全量装配。变化响应仍计算完整离屏投影，不是服务端增量分页。轮询复用chat尾ID与窗口参数的弱ETag，无变化 304 跳过正文解析；没有 validator 的响应在该 seam 做结构相等短路，不 stringify 整份历史。无变时不重算预览、不重画对话；打开轨迹Tab时独立读取/轮询原transcript，不依赖chat变化。回归为 `transcript_incremental_browser_test.go` 与 `transcript_conditional_test.go`。旧轮的空助手回复显示「这次没有收到回复，请再试一次。」。Responses 真正返回空回复时走现有错误提示和内核失败通知，用户的原话保留。
+**Bot 只通过工具说话**：对话里 Bot 的正文和挂图只来自 `send_message_to_user`（旧名 `notify_owner`）的 `text` / `images`，一次送达的调用一条气泡，同一轮的挂图画在这一轮最后一条气泡里；`ask_user` 仍是决策卡。裸助手正文（流式和终稿，含 SILENT）不进 bot 气泡、不进侧栏预览和引用摘要，transcript 照存给模型；有成功 say 的轮次可由 Go 整轮投影经 Record 追加一条合格短正文为 aside 来源行（「心里话」），不从前端 transcript 抠正文。服务端 SSE 不再发 `delta`；`send_message_to_user` 送达时 `result` 事件带 `text`，前端据此显示正式消息；后续空活泡仅承接 SSE，不进入可见布局；`done.text` 是本次送达的消息。主列不画工具过程行和 Bot 自己发起的往来系统行，忙态摘要只在侧栏预览显示，细节在「轨迹」。持久主列读取chat送达快照，不再由前端spokenLines/skipMessage投影raw。成功say待最终助手行与媒体归组定稿后一次写入，多say多行、媒体挂最后一条；SSE仍实时显示。回填的单一Go可见规则保留`2026-10-27 11:00 +08:00`之前无say旧轮正文，其后的裸正文不作为 bot 行入 chat，只可按心里话筛选规则入 aside。正文渲染先去掉图片 Markdown 与残缺语法，再统一渲染 Markdown；代码示例、数学公式和普通链接保留，原 transcript 不改。Bot chat 的首次装载、轮询与发送收工对账统一经 `applyTranscript(messages, who)`；主列按chat ID对齐，transcript_seq只用于引用与轨迹回链，审批卡按 card id 对齐，时间行跟随消息键。比较上一次投影的 DOM 结构，只增删或替换变化的行，不动未变行的节点、选区与展开态；首次／切 Bot 或chat ID缺失乱序时才全量装配。变化响应仍计算完整离屏投影，不是服务端增量分页。轮询复用chat尾ID与窗口参数的弱ETag，无变化 304 跳过正文解析；没有 validator 的响应在该 seam 做结构相等短路，不 stringify 整份历史。无变时不重算预览、不重画对话；打开轨迹Tab时独立读取/轮询原transcript，不依赖chat变化。回归为 `transcript_incremental_browser_test.go` 与 `transcript_conditional_test.go`。旧轮的空助手回复显示「这次没有收到回复，请再试一次。」。Responses 真正返回空回复时走现有错误提示和内核失败通知，用户的原话保留。
 桌面版（`Server.App`）的旧登录码路径不提供「退出」，`/api/session` 带 `app:true`，`POST /api/logout` 回 409，因为登录码只在启动时生成一次；账号可以退出（`POST /api/account/logout`），再用账号登录回来；`POST /api/app/theme`（`{"theme":"light|dark|system"}`）只在桌面版存在，走登录和同源检查，值不对回 400，成功回 204，App 用它设置 `Server.AppTheme`。排队消息保留自身气泡，直到精确 ID 的持久记录接替；「回复出错了」在下一次发送被接受时清除。重新点击当前打开的 Bot 或群不重置对话；群消息在会话过期时同样保存草稿并在重新进入时恢复；服务端 4xx 带原因时显示「没能完成：原因」。
 
 **文内可点文字一套皮**：输入框草稿、用户与 Bot 气泡、`.prose` 正文里的链接共用 `--x-text-link` / `--x-text-link-bg` / `--x-text-link-hover`（tokens.css，浅深两套）：蓝字、浅蓝 4px 圆角底、无下划线、不加粗；用户气泡底色与卡片相反，`.bubble` 把这组换成 `--x-user-link*`。按钮、整行、图标钮、code 不用这套。可点的 http(s) 文内链（气泡裸 URL 与 `[文字](url)`、输入框草稿链、联网来源 `.hs-cites`）在底内最左带该站自己的 `/favicon.ico`（`linkIcon`，14px，距字 4px）：加载成功前不占位，失败就去掉图片、只剩文字链；每个站点的成败在进程内记一次，草稿重绘不重复请求。不用公开图标服务，因为它们对没有图标的站回一个能正常加载的占位地球。

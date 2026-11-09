@@ -98,13 +98,14 @@ const openGenerated=async()=>{
  fixture.copied='';
  version.click();await waitFor(()=>fixture.copied==='dev · abc1234','clicking version did not copy full text');
  await waitFor(()=>visible($('#settings-version-status'))&&$('#settings-version-status').textContent==='已复制','copy feedback missing');XBotSettings.close();
- // The running hosted event uses the same live status as a local tool. No
+ // A running hosted event adds no chat status, like a local tool. No
  // picture appears until the final reply has an actual Images reference.
  const box=$('#input');box.textContent='画猫并告诉我图在哪';box.dispatchEvent(new Event('input'));$('#composer').requestSubmit();
  await waitFor(()=>fixture.streams.length&&$('#thread .live'),'stream missing');
  const stream=fixture.streams.at(-1);
  emit(stream,'part',{hosted:{id:'ig_live',name:'image_generation',status:'in_progress'}});
- await waitFor(()=>$('#thread .live .live-status .typing-dots'),'ordinary working status missing');
+ await new Promise(r=>setTimeout(r,20));
+ assert(!$('#thread .live .live-status')&&$('#thread .live').getClientRects().length===0,'running generation added a duplicate chat status');
  assert(!$('#thread .live .working-name'),'hosted event without description showed a label');
  assert(!$('#thread .live .hs-step')&&!$('#thread .live .gallery'),'running generation rendered a special block or picture');
  emit(stream,'part',{...generatedPart,hosted:{...generatedPart.hosted,id:'ig_live'}});

@@ -370,22 +370,6 @@
     });
     paintRailStatus();
     sortStatusRows();
-    if (state.sel && state.sel.type === "bot" && !state.peer) {
-      const st = stStatus.map[state.sel.id];
-      const host = thread.querySelector(".msg.live .body");
-      const running = !!st && (st.state === "running" || st.state === "awaiting");
-      if (host) {
-        if (running) setWorking(host);
-        else if (!state.streaming && !host.textContent.trim() && !host.querySelector(".approval")) host.closest(".msg")?.remove();
-      } else if (running && !state.streaming) {
-        // Switching chats drops the live bubble; a bot still working here gets
-        // its dots back instead of silently looking idle. Only while the bot
-        // hasn't answered: a status that lags one tick behind the reply would
-        // otherwise resurrect the dots right after the message landed.
-        const rows = thread.querySelectorAll(".msg"), last = rows[rows.length - 1];
-        if (!last || last.classList.contains("user")) liveBubble();
-      }
-    }
   }
 
   function paintRailStatus() {
@@ -7806,9 +7790,8 @@
     } catch (e) {}
   }
 
-  // Progress shows the purpose: the first summary line (a shell's description),
-  // never the tool name or the command. Empty keeps the last description;
-  // only a busy period with no description yet leaves the dots alone.
+  // Sidebar progress uses the first summary line, not tool names or commands.
+  // Empty summaries keep the last description during the busy period.
   function workText(summary) {
     return String(summary || "").split("\n")[0].trim();
   }
@@ -7829,22 +7812,6 @@
       fade.cancel();
       node.animate({ opacity: [0, 1] }, { duration });
     }, duration);
-  }
-
-  function setWorking(host) {
-    const text = workDescriptions.get(state.sel?.id) || "";
-    let status = host.querySelector(".live-status");
-    if (!status) {
-      status = el("div", "meta live-status");
-      const dots = el("span", "typing-dots");
-      dots.setAttribute("aria-label", "正在回复");
-      for (let i = 0; i < 3; i++) dots.append(el("i", ""));
-      status.append(dots);
-      host.append(status);
-    }
-    const name = status.querySelector(".working-name");
-    if (name) transitionWorkText(name, text);
-    else if (text) status.append(el("span", "working-name", text));
   }
 
   function approvalCard(payload) {
@@ -7951,16 +7918,14 @@
     const who = state.sel ? state.sel.id : "Bot";
     const now = new Date().toISOString();
     const row = el("div", "msg bot live");
+    row.hidden = true;
     row.dataset.sender = "bot:" + who;
     row.dataset.time = now;
     const body = el("div", "body");
     const prose = el("div", "prose bot-bubble");
     body.append(prose);
-    setWorking(body);
     row.append(body);
     markLiveGroup(inner, row);
-    addBubbleTime(row, now);
-    addTimeDivider(inner, row);
     inner.append(row);
     threadStick.changed();
     return prose;
@@ -8051,10 +8016,9 @@
         threadStick.scrolled();
         const host = prose.closest(".body") || prose.parentElement;
         if (event === "tool") {
-          // Tool steps show only as the busy line; the trace has the detail.
+          // Tool summaries update the sidebar; the trace has the detail.
           const text = workText(payload.summary);
           if (text) workDescriptions.set(selection.id, text);
-          setWorking(prose.closest(".body"));
           paintStatus();
         } else if (event === "result" && payload.name === "send_message_to_user" && payload.text) {
           // Use the final bubble layout at delivery, so adding its speaker at
@@ -8062,6 +8026,10 @@
           const row = host.parentElement;
           const delivered = botBubble({time: row.dataset.time}, {text: payload.text}, state.messages, selection.id);
           if (row.classList.contains("cont")) markContinuation(delivered, row.dataset.time);
+          const inner = row.parentElement;
+          const previous = Array.from(inner.querySelectorAll(".msg[data-time]")).filter(n => n !== row).at(-1)?.dataset.time;
+          const divider = timeDivider(previous, delivered.dataset.time);
+          if (divider) row.before(el("div", "tdiv", divider));
           row.replaceWith(delivered);
           prose = liveBubble();
           onLive(prose);
@@ -8070,8 +8038,7 @@
           applyProfileRename(selection, payload);
           if (payload.name === selection.id) refreshSavedProfile(selection).catch(() => {});
         } else if (event === "approval" && host) {
-          const status = host.querySelector(".live-status");
-          if (status) status.remove();
+          host.closest(".msg").hidden = false;
           host.append(approvalCard(payload));
           threadStick.changed();
         } else if (event === "done" && payload.reply_to && host) {
@@ -8251,7 +8218,6 @@
       announceSend(restored ? "没发出去，原文还在输入框里" + (images.length ? "，图片要重新贴一次" : "") : audios.length ? "语音没发出去，可以重试" : "没发出去" + (images.length ? "，图片要重新贴一次" : ""));
       syncComposer();
     } finally {
-      live?.querySelector(".live-status")?.remove();
       if (prose && !prose.textContent && !live?.querySelector(".approval")) live?.remove();
       settle();
     }

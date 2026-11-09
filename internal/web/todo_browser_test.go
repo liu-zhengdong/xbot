@@ -29,46 +29,42 @@ func TestBusyLineBrowser(t *testing.T) {
 	runTodoBrowser(t, todoBrowserFixture+todoStreamingFixture, todoLiveSetup+`
 (async()=>{
  const stream=await start();
- const check=(label)=>{
-  const row=$('#thread .live .live-status'), dots=row?.querySelector('.typing-dots'), name=row?.querySelector('.working-name');
-  assert(row&&dots&&row.querySelectorAll('.typing-dots i').length===3,'busy line missing three dots');
-  assert(document.querySelectorAll('#thread .live .typing-dots').length===1,'duplicate dots');
-  assert((name?.textContent||'')===label,'wrong busy label');
-  assert(['flex','inline-flex'].includes(getComputedStyle(row).display),'busy line is not inline flex');
-  if(name){const a=dots.getBoundingClientRect(),b=name.getBoundingClientRect();assert(b.left>=a.right&&Math.abs((a.top+a.bottom-b.top-b.bottom)/2)<2,'label is not beside dots');}
+ const check=()=>{
+  assert(!$('#thread .live-status, #thread .typing-dots, #thread .working-name'),'duplicate busy status remains in chat');
+  const live=$('#thread .live');
+  assert(!live||live.getClientRects().length===0,'empty live row still occupies space');
+  assert(!live?.querySelector('.msg-time'),'empty live row still has a timestamp');
  };
- check('');
+ check();
  emit(stream,'tool',{name:'shell',summary:''});
  await waitFor(()=>preview().matches('.st.run')&&preview().textContent==='','first empty description invented a sidebar label');
  emit(stream,'part',{hosted:{id:'search',name:'web_search',status:'in_progress',query:'资料'}});
- await sleep(20);assert(!$('#thread .live .hs-step'),'hosted progress added a second busy row');
+ await sleep(20);check();assert(!$('#thread .live .hs-step'),'hosted progress added a busy row');
  emit(stream,'tool',{name:'shell',summary:'继续看资料\nsecret command'});
- await waitFor(()=>working()?.textContent==='继续看资料','description missing');check('继续看资料');
+ await waitFor(()=>preview().textContent==='继续看资料','sidebar description missing');check();
  todoStatus.state='running';todoStatus.tool='shell';todoStatus.todo='旧待办';todoStatus.tool_summary='继续看资料\nsecret command';
- await waitFor(()=>preview().textContent==='继续看资料','sidebar description missing');
  const reads=statusReads;
  emit(stream,'tool',{name:'shell',summary:''});todoStatus.tool_summary='';
- await waitFor(()=>statusReads>=reads+2,'empty-summary polls missing');
- check('继续看资料');
- assert(preview().textContent==='继续看资料','empty description cleared shared last description');
- const label=working(),side=preview(),sideText=side.querySelector('span');
+ await waitFor(()=>statusReads>=reads+2,'empty-summary polls missing');check();
+ assert(preview().textContent==='继续看资料','empty description cleared last description');
+ const side=preview(),sideText=side.querySelector('span');
  emit(stream,'tool',{name:'shell',summary:'核对新资料\nprivate command'});todoStatus.tool_summary='核对新资料';
- await waitFor(()=>label.getAnimations().length>0,'description did not transition');
- assert(label.textContent==='继续看资料','description hard-switched before fade');
- await waitFor(()=>working()?.textContent==='核对新资料'&&preview().textContent==='核对新资料','new shared description missing');
- assert(working()===label&&preview()===side&&side.querySelector('span')===sideText,'description replaced existing nodes');
+ await waitFor(()=>sideText.getAnimations().length>0,'description did not transition');
+ assert(sideText.textContent==='继续看资料','description hard-switched before fade');
+ await waitFor(()=>preview().textContent==='核对新资料','new description missing');
+ assert(preview()===side&&side.querySelector('span')===sideText,'description replaced existing sidebar nodes');check();
  if(new URLSearchParams(location.search).has('shot')){document.body.dataset.testResult='passed';return}
  emit(stream,'result',{name:'send_message_to_user',text:'阶段结果'});
- await waitFor(()=>$('#thread').textContent.includes('阶段结果')&&working()!==label,'next live row missing');
- check('核对新资料');
+ await waitFor(()=>$('#thread').textContent.includes('阶段结果'),'message delivery missing');check();
+ assert($('#thread .msg.bot:not(.live) .msg-time'),'delivered message lost its timestamp');
  assert(preview()===side,'message delivery replaced sidebar');
  emit(stream,'tool',{name:'shell',summary:'   '});todoStatus.tool_summary='';
- await waitFor(()=>statusReads>=reads+4,'sticky polls missing');check('核对新资料');
+ await waitFor(()=>statusReads>=reads+4,'sticky polls missing');check();
  assert(!/shell|secret command|旧待办/.test($('#thread .live').textContent+preview().textContent),'non-description leaked');
  todoStatus.state='idle';todoStatus.todo='';todoStatus.tool_summary='';todoStatus.last_message='查好了';
  finish(stream,'查好了');await waitFor(()=>!$('#thread .live')&&preview().textContent==='查好了','stream did not finish');
  const input=$('#input');input.textContent='新一轮';input.dispatchEvent(new Event('input'));$('#composer').requestSubmit();
- await waitFor(()=>fixture.streams.length===2&&$('#thread .live'),'new busy period missing');check('');
+ await waitFor(()=>fixture.streams.length===2&&$('#thread .live'),'new busy period missing');check();
  finish(fixture.streams.at(-1),'新一轮好了');
  document.body.dataset.testResult='passed';
 })().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
@@ -209,7 +205,7 @@ const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const waitFor=async(fn,msg)=>{for(let i=0;i<900;i++){if(fn())return;await sleep(10)}throw Error(msg)};
 const preview=()=>$('#roster .item[data-bot="'+bots[0].name+'"] .preview');
-const working=()=>$('#thread .live .working-name');
+const working=()=>preview()?.querySelector('span');
 const start=async()=>{
  await waitFor(()=>!$('#shell').hidden&&$('#title').textContent.includes(bots[0].name)&&preview()?.textContent==='上一条闲聊'&&!$('.thread-loading-cover'),'app did not boot');
  const input=$('#input');input.textContent='继续查三处';input.dispatchEvent(new Event('input'));$('#composer').requestSubmit();
@@ -222,7 +218,7 @@ const todoStreamingDriver = todoLiveSetup + `
 (async()=>{
  const stream=await start();
  emit(stream,'tool',{name:'todo',summary:todoSummary});
- await waitFor(()=>working(),'live tool missing');
+ await waitFor(()=>working(),'sidebar tool missing');
  const reads=statusReads,transcriptReads=fixture.reads;
  todoStatus.state='running';todoStatus.tool='todo';todoStatus.todo=todoSummary;todoStatus.tool_summary=todoSummary;
  const started=performance.now();
@@ -231,14 +227,14 @@ const todoStreamingDriver = todoLiveSetup + `
  await waitFor(()=>statusReads>reads&&preview().matches('.st.run')&&preview().textContent===todoSummary,'streaming poll did not show running todo progress');
  document.body.dataset.progressPollMs=String(Math.round(performance.now()-started));
  assert($('#thread .live')&&fixture.reads===transcriptReads,'poll reloaded the streaming conversation');
- await waitFor(()=>working()?.textContent===todoSummary,'status poll did not update live progress');
+ await waitFor(()=>working()?.textContent===todoSummary,'status poll did not update sidebar progress');
  const node=preview(),liveName=working(),stableReads=statusReads;
  await waitFor(()=>statusReads>=stableReads+2,'streaming status poll stopped');
  assert(preview()===node&&working()===liveName,'unchanged streaming poll replaced status nodes');
  todoStatus.tool='shell';emit(stream,'tool',{name:'shell',summary:todoSummary});await sleep(20);
  assert(working()?.textContent===todoSummary,'shell SSE covered readable progress');
  todoStatus.todo='进度：查第三处';todoStatus.tool_summary=todoStatus.todo;
- await waitFor(()=>preview().textContent===todoStatus.todo&&working()?.textContent===todoStatus.todo,'later progress did not reach sidebar and live');
+ await waitFor(()=>preview().textContent===todoStatus.todo&&working()?.textContent===todoStatus.todo,'later progress did not reach sidebar');
  preview().click();await waitFor(()=>$('#stp li'),'running steps entry did not open');
  assert($('#stp').textContent.includes('待办')&&$('#stp').textContent.includes('正在更新待办'),'running todo step lost human label');
  assert(!/in_progress|"items"|\btodo\b/.test($('#stp').textContent),'raw todo leaked into running steps');
@@ -248,11 +244,11 @@ const todoStreamingDriver = todoLiveSetup + `
  todoStatus.tool_summary='跑一遍测试';
  await waitFor(()=>working()?.textContent==='跑一遍测试'&&preview().textContent==='跑一遍测试','cleared progress did not fall back to the description');
  todoStatus.tool_summary='添加一条记忆';emit(stream,'tool',{name:'shell',summary:'添加一条记忆\nxbot memory add hi'});
- await waitFor(()=>working()?.textContent==='添加一条记忆','live progress did not show the first summary line');
+ await waitFor(()=>working()?.textContent==='添加一条记忆','sidebar progress did not show the first summary line');
  const emptyReads=statusReads;todoStatus.tool_summary='';
  await waitFor(()=>statusReads>=emptyReads+2,'empty summary polls missing');
  assert(working()?.textContent==='添加一条记忆'&&preview().textContent==='添加一条记忆','empty summary cleared last description');
- assert(!/shell|bash|后台命令/.test($('#thread .live .live-status').textContent+preview().textContent),'tool name shown in progress');
+ assert(!/shell|bash|后台命令/.test(preview().textContent),'tool name shown in progress');
  todoStatus.state='idle';todoStatus.tool='';todoStatus.last_message='查好了';finish(stream,'查好了');
  await waitFor(()=>!$('#thread .live')&&$('#thread').textContent.includes('查好了'),'stream did not finish');
  assert(testErrors.length===0,testErrors.join('; '));

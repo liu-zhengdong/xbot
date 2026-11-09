@@ -129,7 +129,7 @@ const send=async value=>{
  const threadBottom=$('#thread').getBoundingClientRect().bottom;
  const s=await send('你现在是什么模型？');say(s,'我是助手。');
  assert($('#subtitle').hidden,'redundant reply status is visible');
- assert($('#thread .live .typing-dots')?.querySelectorAll('i').length===3,'reply typing indicator missing');
+ assert(!$('#thread .live .typing-dots')&&$('#thread .live').getClientRects().length===0,'duplicate reply status occupies chat');
  assert(Math.abs($('#thread').getBoundingClientRect().bottom-threadBottom)<0.1,'thread moved when reply status appeared');
  await waitFor(()=>text().includes('我是助手。'),'message missing');
  finish(s,'我是助手。');
