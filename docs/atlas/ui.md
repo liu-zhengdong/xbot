@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-09 (subscription removal on hover)
+verified: 2026-11-09 (bubble focus feedback; subscription removal on hover)
 
 ---
 # 网页界面
@@ -25,6 +25,8 @@ verified: 2026-11-09 (subscription removal on hover)
 - 设置浮层的「模型与供应商」分成「已启用」和「添加供应商」两区。已启用集中置顶：从 `key_configured` 推导，显示官方图标、名称、接入方式副行（订阅 / API 密钥 / 自定义 API）和已配置绿点；ChatGPT 与 xAI 的已启用订阅卡在悬停或键盘焦点进入时，原位将绿点换成红色 Lucide 垃圾桶（16px 图形、36px 点击区），触控设备常显删除入口。点击后复用 OAuth 移除接口，成功回到未登录目录并保留搜索，失败保留卡片供重试；同品牌 API 密钥不受影响，xAI 详情不再提供旧退出入口。目录按订阅组（ChatGPT 与 xAI 卡作为登录入口：未登录时点击授权，等待时可再次点击重开授权窗，不重绘搜索框；成功后显示已登录绿点，再点进入详情）与「API 接入」网格分组，OAuth 条目不重复进入 API 网格（同一品牌的订阅与 API 密钥两个真实接入都保留）。供应商用两列圆角卡，只显示透明品牌标、供应商展示名和已配置绿点，名左、绿点（订阅未登录时的「登录」）贴卡右缘，配置 id 不作主标题；普通条目透明跟页，hover 与选中卡用中性底色 `--x-fill-2`，不靠外框或硬切强调；键盘焦点用中性轮廓。换绑行和网页搜索选项也用较浅的选中底，其列表容器不铺底色。搜索占内容宽度，过滤覆盖各组，无匹配时给清除入口。点卡进入详情：返回入口、厂标、厂名、协议小标签、密钥状态，以及「厂商搜索」「看图」/ 窗口芯片行（用户用语，不露工程词）；不使用能力表格。模型行显示只读「有厂商生图 / 无厂商生图」能力芯片（OpenAI/xAI OAuth Responses 为有），不再提供可勾策略或生图模型输入；策略只在「图片生成」设置。进入详情及重试时实时拉供应商 model list，名单与能力来源见 [供应商](providers.md)。未配密钥先提示配置，拉取失败和空名单均给出重试；返回保留搜索条件，迟到响应（含保存密钥）不会覆盖新页面。内置厂商的详情拉取走 `POST /api/providers/{brand}/sync`：把厂商真名单登记进配置（可选择、可绑定），未改动且无 Bot 绑定的占位种子随之清掉；同名但地址或密钥变量不同的自定义条目一律 409，不收密钥、不被发送。xAI 账号登录与 API 密钥互不占用，订阅详情和密钥供应商详情都可填写密钥；Bot 分别绑定账号或密钥供应商。ChatGPT 详情显示「已登录」并支持重新登录；名单失败可重试或重新登录。授权复用既有 OAuth 与 vault；OpenRouter 列表不提供登录入口，Claude 订阅不提供 OAuth。模型仍从 Bot 的模型行选择绑定。厂商搜索步骤、正文引用角标和来源列表显示在对话气泡内，不画任务卡；生图按下述普通工具轨迹展示。供应商网格在 DeepSeek / OpenAI / Anthropic / OpenRouter 之后列 13 家密钥厂商（Gemini、Vertex AI、xAI、Kimi、Kimi Code、Zhipu GLM、Z.ai、MiniMax、StepFun、Xiaomi MiMo、Baidu Qianfan、Tencent Cloud、OpenCode Go），默认值在 `internal/config/vendors.go`，`GET /api/providers` 的 `vendors` 只带品牌、短名、协议和默认模型名。未配密钥的厂商详情给密钥输入框，`PUT /api/providers/{brand}/key` 按内置默认补 providers.json 条目（不覆盖用户同名条目）并把密钥写入 env 文件；Vertex 没有纯密钥路线，只显示默认模型和「需要先登录 Google Cloud」，不可聊。已配置条目的品牌按 base_url 主机名识别。OpenCode Go 复用密钥详情，提示「订阅 Go 后到 Console 复制 API key，粘到这里。」，不进入订阅 OAuth 区。
 
 ## 聊天主列窗口与搜索
+
+消息行保留 Tab 定位与 Shift+F10 / ContextMenu 快捷菜单。行自身获得键盘焦点时，不绘制整行矩形外框，仅改变圆角气泡底色；复制、回复和菜单按钮沿用各自的焦点提示。行为由 `TestMessageFocusBrowser` 守护。
 
 主列打开/切Bot、分页、轮询、收工与侧栏预览只请求`GET …/chat`，搜索只请求`…/chat/search`；默认40条送达行、上限200条，不为可见条数扩大raw窗。`id`负责游标和keyed patch，`transcript_seq`保留引用回链；附件和卡片沿原渲染组件。存储/整轮不可变快照见[上下文](context.md#聊天读取窗口)，决定见[ADR 0039](../adr/0039-chat-delivery-timeline.md)，验收入口见[设计](../dev/chat-timeline.md)。轨迹打开后单独读取原transcript。
 

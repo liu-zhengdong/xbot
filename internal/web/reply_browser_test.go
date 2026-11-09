@@ -2,6 +2,39 @@ package web
 
 import "testing"
 
+func TestMessageFocusBrowser(t *testing.T) {
+	runChatFramesBrowser(t, replySendFixture, messageFocusDriver)
+}
+
+const messageFocusDriver = `
+const $=s=>document.querySelector(s),assert=(ok,msg)=>{if(!ok)throw Error(msg)};
+const waitFor=async(f,m)=>{for(let i=0;i<800;i++){if(f())return;await new Promise(r=>setTimeout(r,10))}throw Error(m)};
+(async()=>{
+ await waitFor(()=>$('#thread .msg.bot .bot-bubble')&&!$('.thread-loading-cover'),'chat did not open');
+ await document.fonts.ready;
+ const input=$('#input');input.focus();
+ for(const kind of ['bot','user']){
+  const row=$('#thread .msg.'+kind),bubble=row.querySelector('.bot-bubble,.bubble');
+  const before=bubble.getBoundingClientRect(),normal=getComputedStyle(bubble).backgroundColor;
+  row.focus({preventScroll:true});
+  assert(document.activeElement===row&&row.matches(':focus-visible'),'message must retain keyboard focus');
+  assert(getComputedStyle(row).outlineStyle==='none','focused message has a rectangular outer frame');
+  assert(getComputedStyle(bubble).backgroundColor!==normal,'focused message has no visible feedback');
+  const after=bubble.getBoundingClientRect();assert(Math.abs(after.x-before.x)<1&&Math.abs(after.width-before.width)<1,'focus moved the bubble');
+  row.dispatchEvent(new KeyboardEvent('keydown',{key:'F10',shiftKey:true,bubbles:true,cancelable:true}));
+  const menu=$('.message-menu[role=menu][aria-label="消息操作"]');
+  assert(menu&&menu.contains(document.activeElement),'keyboard did not open message menu');
+  assert(document.activeElement.matches(':focus-visible')&&getComputedStyle(document.activeElement).backgroundColor!==getComputedStyle(menu.querySelector('button:last-child')).backgroundColor,'menu action lost keyboard focus indicator');
+  document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+  assert(!$('.message-menu'),'Escape did not close message menu');input.focus();
+ }
+ const copy=$('#thread .msg.bot .msg-meta-bar button');copy.focus();
+ assert(document.activeElement===copy&&getComputedStyle(copy).outlineStyle!=='none','message action lost focus indicator');
+ $('#thread .msg.bot').focus({preventScroll:true});
+ assert(testErrors.length===0,testErrors.join('; '));document.body.dataset.testResult='passed';
+})().catch(e=>{document.body.dataset.testResult='failed: '+e.message});
+`
+
 func TestReplyPendingQuoteBrowser(t *testing.T) {
 	runChatFramesBrowser(t, replySendFixture+`const checkPendingQuote=true;`, replySendDriver)
 }

@@ -2927,6 +2927,10 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .workspace > .chat .thread-inner:not(.grpchat) .msg.bot .body { padding-left:0; }
 .workspace > .chat .bot-bubble.prose:not(:has(.voice)) { background:var(--x-bot-bubble); color:var(--x-text); padding:10px 15px; border-radius:var(--x-r-bubble); line-height:1.65; }
 .workspace > .chat .bot-bubble.message-target { background:var(--x-fill-2); }
+/* Message focus follows the bubble; actions keep their own focus indicator. */
+.workspace > .chat .msg:focus-visible { outline:none; }
+.workspace > .chat .msg.bot:focus-visible .bot-bubble.prose { background:var(--x-fill-2); }
+.workspace > .chat .msg.user:focus-visible .bubble { background:var(--x-primary-hover); }
 .workspace > .chat .bubble-col { max-width:var(--workspace-user-max); }
 .workspace > .chat .bubble { padding:10px 15px; line-height:1.65; }
 /* Hover-only action cluster (copy / reply / time) replaces the always-on
