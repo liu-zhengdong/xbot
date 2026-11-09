@@ -28,6 +28,7 @@ func (s *Server) registerDevicesAPI(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/devices/join", s.cancelJoin)
 	mux.HandleFunc("POST /api/devices/request", s.decideRequest)
 	s.registerRemoteChatAPI(mux)
+	s.registerAccountChatAPI(mux)
 }
 
 // gatewayProbe caches one health check per gateway URL for 30 seconds, so the

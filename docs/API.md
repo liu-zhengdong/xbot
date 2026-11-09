@@ -72,7 +72,7 @@
 - `GET /api/account/me`：`{"account":null|{…同上},"app":<bool>}`。账号是用户时顺手续上 `xbot_session`。
 - `POST /api/account/logout`：退出账号并清掉 `xbot_account`；本机直连保留 `xbot_session`，远端同时清掉用户会话。
 - `POST /api/account/claim`：用户在这台电脑主动绑定当前已验证账号。成功回 `{account,bound:true,reported}`。明确重绑可轮换绑定凭据；普通登录和旧格式自动迁移不能恢复已撤销成员。
-- `GET /api/account/devices`：`{devices:[{id,name,online,self,bots,os,capabilities,last_seen,running_count}]}`；`bots` 沿原名字与头像 DTO，没有账号会话为 401。`os` 为 `darwin|windows|linux` 等目标平台值。能力为 `read/write/exec/exec:<解释器>/browser/desktop`，按目标真实探测。`last_seen` 使用 RFC3339。
+- `GET /api/account/devices`：`{devices:[{id,name,online,self,bots,os,capabilities,last_seen,running_count,chat}]}`；`chat` 表示侧栏可以点开这台电脑上的 Bot（关掉账号通道时为假，本机那台为假）。`bots` 沿原名字与头像 DTO，没有账号会话为 401。`os` 为 `darwin|windows|linux` 等目标平台值。能力为 `read/write/exec/exec:<解释器>/browser/desktop`，按目标真实探测。`last_seen` 使用 RFC3339。
 
 ### 账号设备管理与执行
 
@@ -88,6 +88,11 @@
 | `POST /api/account/devices/{id}/tasks/{ref}/stop` | `{task}`；停止原 Jobs 中的实际操作 |
 | `GET /api/account/devices/{id}/tasks/{ref}/artifacts/{artifact_id}?offset=N&limit=N` | 原始字节块，单块最多 256 KiB |
 | `GET /api/bots/{name}/device-tasks` | `{tasks,unavailable_devices,tasks_truncated}`；当前 Bot 的执行状态摘要 |
+| `GET /api/account/devices/{id}/bots/{bot}/messages?limit=N` | `{messages:[{id,role,text,at,state}],device}`；那台电脑自己的对话，`role` 为 `me|bot` |
+| `POST /api/account/devices/{id}/bots/{bot}/messages` | `{text}` → `{message}`；整轮说完才回来，超 16 KiB 或该设备离线为 4xx/5xx |
+| `POST /api/account/devices/{id}/bots/{bot}/read` | 204；账号通道没有未读账 |
+
+这三条只在 `XBOT_ACCOUNT_CHAT=1` 时注册：后端用账号会话在 pipe 上现领一张票，代理到目标电脑自己的 `GET /api/bots/<bot>/chat` 与 `POST /api/bots/<bot>/messages`。目标电脑不在待命、不是账号成员、本机自己、或 Bot 不在该设备报的名单里，都直接拒绝，不转发。
 
 `Task` 为 `{id,ref,device_id,device_name,bot,context_id,kind,description,status,started_at,finished_at?,error?,artifacts:[{id,name,size}]}`。`description` 是有界摘要。状态为 `running|completed|failed|cancelled`。`ref` 在发送前生成，属于原设备和执行上下文。未知回执不是完成或失败的证据，调用方应查询原引用。
 
@@ -497,7 +502,7 @@ link 包随后完成瘦身与 Event 上移（已合 main 7bba5737，退役 Link 
 }]}
 ```
 
-`avatar` 是 `generated`（界面按种子组合）或 `custom`（已上传图片）。`avatar_url` 只在已上传头像时出现。生成头像由浏览器按 `avatar_seed` 从独立 PNG 图层随机拼装，同种子同组合；16 像素只改变裁切。网页新建和「换一个」提交 `xbot1:` 前缀的随机种子，协议仍接受原有合法 seed，不要求解析部件。图层通过既有认证接口 `/api/ui/static/avatar-parts/…` 读取，每份低于 700 KiB；服务端不存合成图片。种子为 `glyph`、图片加载失败或脚本缺失时，界面按名字画几何图形。`avatar_bg`、`avatar_ink`、`initial` 仍然返回，界面已不再使用。`unread` 在有未读通知，或 transcript 比这个浏览器上次打开的游标更长时为 true。
+`avatar` 是 `generated`（界面按种子画）或 `custom`（已上传图片）。`avatar_url` 只在已上传头像时出现。没上传时界面在浏览器里按 `avatar_seed` 画 Notionists 线稿头像，固定白名单，只有平静或微笑的表情；16 像素用只画脸部的裁切。种子是 `glyph`、图片加载失败或脚本没加载时，界面按名字画黑白几何字形。服务端从不画头像，也不分发画出来的头像。`avatar_bg`、`avatar_ink`、`initial` 仍然返回，界面已不再使用。`unread` 在有未读通知，或 transcript 比这个浏览器上次打开的游标更长时为 true。
 
 `POST /api/bots`，body `{"name":"ada","persona":"...","avatar_seed":"writer#3"}`。名字匹配 `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`。`avatar_seed` 可省略，省了就用名字。种子是去空白后 1–80 个字符，不能有控制字符和「<>"'&」以及反引号。种子不合法 400，这时不会建出 Bot。成功 200 `{"name":"ada"}`。这是目录里第一个 Bot 时，它成为主 Bot 并被置顶。
 
@@ -673,7 +678,7 @@ Bot 正在这个进程里跑一轮时，用户的消息直接插进那一轮（[
 
 ## Bot 状态
 
-`GET /api/bots/status` 返回 `{"bots":[BotStatus]}`，同一套登录。含这个 owner 的全部 Bot，不带步骤。没有活内核的 Bot 是 `idle`，`last_message` 从 transcript 尾巴读。`BotStatus` 字段：`bot`、`state`（`idle`、`running`、`awaiting`、`offline`）、`tool`、`tool_summary`（优先使用当前仍在运行的工具参数 description 首行；本轮仍在继续且当前无 description 时，沿用本轮最近的非空 description，刷新或另一端首次打开也可读取；已脱敏，最多 120 字，本轮尚无 description 或已经结束时省略。`tool` 仍只表示实际未完成的工具）、`since`（RFC3339，本机时区）、`backgrounds`（旧协议兼容字段，现行路径为零并省略）、`agents`（正在执行的子代理数，不含排队）、`completed_unread`（用户尚未读到的子代理或分叉完成汇报数，随既有 transcript 已读游标归零）、`last_message`（最多 80 个字符，写前过替换函数）、`todo`（有未完成项时一行摘要，最多 80 个字符）、`node`（本机为空）、`stale_seconds`。`awaiting` 表示这一轮停在等用户确认。同一个 owner 的远端点合并进来，`node` 写上节点名；节点缓存最多每 10 秒刷新，单次调用超时 2 秒，不可达时返回缓存并把 `state` 写成 `offline`、`stale_seconds` 写成缓存年龄。
+`GET /api/bots/status` 返回 `{"bots":[BotStatus]}`，同一套登录。含这个 owner 的全部 Bot，不带步骤。没有活内核的 Bot 是 `idle`，`last_message` 从 transcript 尾巴读。`BotStatus` 字段：`bot`、`state`（`idle`、`running`、`awaiting`、`offline`）、`tool`、`tool_summary`（当前仍在运行的工具参数 description 首行，已脱敏，最多 120 字；无 description 时省略）、`since`（RFC3339，本机时区）、`backgrounds`（旧协议兼容字段，现行路径为零并省略）、`agents`（正在执行的子代理数，不含排队）、`completed_unread`（用户尚未读到的子代理或分叉完成汇报数，随既有 transcript 已读游标归零）、`last_message`（最多 80 个字符，写前过替换函数）、`todo`（有未完成项时一行摘要，最多 80 个字符）、`node`（本机为空）、`stale_seconds`。`awaiting` 表示这一轮停在等用户确认。同一个 owner 的远端点合并进来，`node` 写上节点名；节点缓存最多每 10 秒刷新，单次调用超时 2 秒，不可达时返回缓存并把 `state` 写成 `offline`、`stale_seconds` 写成缓存年龄。
 
 `GET /api/bots/{name}/steps?n=20` 返回 `{"steps":[{"time","tool","summary","state"}]}`，是这个 Bot 当前这一轮的步骤环。`summary` 最多 120 个字符，写前过替换函数；`state` 是 `running`、`done`、`error` 或 `awaiting`。`n` 缺省 20，最多 20，小于 1 是 400 `{"error":"bad n"}`。不是这个 owner 的 Bot 是 404。远端 Bot 只给状态，不给步骤，空数组。
 

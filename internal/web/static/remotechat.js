@@ -26,6 +26,8 @@
     send: null,             // 正在发的那条（乐观追加的气泡）
     failed: [],             // 没发出去的原文：一直显示「重试」
     loading: false, error: "", info: false, atBottom: true,
+    blocked: "",            // 这台设备还没有对话通道：面板里只写一句话，不发请求
+    acct: false,            // 这台是账号里另一台电脑：对话走账号通道，不走短码配对的信箱
   };
   const LIMIT = 200, POLL = 5000, MAX = 16000;
 
@@ -38,16 +40,20 @@
   const isOpen = () => !root.hidden;
   const same = (d, b) => d === V.dev && b === V.bot;
   const key = () => (isOpen() ? V.dev + "\u0000" + V.bot : "");
-  const path = (d, b) => "/api/remote/" + encodeURIComponent(d) + "/bots/" + encodeURIComponent(b);
+  // 配对设备走加密信箱；账号里的另一台电脑走账号通道（后端代理到它自己的用户 API）。
+  const path = (d, b) => V.acct
+    ? "/api/account/devices/" + encodeURIComponent(d) + "/bots/" + encodeURIComponent(b)
+    : "/api/remote/" + encodeURIComponent(d) + "/bots/" + encodeURIComponent(b);
 
   // ---- 数据 ----
-  // 标签和在线状态以 /api/devices 为准（30 秒刷一次）；还没有时用消息接口给的 device。
+  // 标签和在线状态问侧栏那一份（配对设备来自 /api/devices，账号设备来自 /api/account/devices）；
+  // 消息接口回的 device 更具体，盖在上面。
   function device() {
-    const d = ((S.data && S.data.devices) || []).find((x) => x.id === V.dev);
-    return Object.assign({ id: V.dev, label: V.dev }, d || {}, V.devInfo || {});
+    const d = D.sideDevice ? D.sideDevice(V.dev) : null;
+    return Object.assign({ id: V.dev, label: V.dev, paired: true, chat: true }, d || {}, V.devInfo || {});
   }
   const label = () => device().label || V.dev; // 拼进 HTML 时一律 esc
-  const online = () => !!device().online && !((S.data || {}).gateway_ok === false);
+  const online = () => !!device().online && !(device().paired && (S.data || {}).gateway_ok === false);
   const seen = () => fmtSeen(device().seen);
   const lastSeen = () => seen() || "很久以前";
   function merge(m) {
@@ -60,6 +66,7 @@
   const settle = () => { V.failed = V.failed.filter((t) => !V.list.some((m) => m.role === "me" && m.text === t && m.state !== "sending")); };
 
   async function load(initial) {
+    if (V.blocked) return;
     const d = V.dev, b = V.bot;
     if (initial) { V.loading = true; V.error = ""; draw(); }
     try {
@@ -83,11 +90,13 @@
   }
   // 打开时标已读（接口顺手标），侧栏的未读点跟着消掉。
   async function markRead() {
+    if (V.blocked) return;
     try { await api("POST", path(V.dev, V.bot) + "/read"); } catch (e) { /* 连不上网关就下次再说 */ }
     if (D.refresh) D.refresh();
   }
   // 用户打的字：先显示气泡，拿到服务器那条后替换；没发出去就留原文和「重试」。
   async function sendText(text) {
+    if (V.blocked) { showError(V.blocked); return; }
     const t = String(text || "").trim().slice(0, MAX);
     if (!t) return;
     const d = V.dev, b = V.bot;
@@ -133,6 +142,9 @@
     if (!was) lastFocus = document.activeElement;
     V.dev = devId; V.bot = bot; V.devInfo = null; V.list = []; V.send = null; V.failed = [];
     V.error = ""; V.info = false; V.loading = false; V.atBottom = true;
+    V.blocked = D.blockedReason ? D.blockedReason(devId) : "";
+    const side = D.sideDevice ? D.sideDevice(devId) : null;
+    V.acct = !!(side && side.chat && !side.paired);
     root.hidden = false;
     document.documentElement.classList.add("rc-open"); // 手机上输入框 16px，聚焦时不自动缩放
     // 本机 Bot 的详情抽屉是盖在卡片上的一层（z-index 30），远端对话只有 12，
@@ -141,7 +153,7 @@
     titleSig = "";
     render(); // 上一个对话的报错随整块重画一起清掉
     draw(true);
-    load(true);
+    if (!V.blocked) load(true); // 没有对话通道就不发请求，面板里说明一句就够
     if (was && D.repaint) D.repaint();
     if (el.input && lastFocus && lastFocus.tagName === "TEXTAREA") el.input.focus();
   }
@@ -197,7 +209,9 @@
     const sig = [V.bot, label(), on, seen(), V.info].join("\u0000"); // 时间按分钟变；没拦住的事由才重画按钮
     if (force || sig !== titleSig) {
       titleSig = sig;
-      const status = on ? "在线" : "离线 · 最后联系 " + (seen() || "很久以前");
+      // 配对设备离线是「最后联系」，账号设备只知道「上次在线」；没有对话通道就直说。
+      const dev = device();
+      const status = V.blocked ? "对话通道未通" : on ? "在线" : (dev.paired ? "离线 · 最后联系 " : "离线 · 上次在线 ") + (seen() || "很久以前");
       el.title.innerHTML = `<button class="icon-btn rc-back" type="button" data-rc="back" aria-label="返回">${svg("back")}</button>
         ${sideFaces(V.bot, V.dev)}<div class="rc-titles"><div class="rc-name">${esc(V.bot)}</div><div class="rc-sub">${esc("在 " + label() + " 上")}<span class="rc-sep" aria-hidden="true">·</span><span class="rc-st">${esc(status)}</span></div></div>
         <button class="icon-btn rc-info-btn${V.info ? " on" : ""}" type="button" data-rc="info" aria-label="详情" aria-expanded="${V.info}" data-tip="详情">${svg("panel")}</button>`;
@@ -221,7 +235,8 @@
   const owner = (text, kind, time, cont) => `<div class="rc-u msg user${cont ? " cont" : ""}"><div class="bubble-col"><div class="bubble">${lines(text)}</div>${time ? `<span class="ht">${clockTime(time)}</span>` : ""}${stateHTML(kind)}</div></div>`;
   function drawThread() {
     const items = [];
-    if (V.loading && !V.list.length) items.push(`<div class="rc-empty">正在加载</div>`);
+    if (V.blocked) items.push(`<div class="rc-empty"><p>${esc(V.blocked)}</p></div>`);
+    else if (V.loading && !V.list.length) items.push(`<div class="rc-empty">正在加载</div>`);
     else if (V.error && !V.list.length) items.push(`<div class="rc-empty"><p>${esc(V.error)}</p><button class="secondary" type="button" data-rc="reload">重试</button></div>`);
     else if (!V.list.length && !V.send) items.push(`<div class="rc-empty">还没有消息。写给 ${esc(V.bot)}，${online() ? "它会马上收到" : esc(label() + " 上线后会收到")}。</div>`);
     let previous = null;
@@ -242,6 +257,11 @@
     el.thread.innerHTML = `<div class="thread-inner">${items.join("")}</div>`;
   }
   function drawNote() {
+    if (V.blocked) { el.note.innerHTML = ""; return; }
+    if (V.acct) { // 账号通道不排队：离线就是发不出去，别写「最多等 7 天」
+      el.note.innerHTML = online() ? "" : `${svg("cloudOff", 14)}<span>${esc(label())} 离线，${esc(seen() || "很久以前")}在线过。等它打开 XBot 再发。</span>`;
+      return;
+    }
     el.note.innerHTML = online() ? "" : `${svg("cloudOff", 14)}<span>${esc(label())} 离线，${esc(seen() || "很久以前")}联系过。消息已经交给网关，${esc(label())} 打开 XBot 后 ${esc(V.bot)} 才会收到并回复；最多等 7 天。</span>`;
   }
   function drawInfo() {
@@ -251,7 +271,7 @@
     el.info.innerHTML = `<div class="rc-iface">${sideFaces(V.bot, V.dev)}<b>${esc(V.bot)}</b></div>
       <dl class="rc-facts">
         <div><dt>设备</dt><dd>${esc(where)}</dd></div>
-        <div><dt>地址</dt><dd><code>${esc(V.bot + "@" + (d.name || d.id || V.dev))}</code></dd></div>
+        ${d.paired ? `<div><dt>地址</dt><dd><code>${esc(V.bot + "@" + (d.name || d.id || V.dev))}</code></dd></div>` : ""}
         <div><dt>聊天记录</dt><dd>这台电脑和 ${esc(where)} 各存一份。</dd></div>
         <div><dt>记忆</dt><dd>只在 ${esc(where)} 上。</dd></div>
       </dl>

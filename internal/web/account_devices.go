@@ -149,7 +149,7 @@ func (s *Server) accountDeviceMember(w http.ResponseWriter, r *http.Request) (ac
 }
 func (s *Server) accountDeviceRow(d account.DeviceView) accountDevice {
 	b, _ := s.readBinding()
-	row := accountDevice{ID: d.ID, Name: d.Name, Online: d.Online, Self: b.DeviceID == d.ID && b.BindingID != "" && b.BindingID == d.BindingID, Bots: []accountBot{}, OS: d.OS, Capabilities: d.Capabilities, LastSeen: d.LastSeen, RunningCount: d.RunningCount}
+	row := accountDevice{ID: d.ID, Name: d.Name, Online: d.Online, Self: b.DeviceID == d.ID && b.BindingID != "" && b.BindingID == d.BindingID, Bots: []accountBot{}, OS: d.OS, Capabilities: d.Capabilities, LastSeen: d.LastSeen, RunningCount: d.RunningCount, Chat: accountChatReady()}
 	if row.Self {
 		row.Bots = s.localAccountBots()
 	} else {

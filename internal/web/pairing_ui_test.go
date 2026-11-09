@@ -79,7 +79,7 @@ localStorage.setItem('xbot-theme',new URLSearchParams(location.search).get('them
 const fixture={calls:[],copied:'',codes:0,pendingCode:null,delayCode:false,delayCodeDelete:false,
  // claim：已有用户会话、账号没绑；account-claim*：本机登录后没绑（登录从不静默绑定），落在「我的设备」。
  account:{email:'zh***@example.com',owner:!/^account-claim/.test(scene),hosted:false,gateway:'xbot.babelgo.cn',official:true,gateway_ok:true,unbound:/claim/.test(scene)},
- pairing:{a:{phase:'none'},b:{phase:'none'}},devices:[],accountDevices:scene==='account-claim-empty'?[]:[{id:'self',name:'MacBook',online:true,self:true,bots:[{name:'XBot'}]},{id:'desktop',name:'台式机',online:true,self:false,bots:[{name:'writer'},{name:'editor'}]}]};
+ pairing:{a:{phase:'none'},b:{phase:'none'}},devices:[],accountDevices:(scene==='account-claim-empty'||scene==='unpair')?[]:[{id:'self',name:'MacBook',online:true,self:true,bots:[{name:'XBot'}]},{id:'desktop',name:'台式机',online:true,self:false,bots:[{name:'writer'},{name:'editor'}]}]};
 const peerDevice={id:'desktop',name:'台式机',label:'台式机',os:'Linux',online:true,bots:['writer','editor'],seen:new Date().toISOString(),added:'2026-10-03T00:00:00Z',bot_messaging:true};
 const json=v=>new Response(JSON.stringify(v),{headers:{'Content-Type':'application/json'}});
 Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{fixture.copied=text}}});

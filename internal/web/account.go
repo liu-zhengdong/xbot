@@ -43,6 +43,7 @@ type accountState struct {
 	deviceMu  sync.Mutex
 	execution *deviceexec.Manager
 	wire      deviceWire
+	chatDo    accountChatTransport // tests replace the pipe; nil means the real line
 }
 
 // accountBinding is which account this install belongs to, by the service's
@@ -640,7 +641,14 @@ type accountDevice struct {
 	Capabilities []string     `json:"capabilities"`
 	LastSeen     time.Time    `json:"last_seen"`
 	RunningCount int          `json:"running_count"`
+	// Chat says the sidebar may open this device's bots: its conversation line
+	// is wired (this computer's own bots are local; paired devices use the box).
+	Chat bool `json:"chat"`
 }
+
+// accountChatReady says the sidebar may open a bot on another account device.
+// It follows the same switch as the routes: no route, no offer.
+func accountChatReady() bool { return accountChatEnabled() }
 
 // accountDevices lists the account's devices. This computer's row, when it
 // belongs to the account, uses the local bot list so it is never stale.
@@ -683,6 +691,7 @@ func (s *Server) accountDevices(w http.ResponseWriter, r *http.Request) {
 		if owner && d.ID == b.DeviceID {
 			row.Self, row.Bots = true, s.localAccountBots()
 		} else {
+			row.Chat = accountChatReady()
 			for _, n := range d.Bots {
 				row.Bots = append(row.Bots, accountBot{Name: n})
 			}

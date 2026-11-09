@@ -86,6 +86,7 @@
     remote: false,         // 官网入口（session.remote）：底栏写账号设备数，不写本机名
     acct: null,            // GET /api/account/me 的 account，用来出「把这台电脑绑到账号」
     acctDevs: null,        // 官网入口底栏「已绑定 N 台设备」的 N
+    roster: null,          // GET /api/account/devices 的设备行：同一账号里的其他电脑，并进侧栏
     claimBusy: false, claimErr: "",
     joinOpen: false, joinVal: "", joinErr: "", // 添加设备下半：输入对方的短码（次要）
     fieldErr: "",
@@ -140,6 +141,7 @@
       try { S.acctDevs = ((await api("GET", "/api/account/devices")) || { devices: [] }).devices.length; } catch (e) { /* 下次再试 */ }
     }
     paintFoot();
+    readAcctRoster();
     paintSidebar();
   }
   // app.js 在拿到 /api/session 后调一次：这条入口是隧道/代理那头的官网。
@@ -167,6 +169,19 @@
   async function loadAcct() {
     try { const out = await api("GET", "/api/account/me"); S.acct = (out && out.account) || null; } catch (e) { S.acct = null; }
     return S.acct;
+  }
+  // 同一账号里的其他电脑（GET /api/account/devices）：登录后才有；本机那台不算，它就在左边的本机列表里。
+  // 侧栏要用它的设备名、在线和 Bot 名单，所以每次刷新顺手读一次，最多一分钟一次（账号那边的心跳也是一分钟一报）。
+  let rosterAt = 0;
+  async function readAcctRoster(force) {
+    if (!S.acct) { if (S.roster) { S.roster = null; paintSidebar(); } return; }
+    if (!force && Date.now() - rosterAt < 55000) return;
+    rosterAt = Date.now();
+    try {
+      const out = await api("GET", "/api/account/devices");
+      S.roster = Array.isArray(out && out.devices) ? out.devices : [];
+    } catch (e) { if (!S.roster) S.roster = []; } // 读不到就留着上一次的，下一轮再试
+    paintSidebar();
   }
 
   // ---- 打开、关闭 ----
@@ -850,11 +865,13 @@
     await loadAcct(); paintTarget();
     if (S.acct) { await readSharedDevices(); readBotDeviceTasks(); }
     else { shared.tasks = []; paintDeviceTaskStatus(); }
+    readAcctRoster(true); // 侧栏那组也要跟着登录状态变
   }
   Object.assign(D, {
     targetFor, reloadAccount: reloadSharedAccount,
     signedOut() {
       S.acct = null; shared.devices = null; shared.tasks = []; shared.targets.clear();
+      S.roster = null; rosterAt = 0;
       try { Object.keys(sessionStorage).filter(key => key.startsWith("xbot-device-target:")).forEach(key => sessionStorage.removeItem(key)); } catch (e) {}
       D.conversation(""); paintTarget(); paintDeviceTaskStatus();
     },
@@ -886,6 +903,8 @@
   // ---- 侧栏：其他电脑上的 Bot，按设备分组（v2 原型 side-full、side-gw-down、rail-devices）----
   // 组头（label）也是一行按钮：不做折叠，所以设备和 Bot 行都放进 #roster（本机行下面），app.js 重画本机行时不会冲掉；
   // 网关不通时只在分组上方放一条提示、整体变淡，不给每台标离线；离线的设备变淡，但行照样能点开远端对话。
+  // 设备有两路来源，画在同一组里：短码配对的（GET /api/devices，对话走加密信箱）和登录后同一账号里的其他电脑
+  // （GET /api/account/devices，本机那台不算）。账号设备的对话通道还没打通，点开只在面板里说明一句，不发请求。
   const initials = (n) => { const c = Array.from(String(n || "?")); return /[A-Za-z]/.test(c[0]) ? (c[0].toUpperCase() + (c[1] || "").toLowerCase()) : c[0]; };
   // 远端 Bot 的人像按那台设备给的 bot_avatars 画：上传过图片的画几何图形（图片不过网关），旧版本的设备没给 seed 就按名字。
   const seedOf = (n, id) => {
@@ -896,40 +915,69 @@
   const face = (n, id, size) => (window.XBotFaces ? window.XBotFaces.html(n, seedOf(n, id), size) : `<span class="avatar"><svg viewBox="0 0 36 36" aria-hidden="true" style="--avatar-light:#d3d3d3;--avatar-dark:#3d3d3d;--avatar-letter-light:#333333;--avatar-letter-dark:#e4e4e4"><circle cx="18" cy="18" r="18" fill="var(--avatar-fill)"/><text x="18" y="23" text-anchor="middle" font-size="${initials(n).length > 1 ? 13 : 15}" fill="var(--avatar-ink)">${esc(initials(n))}</text></svg></span>`);
   // 没有 Bot 列表的刚配对设备也列出来（「等它的 Bot 列表」）；对方解除配对的隐藏。点组头折叠，和本机分组一样。
   const sideFolds = () => { try { return JSON.parse(localStorage.getItem("xbot-device-folders") || "{}") || {}; } catch (e) { return {}; } };
+  // 账号里同一账号的其他电脑（本机那台不算）；配对过的那台按 id 去重，一台设备只画一行。
+  const acctOthers = () => (S.roster || []).filter((d) => d && d.id && !d.self);
+  // 账号设备的 bots 是对象（{name, …}），配对设备的是名字；两种都认。
+  const botNames = (d) => (d.bots || []).map((b) => (b && typeof b === "object" ? b.name : b)).filter(Boolean);
+  function sideGroups() {
+    const out = [], done = new Set();
+    for (const d of ((S.data || {}).devices || [])) {
+      if (d.unpaired || done.has(d.id)) continue;
+      done.add(d.id);
+      out.push({ id: d.id, label: d.label, bots: d.bots || [], chats: d.chats || {}, online: !!d.online, seen: d.seen, paired: true, chat: true });
+    }
+    for (const d of acctOthers()) {
+      if (done.has(d.id)) continue;
+      done.add(d.id);
+      out.push({ id: d.id, label: d.name || d.id, bots: botNames(d), chats: {}, online: !!d.online, seen: d.last_seen, paired: false, chat: !!d.chat });
+    }
+    return out;
+  }
+  // 侧栏和远端对话标题认的一台设备：配对那路优先，账号那路补上。
+  const sideDevice = (id) => sideGroups().find((d) => d.id === id)
+    || { id, label: id, bots: [], chats: {}, online: false, seen: 0, paired: false, chat: false };
+  // 点开一个 Bot 之前先问一句：这台设备有对话通道吗？账号通道关着（`chat` 为假）时面板里只写一句话，不发请求。
+  const blockedReason = (id) => sideDevice(id).chat ? "" : "这台设备的对话通道还没打通，现在只能在这里看到它的 Bot。";
   let sideSig = "";
   function paintSidebar() {
     const nav = document.getElementById("remote-roster");
     if (!nav) return;
     const data = S.data || {};
-    const devs = (data.devices || []).filter((d) => !d.unpaired);
+    const groups = sideGroups(), pairs = groups.some((d) => d.paired);
     const up = !!data.gateway_ok, folds = sideFolds(), sel = D.chat && D.chat.isOpen() ? D.chat.key() : "";
-    const sig = JSON.stringify([devs, up, folds, sel]);
+    const sig = JSON.stringify([groups, up, folds, sel]);
     if (D.onPaint) D.onPaint(); // 打开着的远端对话跟着新的在线状态
     if (sig === sideSig) return;
     sideSig = sig;
     const had = document.activeElement && nav.contains(document.activeElement) ? document.activeElement.closest("[data-side]") : null;
     const key = had ? `[data-side="${had.dataset.side}"]` + (had.dataset.id ? `[data-id="${CSS.escape(had.dataset.id)}"]` : "") + (had.dataset.bot ? `[data-bot="${CSS.escape(had.dataset.bot)}"]` : "") : "";
     const status = (d) => {
-      if (!(d.bots || []).length) return `<span class="g7-side-st">等它的 Bot 列表</span>`;
-      if (!up) return ""; // 网关不通：上面一条提示，不逐台标离线
+      if (!d.bots.length) return `<span class="g7-side-st">等它的 Bot 列表</span>`;
+      if (d.paired && !up) return ""; // 网关不通：上面一条提示，不逐台标离线（账号设备不看这条网关）
       if (d.online) return `<span class="g7-side-st"><i class="status-dot ok"></i>在线</span>`;
       const seen = fmtSeen(d.seen) || "很久以前";
-      return `<span class="g7-side-st" title="离线 · 最后联系 ${esc(seen)}"><i class="status-dot off-ring"></i>${esc(seen)}</span>`;
+      if (d.paired) return `<span class="g7-side-st" title="离线 · 最后联系 ${esc(seen)}"><i class="status-dot off-ring"></i>${esc(seen)}</span>`;
+      return `<span class="g7-side-st" title="离线 · 上次在线 ${esc(seen)}"><i class="status-dot off-ring"></i>${esc(seen)}</span>`;
     };
     const row = (d, b) => {
+      const on = sel === d.id + "\u0000" + b;
+      // 账号设备的 Bot：这台还没有对话通道，只画名字；点开在面板里说明，不发请求。
+      if (!d.paired) return `<button class="item g7-remote-bot${on ? " active" : ""}" type="button" data-side="open" data-id="${esc(d.id)}" data-bot="${esc(b)}" data-tip="${esc(b)}" data-tip-placement="right">
+        ${face(b, d.id)}<span class="item-body"><span class="name-line"><span class="name">${esc(b)}</span></span></span></button>`;
       const c = (d.chats || {})[b] || {};
       const body = String(c.last || "").trim(), me = c.last_role === "me" ? "你：" : "";
       const pv = c.queued ? `<span class="preview g7-side-q"><b class="g7-side-qb">◷ 排队中</b> · 你：${esc(c.queued)}</span>`
         : `<span class="preview">${body ? esc(me + body) : "还没有消息"}</span>`;
-      return `<button class="item g7-remote-bot${sel === d.id + "\u0000" + b ? " active" : ""}" type="button" data-side="open" data-id="${esc(d.id)}" data-bot="${esc(b)}" data-tip="${esc(b)}" data-tip-placement="right">
+      return `<button class="item g7-remote-bot${on ? " active" : ""}" type="button" data-side="open" data-id="${esc(d.id)}" data-bot="${esc(b)}" data-tip="${esc(b)}" data-tip-placement="right">
         ${c.unread > 0 ? face(b, d.id).replace(/<\/span>$/, '<i class="unread"></i></span>') : face(b, d.id)}<span class="item-body"><span class="name-line"><span class="name">${esc(b)}</span></span>${pv}</span></button>`;
     };
-    nav.hidden = !devs.length;
-    nav.innerHTML = !devs.length ? "" : (up ? "" : `<div class="g7-side-down"><span>连不上网关，其他电脑的 Bot 暂时用不了。</span><button class="ghost" type="button" aria-label="重试" data-side="retry">${svg("refresh")}</button></div>`)
-      + devs.map((d) => {
-        const bots = d.bots || [], closed = !!folds[d.id];
-        const rows = bots.length ? bots.map((b) => row(d, b)).join("") : `<p class="g7-side-line">刚配对，几秒后会列出它的 Bot。</p>`;
-        return `<div class="g7-side-dev${!up || (bots.length && !d.online) ? " is-off" : ""}"><button class="g7-side-head" type="button" data-side="fold" data-id="${esc(d.id)}" aria-expanded="${closed ? "false" : "true"}">
+    nav.hidden = !groups.length;
+    nav.innerHTML = !groups.length ? "" : (up || !pairs ? "" : `<div class="g7-side-down"><span>连不上网关，其他电脑的 Bot 暂时用不了。</span><button class="ghost" type="button" aria-label="重试" data-side="retry">${svg("refresh")}</button></div>`)
+      + groups.map((d) => {
+        const closed = !!folds[d.id];
+        const empty = d.paired ? "刚配对，几秒后会列出它的 Bot。" : "它还没把 Bot 名单报给账号，等它下次上线。";
+        const rows = d.bots.length ? d.bots.map((b) => row(d, b)).join("") : `<p class="g7-side-line">${empty}</p>`;
+        return `<div class="g7-side-dev${(d.paired && !up) || (d.bots.length && !d.online) ? " is-off" : ""}"><button class="g7-side-head" type="button" data-side="fold" data-id="${esc(d.id)}" aria-expanded="${closed ? "false" : "true"}">
           <span class="g7-side-name">${svg("laptop", 13)}<span>${esc(d.label)}</span></span>${status(d)}</button><div class="g7-side-bots"${closed ? " hidden" : ""}>${rows}</div></div>`;
       }).join("");
     // 重画会换掉按钮，键盘焦点留在原来那一个（重试、组头或 Bot 行）。
@@ -955,7 +1003,7 @@
   Object.defineProperty(D, "chat", { get: () => window.xbotRemoteChat || null, set: () => false });
   setInterval(() => { if (!document.hidden) refresh(); }, 30000);
 
-  Object.assign(D, { S, api, svg, esc, host, left, fmtSeen, modal, render, refresh, open: openDevices, mount, unmount, closeModal, sideFaces: face, setSession, offerClaim });
+  Object.assign(D, { S, api, svg, esc, host, left, fmtSeen, modal, render, refresh, open: openDevices, mount, unmount, closeModal, sideFaces: face, sideDevice, blockedReason, setSession, offerClaim });
   D.views = {}; D.acts = {}; D.onInput = null; D.onKey = null; // pairing.js 接着往这三个上面挂
   refresh();
 })();
