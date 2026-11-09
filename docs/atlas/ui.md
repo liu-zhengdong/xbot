@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-09 (bubble focus feedback; subscription removal on hover)
+verified: 2026-11-09 (bubble focus feedback; subscription removal on hover; busy description on fresh pages)
 
 ---
 # 网页界面
@@ -153,7 +153,7 @@ Bot 菜单「查看生成的图片」保留为可选工作区定位功能，打�
 侧栏运行摘要打开的「本轮」步骤浮层最高 420px，低窗口按可用高度收缩；窄屏上限还受 75dvh 约束。标题与关闭按钮固定，只有步骤列表独立滚动，短列表随内容收缩。步骤轮询保留阅读位置，读取后重新定位以守住窗口边缘。浏览器回归为 `TestStepsScrollBrowser`。
 
 ### 对话
-主 Bot 忙碌状态和工具摘要只在侧栏 Bot 预览显示。聊天主列不再显示三点、重复摘要或空消息时间，也不保留空白占位。底部状态行仅在有提示时显示；发送、排队、错误与子代理状态沿既有入口展示，Bot 往来提示可按内容换行。
+主 Bot 忙碌状态和工具摘要只在侧栏 Bot 预览显示。状态接口在本轮继续时保留最近的非空 description，工具完成后的模型等待、刷新和另一端首次打开均可显示；本轮结束后清除，不跨轮继承。`tool` 与等待计时仍只按真实运行状态返回。`TestBusyDescriptionBrowser` 使用真实内核和 HTTP 快照验证新页面展示、步骤入口、两轮询节点复用与清除。聊天主列不再显示三点、重复摘要或空消息时间，也不保留空白占位。底部状态行仅在有提示时显示；发送、排队、错误与子代理状态沿既有入口展示，Bot 往来提示可按内容换行。
 
 输入区是一条 44px 高、22px 圆角的药丸（`--composer-*` 变量，v2 原型 chat-workspace-v2 定稿）：默认一列布局「输入 + 32px 动作钮（mic、发送）」；有引用、附件或草稿超过一行（`is-multiline`）时圆角收到 18px，引用条与 48px 缩略附件行排在输入框上方，录音时整条换成录音栏。聚焦时底色加深到 `--x-fill-2`。顶栏 56px、标签条 42px（标签高 32px），选中标签下有一块跟随滑动的 `.tab-pill-indicator` 底片，只动 transform 不重排。
 

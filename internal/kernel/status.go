@@ -243,6 +243,9 @@ func (k *Kernel) Status() BotStatus {
 			break
 		}
 	}
+	if active && st.ToolSummary == "" {
+		st.ToolSummary = t.lastDescription
+	}
 	t.mu.Unlock()
 	if active, ok := k.execSnapshot().(interface{ ActiveCount() int }); ok {
 		st.Agents = active.ActiveCount()
@@ -325,6 +328,9 @@ func (k *Kernel) beginStepDisplay(t *turn, id, name, summary, description string
 	line := clipStatusPreview(oneStatusLine(first), stepSummaryCap)
 	firstDescription, _, _ := strings.Cut(redact(description), "\n")
 	display := clipStatusPreview(oneStatusLine(firstDescription), stepSummaryCap)
+	if display != "" {
+		t.lastDescription = display
+	}
 	t.steps = append(t.steps, Step{callID: id, description: display, Time: t.lastToolStart, Tool: name, Summary: line, State: StepRunning})
 	t.steps = trimSteps(t.steps)
 	return display

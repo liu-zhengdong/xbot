@@ -252,18 +252,39 @@ func TestBotInfoHandlersUseLateStatusSourceAndNamedSteps(t *testing.T) {
 	}
 }
 
-func TestToolSummaryUsesOnlyTheRunningRedactedStep(t *testing.T) {
+func TestToolSummaryKeepsDescriptionUntilTurnEnds(t *testing.T) {
 	b := testBot(t, inbox.NameTerminal)
-	k := &Kernel{Bot: b, Memory: memory.NopStore{}, Redact: func(s string) string { return strings.ReplaceAll(s, "SECRET", "[secret]") }}
-	tr := &turn{started: time.Now()}
+	now := time.Now().Truncate(time.Second)
+	k := &Kernel{Bot: b, Memory: memory.NopStore{}, Now: func() time.Time { return now }, Redact: func(s string) string { return strings.ReplaceAll(s, "SECRET", "[secret]") }}
+	tr := &turn{started: now.Add(-time.Minute)}
 	k.turn = tr
-	k.beginStep(tr, "shell-call", "shell", "curl SECRET")
-	if got := k.Status().ToolSummary; got != "curl [secret]" {
+	k.beginStepDisplay(tr, "shell-call", "shell", "curl SECRET", "检查 SECRET\nprivate command")
+	if got := k.Status().ToolSummary; got != "检查 [secret]" {
 		t.Fatalf("tool summary = %q", got)
 	}
 	k.endStep(tr, "shell-call", "ok")
+	if st := k.Status(); st.State != StateRunning || st.Tool != "" || st.ToolSummary != "检查 [secret]" || st.Since != statusStamp(tr.started) {
+		t.Fatalf("model wait lost description or kept a running tool: %+v", st)
+	}
+	// Empty descriptions must not erase progress, even after history is trimmed.
+	for i := 0; i < stepRingCap+1; i++ {
+		id := fmt.Sprint(i)
+		k.beginStepDisplay(tr, id, "read_file", "read /private/file", "")
+		if st := k.Status(); st.Tool != "read_file" || st.ToolSummary != "检查 [secret]" {
+			t.Fatalf("empty description erased progress: %+v", st)
+		}
+		k.endStep(tr, id, "ok")
+	}
+	if got := k.Status().ToolSummary; got != "检查 [secret]" {
+		t.Fatalf("trimmed history lost description: %q", got)
+	}
+	tr.finished = true
+	if st := k.Status(); st.Tool != "" || st.ToolSummary != "" {
+		t.Fatalf("finished turn still has progress: %+v", st)
+	}
+	k.turn = &turn{started: now}
 	if got := k.Status().ToolSummary; got != "" {
-		t.Fatalf("finished step summary still visible: %q", got)
+		t.Fatalf("new turn inherited description: %q", got)
 	}
 }
 
@@ -300,8 +321,8 @@ func TestSameNameCallsFinishByIDAndKeepTheirStartTime(t *testing.T) {
 		t.Fatalf("steps = %+v", steps)
 	}
 	k.endStep(tr, "slow", "ok")
-	if st := k.Status(); st.Tool != "" || st.ToolSummary != "" {
-		t.Fatalf("finished tool still shown: %+v", st)
+	if st := k.Status(); st.Tool != "" || st.ToolSummary != "echo done" {
+		t.Fatalf("finished tool or last description incorrect: %+v", st)
 	}
 }
 
@@ -326,8 +347,8 @@ func TestLiveCallsSurviveTheStepHistoryLimit(t *testing.T) {
 		t.Fatalf("finished history not trimmed: %d", len(tr.steps))
 	}
 	k.endStep(tr, "0", "ok")
-	if st := k.Status(); st.ToolSummary != "" {
-		t.Fatalf("finished call still running: %+v", st)
+	if st := k.Status(); st.Tool != "" || st.ToolSummary != fmt.Sprint("call ", stepRingCap+4) {
+		t.Fatalf("finished call or last description incorrect: %+v", st)
 	}
 }
 

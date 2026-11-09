@@ -71,15 +71,16 @@ type turn struct {
 	// Status tracking for the bot status feature: when the last tool call
 	// started and ended, whether the turn waits on the owner, and a ring of the
 	// last stepRingCap steps.
-	lastToolStart time.Time
-	lastToolEnd   time.Time
-	awaiting      bool
-	awaitingSince time.Time
-	steps         []Step
-	started       time.Time
-	fromSeq       int
-	imageGen      *imageGenCapability
-	runCtx        context.Context
+	lastToolStart   time.Time
+	lastToolEnd     time.Time
+	lastDescription string // last non-empty, redacted description in this turn
+	awaiting        bool
+	awaitingSince   time.Time
+	steps           []Step
+	started         time.Time
+	fromSeq         int
+	imageGen        *imageGenCapability
+	runCtx          context.Context
 	// lastRec is the sequence of the last transcript line this turn wrote.
 	lastRec int
 	// todoGated is set once the completion gate has continued this turn.
