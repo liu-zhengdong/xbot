@@ -113,13 +113,28 @@ html[data-theme="dark"] :is(.provider-glyph-opencode-go,.provider-glyph-xai,.pro
 .provider-back{display:inline-flex;align-items:center;gap:5px;min-height:var(--ui-control);border:0;background:transparent;color:var(--x-muted);padding:0;margin:0 0 6px;font:inherit;font-size:var(--ui-body);cursor:pointer}.provider-back svg{width:14px;height:14px}
 .provider-detail-heading{display:flex;gap:18px;align-items:center;margin-bottom:6px}.provider-detail-heading>.provider-glyph{width:40px;height:40px;padding:6px;box-sizing:border-box}
 .provider-detail-heading:focus{outline:none}.provider-detail-info{min-width:0}.provider-detail-title{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.provider-detail-title h2{font-size:var(--x-fs-title);font-weight:650;margin:0;overflow-wrap:anywhere}
-.provider-status{display:flex;align-items:center;flex-wrap:wrap;gap:5px;color:var(--x-muted);font-size:var(--ui-caption);margin-top:8px;line-height:1.6}.provider-search-note::before{content:'·';margin:0 9px}
-.provider-models .provider-model-count{font-size:var(--ui-caption);font-weight:500;color:var(--x-faint);margin:0 0 10px}
+.provider-status{display:flex;align-items:center;flex-wrap:wrap;gap:var(--x-s2);color:var(--x-muted);font-size:var(--ui-caption);margin-top:var(--x-s2);line-height:1.5}
+.provider-models .provider-model-count{display:flex;align-items:baseline;gap:var(--x-s3);font-size:var(--ui-caption);font-weight:400;color:var(--x-muted);margin:0 0 var(--x-s3)}
 .provider-model-list{background:transparent;border-radius:var(--x-r-card);overflow:hidden}
 .provider-model-row{display:flex;align-items:center;justify-content:space-between;gap:var(--ui-gap);padding:var(--x-s3) var(--ui-gap);min-height:var(--ui-row);box-sizing:border-box}
-.provider-model-name{font:600 var(--ui-body) var(--x-mono);overflow-wrap:anywhere;min-width:0}.provider-chips{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:6px;flex:none;max-width:100%}
-.provider-chip{display:inline-flex;align-items:center;gap:4px;border:1px solid transparent;border-radius:20px;padding:3px 7px;font-size:var(--ui-action);line-height:1.2;white-space:nowrap}.provider-chip svg{width:12px;height:12px}
-.provider-chip.supported{color:var(--x-type-dev);background:var(--x-type-dev-bg)}.provider-chip.unsupported{color:var(--x-faint);background:var(--x-fill-1)}.provider-window{color:var(--x-type-res);background:var(--x-type-res-bg);font-family:var(--x-mono)}
+.provider-model-name{font:600 var(--ui-body) var(--x-mono);overflow-wrap:anywhere;min-width:0}.provider-chips{display:flex;justify-content:flex-end;gap:var(--ui-gap);flex:none;max-width:100%}
+.provider-chip{display:inline-flex;align-items:center;gap:var(--x-s1);color:var(--x-muted);font-size:var(--ui-caption);line-height:1.5;white-space:nowrap}.provider-chip svg{width:var(--ui-action);height:var(--ui-action);flex:none}
+.provider-window{font-family:var(--x-font);font-variant-numeric:tabular-nums}
+#settings-providers{container-type:inline-size}
+.provider-capability-heading{gap:var(--ui-gap);margin-bottom:var(--ui-group)}
+.provider-capability-heading>.provider-glyph{width:var(--ui-row);height:var(--ui-row);padding:var(--x-s1)}
+.provider-capability-heading .provider-detail-info{flex:1}
+.provider-capability-heading .provider-detail-title{gap:var(--x-s4)}
+.provider-capability-heading .provider-detail-title h2{line-height:1.3}
+.provider-capability-heading .provider-badge{padding:0;background:transparent;color:var(--x-muted);font-size:var(--ui-caption)}
+.provider-detail-action{flex:none}
+.provider-login-action{padding:0 var(--x-s3);margin-right:calc(-1 * var(--x-s3));color:var(--x-muted)}
+.provider-login-action:disabled{opacity:var(--ui-disabled)}
+.provider-status .provider-login-note:empty{display:none}
+.provider-status .provider-login-note:not(:empty){flex-basis:100%}
+.provider-capabilities .provider-model-list{overflow:visible;border-radius:0}
+.provider-capabilities .provider-model-row{padding:0}
+.provider-capabilities .provider-model-name{flex:1;font-family:var(--x-font)}
 .provider-key{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:var(--ui-gap);padding:var(--ui-group) 0;color:var(--x-muted);font-size:var(--ui-body)}.provider-key p:first-child{flex-basis:100%;margin:0}.provider-key input{flex:1 1 220px;min-width:0;height:var(--ui-control);box-sizing:border-box;padding:0 var(--ui-gap);border:0;border-radius:10px;background:var(--x-fill-1);color:var(--x-text);font:inherit;font-size:var(--ui-body)}.provider-key input:focus-visible{outline:2px solid var(--provider-accent);outline-offset:1px}.provider-key .provider-login-note{flex-basis:100%;margin:0}
 .provider-empty{grid-column:1/-1;padding:20px 0;color:var(--x-muted);font-size:var(--ui-body);line-height:1.7}.provider-empty p{margin:0 0 10px;overflow-wrap:anywhere}
 /* xAI detail: flat and full width. The header carries the OAuth state on its
@@ -129,7 +144,6 @@ html[data-theme="dark"] :is(.provider-glyph-opencode-go,.provider-glyph-xai,.pro
 .provider-relink{margin-left:var(--x-s1)}.provider-relink:hover{color:var(--x-text);text-decoration:underline}
 .provider-detail-heading-aside{width:100%;margin-bottom:var(--x-s6)}.provider-detail-heading-aside .provider-detail-info{flex:1}
 .provider-detail-heading-aside .provider-status{flex:none;max-width:52%;margin-top:0;justify-content:flex-end;text-align:right;font-size:var(--ui-caption)}
-.provider-hosted-hint{margin:0 0 var(--x-s3);font-size:var(--ui-caption);line-height:1.5;color:var(--x-faint)}
 .provider-xai{width:100%}.provider-xai-lead{width:100%;margin:0 0 var(--x-s5);font-size:var(--ui-body);line-height:1.6;color:var(--x-muted)}
 .provider-xai:has(.provider-auth-fail:not(:empty)) .provider-xai-lead{display:none}
 /* The logged-in re-login slot lays out like the main login area; empty, it takes no space. */
@@ -153,7 +167,9 @@ html[data-theme="dark"] :is(.provider-glyph-opencode-go,.provider-glyph-xai,.pro
 .provider-key .provider-login-note:empty{display:none}
 @media(max-width:600px){.provider-detail-heading-aside{flex-wrap:wrap}.provider-detail-heading-aside .provider-status{max-width:none;flex-basis:100%;justify-content:flex-start;text-align:left}}
 @media(prefers-reduced-motion:reduce){.provider-key-alt summary svg{transition:none}}
-@media(max-width:600px){.provider-model-row{align-items:flex-start;flex-direction:column;gap:var(--ui-gap);min-height:var(--ui-record)}.provider-chips{justify-content:flex-start}.provider-card{gap:8px}.provider-detail-heading{gap:12px}}
+@media(max-width:600px){.provider-model-row{align-items:flex-start;flex-direction:column;gap:var(--ui-gap);min-height:var(--ui-record)}.provider-chips{justify-content:flex-start;flex-wrap:wrap}.provider-card{gap:8px}.provider-detail-heading{gap:12px}}
+@media(max-width:640px){.provider-capability-back{display:none}.provider-capability-heading{margin-top:var(--x-s3)}}
+@container(max-width:510px){.provider-capabilities .provider-model-row{flex-direction:column;align-items:flex-start;justify-content:center;min-height:var(--ui-record);gap:calc(var(--x-s4)/2);padding:var(--x-s3) 0}.provider-capabilities .provider-model-name{flex:0 1 auto}.provider-capabilities .provider-chips{justify-content:flex-start;flex-wrap:wrap;row-gap:var(--x-s1)}}
 @media(prefers-reduced-motion:reduce){.provider-card{transition:none}.provider-card:active{transform:none}}
 @media(max-width:600px){
  .provider-grid{grid-template-columns:minmax(0,1fr)}
@@ -193,7 +209,7 @@ html[data-theme="dark"] :is(.provider-glyph-opencode-go,.provider-glyph-xai,.pro
 .provider-custom input[name=base_url]{font-family:var(--x-mono)}
 .provider-custom-models>.provider-model-count{margin:0;font-size:var(--ui-caption);font-weight:500;color:var(--x-muted)}
 /* 详情页：内容按可读宽度收住，别贴着左边缘散成一片，也别让正文裸着 */
-.provider-back{margin-bottom:var(--x-s5)}
+.provider-back{gap:var(--x-s2);margin-bottom:var(--x-s7)}
 .provider-detail-heading,.provider-auth-slot,.provider-models,.provider-xai-lead{max-width:720px}
 .provider-detail-title h2{font-size:var(--ui-page);letter-spacing:-.01em}
 .provider-empty{max-width:720px;padding:16px 18px;background:var(--x-fill-1);border-radius:var(--x-r-card);color:var(--x-text)}

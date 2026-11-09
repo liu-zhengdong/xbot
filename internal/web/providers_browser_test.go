@@ -49,9 +49,13 @@ func TestProvidersSettingsBrowser(t *testing.T) {
 	}
 	// The xai scene runs the OAuth login path on its own page: a logged-in
 	// xai binding cannot share a name with the key binding the main run saves.
-	for _, query := range []string{"", "state=loginsweep", "state=xai", "state=xaiunconfigured", "state=xaifailure", "state=opencode", "state=remove"} {
+	for _, query := range []string{"", "state=loginsweep", "state=xai", "state=xaiunconfigured", "state=xaifailure", "state=opencode", "state=remove", "state=chatgptdetail", "state=chatgptdetail-narrow", "state=chatgptdetail-dark"} {
 		page := (&url.URL{Scheme: "file", Path: filepath.Join(dir, "index.html"), RawQuery: query}).String()
-		out, err := exec.Command(chrome, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files", "--user-data-dir="+filepath.Join(t.TempDir(), "chrome"), "--virtual-time-budget=20000", "--dump-dom", page).CombinedOutput()
+		size := "1280,900"
+		if strings.HasSuffix(query, "-narrow") {
+			size = "390,844"
+		}
+		out, err := exec.Command(chrome, "--window-size="+size, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files", "--user-data-dir="+filepath.Join(t.TempDir(), "chrome"), "--virtual-time-budget=20000", "--dump-dom", page).CombinedOutput()
 		if err != nil {
 			t.Fatalf("Chrome %q: %v\n%s", query, err, out)
 		}
@@ -126,7 +130,8 @@ window.fetch=async(path,opts={})=>{
   if(fixture.fail||scene==='error')return json({error:'upstream failed'},422);
   if(fixture.empty||scene==='empty')return json({models:[]});
   if(String(path).endsWith('provider=xai'))return json({models:[{model:'grok-4',context:256000,vision:true,hosted_web_search:true},{model:'grok-3',context:131072,vision:true,hosted_web_search:true}]});
-  if(fixture.large)return json({models:Array.from({length:2048},(_,i)=>({model:'runtime-'+i,context:128000,vision:false,hosted_web_search:false}))});
+  if(scene==='chatgptdetail')return json({models:['gpt-5.6-luna','gpt-5.6-sol','gpt-5.6-terra','gpt-6-astra','gpt-6-luna','gpt-6-sol','gpt-6.1-sol','gpt-6.1-terra'].map((model,i)=>({model,context:i<6?272000:500000,vision:i<7,hosted_web_search:i<7}))});
+   if(fixture.large)return json({models:Array.from({length:2048},(_,i)=>({model:'runtime-'+i,context:128000,vision:false,hosted_web_search:false}))});
   return json({models:[{model:'gpt-5.5',context:1000000,vision:true,hosted_web_search:true},{model:'gpt-5.4',context:272000,vision:true,hosted_web_search:true}]});
  }
  return json({});
@@ -155,7 +160,6 @@ async function xaiLoggedIn(){
  assert(!$('.provider-logout'),'old detail removal entry survived');
  assert(!/已登录|重新登录/.test($('#settings-providers').innerText),'xai logged-in page shows 已登录 or 重新登录');
  assert(!btn('登录')&&!$('.provider-status').textContent.includes('密钥已配置'),'xai logged-in detail kept login or key state');
- assert(gap($('.provider-hosted-hint'),$('.provider-model-count'))>=0&&$('.provider-hosted-hint').textContent.includes('已用厂商搜索'),'xai hosted note not above the models');
  assert(/grok-4/.test($('.provider-models').textContent)&&/厂商搜索/.test($('.provider-model-row').textContent)&&/看图/.test($('.provider-model-row').textContent),'xai models missing');
  assert($('.provider-auth-slot').getBoundingClientRect().height===0,'empty re-login slot takes space');
  assert($('.provider-key-alt')&&!$('.provider-key-alt').open,'logged-in key fold missing');
@@ -185,7 +189,29 @@ async function xaiLoggedIn(){
   if(['pending','loginerror','chatgptdetail'].includes(scene))card('ChatGPT').click();
   if(['detail','error','empty','unconfigured'].includes(scene))card(scene==='unconfigured'?'OpenRouter':'OpenAI').click();
   if(scene==='search'){$('.provider-search input').value='OpenAI';$('.provider-search input').dispatchEvent(new Event('input'))}
-  if(scene==='xai')await xaiLoggedIn();
+  if(scene==='chatgptdetail'){
+    await waitFor(()=>document.querySelectorAll('.provider-model-row').length===8,'subscription models missing');
+    const bounds=$('#settings-providers').getBoundingClientRect(),rows=[...document.querySelectorAll('.provider-model-row')];
+    for(const row of rows){
+     const r=row.getBoundingClientRect(),name=row.querySelector('strong').getBoundingClientRect(),caps=row.querySelector('.provider-chips').getBoundingClientRect();
+     assert(r.left>=bounds.left-1&&r.right<=bounds.right+1&&caps.left>=r.left-1&&caps.right<=r.right+1,'model capabilities overflow the content');
+     assert(name.right<=caps.left+1||name.bottom<=caps.top+1,'model name overlaps its capabilities');
+     assert([...row.querySelectorAll('.provider-chip')].every(chip=>chip.getBoundingClientRect().bottom<=r.bottom+1),'capability clipped by its row');
+    }
+    assert(rows[7].textContent.includes('无厂商搜索')&&rows[7].textContent.includes('不能看图')&&rows[7].textContent.includes('有厂商生图'),'unsupported capabilities lost');
+    assert(rows[0].querySelector('[aria-label]').getAttribute('aria-label').includes('272,000'),'context window has no accessible meaning');
+    const action=btn('重新登录'),a=action.getBoundingClientRect(),status=$('.provider-status').getBoundingClientRect();
+    assert(a.left>=status.right-1&&a.width>=36&&a.height>=36,'login action is mixed into the status line');
+    assert(action.contains(document.elementFromPoint(a.x+a.width/2,a.y+a.height/2)),'login action is not clickable');
+    action.click();await waitFor(()=>fixture.calls.includes('/api/providers/oauth/chatgpt/start'),'detail re-login did not use OAuth');
+    await waitFor(()=>btn('重新登录')&&!btn('重新登录').disabled,'detail re-login did not recover');
+    if(innerWidth<=640){assert($('#settings-bar-title').textContent==='ChatGPT','mobile detail title missing');$('#settings-back').click();}
+    else $('.provider-back').click();
+    assert(subcard('ChatGPT')&&document.activeElement===subcard('ChatGPT'),'detail return lost its subscription');
+    if(innerWidth<=640){assert($('#settings-bar-title').textContent==='模型与供应商','mobile catalog title missing');$('#settings-back').click();assert($('#setpage').dataset.nav==='home','mobile catalog did not return to settings');}
+    assert(testErrors.length===0,testErrors.join(';'));
+   }
+   if(scene==='xai')await xaiLoggedIn();
    if(scene==='remove'){
     const remove=kind=>subcard(kind).closest('.provider-subscription-wrap').querySelector('.provider-remove');
     const chat=remove('ChatGPT'),wrap=chat.parentElement,dot=wrap.querySelector('.sdot');
@@ -301,7 +327,7 @@ async function xaiLoggedIn(){
  assert([...document.querySelectorAll('.provider-card')].filter(n=>n.getClientRects().length).length===1,'duplicate ChatGPT vendor card');
  card('ChatGPT').click();await waitFor(()=>$('.provider-model-row'),'subscription detail missing');
  assert($('.provider-status').textContent.includes('已登录'),'subscription status missing');
- assert($('.provider-status button').textContent==='重新登录','relogin missing');assert(!$('#settings-providers table'),'subscription uses table');
+ assert($('.provider-detail-action button').textContent==='重新登录','relogin missing');assert(!$('#settings-providers table'),'subscription uses table');
  $('.provider-back').click();assert(document.activeElement===card('ChatGPT'),'subscription return lost focus');
  assert(testErrors.length===0,testErrors.join(';'));
  document.body.dataset.testResult='passed';

@@ -8863,7 +8863,8 @@
       } else if (section === "persona") {
         await window.XBotPersonaCards.mount({api, host:$("settings-persona"), isCurrent:()=>request===settingsRequest, onLevel:level=>{ if (request===settingsRequest) { settingsLevel = level; paintSettingsBar(); } }});
       } else if (section === "providers") {
- await window.XBotProviders.settings({api,host:$("settings-providers"),initialProvider:provider,isCurrent:()=>request===settingsRequest});
+ await window.XBotProviders.settings({api,host:$("settings-providers"),initialProvider:provider,isCurrent:()=>request===settingsRequest,
+    onLevel:level=>{ if (request===settingsRequest) { settingsLevel = level; paintSettingsBar(); } }});
  } else if (section === "devices") {
         await window.xbotDevices.mount();
       } else if (section === "apps") {

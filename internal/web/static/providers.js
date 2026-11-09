@@ -76,7 +76,7 @@
     const paths = { plus: "M12 5v14M5 12h14", play: "m9 5 11 7-11 7V5Z", check: "m5 12 4 4L19 6", cross: "m6 6 12 12M6 18 18 6", back: "m15 18-6-6 6-6", search: "M21 21l-4.4-4.4M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0", image: "M4 4h16v16H4zM4 16l5-5 4 4 2-2 5 5M15 8h.01", vision: "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0", trash: "M10 11v6M14 11v6M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" };
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path"); path.setAttribute("d", paths[kind]); svg.append(path); return svg;
   }
-  async function settings({ api, host, isCurrent = () => true, initialProvider = "" }) {
+  async function settings({ api, host, isCurrent = () => true, initialProvider = "", onLevel = () => {} }) {
     const mount = {}; mounts.set(host, mount);
     const alive = () => mounts.get(host) === mount && isCurrent();
     let data, query = "", selected = "", revision = 0, loginRequest = null;
@@ -164,7 +164,7 @@
       if (retry) box.append(button("重试", "btn", retry)); return box;
     }
     function paint(focusKey) {
-      if (!alive()) return; ++revision;
+      if (!alive()) return; ++revision; onLevel(null);
       host.replaceChildren(node("h2", "provider-title", "模型与供应商"));
       const tools = node("div", "provider-tools"), search = node("label", "provider-search"); search.append(lineIcon("search"));
       const input = node("input"); input.type = "search"; input.placeholder = "查找供应商…"; input.setAttribute("aria-label", "查找供应商"); input.value = query;
@@ -489,12 +489,14 @@
     async function capability(p, refresh = false) {
       if (!alive()) return; const request = ++revision;
       const current = () => alive() && request === revision;
-      const back = button("", "provider-back", () => paint(key(p))); back.append(node("span", "", "模型与供应商"));
-      const heading = node("div", "provider-detail-heading"), info = node("div", "provider-detail-info"), title = node("div", "provider-detail-title"); title.append(node("h2", "", p.title), badge(p.protocol));
+      onLevel({ title: p.title, backLabel: "模型与供应商", back: () => paint(key(p)) });
+      const back = button("", "provider-back provider-capability-back", () => paint(key(p))); back.append(lineIcon("back"), node("span", "", "模型与供应商"));
+      const heading = node("div", "provider-detail-heading provider-capability-heading"), info = node("div", "provider-detail-info"), title = node("div", "provider-detail-title"), action = node("div", "provider-detail-action"); title.append(node("h2", "", p.title), badge(p.protocol));
       // xAI puts its login state on the right of the header so the column fills.
       const status = node("div", "provider-status"); heading.append(glyph(p.brand), info); info.append(title);
       if (p.brand === "xai") { heading.className += " provider-detail-heading-aside"; heading.append(status); } else info.append(status);
-      const auth = node("div", "provider-auth-slot"), body = node("div", "provider-models"), keySlot = node("div"); host.replaceChildren(back, heading, auth, body, keySlot); heading.tabIndex = -1; heading.focus({preventScroll:true});
+      if (p.oauth === "chatgpt") heading.append(action);
+      const auth = node("div", "provider-auth-slot"), body = node("div", "provider-models provider-capabilities"), keySlot = node("div"); host.replaceChildren(back, heading, auth, body, keySlot); heading.tabIndex = -1; heading.focus({preventScroll:true});
       // Account removal lives on the subscription card. The key state stays
       // inside the folded key form.
       function xaiStatus(state, go, cancel) {
@@ -517,14 +519,14 @@
         status.replaceChildren(node("span", "sdot " + (p.key_configured ? "ok" : "off")), node("span", "", p.key_configured ? (p.oauth ? "已登录" : "密钥已配置") : p.oauth ? "未登录" : "密钥未配置"));
         if (p.oauth === "chatgpt") {
           const note = node("span", "provider-login-note"); note.setAttribute("role", "status");
-          const again = button(p.key_configured ? "重新登录" : "登录", "provider-back", () => login("chatgpt", paint, () => capability(subscriptionEntry())));
+          const again = button(p.key_configured ? "重新登录" : "登录", "text-btn provider-login-action", () => login("chatgpt", paint, () => capability(subscriptionEntry())));
           function paint(state, message) {
             again.disabled = state === "starting";
             if (state === "starting") note.textContent = "正在登录…";
             else if (state === "pending") note.textContent = message || "等待登录，再点重开";
             else note.textContent = "登录未完成，请重试";
           }
-          status.append(again, note);
+          action.replaceChildren(again); status.append(note);
         }
       }
       keyStatus(); body.append(state("正在拉取模型…"));
@@ -563,20 +565,16 @@
         const result = own ? await api(`/api/providers/${encodeURIComponent(p.brand)}/sync`, { method: "POST" }) : await api(`/api/providers/models?provider=${encodeURIComponent(p.name)}`);
         if (!current()) return;
         const models = result.models;
-        // xAI keeps its header to the logout icon, so the hosted note sits above the models.
-        const hosted = models.some(m => m.hosted_web_search);
         body.replaceChildren();
-        if (hosted && p.brand === "xai") body.append(node("p", "provider-hosted-hint", "已用厂商搜索，本绑定不再使用本地搜索"));
-        body.append(node("h3", "provider-model-count", `模型 · ${models.length}`));
+        const count = node("h3", "provider-model-count", "模型"); count.append(node("span", "", models.length)); body.append(count);
         if (!models.length) { body.append(state("供应商未返回可用模型。", () => capability(p, true))); return; }
-        if (hosted && p.brand !== "xai") status.append(node("span", "provider-search-note", "已用厂商搜索，本绑定不再使用本地搜索"));
         const rows = node("div", "provider-model-list");
         for (const m of models) {
           const row = node("div", "provider-model-row"), chips = node("div", "provider-chips");
           for (const [kind, supported, label, none] of [["search", m.hosted_web_search, "厂商搜索", "无厂商搜索"], ["vision", m.vision, "看图", "不能看图"]]) {
-            const chip = node("span", "provider-chip " + (supported ? "supported" : "unsupported")); if (supported) chip.append(lineIcon(kind)); chip.append(node("span", "", supported ? label : none)); chips.append(chip);
+            const chip = node("span", "provider-chip " + (supported ? "supported" : "unsupported")); chip.append(lineIcon(kind), node("span", "", supported ? label : none)); chips.append(chip);
           }
-          const windowChip = node("span", "provider-chip provider-window", ctxShort(m.context)); windowChip.title = `${m.context.toLocaleString()} tokens`; chips.append(windowChip);
+          const windowChip = node("span", "provider-chip provider-window", ctxShort(m.context)); windowChip.title = `上下文窗口：${m.context.toLocaleString()} tokens`; windowChip.setAttribute("aria-label", windowChip.title); chips.append(windowChip);
           chips.append(imageGenCapability(p, m));
           row.append(node("strong", "provider-model-name", m.model), chips); rows.append(row);
         }
@@ -629,7 +627,8 @@
   // Capability is read-only; generation policy belongs to 图片生成 settings.
   function imageGenCapability(p, m) {
     const supported = (m.protocol || p.protocol) === "responses" && ["chatgpt", "xai"].includes(p.oauth);
-    return node("span", "provider-chip " + (supported ? "supported" : "unsupported"), supported ? "有厂商生图" : "无厂商生图");
+    const capability = node("span", "provider-chip " + (supported ? "supported" : "unsupported"));
+    capability.append(lineIcon("image"), node("span", "", supported ? "有厂商生图" : "无厂商生图")); return capability;
   }
   let activeDialog = null;
   // The picker says "which model does this Bot use": groups carry the vendor's
