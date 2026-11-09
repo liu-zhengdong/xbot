@@ -2560,24 +2560,20 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 .approw .st{font-size:var(--x-fs-sm);color:var(--x-muted);display:block;line-height:1.6;margin-top:var(--x-s2)}
 .sdot{width:7px;height:7px;border-radius:50%;flex:none;display:inline-block}
 .sdot.ok{background:var(--x-online)}.sdot.off{background:var(--x-faint)}
-.aboutlogo{display:flex;align-items:center;gap:14px;padding:8px 0 18px}
-.aboutlogo .mark{width:48px;height:48px;border-radius:14px;display:block}
-.aboutlogo h3{font-size:18px;font-weight:650}.aboutlogo .v{font-size:13px;color:var(--x-muted);margin-top:2px;font-family:var(--x-mono)}
-.kvrow{display:flex;align-items:center;gap:var(--x-s5);min-height:calc(var(--x-s7) + var(--x-s8));padding:var(--x-s3) 0;background:transparent;margin-bottom:var(--x-s3);font-size:var(--x-fs-ui)}
-.kvrow .k{width:72px;color:var(--x-faint);flex:none}.kvrow .v{flex:1;min-width:0;font-family:var(--x-mono);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#settings-version-status{color:var(--x-muted);font-size:12px;white-space:nowrap}
-.kvrow button.v{border:0;padding:0;background:transparent;color:var(--x-muted);text-align:right;cursor:pointer}.kvrow button.v:hover{color:var(--x-text)}
-.about-note{margin-inline:0}
-.about-restart{margin-top:var(--x-s6)}
-.about-restart-row{display:flex;align-items:center;gap:var(--x-s6);padding:var(--x-s5) 0;color:var(--x-text-2);font-size:var(--x-fs-ui);line-height:1.5}
-.about-restart-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:var(--x-s1)}
-.about-restart-description{font-size:var(--x-fs-label);color:var(--x-faint)}
-.about-restart-button{display:inline-flex;align-items:center;justify-content:center;gap:var(--x-s2);height:var(--x-s9);padding:0 var(--x-s5);border:0;border-radius:var(--x-r-sm);background:var(--x-warning);color:var(--x-on-warning);font:inherit;font-size:var(--x-fs-sm);font-weight:600;white-space:nowrap;cursor:pointer;transition:opacity var(--dur-press),transform var(--dur-press)}
-.about-restart-button .icon{width:var(--x-restart-icon);height:var(--x-restart-icon)}
+.aboutlogo{display:flex;flex-direction:column;align-items:center;gap:var(--ui-gap);padding:var(--x-s7) 0 var(--ui-row)}
+.aboutlogo .mark{width:var(--settings-about-mark);height:var(--settings-about-mark);border-radius:var(--settings-radius);display:block}
+.aboutlogo h3{font-size:var(--settings-title);font-weight:650}
+.setrows.about-settings{background:var(--x-panel);border-radius:var(--x-r-card);padding:0 var(--x-s6)}
+.about-settings .settings-field{grid-template-columns:minmax(var(--settings-label-min),1fr) minmax(0,auto)}
+.about-version-control{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:var(--x-s2) var(--ui-gap);min-width:0}
+#settings-version-status{color:var(--x-muted);font-size:var(--settings-caption);white-space:nowrap}
+.kvrow button.v{min-width:0;min-height:var(--ui-control);border:0;padding:0;background:transparent;color:var(--x-muted);font-family:var(--x-mono);font-size:var(--settings-caption);line-height:var(--ui-line);text-align:right;overflow-wrap:anywhere;cursor:pointer}.kvrow button.v:hover{color:var(--x-text)}
+.about-restart{border-top:var(--settings-divider-width) solid var(--settings-row-divider)}
+.about-restart-button{display:inline-flex;align-items:center;justify-content:center;height:var(--settings-button-height);padding:0 var(--ui-gap);border:0;border-radius:var(--x-r-sm);background:var(--x-warning);color:var(--x-on-warning);font:inherit;font-size:var(--settings-ui);font-weight:600;white-space:nowrap;cursor:pointer;transition:opacity var(--dur-press),transform var(--dur-press)}
 .about-restart-button:hover:not(:disabled){opacity:.88}
 .about-restart-button:active:not(:disabled){transform:scale(var(--press-scale))}
 .about-restart-button:disabled{opacity:.6;cursor:default}
-.about-restart-error{margin:var(--x-s3) var(--x-s6) 0;color:var(--x-danger);font-size:var(--x-fs-label);line-height:1.6}
+.about-restart-error{margin:0 0 var(--ui-gap);color:var(--x-danger);font-size:var(--settings-caption);line-height:var(--ui-line);overflow-wrap:anywhere}
 @media(prefers-reduced-motion:reduce){.about-restart-button{transition:opacity var(--dur-motion-reduced)}.about-restart-button:active:not(:disabled){transform:none}}
 .setnav button{width:100%;border:0;background:transparent;text-align:left;font:inherit;font-size:var(--x-fs-ui)}
 .setpage .ic{stroke-width:1.8;flex:none}

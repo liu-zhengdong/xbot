@@ -336,16 +336,20 @@ try {
    <div class="setpane" data-spane="providers"><div id="settings-providers"></div></div>
    <div class="setpane" data-spane="about">
     <h2>关于</h2>
-    <div class="aboutlogo"><img class="mark" src="/icon-192.png" alt=""><div><h3>XBot</h3></div></div>
-    <div class="kvrow"><span class="k">当前版本</span><span id="settings-version-status" aria-live="polite"></span><button id="settings-version" class="v" type="button" title="点击复制" aria-label="版本，点击复制" data-settings-version></button></div>
-    <p class="setfoot about-note">短号用于核对构建。</p>
+    <div class="aboutlogo"><img class="mark" src="/icon-192.png" alt=""><h3>XBot</h3></div>
+    <div class="setrows about-settings">
+     <div class="kvrow settings-field">
+      <div class="settings-field-label">当前版本<span class="hint">短号用于核对构建</span></div>
+      <div class="about-version-control"><span id="settings-version-status" aria-live="polite"></span><button id="settings-version" class="v" type="button" title="点击复制" aria-label="版本，点击复制" data-settings-version></button></div>
+     </div>
      <div class="about-restart" id="settings-restart-row" hidden>
-      <div class="about-restart-row">
-       <div class="about-restart-copy"><span>重启客户端</span><span class="about-restart-description">关闭后自动重新打开</span></div>
+      <div class="about-restart-row settings-field">
+       <div class="settings-field-label">重启客户端<span class="hint">关闭后自动重新打开</span></div>
        <button class="about-restart-button" id="settings-restart" type="button"><span id="settings-restart-label">重启</span></button>
       </div>
       <p class="about-restart-error" id="settings-restart-error" role="alert" hidden></p>
      </div>
+    </div>
    </div>
    </div>
   </div>

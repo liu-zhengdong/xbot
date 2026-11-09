@@ -8951,7 +8951,6 @@
   });
   function aboutVersion() { return (state.version || "dev") + (state.tip ? " · " + state.tip : ""); }
 
-  $("settings-restart").prepend(icon("refresh"));
   $("settings-restart").addEventListener("click", async () => {
     const button = $("settings-restart"), label = $("settings-restart-label"), error = $("settings-restart-error");
     if (button.disabled) return;
