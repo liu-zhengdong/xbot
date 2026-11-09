@@ -229,3 +229,8 @@ func (c Remote) DeleteDevice(ctx context.Context, session, id string) error {
 	_, err := c.call(ctx, "DELETE", "devices/"+url.PathEscape(id), session, nil, nil)
 	return err
 }
+
+// HostedBase is the Account API a desktop install talks to when the environment
+// names no other. `xbot serve` and the tests keep the in-process stand-in, which
+// needs no address at all.
+const HostedBase = "https://account.babelgo.cn:8443"

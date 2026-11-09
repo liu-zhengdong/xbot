@@ -597,9 +597,12 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 		return k, err
 	}
 
-	if api := strings.TrimSpace(os.Getenv("XBOT_ACCOUNT_API")); api != "" {
+	if api := accountAPI(cfg.App); api != "" {
 		// The hosted Account API; without it the local stand-in runs.
 		ui.Account = account.NewRemote(api)
+		// The device client reads the same variable, so a default decided here
+		// has to reach it too.
+		os.Setenv("XBOT_ACCOUNT_API", api)
 	}
 	if cfg.App {
 		// Only the desktop app can open a folder in the file manager.
@@ -1076,4 +1079,23 @@ func cmdWatchRemove(root string, args []string) error {
 	}
 	fmt.Printf("removed watch %s\n", args[1])
 	return nil
+}
+
+// accountAPI says where the Account API lives. A desktop install gets the hosted
+// service by default: a freshly installed app has nobody to edit an environment
+// file for it, and the in-process stand-in answers every password with
+// "credentials", which reads as a wrong password. `xbot serve` and the tests
+// keep the stand-in; XBOT_ACCOUNT_API wins when it is set, and "local" asks for
+// the stand-in explicitly.
+func accountAPI(app bool) string {
+	if api := strings.TrimSpace(os.Getenv("XBOT_ACCOUNT_API")); api != "" {
+		if strings.EqualFold(api, "local") {
+			return ""
+		}
+		return api
+	}
+	if app {
+		return account.HostedBase
+	}
+	return ""
 }
