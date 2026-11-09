@@ -10,6 +10,7 @@
   --account-picker-left:16px; --account-picker-bottom:108px;
   --workspace-side:256px; --workspace-page-inset:32px;
   --chat-body-size:15px; --ui-layer-width:420px; --ui-layer-radius:16px;
+  --steps-max-height:420px; --steps-viewport-gap:24px; --steps-mobile-height:75dvh;
   --resource-width:480px; --resource-height:560px; --resource-radius:14px;
   --resource-edge:16px; --resource-mobile-edge:12px; --resource-mobile-top:88px;
   --resource-padding:20px; --resource-gap:8px; --resource-small-gap:4px;

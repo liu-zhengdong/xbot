@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-09 (chat busy progress remains in sidebar; reply send feedback; chat resources)
+verified: 2026-11-09 (bounded steps popover; chat busy progress remains in sidebar; reply send feedback; chat resources)
 
 ---
 # 网页界面
@@ -148,6 +148,8 @@ Bot 菜单「查看生成的图片」保留为可选工作区定位功能，打�
 打开 Bot 时，`xbot-selected-bot` 同时写入窗口的 sessionStorage 与同源的 localStorage。刷新优先恢复本窗口选择；关闭窗口或退出进程后再开，从持久记录恢复上次打开的 Bot。记录中的 Bot 已不存在时，沿用主 Bot、列表首项的回退顺序；账号退出清除两处选择。就地改名同步迁移本窗口记录；同源持久值仍为旧名时才更新，保留其它窗口后来选择的 Bot。行为守护为 `selected_bot_browser_test.go`，覆盖真实页面关闭、同浏览器 profile 进程重启、多窗口刷新及两级回退；`profile_selected_browser_test.go` 覆盖实际资料改名后关闭页面、新页恢复新名与其聊天。
 
 身份区位于主区左上，显示真实头像、名字和模型副标，资料编辑、主题、搜索与更新靠右。dev 刷新按钮采用 Lucide 官方 `rotate-cw` 路径，沿用公共图标尺寸、线宽与编译重启入口。点击身份或更多里的资料项进入 Bot 资料，群组身份进入成员；往来时身份入口禁用。主视图直接从内容开始，页面名称由顶部标签表达；各 Tab 内不再重复大标题或保留其占位，分区标题与操作照常保留。窄屏保留侧栏入口，页面标签横向滚动，更多固定可达。桌面身份栏保留拖动区，按钮和标签明确 no-drag，Windows/Linux 顶部避让系统按钮。⌘\ / Ctrl+\ 在聊天与资料间切换，Escape 先关闭菜单、搜索与弹窗。
+侧栏运行摘要打开的「本轮」步骤浮层最高 420px，低窗口按可用高度收缩；窄屏上限还受 75dvh 约束。标题与关闭按钮固定，只有步骤列表独立滚动，短列表随内容收缩。步骤轮询保留阅读位置，读取后重新定位以守住窗口边缘。浏览器回归为 `TestStepsScrollBrowser`。
+
 ### 对话
 主 Bot 忙碌状态和工具摘要只在侧栏 Bot 预览显示。聊天主列不再显示三点、重复摘要或空消息时间，也不保留空白占位。底部状态行仅在有提示时显示；发送、排队、错误与子代理状态沿既有入口展示，Bot 往来提示可按内容换行。
 

@@ -530,6 +530,7 @@
     if (!pop || !stpState.open) return;
     const name = stpState.bot;
     const steps = stpState.steps;
+    const scrollTop = pop.querySelector("ol")?.scrollTop || 0;
     const head = el("div", "ph");
     const hi = el("span", "si");
     const live = stStatus.map[name] && stStatus.map[name].state === "running";
@@ -573,6 +574,8 @@
       ol.append(li);
     }
     pop.replaceChildren(head, ol);
+    ol.scrollTop = scrollTop;
+    placeStp();
   }
 
   function placeStp() {
