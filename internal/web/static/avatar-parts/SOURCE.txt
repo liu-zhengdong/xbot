@@ -1,0 +1,12 @@
+Source: user-provided xbot-design-assets/avatars/modular (2026-11-09).
+Original canvas: 1024 x 1024; packaged PNG layers: 512 x 512.
+Prepared with scripts/avatar/prepare.py using Pillow.
+
+base/bald.png comes from base/baseplate-bald.png.
+base/head.png is a skin matte from that same image. It restores the head above
+clothing and chest accessories without regenerating the face.
+The remaining layers come from parts/{hair,tops,face,accessories,props}.
+Transparent none/empty files are represented by missing layers.
+
+The existing body/skin variants are opaque composites and are not packaged.
+The renderer uses one body base. No interactive part editor is included.

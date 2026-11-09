@@ -3,7 +3,7 @@ package web
 import "testing"
 
 func TestProfileRefreshWhileStreamingBrowser(t *testing.T) {
-	runChatStreamBrowser(t, chatStreamFixture+profileRefreshFixture, profileRefreshDriver)
+	runAvatarBrowser(t, profileRefreshFixture, profileRefreshDriver)
 }
 
 const profileRefreshFixture = `

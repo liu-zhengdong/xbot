@@ -3,7 +3,7 @@ package web
 import "testing"
 
 func TestOwnerAvatarBrowser(t *testing.T) {
-	runPageInChrome(t, `
+	runAvatarBrowser(t, "", `
 (async()=>{
  const $=id=>document.getElementById(id),assert=(v,m)=>{if(!v)throw Error(m)};
  const until=async(f,m)=>{for(let i=0;i<200;i++){if(f())return;await new Promise(r=>setTimeout(r,10))}throw Error(m)};
@@ -27,7 +27,14 @@ func TestOwnerAvatarBrowser(t *testing.T) {
   const picker=$('settings-owner-file'),nativeClick=picker.click;let opened=0;
   picker.click=()=>{opened++};$('settings-owner-upload').click();picker.click=nativeClick;
   assert(opened===1,'avatar did not open the file picker');
- const old=$('me-avatar').querySelector('img').getAttribute('src');
+ const signature=root=>{
+  const image=root.querySelector('.avatar > img');
+  if(image)return 'image:'+image.getAttribute('src');
+  const svg=root.querySelector('.avatar > svg');
+  return svg?'svg:'+svg.outerHTML:'';
+ };
+ const old=signature($('me-avatar'));
+ assert(old&&$('me-avatar').querySelector('svg image'),'default owner portrait missing');
  const choose=(file)=>{const dt=new DataTransfer();dt.items.add(file);$('settings-owner-file').files=dt.files;$('settings-owner-file').dispatchEvent(new Event('change'))};
  const file=new File([new Uint8Array([137,80,78,71,13,10,26,10])],'face.png',{type:'image/png'});
  choose(file);await until(()=>stored&&!$('settings-owner-upload').disabled,'upload not settled');
@@ -39,7 +46,8 @@ func TestOwnerAvatarBrowser(t *testing.T) {
  assert(photo()?.startsWith(photoURL)&&$('settings-owner-error').textContent,'failure erased picture or error');
  choose(new File(['x'],'wrong.svg',{type:'image/svg+xml'}));assert(posts===2,'invalid type uploaded');
  $('settings-owner-clear').click();await until(()=>!stored&&!$('settings-owner-clear').disabled,'clear hung');
- assert(photo()===old,'clear did not return original owner portrait');
+ assert(signature($('me-avatar'))===old,'clear did not return original owner portrait');
+ assert(signature($('settings-owner-preview'))===old,'clear did not restore the settings portrait');
  assert($('settings-owner-clear').hidden,'clear stays visible without upload');
  assert(!testErrors.length,testErrors.join('; '));document.body.dataset.testResult='passed';
 })().catch(e=>{document.body.dataset.testResult='failed: '+e.message});

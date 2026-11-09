@@ -96,16 +96,6 @@
     tip: "",
   };
 
-  // Soft blobs: near-circles with an irregular edge. No eyes, no smile.
-  const BLOBS = [
-    "M40 8C56 5 72 16 73 34C74 53 61 72 42 73C22 74 7 60 8 40C9 20 24 11 40 8Z",
-    "M38 7C55 4 71 15 74 33C77 52 62 73 41 74C20 75 6 59 7 39C8 19 21 10 38 7Z",
-    "M42 6C59 8 74 20 73 38C72 57 58 74 39 73C19 72 6 57 8 38C10 18 25 4 42 6Z",
-    "M36 9C52 5 70 14 73 32C76 51 63 73 43 74C21 75 6 61 7 41C8 21 20 13 36 9Z",
-    "M41 7C58 6 73 18 74 36C75 55 60 74 40 73C19 72 5 56 8 37C11 17 24 8 41 7Z",
-    "M39 8C54 4 71 17 73 35C75 54 59 75 38 73C17 71 6 55 9 36C12 17 24 12 39 8Z",
-  ];
-
   const THEME_MOON = '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>';
   const THEME_SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>';
 
@@ -843,13 +833,6 @@
     return String(slug || "").trim();
   }
 
-  function hashName(name) {
-    let h = 2166136261;
-    const s = String(name || "?");
-    for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-    return h >>> 0;
-  }
-
   const ICONS = {
     play: '<path d="m8 5 12 7-12 7Z"/>',
     pause: '<path d="M8 5v14M16 5v14"/>',
@@ -954,45 +937,6 @@
   const PENCIL_PATH = '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>';
   const SEND_PATH = '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>';
 
-  function markInitial(name, paint, size) {
-    if (size === "xs") return "";
-    const given = paint && typeof paint.initial === "string" ? paint.initial.trim() : "";
-    const raw = String(name || "").trim();
-    if (!raw) return "";
-    const chars = Array.from(raw);
-    if (/\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}/u.test(chars[0])) return chars[0];
-    if (/^[A-Za-z]{2}/.test(raw)) return chars[0].toUpperCase() + chars[1].toLowerCase();
-    return Array.from(given || raw)[0].toLocaleUpperCase();
-  }
-
-  function faceFor(name, paint, size) {
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", "0 0 80 80");
-    svg.style.setProperty("--avatar-light", "#d3d3d3");
-    svg.style.setProperty("--avatar-dark", "#3d3d3d");
-    svg.style.setProperty("--avatar-letter-light", "#333333");
-    svg.style.setProperty("--avatar-letter-dark", "#e4e4e4");
-    svg.setAttribute("aria-hidden", "true");
-    const blob = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    blob.setAttribute("d", BLOBS[hashName(name) % BLOBS.length]);
-    blob.setAttribute("fill", "var(--avatar-fill)");
-    svg.append(blob);
-    const letter = markInitial(name, paint, size);
-    if (letter) {
-      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      text.setAttribute("x", "40");
-      text.setAttribute("y", "43");
-      text.setAttribute("text-anchor", "middle");
-      text.setAttribute("dominant-baseline", "central");
-      text.setAttribute("fill", "var(--avatar-ink)");
-      text.setAttribute("font-size", Array.from(letter).length > 1 ? "26" : "30");
-      text.setAttribute("font-weight", "560");
-      text.textContent = letter;
-      svg.append(text);
-    }
-    return svg;
-  }
-
   // A bot's fallback mark is a geometric tile derived from its name: four of
   // seven shapes, each in one of four turns. Only numbers go into the markup.
   function fnv(s) {
@@ -1034,20 +978,20 @@
     return svg;
   }
 
-  // Portraits are drawn here and handed over as a data URL: the server never
-  // stores generated SVG, and a src never lets the markup run as script.
+  // Mount the SVG so its image layers can load through the device's static API.
   const PORTRAITS = new Map();
-  function portraitURL(seed, small) {
+  function portraitSVG(seed, small) {
     const key = (small ? "f:" : "p:") + seed;
-    if (PORTRAITS.has(key)) return PORTRAITS.get(key);
-    let url = "";
-    try {
-      const lib = window.XBotAvatar;
-      if (lib) url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent((small ? lib.face(seed) : lib.portrait(seed)) || "");
-    } catch (e) { url = ""; }
+    if (PORTRAITS.has(key)) return PORTRAITS.get(key)?.cloneNode(true) || null;
+    const lib = window.XBotAvatar;
+    if (!lib) return null;
+    const doc = new DOMParser().parseFromString(small ? lib.face(seed) : lib.portrait(seed), "image/svg+xml");
+    if (doc.documentElement?.nodeName !== "svg") return null;
+    const svg = document.importNode(doc.documentElement, true);
+    svg.setAttribute("aria-hidden", "true");
     if (PORTRAITS.size >= 256) PORTRAITS.delete(PORTRAITS.keys().next().value);
-    PORTRAITS.set(key, url);
-    return url;
+    PORTRAITS.set(key, svg);
+    return svg.cloneNode(true);
   }
 
   // The fallback for a broken upload, a "glyph" seed or a missing bundle.
@@ -1063,13 +1007,6 @@
     const av = el("span", "avatar" + (size ? " " + size : ""));
     if (name) setTip(av, name, "right");
     const seed = String(paint.seed || name || "");
-    if (size === "me" && !paint.url && !portraitURL(seed, false)) {
-      // 我 is a line-art portrait from the owner's name like the bots; the soft
-      // blob and its initial are only the fallback when the bundle didn't load.
-      av.classList.add("blob");
-      av.append(faceFor(name, paint, size));
-      return av;
-    }
     if (paint.url) {
       const img = document.createElement("img");
       img.alt = "";
@@ -1079,14 +1016,10 @@
     } else if (seed === "glyph" && !paint.portrait) {
       drawGlyph(av, name || seed);
     } else {
-      const src = portraitURL(seed, size === "xs");
-      if (!src) { drawGlyph(av, name || seed); return av; }
-      const img = document.createElement("img");
-      img.alt = "";
-      img.decoding = "async";
-      img.draggable = false;
-      img.src = src;
-      av.append(img);
+      const svg = portraitSVG(seed, size === "xs");
+      if (!svg) { drawGlyph(av, name || seed); return av; }
+      svg.querySelectorAll("image").forEach(image => image.addEventListener("error", () => drawGlyph(av, name || seed)));
+      av.append(svg);
     }
     return av;
   }
@@ -7342,19 +7275,20 @@
     return "没换成：" + visibleError(e);
   }
 
-  // 换一张: the current portrait, five fresh seeds for this batch, the glyph
-  // and an upload. A pick applies at once; nothing waits for 保存.
+  const randomAvatarSeed = () => "xbot1:" + crypto.randomUUID();
+
+  // Re-roll the entire character. Each accepted change takes effect at once.
   function avatarSection(name) {
+    const selection = state.sel;
     const pickOf = (b) => ({ avatar: (b && b.avatar) || "generated", seed: (b && b.avatar_seed) || name });
     let picked = pickOf(state.panelData || (state.bots || []).find((b) => b.name === name));
-    let batch = 0, busy = false;
+    let busy = false;
     const root = el("div", "avatar-block");
     // A failed change leaves the avatar as it was and says why, right under it.
     const problem = el("p", "avatar-note err", "");
     problem.setAttribute("role", "alert");
     const fail = (text) => { problem.textContent = text; paint(); };
     const row = el("div", "avatar-row");
-    const grid = el("div", "avatar-grid");
     const file = document.createElement("input");
     file.type = "file";
     file.accept = AVATAR_TYPES.join(",");
@@ -7366,85 +7300,63 @@
     clear.append(icon("undo"));
     const again = el("button", "icon-btn");
     again.type = "button";
-    again.setAttribute("aria-label", "换一批");
-    setTip(again, "换一批");
+    again.setAttribute("aria-label", "换一个");
+    setTip(again, "换一个");
     again.append(icon("refresh"));
+    const up = el("button", "icon-btn");
+    up.type = "button";
+    up.setAttribute("aria-label", "上传图片");
+    setTip(up, "上传图片");
+    up.append(icon("imageUp"));
+    up.addEventListener("click", () => file.click());
 
     const big = () => (picked.avatar === "custom"
       ? avatar(name, { url: avatarURLOf(name) + "?v=" + Date.now(), seed: picked.seed }, "xl")
       : avatar(name, { seed: picked.seed }, "xl"));
-    const pick = (label, make, on, onPick) => {
-      const btn = el("button", "avatar-pick");
-      btn.type = "button";
-      btn.setAttribute("aria-label", label);
-      btn.setAttribute("aria-pressed", String(!!on));
-      btn.append(make());
-      btn.addEventListener("click", onPick);
-      return btn;
-    };
-
     function paint() {
-      const custom = picked.avatar === "custom";
-      root.replaceChildren(big(), el("span", "avatar-name", name));
+      row.replaceChildren(el("span", "muted", "头像"), big());
+      if (picked.avatar === "custom") row.append(clear);
+      row.append(again, up);
+      for (const button of [clear, again, up]) button.disabled = busy;
+      root.replaceChildren(row, file);
       if (problem.textContent) root.append(problem);
-      row.replaceChildren(el("span", "muted", "换一张"));
-      if (custom) row.append(clear);
-      row.append(again);
-      root.append(row, grid, file);
-      grid.replaceChildren();
-      const isGlyph = !custom && picked.seed === "glyph";
-      const seeds = [isGlyph ? name : picked.seed];
-      for (let i = 1; i <= 5; i++) seeds.push(name + "#" + (5 * batch + i));
-      for (const seed of seeds) {
-        grid.append(pick(!custom && seed === picked.seed ? "当前头像" : "换一张",
-          () => avatar(name, { seed: seed }, "pick"), !custom && seed === picked.seed, () => apply(seed)));
-      }
-      const mark = el("span", "avatar pick glyph");
-      const svg = glyphSVG(name);
-      if (svg) mark.append(svg);
-      grid.append(pick("几何图形", () => mark, isGlyph, () => apply("glyph")));
-      const up = el("button", "avatar-pick up");
-      up.type = "button";
-      up.setAttribute("aria-label", "上传图片");
-      setTip(up, "上传图片");
-      up.append(icon("imageUp"));
-      up.addEventListener("click", () => file.click());
-      grid.append(up);
     }
 
     // After the server took it, every list and the panel show the new face.
     async function settled(fallback) {
-      await refreshLists();
-      await loadPanel();
-      picked = pickOf(state.panelData || (state.bots || []).find((b) => b.name === name) || fallback);
+      await refreshSavedProfile(selection);
+      picked = pickOf((state.panelData?.name === name ? state.panelData : null) || (state.bots || []).find((b) => b.name === name) || fallback);
       paint();
+      row.scrollIntoView({ block: "nearest" });
     }
 
     async function apply(seed) {
       if (busy) return;
       busy = true;
       problem.textContent = "";
+      paint();
       try {
         await api("/api/bots/" + encodeURIComponent(name), { method: "PATCH", body: { avatar_seed: seed } });
         picked = { avatar: "generated", seed: seed };
         await settled(picked);
       } catch (e) {
         fail("没换成：" + visibleError(e));
-      } finally { busy = false; }
+      } finally { busy = false; paint(); }
     }
 
-    again.addEventListener("click", () => { batch += 1; paint(); });
+    again.addEventListener("click", () => apply(randomAvatarSeed()));
     clear.addEventListener("click", async () => {
       if (busy) return;
       busy = true;
       problem.textContent = "";
+      paint();
       try {
         const res = await api(avatarURLOf(name), { method: "DELETE" });
         picked = { avatar: "generated", seed: (res && res.avatar_seed) || name };
         await settled(picked);
       } catch (e) {
         fail("没换成：" + visibleError(e));
-      } finally { busy = false; }
+      } finally { busy = false; paint(); }
     });
     file.addEventListener("change", async () => {
       const f = file.files && file.files[0];
@@ -7464,7 +7376,9 @@
       img.alt = "";
       img.src = url;
       preview.replaceChildren(img, overlay);
-      root.replaceChildren(preview, el("span", "avatar-name", name), row, note, grid, file);
+      for (const button of [clear, again, up]) button.disabled = busy;
+      row.replaceChildren(el("span", "muted", "头像"), preview, again, up);
+      root.replaceChildren(row, note, file);
       try {
         await uploadAvatar(name, f);
         picked = { avatar: "custom", seed: picked.seed };
@@ -7474,13 +7388,12 @@
       } finally {
         URL.revokeObjectURL(url);
         busy = false;
+        paint();
       }
     });
     root.rename = (previous, next) => {
       if (name !== previous) return;
       name = next;
-      const label = root.querySelector(".avatar-name");
-      if (label) label.textContent = next;
     };
     paint();
     return root;
@@ -8427,16 +8340,14 @@
   }
 
   function openNewBot() {
-    // The portrait follows the typed name until 「换一个」 or an upload pins a seed.
-    const av = { seed: "", follow: true, file: null };
+    const av = { seed: randomAvatarSeed(), file: null };
     openModal("新建 Bot", [
       { name: "name", label: "标识", placeholder: "ada" },
       { name: "persona", label: "职责", multiline: true },
     ], async (v) => {
       const name = (v.name || "").trim();
       if (!name) throw new Error("需要一个名字");
-      const body = { name: name, persona: (v.persona || "").trim() };
-      if (!av.follow) body.avatar_seed = av.seed;
+      const body = { name: name, persona: (v.persona || "").trim(), avatar_seed: av.seed };
       await api("/api/bots", { method: "POST", body: body });
       await refreshLists();
       await selectBot(name);
@@ -8454,7 +8365,7 @@
       let shot = "";
       const show = () => {
         const seed = name.value.trim() || "XBot";
-        const face = av.file ? avatar(seed, { url: shot }, "xl") : avatar(seed, { seed: av.follow ? seed : av.seed }, "xl");
+        const face = av.file ? avatar(seed, { url: shot }, "xl") : avatar(seed, { seed: av.seed }, "xl");
         const old = row.querySelector(".avatar");
         if (old) old.replaceWith(face);
         else row.prepend(face);
@@ -8465,14 +8376,10 @@
       setTip(again, "换一个");
       again.append(icon("refresh"));
       again.addEventListener("click", () => {
-        const base = name.value.trim() || "XBot";
-        const k = /#(\d+)$/.exec(av.seed);
-        const n = av.seed.startsWith(base + "#") && k ? Number(k[1]) + 1 : 1;
         if (shot) URL.revokeObjectURL(shot);
         shot = "";
         av.file = null;
-        av.follow = false;
-        av.seed = base + "#" + n;
+        av.seed = randomAvatarSeed();
         show();
       });
       const up = el("button", "icon-btn");
@@ -8491,18 +8398,10 @@
         if (shot) URL.revokeObjectURL(shot);
         shot = URL.createObjectURL(f);
         av.file = f;
-        av.follow = false;
         show();
       });
       row.append(again, up, file);
-      const note = el("p", "avatar-note");
-      note.append(icon("info"), el("span", "", "头像跟着名字生成，改名字就换一张；点「换一个」就不再跟着名字变。"));
-      modalFields.prepend(row, note);
-      name.addEventListener("input", () => {
-        if (!av.follow) return;
-        av.seed = "";
-        show();
-      });
+      modalFields.prepend(row);
       show();
     });
   }

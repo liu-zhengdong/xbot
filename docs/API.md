@@ -497,7 +497,7 @@ link 包随后完成瘦身与 Event 上移（已合 main 7bba5737，退役 Link 
 }]}
 ```
 
-`avatar` 是 `generated`（界面按种子画）或 `custom`（已上传图片）。`avatar_url` 只在已上传头像时出现。没上传时界面在浏览器里按 `avatar_seed` 画 Notionists 线稿头像，固定白名单，只有平静或微笑的表情；16 像素用只画脸部的裁切。种子是 `glyph`、图片加载失败或脚本没加载时，界面按名字画黑白几何字形。服务端从不画头像，也不分发画出来的头像。`avatar_bg`、`avatar_ink`、`initial` 仍然返回，界面已不再使用。`unread` 在有未读通知，或 transcript 比这个浏览器上次打开的游标更长时为 true。
+`avatar` 是 `generated`（界面按种子组合）或 `custom`（已上传图片）。`avatar_url` 只在已上传头像时出现。生成头像由浏览器按 `avatar_seed` 从独立 PNG 图层随机拼装，同种子同组合；16 像素只改变裁切。网页新建和「换一个」提交 `xbot1:` 前缀的随机种子，协议仍接受原有合法 seed，不要求解析部件。图层通过既有认证接口 `/api/ui/static/avatar-parts/…` 读取，每份低于 700 KiB；服务端不存合成图片。种子为 `glyph`、图片加载失败或脚本缺失时，界面按名字画几何图形。`avatar_bg`、`avatar_ink`、`initial` 仍然返回，界面已不再使用。`unread` 在有未读通知，或 transcript 比这个浏览器上次打开的游标更长时为 true。
 
 `POST /api/bots`，body `{"name":"ada","persona":"...","avatar_seed":"writer#3"}`。名字匹配 `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`。`avatar_seed` 可省略，省了就用名字。种子是去空白后 1–80 个字符，不能有控制字符和「<>"'&」以及反引号。种子不合法 400，这时不会建出 Bot。成功 200 `{"name":"ada"}`。这是目录里第一个 Bot 时，它成为主 Bot 并被置顶。
 

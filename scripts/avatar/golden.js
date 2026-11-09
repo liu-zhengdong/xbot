@@ -1,7 +1,7 @@
 // Golden check for the vendored avatar bundle. Renders fixed seeds with
 // internal/web/static/vendor/xbot-avatar.min.js and compares each SVG's
-// sha256 with golden.json. A change in options.js, a dependency version or
-// the bundle re-rolls every bot's face, so it must fail CI on purpose.
+// sha256 with golden.json. Catalog or seed algorithm changes re-roll saved
+// faces, so intentional changes require the owner's approval.
 // Run: node scripts/avatar/golden.js            (check)
 //      node scripts/avatar/golden.js --update   (only after the owner approves new faces)
 'use strict';
@@ -24,6 +24,10 @@ for (const seed of SEEDS) {
   const portrait = win.XBotAvatar.portrait(seed);
   const face = win.XBotAvatar.face(seed);
   if (/<metadata|<script|<foreignObject|\son[a-z]+=|javascript:/i.test(portrait + face)) throw new Error('unexpected markup for ' + seed);
+  for (const match of (portrait + face).matchAll(/href="\/api\/ui\/static\/([^"]+)"/g)) {
+    const asset = path.join(here, '../../internal/web/static', match[1]);
+    if (fs.statSync(asset).size > 700 * 1024) throw new Error('avatar asset exceeds pipe limit: ' + match[1]);
+  }
   got[seed] = { portrait: sha(portrait), face: sha(face) };
 }
 if (process.argv.includes('--update')) {

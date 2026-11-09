@@ -2,7 +2,7 @@
 kind: part
 parent: README.md
 code: [internal/web/, internal/appshell/, internal/account/]
-verified: 2026-11-09 (bubble focus feedback; subscription removal on hover; busy description on fresh pages)
+verified: 2026-11-09 (random modular avatars; bubble focus feedback; subscription removal on hover; busy description on fresh pages)
 
 ---
 # 网页界面
@@ -11,7 +11,7 @@ verified: 2026-11-09 (bubble focus feedback; subscription removal on hover; busy
 
 命令行 `xbot [--root DIR] message <bot> <text...>` 向已运行的本机 serve 发送主人消息：`--http` 默认 `127.0.0.1:8788`，`--timeout` 默认 2 分钟，`--text` 或 `-`/省略正文可提供文本或读 stdin。先通过回环 `/api/session` 获取会话，再调用现有 messages SSE；只输出 `done.text`，没有可见回复、转交、错误或超时返回非零。
 
-对话中的 Bot 往来与 CLI Event 共用可点击的来源行装配缝，按来源种类和身份合并连续事件。Bot 行打开既有往来视图；CLI 行以发送者为 Notionists 头像种子，点击展开该组原文，不把发送者登记为 Bot。`aside` 原文仍复用来源行分组。Lucide 心形对话图标位于对应 Bot 消息操作栏的复制按钮后、时间前，沿用 14px 图形与 24px 按钮；默认收起，收起时不额外占行。点击展开无底色的灰字旁注，正文与 Bot 气泡内文字对齐，采用项目字体和 14px／1.7 行高。手动开合保留阅读位置并解除自动贴底，入场只淡入。`aria-label` 与悬停提示同步查看／收起及合并条数，悬停保留全文；轮询保留节点与展开态。窗口首部未加载对应 Bot 消息时，心里话仍有独立入口。旁注不绑定回复菜单，也不进消息复制、侧栏预览或引用摘要。行为由 `TestAsideSourceBrowser` 和逐帧的 `TestAsideDisclosureStableBrowser` 守护。
+对话中的 Bot 往来与 CLI Event 共用可点击的来源行装配缝，按来源种类和身份合并连续事件。Bot 行打开既有往来视图；CLI 行以发送者为组合头像种子，点击展开该组原文，不把发送者登记为 Bot。`aside` 原文仍复用来源行分组。Lucide 心形对话图标位于对应 Bot 消息操作栏的复制按钮后、时间前，沿用 14px 图形与 24px 按钮；默认收起，收起时不额外占行。点击展开无底色的灰字旁注，正文与 Bot 气泡内文字对齐，采用项目字体和 14px／1.7 行高。手动开合保留阅读位置并解除自动贴底，入场只淡入。`aria-label` 与悬停提示同步查看／收起及合并条数，悬停保留全文；轮询保留节点与展开态。窗口首部未加载对应 Bot 消息时，心里话仍有独立入口。旁注不绑定回复菜单，也不进消息复制、侧栏预览或引用摘要。行为由 `TestAsideSourceBrowser` 和逐帧的 `TestAsideDisclosureStableBrowser` 守护。
 
 主视图「记忆」由 `GET /api/bots/{name}` 的 `memory` DTO 装配：桌面与窄屏均为单栏，上方「关于本 Bot」、下方经历；不显示「关于你」，person 的存储及模型注入不变。常驻预览前两条带日期条目（手机一条），「展开全部」读取原文的完整 Markdown 投影；复用气泡渲染和打开文件入口，不经 Recall 拆卡。经历来自当前 Bot 的 `experience.sqlite`，带时间、新到旧，点开关注点与提纲；正常 user/assistant 片段按「你／Bot 名」分段、限制阅读行宽，工具完成回报与截断标记只留在默认折叠的「原始提纲」里。原始内容仍逐字可读、可选中复制并保留搜索命中，不改经历库。首屏 40 条，可加载更早内容。标题旁「搜索经历」通过 `GET /api/bots/{name}/experiences?q=…&before=…` 搜整个库的摘要、关注点、提纲；字面包含、英文忽略大小写，沿相同顺序分页，命中用中性底突出。输入法选词期间不查询，快速换词或切 Bot 丢弃旧回包；轮询保留输入、焦点与展开态，清除恢复已加载的普通列表。失败保留查询并可重试，无匹配单独提示。页脚只在本月有流水时给打开入口，不进主列表。浏览器打开只读原文件，桌面交给默认应用；不提供编辑器。守护为 `memory_panel_test.go`、`memory_panel_search_test.go` 的数据与搜索回归，`memory_panel_browser_test.go`、`memory_search_browser_test.go`、`memory_detail_browser_test.go` 的 Chrome 行为，以及真实 serve 的 `TestChatTabsJourney`。
 
@@ -98,7 +98,7 @@ Composer 的 mic 在发送钮左侧：点按进入录音条，「发送」提交
 
 ### 主人头像
 
-设置「通用」的个人行显示头像与 `owner_name`，提供「换一张」及有自定义图时的「清除」。整机唯一图片在数据根 `owner-avatar`；`/api/session.owner_avatar_url` 和 `GET/POST/DELETE /api/owner/avatar` 共用此文件，没有 localStorage 图片副本。上传沿 Bot 现有 PNG/JPEG/GIF/WebP、1 MiB 和 multipart 范式（均不另做压缩），类型按字节嗅探、原子落盘；成功后设置预览与侧栏「我」同时使用 URL，清除回 `owner_name` 线稿。认证、同源、缓存契约见 [API](../API.md#主人头像)。接口与脚本化浏览器守护在 `owner_avatar_test.go`、`owner_avatar_browser_test.go`；真实二进制走查脚本为 `internal/web/testdata/owner-avatar.cjs`。
+设置「通用」的个人行显示头像与 `owner_name`，提供「换一张」及有自定义图时的「清除」。整机唯一图片在数据根 `owner-avatar`；`/api/session.owner_avatar_url` 和 `GET/POST/DELETE /api/owner/avatar` 共用此文件，没有 localStorage 图片副本。上传沿 Bot 现有 PNG/JPEG/GIF/WebP、1 MiB 和 multipart 范式（均不另做压缩），类型按字节嗅探、原子落盘；成功后设置预览与侧栏「我」同时使用 URL，清除回 `owner_name` 对应的组合头像。认证、同源、缓存契约见 [API](../API.md#主人头像)。接口与脚本化浏览器守护在 `owner_avatar_test.go`、`owner_avatar_browser_test.go`；真实二进制走查脚本为 `internal/web/testdata/owner-avatar.cjs`。
 ### 保险库设置
 
 「保险库」（`static/vault.js` / `vault.css`）展示整机单库，所有 Bot 共用；不显示「当前 Bot」，不要求先选 Bot，切侧栏 Bot 不换列表或清草稿。左栏在权限后、网页搜索前，采用定稿 Grok 风格：全部/出站/本机计数 chip（中性 fill-2 选中）、名称与域名搜索、轻 fill-1 圆角卡。卡左钥匙/终端色块 glyph 的浅深色由专属 token 提供，名称等宽、副行域名或「本机」，右侧「管理」。没有整页灰壳或描边选中。出站是有域名，本机是空域名（包括 LOCAL_SUDO）；筛选与搜索无结果分开说明，全空给添加和本机 sudo 两按钮。
@@ -252,7 +252,15 @@ Bot 发送只凭同一 owner 的 `chat.meta.event_id` 精确对账。对应持�
 
 对外发送确认卡从命令中提取收件主机与正文，原始命令折叠在「查看命令」下，倒计时明确说明到期照发，提交决定时显示处理中反馈，终态用文字区分允许、发送、拒绝与过期，拒绝保持灰色。任务面板把最后一张审批卡被拒绝且正常结束的分叉显示为「已拒绝」，到期没人决定的操作按允许执行。
 ### 名字和头像
-Bot 名字保留原样的大小写（默认 Bot 叫 XBot），可以用的字符是任意文字的字母和数字，外加 _ 和 -，路径分隔符、控制字符、空白和超过 64 个字符（或 255 字节）的名字都不行，名字本身就是要落盘的目录名。没上传图片时，头像是浏览器按 `avatar_seed` 现画的 Notionists 线条人像，只用冻结的白名单（只有平静和微笑两种表情，见 scripts/avatar）；16px 用只剩脸部的裁切，圆形容器底色 `#e4e4e7`（深色 `#a8a8ad`）。上传失败、seed 是 `glyph`、脚本没加载时，改画由名字决定的几何图形；「我」的头像也是按用户名字（`owner_name`）画的线条人像，脚本没加载时才回到原来的色块和首字（用户还不能上传头像）；XBot 的 logo 从不拿来当头像。生成的人像只在浏览器里画，从不经过服务端，服务端不存也不发这类 SVG。编辑资料的抽屉里「换一张」列出一张当前人像、这一批的五个新 seed、几何图形和上传格，选了立即生效；「换一批」只在这台浏览器里换下一批，「清除」用回生成的（只在上传过时出现）。新建 Bot 的弹窗最上面是跟着「标识」现画的人像，「换一个」换成 `名字#n` 并不再跟着名字变，也可以先选一张图片，建好后再上传。Licenses：DiceBear 代码 MIT，Notionists 美术 CC0 1.0，作者 Zoish，见 static/vendor/LICENSES.txt。
+Bot 名字保留原样的大小写（默认 Bot 叫 XBot），可以用的字符是任意文字的字母和数字，外加 _ 和 -，路径分隔符、控制字符、空白和超过 64 个字符（或 255 字节）的名字都不行，名字本身就是要落盘的目录名。
+
+没上传图片时，浏览器按 `avatar_seed` 随机组合用户提供的小人部件。同一 seed 保持同一组合，16px 只改变裁切。现有一个人体基底，发型、上衣、表情、眼镜、头饰、胸饰和手持物分别随机；没有部件选择器。源素材中的身体与肤色变体是整图，不作为独立层。`scripts/avatar/entry.js` 唯一维护稳定目录和算法，固定种子输出由 golden 守护。
+
+PNG 图层通过既有 `/api/ui/static/avatar-parts/…` 读取，本机与 pipe 使用同一设备静态源。真实 SVG DOM 依次叠加基底、上衣、胸饰、头部覆盖、表情、发型、眼镜、头饰、手持物；头部覆盖修复下颌与衣服遮挡。服务端只保存种子或上传图，不保存合成图片。素材来源和准备方式见 `avatar-parts/SOURCE.txt` 与 `scripts/avatar/prepare.py`。
+
+编辑资料只显示当前头像和操作。「换一个」随机生成 seed 并立即保存，成功后同步资料、侧栏与顶栏，失败保持旧头像并可重试。上传保留 seed，清除上传恢复原组合。网页新建时先生成随机 seed，输入名字不换脸；可以重新随机，也可以上传。改名和刷新保留 seed。「我」的默认头像沿用同一组合画风，自定义图仍走主人头像接口。上传或图层加载失败、seed 为 `glyph`、脚本缺失时使用名字对应的几何图形。XBot 标志不作为默认头像。
+
+行为守护为 `TestRandomAvatarBrowser`、`TestAvatarLayersAreServed` 和真实二进制 `TestRandomAvatarJourney`；覆盖随机、失败重试、上传清除、新建、读回、改名和进程重启。
 ### 字体
 界面文字用 `tokens.css` 里的 `--x-font`：`"Segoe UI", "Noto Sans SC", "PingFang SC"`，Windows 用 `"Segoe UI Variable", "Segoe UI"` 打头。中文用自带的 Noto Sans SC 子集（字体名 `XBot SC`，GB2312 全部汉字，400–700 字重，约 1.9 MB，`unicode-range` 只管中文和全角符号，本机装了 Noto Sans SC 就直接用本机的），各系统看起来一样。子集用 scripts/subset-cjk-font.sh 重新生成。静态文件带 ETag，重复加载只回 304。 Mona Sans 只用在字标「XBot」（已转成路径）和头像兜底的首字上。
 ### 登录和会话

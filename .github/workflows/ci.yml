@@ -80,9 +80,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: rebuild the bundle from the pinned lockfile
-        working-directory: scripts/avatar
-        run: npm ci --no-audit --no-fund && npm run build
+      - name: build the avatar renderer
+        run: node scripts/avatar/build.js
       - name: rebuilt bundle matches the vendored one
         run: git diff --exit-code -- internal/web/static/vendor/xbot-avatar.min.js
       - name: fixed seeds render the golden faces
