@@ -2569,12 +2569,12 @@ html[data-theme="dark"] .tog:not(.on)::after { background: var(--x-muted); }
 #settings-version-status{color:var(--x-muted);font-size:var(--settings-caption);white-space:nowrap}
 .kvrow button.v{min-width:0;min-height:var(--ui-control);border:0;padding:0;background:transparent;color:var(--x-muted);font-family:var(--x-mono);font-size:var(--settings-caption);line-height:var(--ui-line);text-align:right;overflow-wrap:anywhere;cursor:pointer}.kvrow button.v:hover{color:var(--x-text)}
 .about-restart{border-top:var(--settings-divider-width) solid var(--settings-row-divider)}
-.about-restart-button{display:inline-flex;align-items:center;justify-content:center;height:var(--settings-button-height);padding:0 var(--ui-gap);border:0;border-radius:var(--x-r-sm);background:var(--x-warning);color:var(--x-on-warning);font:inherit;font-size:var(--settings-ui);font-weight:600;white-space:nowrap;cursor:pointer;transition:opacity var(--dur-press),transform var(--dur-press)}
-.about-restart-button:hover:not(:disabled){opacity:.88}
-.about-restart-button:active:not(:disabled){transform:scale(var(--press-scale))}
-.about-restart-button:disabled{opacity:.6;cursor:default}
-.about-restart-error{margin:0 0 var(--ui-gap);color:var(--x-danger);font-size:var(--settings-caption);line-height:var(--ui-line);overflow-wrap:anywhere}
-@media(prefers-reduced-motion:reduce){.about-restart-button{transition:opacity var(--dur-motion-reduced)}.about-restart-button:active:not(:disabled){transform:none}}
+.about-restart-button{display:inline-flex;align-items:center;justify-content:center;flex:none;width:var(--restart-width);height:var(--settings-button-height);padding:0 var(--ui-gap);border:var(--settings-divider-width) solid var(--restart-edge);border-radius:var(--x-r-sm);background:var(--restart-fill);color:var(--restart-ink);font:inherit;font-size:var(--settings-ui);font-weight:var(--restart-weight);line-height:var(--ui-line);white-space:nowrap;cursor:pointer;transition:opacity var(--dur-press)}
+.about-restart-button:hover:not(:disabled){background:var(--restart-hover)}
+.about-restart-button:active:not(:disabled){background:var(--restart-pressed)}
+.about-restart-button:disabled{opacity:var(--restart-disabled);cursor:default}
+.settings-field-label .about-restart-error{color:var(--x-danger);overflow-wrap:anywhere}
+@media(prefers-reduced-motion:reduce){.about-restart-button{transition:opacity var(--dur-motion-reduced)}}
 .setnav button{width:100%;border:0;background:transparent;text-align:left;font:inherit;font-size:var(--x-fs-ui)}
 .setpage .ic{stroke-width:1.8;flex:none}
 .setpage .btn{font-size:var(--ui-action)}

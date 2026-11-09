@@ -6,6 +6,11 @@ func TestClientRestartRetryBrowser(t *testing.T) {
 	runChatFramesBrowser(t, clientRestartBrowserFixture, clientRestartRetryDriver)
 }
 
+func TestClientRestartRetryMobileBrowser(t *testing.T) {
+	t.Setenv("XBOT_STICK_VIEWPORT", "390,844")
+	runChatFramesBrowser(t, clientRestartBrowserFixture, clientRestartRetryDriver)
+}
+
 func TestClientRestartUnavailableBrowser(t *testing.T) {
 	// Desktop mode alone must not expose restart, for example on Windows.
 	runChatFramesBrowser(t, clientRestartBrowserFixture+`clientRestart.canRestart=false;`, clientRestartUnavailableDriver)
@@ -51,32 +56,46 @@ const clientRestartRetryDriver = clientRestartBrowserHelpers + `
  assert(row.contains(button)&&button.contains(label),'restart entry has no button label');
  assert(problem&&$('[data-spane="about"]').contains(problem),'restart error is not inline in about');
  assert(!visible(problem)&&!button.disabled,'restart entry did not start ready');
- const readyLabel=label.textContent;
+ const readyLabel=label.textContent,description=$('#settings-restart-description');
+ const readyRect=button.getBoundingClientRect(),readyRow=row.getBoundingClientRect();
  assert(readyLabel.trim(),'restart button has no ready label');
+ assert(readyRect.width===80&&readyRect.height===36,'restart control does not use the approved hit area');
+ const stable=phase=>{
+  const rect=button.getBoundingClientRect();
+  assert(['x','y','width','height'].every(k=>Math.abs(rect[k]-readyRect[k])<.5),phase+' moved or resized the restart control');
+  assert(Math.abs(row.getBoundingClientRect().height-readyRow.height)<.5,phase+' shifted the maintenance row');
+  assert(rect.right<=row.getBoundingClientRect().right&&rect.left>=row.getBoundingClientRect().left,phase+' clipped the restart control');
+ };
  assert(clientRestart.requests.length===0,'opening about requested a restart');
  button.click();
  await waitFor(()=>clientRestart.pending.length===1,'restart request not sent');
  const first=clientRestart.requests[0];
  assert(first.method==='POST'&&first.path==='/api/app/restart'&&(first.body==null||first.body===''),'restart did not use the argument-free POST contract');
- assert(button.disabled&&label.textContent==='正在重启…','pending restart has no disabled progress state');
+ assert(button.disabled&&label.textContent==='重启中'&&button.getAttribute('aria-busy')==='true','pending restart has no disabled progress state');
+ assert(visible(description)&&description.textContent.trim()&&!visible(problem),'pending description is missing');
+ stable('pending');
  button.click();button.click();button.click();await nextFrames();
  assert(clientRestart.requests.length===1,'repeated click sent another pending restart');
  clientRestart.pending.shift()(500,{error:'desktop restart request unavailable'});
  await waitFor(()=>!button.disabled&&visible(problem)&&problem.textContent.trim(),'failed request did not show an inline error and allow retry');
- assert(label.textContent===readyLabel,'failed restart did not restore its ready label');
+ assert(label.textContent===readyLabel&&button.getAttribute('aria-busy')==='false','failed restart did not restore its ready state');
+ assert(!visible(description)&&problem.parentElement===description.parentElement,'restart error did not replace the description');
+ stable('failed');
  assert(!$('#setpage').hidden&&visible($('[data-spane="about"]')),'restart failure left about');
  button.click();
  await waitFor(()=>clientRestart.requests.length===2&&clientRestart.pending.length===1,'retry did not send exactly one new request');
  const retry=clientRestart.requests[1];
  assert(retry.method==='POST'&&(retry.body==null||retry.body===''),'retry changed the restart request contract');
- assert(button.disabled&&label.textContent==='正在重启…','retry did not restore the progress state');
- assert(!visible(problem),'retry kept the stale failure visible');
+ assert(button.disabled&&label.textContent==='重启中','retry did not restore the progress state');
+ assert(!visible(problem)&&visible(description),'retry did not restore the pending description');
+ stable('retry');
  button.click();await nextFrames();
  assert(clientRestart.requests.length===2,'repeated retry click sent another request');
  clientRestart.pending.shift()(202,{status:'restarting'});
  await nextFrames();
- assert(button.disabled&&label.textContent==='正在重启…','accepted restart became clickable before the window closed');
+ assert(button.disabled&&label.textContent==='重启中','accepted restart became clickable before the window closed');
  assert(!visible(problem),'accepted restart retained an error');
+ stable('accepted');
  button.click();await nextFrames();
  assert(clientRestart.requests.length===2,'accepted restart allowed another request');
  assert(testErrors.length===0,testErrors.join('; '));document.body.dataset.testResult='passed';

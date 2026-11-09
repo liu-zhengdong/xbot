@@ -8953,16 +8953,19 @@
   function aboutVersion() { return (state.version || "dev") + (state.tip ? " · " + state.tip : ""); }
 
   $("settings-restart").addEventListener("click", async () => {
-    const button = $("settings-restart"), label = $("settings-restart-label"), error = $("settings-restart-error");
+    const button = $("settings-restart"), label = $("settings-restart-label"), description = $("settings-restart-description"), error = $("settings-restart-error");
     if (button.disabled) return;
     button.disabled = true;
     button.setAttribute("aria-busy", "true");
-    label.textContent = "正在重启…";
+    label.textContent = "重启中";
+    description.textContent = "正在重新打开客户端…";
+    description.hidden = false;
     error.hidden = true;
     try {
       await api("/api/app/restart", {method: "POST"});
-    } catch (err) {
-      error.textContent = "重启失败，" + visibleError(err, "请重试。");
+    } catch {
+      description.hidden = true;
+      error.textContent = "暂时无法重启，请重试";
       error.hidden = false;
       button.disabled = false;
       button.setAttribute("aria-busy", "false");
