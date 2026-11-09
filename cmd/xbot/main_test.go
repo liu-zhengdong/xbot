@@ -533,6 +533,9 @@ func TestParseProfileAndTemplate(t *testing.T) {
 }
 
 func TestProfileSetExportImport(t *testing.T) {
+	// Offline-only commands must not be redirected to whatever runtime happens to
+	// be exporting XBOT_ENDPOINT in the shell that starts the tests.
+	t.Setenv("XBOT_ENDPOINT", "")
 	root := t.TempDir()
 	b, err := bot.Create(root, "ada", "Be brief.", nil)
 	if err != nil {
