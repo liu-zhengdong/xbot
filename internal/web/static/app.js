@@ -9486,7 +9486,12 @@
     else await window.XBotAccount.boot({owner: name => enterOwner(name).catch(() => showLogin()), signedOut: () => { forgetOwner(); authenticated = false; booted = false; shell.hidden = true; }});
   }).catch(() => showLogin());
   // 把 session 里的入口语境交给设备模块：官网入口（隧道/代理）底栏写账号设备数。
-  function syncDevicesSession(data) { if (window.xbotDevices) window.xbotDevices.setSession({ remote: !!data.remote }); }
+  function syncDevicesSession(data) {
+    if (!window.xbotDevices) return;
+    window.xbotDevices.setSession({ remote: !!data.remote });
+    // 开机就把侧栏那组（同账号其他电脑的 Bot）拉一次：原先只在打开设备页时才读账号状态。
+    if (window.xbotDevices.boot) window.xbotDevices.boot();
+  }
   // 本机还没绑到登录着的账号：开机后给一次「把这台电脑绑到账号」确认（shot 04b）。
   function offerClaimOnce() {
     if (legacyLogin) return;

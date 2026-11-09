@@ -172,9 +172,14 @@
   }
   // 同一账号里的其他电脑（GET /api/account/devices）：登录后才有；本机那台不算，它就在左边的本机列表里。
   // 侧栏要用它的设备名、在线和 Bot 名单，所以每次刷新顺手读一次，最多一分钟一次（账号那边的心跳也是一分钟一报）。
-  let rosterAt = 0;
+  let rosterAt = 0, acctAt = 0;
   async function readAcctRoster(force) {
-    if (!S.acct) { if (S.roster) { S.roster = null; paintSidebar(); } return; }
+    if (!S.acct) {
+      // 开机时没人替这里读过账号状态（那一步只在打开设备页时做），全靠这句补上：
+      // 否则刷新过的页面里 S.acct 一直是 null，侧栏那组永远空着。
+      if (force || Date.now() - acctAt > 55000) { acctAt = Date.now(); await loadAcct(); }
+      if (!S.acct) { if (S.roster) { S.roster = null; paintSidebar(); } return; }
+    }
     if (!force && Date.now() - rosterAt < 55000) return;
     rosterAt = Date.now();
     try {
@@ -986,6 +991,8 @@
   }
   // 远端对话打开或关闭后，侧栏的选中行要跟着变。
   D.repaint = () => { sideSig = ""; paintSidebar(); };
+  // 主界面开机时（app.js 拿到 /api/session 之后）先跑一次，别等那个 30 秒的定时器。
+  D.boot = () => refresh();
   document.addEventListener("click", async (ev) => {
     const t = ev.target.closest && ev.target.closest("[data-side]");
     if (!t) return;
