@@ -21,8 +21,10 @@ const (
 	StateManual      = "manual"      // this platform installs with its own installer
 )
 
-// DefaultInterval is how often the release feed is asked.
-const DefaultInterval = 6 * time.Hour
+// DefaultInterval is how often the release feed is asked. The owner wants a
+// release to show up on the button within minutes, not the better part of a
+// day; twelve calls an hour stays well inside GitHub's unauthenticated 60.
+const DefaultInterval = 5 * time.Minute
 
 // FirstDelay lets the process settle before the first check.
 const FirstDelay = 30 * time.Second

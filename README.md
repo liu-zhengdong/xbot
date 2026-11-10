@@ -63,7 +63,7 @@ dev 实例的数据在 `~/.xbot-dev`，第一次 start 时从 `~/.xbot` 整份�
 
 `xbot version` 打印编译时注入的版本（默认 `dev`）。发布就是推一个 `v*` tag：`.github/workflows/release.yml` 自己打包（macOS 的 dmg/zip、Windows 的 setup.exe、Linux 的 tar.gz）并发 Release。细节见 [docs/atlas/release.md](docs/atlas/release.md)。
 
-`xbot serve` 和桌面版都默认每 6 小时查一次发布列表（启动 30 秒后第一次）。有新版就在后台下载、校验 SHA256，网页顶栏出现「更新」，点一下装好并重启；下载期间不打扰。macOS 换的是整个 `XBot.app`，Windows 交给它自己的安装包。`--no-auto-upgrade` 或 `XBOT_AUTO_UPGRADE=0` 关闭自动检查，`xbot upgrade [--check]` 在命令行手动检查/升级。开发时的 `dev` 构建不会自动升级，手动命令仍可强制。
+`xbot serve` 和桌面版都默认每 5 分钟查一次发布列表（启动 30 秒后第一次）。有新版就在后台下载、校验 SHA256，网页顶栏出现「更新」，点一下装好并重启；下载期间不打扰。macOS 换的是整个 `XBot.app`，Windows 交给它自己的安装包。`--no-auto-upgrade` 或 `XBOT_AUTO_UPGRADE=0` 关闭自动检查，`xbot upgrade [--check]` 在命令行手动检查/升级。开发时的 `dev` 构建不会自动升级，手动命令仍可强制。
 
 ## 配置
 
