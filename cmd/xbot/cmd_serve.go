@@ -541,6 +541,8 @@ func runServe(ctx context.Context, root string, cfg serveConfig) error {
 	}}
 	manager := mcp.NewManager(ctx, mcpOptions(root))
 	defer manager.Close()
+	// 账号内其他电脑的对话线路：web 不 import pipe，由这里把 pipe 接进去。
+	wireAccountChat()
 	var ui *web.Server
 	ui = &web.Server{
 		Root:         root,

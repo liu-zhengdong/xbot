@@ -158,6 +158,11 @@ func TestAccountDeviceChatOnByDefault(t *testing.T) {
 	if !offered {
 		t.Fatalf("default: the other computer is not offered a chat line")
 	}
+	// 路由本身在不在：pipe 换成桩，免得真去拨号
+	SetAccountChatPipe(func(ctx context.Context, session, device, method, path string, body []byte) (int, []byte, string, error) {
+		return 200, []byte(`{"messages":[]}`), "application/json", nil
+	}, nil)
+	t.Cleanup(func() { SetAccountChatPipe(nil, nil) })
 	if status, _ := e.do(c, "GET", "/api/account/devices/"+target.DeviceID+"/bots/writer/messages", nil, nil); status == 404 {
 		t.Fatalf("default routes are missing: %d", status)
 	}

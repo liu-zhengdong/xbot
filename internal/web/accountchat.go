@@ -19,8 +19,6 @@ import (
 
 	"xbot/internal/account"
 	"xbot/internal/bot"
-	"xbot/internal/deviceclient"
-	"xbot/internal/pipe"
 	"xbot/internal/remote"
 )
 
@@ -112,45 +110,50 @@ func (s *Server) accountChatPeer(w http.ResponseWriter, r *http.Request) (accoun
 // real implementation and tests hand in their own.
 type accountChatTransport func(ctx context.Context, session, device, method, path string, body []byte) (int, []byte, string, error)
 
+// The pipe itself is installed by the app at startup (SetAccountChatPipe).
+// This package must not import internal/pipe: pipe's own tests stand up a
+// web.Server, and Go refuses the test-only cycle that would create.
+var (
+	accountChatPipe    accountChatTransport
+	accountChatRefusal func(error) (int, bool)
+)
+
+// SetAccountChatPipe hands the proxy its transport: send runs one request to
+// another computer of the same account, refusal reads the status out of a pipe
+// error. Called once at startup; without it the routes answer as broken.
+func SetAccountChatPipe(send accountChatTransport, refusal func(error) (int, bool)) {
+	accountChatPipe, accountChatRefusal = send, refusal
+}
+
 func (s *Server) accountChatDo(ctx context.Context, session, device, method, path string, body []byte) (int, []byte, string, error) {
 	if s.acct.chatDo != nil {
 		return s.acct.chatDo(ctx, session, device, method, path, body)
 	}
-	ct := ""
-	if body != nil {
-		ct = "application/json"
+	if accountChatPipe == nil {
+		return 0, nil, "", errors.New("账号设备对话线路没有接上")
 	}
-	hub := deviceclient.Hub()
-	ticket, err := pipe.NewTicket(ctx, hub, session, device)
-	if err != nil {
-		return 0, nil, "", err
-	}
-	conn, err := pipe.Dial(ctx, hub, ticket)
-	if err != nil {
-		return 0, nil, "", err
-	}
-	defer conn.Close()
-	return conn.Do(ctx, method, path, body, ct)
+	return accountChatPipe(ctx, session, device, method, path, body)
 }
 
 // writeAccountChatErr turns a pipe refusal into a line the panel shows as
 // 「没能完成：…」. 409 is the hub saying this device is not on standby.
 func writeAccountChatErr(w http.ResponseWriter, err error, label string) {
-	var refusal *pipe.HTTPError
-	if errors.As(err, &refusal) {
-		switch refusal.Status {
-		case http.StatusNotFound:
-			writeErr(w, http.StatusNotFound, "账号里没有这台电脑")
-			return
-		case http.StatusConflict, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
-			writeErr(w, http.StatusGatewayTimeout, label+"现在不在线，等它在 XBot 里醒来再试")
-			return
-		case http.StatusUnauthorized:
-			writeErr(w, http.StatusUnauthorized, "登录过期了，重新登录")
-			return
-		case http.StatusTooManyRequests:
-			writeErr(w, http.StatusTooManyRequests, "同时连过去的太多，等一分钟再试")
-			return
+	if accountChatRefusal != nil {
+		if status, ok := accountChatRefusal(err); ok {
+			switch status {
+			case http.StatusNotFound:
+				writeErr(w, http.StatusNotFound, "账号里没有这台电脑")
+				return
+			case http.StatusConflict, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+				writeErr(w, http.StatusGatewayTimeout, label+"现在不在线，等它在 XBot 里醒来再试")
+				return
+			case http.StatusUnauthorized:
+				writeErr(w, http.StatusUnauthorized, "登录过期了，重新登录")
+				return
+			case http.StatusTooManyRequests:
+				writeErr(w, http.StatusTooManyRequests, "同时连过去的太多，等一分钟再试")
+				return
+			}
 		}
 	}
 	writeErr(w, http.StatusBadGateway, "连不上"+label+"："+err.Error())
