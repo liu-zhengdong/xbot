@@ -630,7 +630,6 @@ html[data-theme="dark"] .avatar.glyph { --av-bg: #3a3a3d; --av-ink: #ececec; }
 .sidebar.rail .item .item-body,
 .sidebar.rail .group-label .label,
 .sidebar.rail .me-text,
-.sidebar.rail .me-chev,
 .sidebar.rail .pin-name,
 .sidebar.rail .badge,
 .sidebar.rail .text-btn { display: none; }
@@ -1936,7 +1935,6 @@ html[data-theme="dark"] {
   .sidebar.rail .badge,
   .sidebar.rail .text-btn { display: initial; }
   .sidebar.rail .me-text, .sidebar.rail .pin-name { display: flex; }
-  .sidebar.rail .me-chev { display: block; }
   .sidebar.rail .account-trigger { width: 100%; justify-content: flex-start; padding: 7px 10px; }
   .sidebar.rail .item { justify-content: flex-start; padding: 8px 10px; min-height: 56px; }
   .sidebar.rail .pin-row { flex-direction: row; overflow-x: auto; align-items: center; }
@@ -2104,8 +2102,7 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .recent-status.failed { color: var(--err); }
 /* Account actions remain reachable from the avatar rail. */
 .account-wrap { position: relative; min-width: 0; }
-/* Bottom of the sidebar: only 我 — face, name, this computer's name and an
-   up/down mark; it opens the 我 menu (device prototype v2, item 15). */
+/* The sidebar account row shows the face, owner and computer name. */
 .account-wrap { position: relative; }
 .account-trigger {
   width: 100%; display: flex; align-items: center; gap: 10px; padding: 7px 10px;
@@ -2117,7 +2114,6 @@ html[data-theme="dark"]{--bg-pop:#2a2a2e;--bg-shadow:0 10px 34px rgba(0,0,0,.5)}
 .me-name, .me-device { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .me-name { font-size: 13.5px; font-weight: 600; line-height: 1.3; }
 .me-device { font-size: 12px; line-height: 1.35; color: var(--faint); }
-.me-chev { width: 16px; height: 16px; flex: none; color: var(--faint); }
 /* Same left and right edges as the 我 row in every layout ([t549u]). */
 .account-menu { min-width: 0; }
 .account-menu button { display: flex; align-items: center; justify-content: flex-start; gap: var(--x-s4); font-size: var(--x-fs-ui); min-height: calc(var(--x-s8) + var(--x-s4)); }

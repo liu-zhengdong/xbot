@@ -1,5 +1,12 @@
 # XBot 里程碑与进度
 
+## 2026-11-09 账号栏去箭头与默认设备短名（S，真实接口与浏览器验证）
+
+- 用户确认审美顾问的局部原型后，删除账号栏右侧上下箭头及闲置样式。头像、用户名、整行点击与设置菜单沿用原行为。
+- 默认设备名共用 `remote.DefaultDeviceName`，识别主机名末尾的 Mac 机型并规范空格。当前本机从 `liuzhengdongdeMac-Mini.local` 得到 `Mac mini`。其他主机使用首段名称；自定义名称优先，设备 ID、消息地址和云端已保存名称不变。
+- `TestDefaultDeviceName`、`TestSelfDeviceNameDefaultAndSaved`、`TestAccountDeviceNameDefaultAndSaved`、`TestDevicesAPIList` 和 `TestAccountMenuBrowser` 一次通过。真实隔离二进制验证 `GET /api/devices` 返回 `Mac mini`，PATCH 自定义名后完整回读；不调用模型，测试服务已退出。相关构建、vet、gofmt、diff 检查通过。Atlas audit 退出 0，保留既有告警。
+- 本机 8788 的受影响 HTML／CSS 与源码一致，箭头刷新后消失；现有后端尚未重启，短名规则在重启后生效。真实静态页面使用独立脚本化数据取证，截图位于 `~/.xbot-build/ui-shots/account-short-name/product/`。Not run: 全仓测试、真实模型、跨平台原生桌面、真实账号改名迁移、用户日用、推送与发布。
+
 ## 2026-11-09 重启按钮采用淡橙细边定稿（S，浏览器入口通过）
 
 - 用户确认可操作原型后，将实心橙色按钮改为透明底、淡橙细边与暖色文字。固定 80×36px、14px／400，悬停与按下只改变浅暖填充，不缩放。浅深颜色独立取 token，删除无消费者的旧实底 warning 变量。前端标准已同步本次定稿。

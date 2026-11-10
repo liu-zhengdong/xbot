@@ -597,16 +597,12 @@ func (s *Server) reportDevice(ctx context.Context, session string, b accountBind
 	return err
 }
 
-// selfDeviceName is the name this computer goes by in 设备; before any
-// pairing set one up, the host name.
+// selfDeviceName uses the saved name or this computer's short default name.
 func (s *Server) selfDeviceName() string {
 	if self, err := remote.Self(s.Root, s.owner); err == nil && strings.TrimSpace(self.Name) != "" {
-		return strings.TrimSuffix(self.Name, ".local")
+		return self.Name
 	}
-	if h, err := os.Hostname(); err == nil && strings.TrimSpace(h) != "" {
-		return strings.TrimSuffix(h, ".local")
-	}
-	return "这台电脑"
+	return remote.DefaultDeviceName()
 }
 
 func (s *Server) ownerBotNames() []string {

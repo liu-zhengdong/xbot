@@ -120,7 +120,7 @@ func localPairInfo(root, personID string) (pairInfo, error) {
 		return pairInfo{}, err
 	}
 	if self.Name == "" {
-		self.Name, _ = os.Hostname()
+		self.Name = DefaultDeviceName()
 	}
 	label := cleanLabel(self.Name)
 	if label == "" {
