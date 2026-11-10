@@ -92,9 +92,9 @@ func TestAccountDeviceChatProxy(t *testing.T) {
 	}
 }
 
-// 开关默认关着：没有这些路由，侧栏也就不会提供这条路。
+// 开关能关掉：没有这些路由，侧栏也就不会提供这条路。
 func TestAccountDeviceChatOffByDefault(t *testing.T) {
-	t.Setenv("XBOT_ACCOUNT_CHAT", "")
+	t.Setenv("XBOT_ACCOUNT_CHAT", "0")
 	e, c, _, session := boundAccountBrowser(t)
 	target, err := e.s.acct.client.BindDevice(context.Background(), session, account.DeviceReport{ID: "desk", Name: "工作电脑", Bots: []string{"writer"}})
 	if err != nil {

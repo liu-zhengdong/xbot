@@ -33,19 +33,21 @@ const accountChatWait = 5 * time.Minute
 const accountChatCallWait = 30 * time.Second
 
 // accountChatEnabled is the switch for the account-device conversation line.
-// Off by default: the pipe proxy is new and a wrong read here would show a
-// panel that cannot send, so it is opt-in until it has run for a while.
+// On by default: once the roster lists another computer's bots, a line that
+// only explains itself is worse than one that tries, and the proxy refuses
+// offline devices with its own message. XBOT_ACCOUNT_CHAT=0 closes it for an
+// install that would rather not open a pipe for chat at all.
 func accountChatEnabled() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("XBOT_ACCOUNT_CHAT"))) {
-	case "1", "true", "on", "yes":
-		return true
+	case "0", "false", "off", "no":
+		return false
 	}
-	return false
+	return true
 }
 
 // registerAccountChatAPI adds the account-device conversation routes. They are
-// off unless XBOT_ACCOUNT_CHAT says otherwise: the sidebar reads the same flag
-// from the roster's chat field, so a closed channel is never offered.
+// on unless XBOT_ACCOUNT_CHAT turns them off: the sidebar reads the same flag
+// through the roster's chat field, so a closed channel is never offered.
 func (s *Server) registerAccountChatAPI(mux *http.ServeMux) {
 	if !accountChatEnabled() {
 		return

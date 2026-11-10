@@ -92,7 +92,7 @@
 | `POST /api/account/devices/{id}/bots/{bot}/messages` | `{text}` → `{message}`；整轮说完才回来，超 16 KiB 或该设备离线为 4xx/5xx |
 | `POST /api/account/devices/{id}/bots/{bot}/read` | 204；账号通道没有未读账 |
 
-这三条只在 `XBOT_ACCOUNT_CHAT=1` 时注册：后端用账号会话在 pipe 上现领一张票，代理到目标电脑自己的 `GET /api/bots/<bot>/chat` 与 `POST /api/bots/<bot>/messages`。目标电脑不在待命、不是账号成员、本机自己、或 Bot 不在该设备报的名单里，都直接拒绝，不转发。
+这三条默认注册（`XBOT_ACCOUNT_CHAT=0` 时不注册）：后端用账号会话在 pipe 上现领一张票，代理到目标电脑自己的 `GET /api/bots/<bot>/chat` 与 `POST /api/bots/<bot>/messages`。目标电脑不在待命、不是账号成员、本机自己、或 Bot 不在该设备报的名单里，都直接拒绝，不转发。
 
 `Task` 为 `{id,ref,device_id,device_name,bot,context_id,kind,description,status,started_at,finished_at?,error?,artifacts:[{id,name,size}]}`。`description` 是有界摘要。状态为 `running|completed|failed|cancelled`。`ref` 在发送前生成，属于原设备和执行上下文。未知回执不是完成或失败的证据，调用方应查询原引用。
 

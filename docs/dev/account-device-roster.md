@@ -29,7 +29,7 @@ M 档。主 Agent 指派，用户要的是「登录同一账号后，把其他�
 3. 通道开关：`/api/account/devices` 行上带 `chat` 字段。路由 `/api/account/devices/{id}/bots/{bot}/messages`
    （GET 历史 / POST 发送 / read 空实现）用 `pipe.NewTicket`＋`Dial` 带用户的账号会话代理到目标电脑自己的
    `GET /api/bots/<bot>/chat`、`POST /api/bots/<bot>/messages`，把行映射成面板现在吃的
-   `{messages:[{id,role,text,at,state}], device:{...}}`。这条线路由 `XBOT_ACCOUNT_CHAT=1` 打开，默认关；
+   `{messages:[{id,role,text,at,state}], device:{...}}`。这条线路默认打开，`XBOT_ACCOUNT_CHAT=0` 关掉；
    `chat` 字段跟着同一个开关走，关着时侧栏不会提供点不开的入口。
 
 ## 怎样算做完
@@ -39,7 +39,7 @@ M 档。主 Agent 指派，用户要的是「登录同一账号后，把其他�
 - 未登录/没有账号时行为与改动前一致：不读账号设备，那一组不出现。
 - `go vet ./...`、`go build ./...` 干净；`internal/web` 里 devices/remote/account/sidebar 相关用例全绿，
   包括两个新浏览器用例（有账号设备 / 没账号）和代理路由的行为用例。
-- `XBOT_ACCOUNT_CHAT=1` 时路由存在、按账号会话转发、本机与未知 Bot 被拒；关着时这些路由不存在。
+- 默认路由存在（`XBOT_ACCOUNT_CHAT=0` 时不存在）、按账号会话转发、本机与未知 Bot 被拒；关着时这些路由不存在。
 
 ## 还没做的
 
