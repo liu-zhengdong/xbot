@@ -135,3 +135,30 @@ func TestAccountChatReplyParsing(t *testing.T) {
 		}
 	}
 }
+
+// 开关默认打开：登录后侧栏列出的账号设备带 chat，点开就有路由可走。
+func TestAccountDeviceChatOnByDefault(t *testing.T) {
+	t.Setenv("XBOT_ACCOUNT_CHAT", "")
+	e, c, _, session := boundAccountBrowser(t)
+	target, err := e.s.acct.client.BindDevice(context.Background(), session, account.DeviceReport{ID: "desk", Name: "工作电脑", Bots: []string{"writer"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, out := e.do(c, "GET", "/api/account/devices", nil, nil)
+	if status != 200 {
+		t.Fatalf("roster: %d", status)
+	}
+	offered := false
+	for _, row := range out["devices"].([]any) {
+		d, _ := row.(map[string]any)
+		if d["id"] == target.DeviceID {
+			offered = d["chat"] == true
+		}
+	}
+	if !offered {
+		t.Fatalf("default: the other computer is not offered a chat line")
+	}
+	if status, _ := e.do(c, "GET", "/api/account/devices/"+target.DeviceID+"/bots/writer/messages", nil, nil); status == 404 {
+		t.Fatalf("default routes are missing: %d", status)
+	}
+}
